@@ -31,7 +31,7 @@ describe('App', () => {
 
     const layout = harness.routeNativeElement as HTMLElement;
     expect(layout.querySelector('.qits-layout-brand')?.textContent).toContain('qits');
-    expect(layout.querySelectorAll('.qits-layout-link')).toHaveLength(6);
+    expect(layout.querySelectorAll('.qits-layout-link')).toHaveLength(7);
     expect(layout.querySelector('.qits-layout-content router-outlet')).not.toBeNull();
   });
 });
