@@ -58,21 +58,37 @@ export const TERMINAL_ROWS = 24;
         <qits-button variant="ghost" size="sm" (pressed)="close()">Close</qits-button>
       </header>
 
-      <!-- Focusable so it can take keys: this is the input, and there is no separate field. A
-           password prompt does not echo, so a visible text box would be a lie about what is typed. -->
-      <pre
-        #screen
-        class="screen"
-        tabindex="0"
-        role="log"
-        aria-live="polite"
-        aria-label="Terminal output"
-        (keydown)="onKeydown($event)"
-        >{{ screenText() }}</pre>
+      <!-- Clicking anywhere on the output puts focus in the capture field. The two lint rules
+           suppressed here ask for a key handler and a tab stop on this div; both belong to the
+           <textarea> inside it, and adding a second set would make two tab stops for one terminal. -->
+      <!-- eslint-disable-next-line @angular-eslint/template/click-events-have-key-events, @angular-eslint/template/interactive-supports-focus -->
+      <div class="stage" (click)="focusInput()">
+        <pre #screen class="screen" role="log" aria-live="polite" aria-label="Terminal output">{{
+          screenText()
+        }}</pre>
+
+        <!-- The real input, and it is a <textarea> for one reason: a browser only fires "paste" at
+             an EDITABLE target. The pre tabindex=0 this replaced took keystrokes perfectly and
+             was silent on Ctrl+V, which is exactly the defect. It is invisible but never
+             display:none or visibility:hidden — either would make it unfocusable and take the
+             keyboard with it. xterm.js keeps the same hidden helper textarea, for the same reason. -->
+        <textarea
+          #capture
+          class="capture"
+          aria-label="Terminal input"
+          autocomplete="off"
+          autocapitalize="off"
+          spellcheck="false"
+          [value]="''"
+          (keydown)="onKeydown($event)"
+          (paste)="onPaste($event)"
+        ></textarea>
+      </div>
 
       <p class="hint">
-        Click the output to type. git asks for a username and a password — use a scoped personal
-        access token, not your account password. Nothing you type is echoed at the password prompt.
+        Click the output to type, and paste with Ctrl+V. git asks for a username and a password —
+        use a scoped personal access token, not your account password. Nothing you type is echoed at
+        the password prompt.
       </p>
     </section>
   `,
@@ -111,9 +127,31 @@ export const TERMINAL_ROWS = 24;
       white-space: pre-wrap;
       overflow-wrap: anywhere;
     }
-    .screen:focus-visible {
+    .stage {
+      position: relative;
+    }
+    /* The focus ring belongs to the whole stage: the field that actually holds focus is invisible,
+       so without this the terminal would look inert while it was listening. */
+    .stage:focus-within .screen {
       outline: 2px solid #93c5fd;
       outline-offset: -2px;
+    }
+    /* Invisible, focusable, and out of the way. opacity rather than display/visibility, which
+       would take it out of the focus order and the keyboard with it. */
+    .capture {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 1px;
+      height: 1px;
+      margin: 0;
+      padding: 0;
+      border: 0;
+      opacity: 0;
+      resize: none;
+      overflow: hidden;
+      color: transparent;
+      background: transparent;
     }
     .hint {
       margin: 0;
@@ -141,6 +179,8 @@ export class RemoteLoginTerminal {
   readonly closed = output<void>();
 
   private readonly screen = viewChild<ElementRef<HTMLElement>>('screen');
+
+  private readonly capture = viewChild<ElementRef<HTMLTextAreaElement>>('capture');
 
   private socket: WebSocketLike | null = null;
 
@@ -241,6 +281,38 @@ export class RemoteLoginTerminal {
     }
     event.preventDefault();
     this.send({ type: 'data', data });
+  }
+
+  /** Put the keyboard where it can be read, whatever part of the terminal was clicked. */
+  protected focusInput(): void {
+    this.capture()?.nativeElement.focus();
+  }
+
+  /**
+   * A paste, delivered whole.
+   *
+   * <p><b>One message, not one per character.</b> A personal access token is forty-odd characters
+   * and the reader is pasting it precisely because typing it is unreasonable; splitting it into
+   * synthetic keystrokes would put forty frames on the wire for one action, and any of them
+   * arriving out of order would corrupt a secret with no way to tell.
+   *
+   * <p>Newlines pass through verbatim. git reads one line, so a trailing newline submits the
+   * prompt — which is what pasting into a real terminal does, and the reader already expects it.
+   *
+   * <p>`preventDefault` is what keeps the text out of the invisible field: the pane echoes nothing
+   * on its own, so anything left behind would sit there for the next paste to send twice.
+   */
+  protected onPaste(event: ClipboardEvent): void {
+    event.preventDefault();
+    const clipboard = event.clipboardData;
+    const text = clipboard?.getData('text/plain') || clipboard?.getData('text') || '';
+    const element = this.capture()?.nativeElement;
+    if (element) {
+      element.value = '';
+    }
+    if (text) {
+      this.send({ type: 'data', data: text });
+    }
   }
 
   private send(message: Record<string, unknown>): void {
