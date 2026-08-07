@@ -1,16 +1,11 @@
 import { COMPONENT_TYPES, normalizeArchetype, type RepositoryArchetype } from './dto';
 
 /**
- * The taxonomy, asserted rather than assumed. Both of these are the kind of thing that stays
- * correct-looking while being wrong: a missing legacy arm draws a library in an "other" bucket, and
- * a directory that disagrees with the server's derivation sends a create request to the wrong group.
+ * The taxonomy, asserted rather than assumed. This is the kind of thing that stays correct-looking
+ * while being wrong: a directory that disagrees with the server's derivation sends a create request
+ * to the wrong group.
  */
 describe('normalizeArchetype', () => {
-  it('folds the two legacy values into their successors', () => {
-    expect(normalizeArchetype('INTEGRATION')).toBe('LIBRARY');
-    expect(normalizeArchetype('APPLICATION')).toBe('FRONTEND');
-  });
-
   it('leaves every current value alone', () => {
     for (const type of COMPONENT_TYPES) {
       expect(normalizeArchetype(type.archetype)).toBe(type.archetype);

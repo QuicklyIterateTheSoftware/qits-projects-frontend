@@ -12,9 +12,8 @@ import { NONE, repositoryLabel } from '../ui/format';
  * than no link. The url is shown as text rather than as an anchor for the same reason: the platform
  * git host's address is not something a browser tab can usefully open.
  *
- * The archetype badge shows the **normalised** value, so a row still stamped `INTEGRATION` reads
- * `LIBRARY` — the same word the group heading above it uses, and the same one the wrapper directory
- * means.
+ * The archetype badge shows the **normalised** value, so it reads the same word the group heading
+ * above it uses, and the same one the wrapper directory means.
  */
 @Component({
   selector: 'app-component-card',

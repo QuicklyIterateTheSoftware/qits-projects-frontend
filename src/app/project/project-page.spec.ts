@@ -64,17 +64,6 @@ describe('groupComponents', () => {
     ]);
   });
 
-  it('files the two legacy archetypes under their successors', () => {
-    const groups = groupComponents([
-      repository('old-integration', 'INTEGRATION'),
-      repository('old-application', 'APPLICATION'),
-    ]);
-
-    expect(groups.find((group) => group.key === 'LIBRARY')?.repositories).toHaveLength(1);
-    expect(groups.find((group) => group.key === 'FRONTEND')?.repositories).toHaveLength(1);
-    expect(groups.find((group) => group.key === 'OTHER')).toBeUndefined();
-  });
-
   /** The wrapper is not a component of itself; it is the configuration, drawn above the groups. */
   it('leaves the wrapper out of every group', () => {
     const groups = groupComponents([repository('qits-qits', 'PROJECT')]);
@@ -228,9 +217,9 @@ describe('ProjectPage', () => {
     expect(text()).toContain('None yet.');
   });
 
-  it('draws a card with the name, the normalised archetype, the origin and the branch', async () => {
+  it('draws a card with the name, the archetype, the origin and the branch', async () => {
     await open();
-    await load([repository('qits-angular', 'INTEGRATION')]);
+    await load([repository('qits-angular', 'LIBRARY')]);
 
     const card = page().querySelector('app-component-card');
     expect(card?.textContent).toContain('qits-angular');

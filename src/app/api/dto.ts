@@ -18,16 +18,11 @@
  * directory is what makes them placeable: a component repository lives at `<directory>/<name>` or
  * it is not part of the project. `PROJECT` is the wrapper itself, `SERVICE_TEMPLATE` and `FORK` are
  * rows that deliberately sit outside any wrapper.
- *
- * `INTEGRATION` and `APPLICATION` are legacy values that release A still reads off old rows —
- * {@link normalizeArchetype} folds them into `LIBRARY` and `FRONTEND`. Both arms go away with
- * release B, and so do these two union members.
  */
 export type PlaceableArchetype = 'SERVICE' | 'DAEMON' | 'LIBRARY' | 'FRONTEND' | 'CLI' | 'IMAGE';
 
-/** Every archetype the service can answer with, placeable or not, current or legacy. */
-export type RepositoryArchetype =
-  PlaceableArchetype | 'PROJECT' | 'SERVICE_TEMPLATE' | 'FORK' | 'INTEGRATION' | 'APPLICATION';
+/** Every archetype the service can answer with, placeable or not. */
+export type RepositoryArchetype = PlaceableArchetype | 'PROJECT' | 'SERVICE_TEMPLATE' | 'FORK';
 
 /** One group on the project page: an archetype, the wrapper directory it lands in, and its words. */
 export interface ComponentType {
@@ -56,22 +51,15 @@ export const COMPONENT_TYPES: readonly ComponentType[] = [
   { archetype: 'IMAGE', directory: 'images', label: 'Images', singular: 'image' },
 ];
 
-/** The legacy values and what they became. Deleted with release B, along with their union arms. */
-const LEGACY_ARCHETYPES: Readonly<Record<string, PlaceableArchetype>> = {
-  INTEGRATION: 'LIBRARY',
-  APPLICATION: 'FRONTEND',
-};
-
 /**
  * The archetype as the current taxonomy names it.
  *
- * Applied on the way in rather than trusted from the wire, because release A widens the check
- * constraint without rewriting rows: a repository row written before the rework legitimately still
- * says `INTEGRATION`, and a page that grouped on the raw value would draw an "other" bucket for a
- * library. Anything unrecognised passes through untouched — inventing a group for it would hide it.
+ * Release B retired the last legacy values, so every archetype the service answers with is already
+ * current and this maps nothing. Anything unrecognised passes through untouched — inventing a group
+ * for it would hide it.
  */
 export function normalizeArchetype(archetype: RepositoryArchetype): RepositoryArchetype {
-  return LEGACY_ARCHETYPES[archetype] ?? archetype;
+  return archetype;
 }
 
 /** A project's dns record, or the whole object is null when it registers no domain. */
