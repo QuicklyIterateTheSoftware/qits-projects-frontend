@@ -1,22 +1,51 @@
-import { basename, isGitSafeName, repositoryLabel, wrapperDirectory } from './format';
+import { basename, cloneUrl, isGitSafeName, repositoryLabel, wrapperDirectory } from './format';
 
 describe('repositoryLabel', () => {
   it('prefers the registered name', () => {
-    expect(repositoryLabel({ id: 'r1', name: 'qits-ci', url: 'https://x/other.git' })).toBe(
+    expect(repositoryLabel({ id: 'r1', name: 'qits-ci', backupUrl: 'https://x/other.git' })).toBe(
       'qits-ci',
     );
   });
 
-  /** Rows written before release A added `name`; the url basename is what the old SPAs derived. */
-  it('falls back to the url basename', () => {
+  /** Rows written before release A added `name`; the twin is named after the same thing. */
+  it('falls back to the backup url’s basename', () => {
     expect(
-      repositoryLabel({ id: 'r1', name: '', url: 'ssh://git@example/QuicklyIterate/qits-ci.git' }),
+      repositoryLabel({
+        id: 'r1',
+        name: '',
+        backupUrl: 'ssh://git@example/QuicklyIterate/qits-ci.git',
+      }),
     ).toBe('qits-ci');
   });
 
-  /** A repository born blank on the platform host has no url at all, so the id is all there is. */
+  /** A row with no backup configured has neither, so the id is all there is. */
   it('falls back to the id when there is neither', () => {
-    expect(repositoryLabel({ id: 'r1', name: '', url: null })).toBe('r1');
+    expect(repositoryLabel({ id: 'r1', name: '', backupUrl: null })).toBe('r1');
+  });
+});
+
+/**
+ * The clone address is a *rule*, not a field, so this is where the rule is pinned. A wrapper's
+ * relative `../<name>.git` has to resolve to the same place, which is what makes a project cloned
+ * from GitHub and one cloned from the platform the same project.
+ */
+describe('cloneUrl', () => {
+  it('is the git host’s name-addressed route under the browser’s own origin', () => {
+    expect(cloneUrl('https://qits.example', 'qits', 'qits-ci')).toBe(
+      'https://qits.example/artifacts/git/qits/qits-ci.git',
+    );
+  });
+
+  it('does not double the slash when the origin carries a trailing one', () => {
+    expect(cloneUrl('http://localhost:8080/', 'qits', 'qits-ci')).toBe(
+      'http://localhost:8080/artifacts/git/qits/qits-ci.git',
+    );
+  });
+
+  it('escapes a project id or a name that would otherwise change the path', () => {
+    expect(cloneUrl('https://qits.example', 'a/b', 'c d')).toBe(
+      'https://qits.example/artifacts/git/a%2Fb/c%20d.git',
+    );
   });
 });
 

@@ -85,13 +85,21 @@ export interface ProjectDto {
  * half of `<directory>/<name>` the wrapper spells. It arrived with release A and it is what retires
  * every SPA's url-basename label hack.
  *
- * `url` is null for a repository born blank on the platform git host: there is no external origin
- * to name, only the host's own name-addressed route.
+ * <p><b>`backupUrl` is a sync target, never a clone source.</b> A component repository is always
+ * cloned from this platform's own git host — that is what the wrapper's relative `../<name>.git`
+ * resolves to — and the backup is the twin the platform pushes to automatically, so that the
+ * project survives the platform. The distinction is the whole reason the old `url` field is not
+ * read here: it was the same string under a name that invited every reader to treat it as where
+ * the code comes from, which it never was. It is still on the wire for one release as a deprecated
+ * duplicate and is deliberately not declared, so release B's removal costs this client nothing.
+ *
+ * <p>Null means no backup is configured. After release C's reconcile has healed the rows every
+ * repository carries one, so a null is worth showing as an absence rather than explaining away.
  */
 export interface RepositoryDto {
   readonly id: string;
   readonly name: string;
-  readonly url: string | null;
+  readonly backupUrl: string | null;
   readonly mainBranch: string;
   readonly archetype: RepositoryArchetype;
   readonly projectId: string;
@@ -151,9 +159,22 @@ export interface CreateRepositoryResponse {
   readonly wrapperPath: string;
 }
 
-/** What the reconcile did with one wrapper entry, or with one row the wrapper no longer names. */
+/**
+ * What the reconcile did with one wrapper entry, or with one row the wrapper no longer names.
+ *
+ * `SYNC_TARGET_UPDATED` is release C's: the row matched and stayed, and what changed is where the
+ * platform pushes its backup to. It is a sibling of `ARCHETYPE_UPDATED` — both are "kept, but one
+ * field of it is now right" — and it is the outcome that heals rows whose backup url was never
+ * recorded.
+ */
 export type ReconcileOutcome =
-  'CREATED' | 'ADOPTED' | 'KEPT' | 'ARCHETYPE_UPDATED' | 'DEREGISTERED' | 'SKIPPED';
+  | 'CREATED'
+  | 'ADOPTED'
+  | 'KEPT'
+  | 'ARCHETYPE_UPDATED'
+  | 'SYNC_TARGET_UPDATED'
+  | 'DEREGISTERED'
+  | 'SKIPPED';
 
 /**
  * One line of the reconcile's answer, and **every field but `outcome` can be null**.

@@ -16,15 +16,32 @@ export const NONE = '—';
  * What a repository row is called.
  *
  * `name` is the registered alias and the right answer: it is the basename the git host serves, and
- * therefore the half of `<directory>/<name>` the wrapper spells. The url basename is a fallback for
- * a row written before release A added the field, and the id is the last resort — a repository born
- * blank on the platform host has no url at all.
+ * therefore the half of `<directory>/<name>` the wrapper spells. The backup url's basename is a
+ * fallback for a row written before release A added the field — the twin is named after the same
+ * thing — and the id is the last resort, for a row with neither.
  */
-export function repositoryLabel(repository: Pick<RepositoryDto, 'id' | 'name' | 'url'>): string {
-  return repository.name || basename(repository.url) || repository.id;
+export function repositoryLabel(
+  repository: Pick<RepositoryDto, 'id' | 'name' | 'backupUrl'>,
+): string {
+  return repository.name || basename(repository.backupUrl) || repository.id;
 }
 
-/** The basename of a clone url, without its `.git` suffix. Empty for no url. */
+/**
+ * Where this repository is cloned from, which is **always** this platform's git host.
+ *
+ * qits-artifacts serves every component repository on a name-addressed route, and the wrapper's
+ * relative `../<name>.git` resolves to exactly this. So it is composed rather than read off a
+ * field: there is no per-repository answer to give, and a stored one could only ever be a second
+ * copy of a rule — free to drift, and wrong the moment the platform moves.
+ *
+ * `origin` is the browser's own, so the address is the one the reader is already talking to.
+ */
+export function cloneUrl(origin: string, projectId: string, name: string): string {
+  const host = origin.replace(/\/+$/, '');
+  return `${host}/artifacts/git/${encodeURIComponent(projectId)}/${encodeURIComponent(name)}.git`;
+}
+
+/** The basename of a git url, without its `.git` suffix. Empty for no url. */
 export function basename(url: string | null | undefined): string {
   if (!url) {
     return '';

@@ -130,7 +130,11 @@ export type CreateMode = 'blank' | 'attach';
           (input)="onUrl($event)"
         />
       </label>
-      <p class="hint">Its basename becomes the name the wrapper and the git host both use.</p>
+      <p class="hint">
+        Read once to bring the code in, then kept as the repository's backup target. Its basename
+        becomes the name the wrapper and the git host both use, and clones come from the git host
+        from then on.
+      </p>
     }
 
     <div class="actions">

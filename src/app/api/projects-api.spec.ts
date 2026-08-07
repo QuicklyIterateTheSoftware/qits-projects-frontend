@@ -43,7 +43,7 @@ describe('ProjectsApi', () => {
           repository: {
             id: 'r1',
             name: 'qits-ci',
-            url: 'ssh://git@example/QuicklyIterate/qits-ci.git',
+            backupUrl: 'https://github.com/QuicklyIterate/qits-ci.git',
             mainBranch: 'main',
             archetype: 'SERVICE',
             projectId: 'p1',
@@ -82,7 +82,7 @@ describe('ProjectsApi', () => {
       repository: {
         id: 'r2',
         name: 'qits-widgets',
-        url: null,
+        backupUrl: null,
         mainBranch: 'main',
         archetype: 'SERVICE',
         projectId: 'p1',
@@ -110,7 +110,7 @@ describe('ProjectsApi', () => {
       repository: {
         id: 'r3',
         name: 'qits-widgets',
-        url: 'https://github.com/QuicklyIterate/qits-widgets.git',
+        backupUrl: 'https://github.com/QuicklyIterate/qits-widgets.git',
         mainBranch: 'main',
         archetype: 'LIBRARY',
         projectId: 'p1',

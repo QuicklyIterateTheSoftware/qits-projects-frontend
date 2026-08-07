@@ -114,7 +114,7 @@ describe('CreateRepositoryPage', () => {
       repository: {
         id: 'r2',
         name: 'qits-widgets',
-        url: null,
+        backupUrl: null,
         mainBranch: 'main',
         archetype: 'SERVICE',
         projectId: 'p1',
@@ -150,7 +150,7 @@ describe('CreateRepositoryPage', () => {
       repository: {
         id: 'r3',
         name: 'qits-widgets',
-        url: 'https://github.com/QuicklyIterate/qits-widgets.git',
+        backupUrl: 'https://github.com/QuicklyIterate/qits-widgets.git',
         mainBranch: 'main',
         archetype: 'LIBRARY',
         projectId: 'p1',

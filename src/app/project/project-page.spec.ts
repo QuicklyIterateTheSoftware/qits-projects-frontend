@@ -23,7 +23,7 @@ function repository(
   return {
     id,
     name: id,
-    url: `https://example.test/QuicklyIterate/${id}.git`,
+    backupUrl: `https://github.com/QuicklyIterate/${id}.git`,
     mainBranch: 'main',
     archetype,
     projectId: 'p1',
@@ -217,24 +217,34 @@ describe('ProjectPage', () => {
     expect(text()).toContain('None yet.');
   });
 
-  it('draws a card with the name, the archetype, the origin and the branch', async () => {
+  it('draws a card with the name, the archetype, both urls and the branch', async () => {
     await open();
     await load([repository('qits-angular', 'LIBRARY')]);
 
     const card = page().querySelector('app-component-card');
     expect(card?.textContent).toContain('qits-angular');
     expect(card?.textContent).toContain('LIBRARY');
-    expect(card?.textContent).toContain('https://example.test/QuicklyIterate/qits-angular.git');
+    // The clone is this platform's git host, composed rather than read off a field.
+    expect(card?.textContent).toContain('Clone');
+    expect(card?.textContent).toContain(`${location.origin}/artifacts/git/p1/qits-angular.git`);
+    // The backup is the twin, and it is the only per-repository url on the card.
+    expect(card?.textContent).toContain('Backup');
+    expect(card?.textContent).toContain('https://github.com/QuicklyIterate/qits-angular.git');
     expect(card?.textContent).toContain('main');
     // Nothing on a card links anywhere: there is no repository detail page to link to.
     expect(card?.querySelector('a')).toBeNull();
   });
 
-  it('says a blank repository has no origin of its own', async () => {
+  /** The clone line is a rule, so it is the same shape on a repository with no backup at all. */
+  it('still draws a clone url for a repository with no backup, and dashes the backup', async () => {
     await open();
-    await load([repository('qits-widgets', 'SERVICE', { url: null })]);
+    await load([repository('qits-widgets', 'SERVICE', { backupUrl: null })]);
 
-    expect(text()).toContain('this platform’s git host');
+    const card = page().querySelector('app-component-card');
+    expect(card?.textContent).toContain(`${location.origin}/artifacts/git/p1/qits-widgets.git`);
+    expect(card?.textContent).toContain('—');
+    // The sentence the old "Origin" line drew for this case is gone with the label.
+    expect(card?.textContent).not.toContain('platform');
   });
 
   it('badges the wrapper in sync when every submodule has a row and every row a submodule', async () => {
@@ -305,6 +315,35 @@ describe('ProjectPage', () => {
     expect(text()).toContain('qits-new');
     expect(text()).toContain('libs/qits-new');
     http.verify();
+  });
+
+  /**
+   * Release C's outcome: the row stayed and its backup url is now right. It reads like any other
+   * line — the point of asserting it is that an outcome the union does not know would render as a
+   * blank rather than as the word the server sent.
+   */
+  it('reports a healed sync target as its own outcome', async () => {
+    await open();
+    await load([repository('qits-ci', 'SERVICE', { backupUrl: null })]);
+
+    await click('Reconcile from wrapper');
+    http.expectOne('/projects/api/projects/p1/repositories/reconcile').flush({
+      projectId: 'p1',
+      wrapperRepositoryId: 'qits-qits',
+      branch: 'main',
+      entries: [entry({ outcome: 'SYNC_TARGET_UPDATED' })],
+    });
+    await settle();
+    flushComponents([repository('qits-ci', 'SERVICE')]);
+    await settle();
+
+    const line = page().querySelector('.outcomes li');
+    expect(line?.textContent).toContain('services/qits-ci');
+    expect(line?.textContent).toContain('SYNC_TARGET_UPDATED');
+    // The re-read is what puts the healed backup on the card.
+    expect(page().querySelector('app-component-card')?.textContent).toContain(
+      'https://github.com/QuicklyIterate/qits-ci.git',
+    );
   });
 
   /** The warning belongs to the line it explains, so it is drawn on that line and nowhere else. */
