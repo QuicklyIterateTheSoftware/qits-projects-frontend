@@ -27,12 +27,7 @@ export type PlaceableArchetype = 'SERVICE' | 'DAEMON' | 'LIBRARY' | 'FRONTEND' |
 
 /** Every archetype the service can answer with, placeable or not, current or legacy. */
 export type RepositoryArchetype =
-  | PlaceableArchetype
-  | 'PROJECT'
-  | 'SERVICE_TEMPLATE'
-  | 'FORK'
-  | 'INTEGRATION'
-  | 'APPLICATION';
+  PlaceableArchetype | 'PROJECT' | 'SERVICE_TEMPLATE' | 'FORK' | 'INTEGRATION' | 'APPLICATION';
 
 /** One group on the project page: an archetype, the wrapper directory it lands in, and its words. */
 export interface ComponentType {
@@ -170,12 +165,7 @@ export interface CreateRepositoryResponse {
 
 /** What the reconcile did with one wrapper path. */
 export type ReconcileAction =
-  | 'CREATED'
-  | 'ADOPTED'
-  | 'KEPT'
-  | 'ARCHETYPE_UPDATED'
-  | 'DEREGISTERED'
-  | 'SKIPPED';
+  'CREATED' | 'ADOPTED' | 'KEPT' | 'ARCHETYPE_UPDATED' | 'DEREGISTERED' | 'SKIPPED';
 
 /** One path's outcome. `repositoryId` is null where nothing was resolved — a SKIPPED entry. */
 export interface ReconcileOutcomeDto {

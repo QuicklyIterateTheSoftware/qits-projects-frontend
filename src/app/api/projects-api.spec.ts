@@ -28,7 +28,9 @@ describe('ProjectsApi', () => {
   it('unwraps the project entries', async () => {
     const projects = api.projects();
     http.expectOne('/projects/api/projects').flush({
-      entries: [{ project: { id: 'p1', name: 'qits', slug: 'qits', description: null, dns: null } }],
+      entries: [
+        { project: { id: 'p1', name: 'qits', slug: 'qits', description: null, dns: null } },
+      ],
     });
     await expect(projects).resolves.toMatchObject([{ id: 'p1', name: 'qits' }]);
   });
