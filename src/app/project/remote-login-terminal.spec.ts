@@ -112,6 +112,31 @@ describe('RemoteLoginTerminal', () => {
     return (fixture.nativeElement as HTMLElement).textContent ?? '';
   }
 
+  /** The field that actually holds focus and takes keys — invisible, but the real input. */
+  function capture(): HTMLTextAreaElement {
+    const element = (fixture.nativeElement as HTMLElement).querySelector('textarea.capture');
+    expect(element, 'no capture field').toBeTruthy();
+    return element as HTMLTextAreaElement;
+  }
+
+  function type(key: string, init: Partial<KeyboardEventInit> = {}): void {
+    capture().dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, ...init }));
+  }
+
+  /**
+   * A paste, built the way a browser delivers one. jsdom does not implement `clipboardData` on a
+   * constructed event, so it is defined here — and defining `getData` rather than a whole
+   * `DataTransfer` also asserts which mime type the handler asks for.
+   */
+  function paste(text: string, mime = 'text/plain'): Event {
+    const event = new Event('paste', { bubbles: true, cancelable: true });
+    Object.defineProperty(event, 'clipboardData', {
+      value: { getData: (type: string) => (type === mime ? text : '') },
+    });
+    capture().dispatchEvent(event);
+    return event;
+  }
+
   function screen(): string {
     return (fixture.nativeElement as HTMLElement).querySelector('.screen')?.textContent ?? '';
   }
@@ -173,9 +198,8 @@ describe('RemoteLoginTerminal', () => {
     socket.connect();
     await settle();
 
-    const pre = (fixture.nativeElement as HTMLElement).querySelector('.screen')!;
-    pre.dispatchEvent(new KeyboardEvent('keydown', { key: 'a', bubbles: true }));
-    pre.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    type('a');
+    type('Enter');
     await settle();
 
     expect(socket.frames().slice(1)).toEqual([
@@ -186,8 +210,7 @@ describe('RemoteLoginTerminal', () => {
 
   it('sends nothing before the socket is open', async () => {
     const socket = await mount();
-    const pre = (fixture.nativeElement as HTMLElement).querySelector('.screen')!;
-    pre.dispatchEvent(new KeyboardEvent('keydown', { key: 'a', bubbles: true }));
+    type('a');
     await settle();
 
     expect(socket.sent).toEqual([]);
@@ -247,5 +270,102 @@ describe('RemoteLoginTerminal', () => {
     fixture.destroy();
 
     expect(socket.closedByClient).toBe(true);
+  });
+
+  /**
+   * Pasting, which is the reason this pane's input is a <textarea> at all.
+   *
+   * A browser fires "paste" at an editable target. The non-editable <pre tabindex="0"> this
+   * replaced took every keystroke and never saw a Ctrl+V, so a reader with a forty-character token
+   * in the clipboard had no way in at all.
+   */
+  describe('pasting', () => {
+    const TOKEN = 'ghp_A1b2C3d4E5f6G7h8I9j0KlMnOpQrStUvWxYz';
+
+    it('sends a pasted token as ONE data message, not one per character', async () => {
+      const socket = await mount();
+      socket.connect();
+      await settle();
+
+      paste(TOKEN);
+      await settle();
+
+      // One frame after the resize: the whole secret, in order, in a single message.
+      expect(socket.frames().slice(1)).toEqual([{ type: 'data', data: TOKEN }]);
+    });
+
+    /** Anything left in the field would be sent again by the next paste. */
+    it('stops the browser inserting it, and leaves the field empty', async () => {
+      const socket = await mount();
+      socket.connect();
+      await settle();
+
+      const event = paste(TOKEN);
+      await settle();
+
+      expect(event.defaultPrevented).toBe(true);
+      expect(capture().value).toBe('');
+    });
+
+    /** git reads one line; a trailing newline submits, exactly as in a real terminal. */
+    it('passes a multi-line paste through verbatim, newlines and all', async () => {
+      const socket = await mount();
+      socket.connect();
+      await settle();
+
+      paste('alice\ntoken\n');
+      await settle();
+
+      expect(socket.frames().slice(1)).toEqual([{ type: 'data', data: 'alice\ntoken\n' }]);
+    });
+
+    it('falls back to the plain "text" flavour when that is all the clipboard offers', async () => {
+      const socket = await mount();
+      socket.connect();
+      await settle();
+
+      paste(TOKEN, 'text');
+      await settle();
+
+      expect(socket.frames().slice(1)).toEqual([{ type: 'data', data: TOKEN }]);
+    });
+
+    it('sends nothing for an empty clipboard', async () => {
+      const socket = await mount();
+      socket.connect();
+      await settle();
+
+      paste('');
+      await settle();
+
+      expect(socket.frames().slice(1)).toEqual([]);
+    });
+
+    /**
+     * Ctrl+V and Cmd+V must reach the browser rather than being swallowed as keystrokes — the
+     * native paste is what produces the event above. Only Ctrl+C is intercepted.
+     */
+    it('lets the paste shortcuts through to the browser', async () => {
+      const socket = await mount();
+      socket.connect();
+      await settle();
+
+      type('v', { ctrlKey: true });
+      type('v', { metaKey: true });
+      type('Insert', { shiftKey: true });
+      await settle();
+
+      expect(socket.frames().slice(1)).toEqual([]);
+    });
+
+    it('puts the keyboard in the capture field when the output is clicked', async () => {
+      await mount();
+      const stage = (fixture.nativeElement as HTMLElement).querySelector('.stage') as HTMLElement;
+
+      stage.click();
+      await settle();
+
+      expect(fixture.nativeElement.ownerDocument.activeElement).toBe(capture());
+    });
   });
 });
