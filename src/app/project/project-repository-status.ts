@@ -73,25 +73,30 @@ export function wrapperDrift(
 }
 
 /**
- * The project's wrapper repository, and whether the rows below still agree with it.
+ * The **project repository**, and whether the rows below still agree with it.
+ *
+ * <p>The team calls this repository "the wrapper" in conversation, and the wire still does — the
+ * server's `WrapperDto`, `wrapperPath` and `wrapperRepositoryId` are its field names. That is an
+ * informal alias, not the domain's word, so it stays in the code and never reaches the screen: a
+ * reader who has not sat in those conversations has no way to know what a wrapper wraps.
  *
  * <p><b>This is the project's configuration, so it sits above the components rather than beside
- * them.</b> The wrapper's `.gitmodules` is what says which repositories are part of the project; a
- * group that disagrees with it is not a display problem, it is the project being in two minds. The
- * badge says which of the two states the project is in, and the button is the way out of the second.
+ * them.</b> Its `.gitmodules` is what says which repositories are part of the project; a group that
+ * disagrees with it is not a display problem, it is the project being in two minds. The badge says
+ * which of the two states the project is in, and the button is the way out of the second.
  *
  * <p>Two reconciles, deliberately kept apart and drawn at different weights. "Reconcile from
- * wrapper" rewrites rows — it can create, adopt, re-classify and **deregister** — so it is the
- * primary action and it reports every path it touched. "Re-assert DNS" pushes one record at
+ * project repository" rewrites rows — it can create, adopt, re-classify and **deregister** — so it
+ * is the primary action and it reports every path it touched. "Re-assert DNS" pushes one record at
  * qits-dns and changes nothing here, so it is a small secondary action; folding the two into one
  * button would make a routine dns nudge also delete rows.
  */
 @Component({
-  selector: 'app-wrapper-status',
+  selector: 'app-project-repository-status',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [QitsBadge, QitsButton, QitsCard],
   template: `
-    <qits-card heading="Wrapper repository">
+    <qits-card heading="Project repository">
       @if (wrapper(); as wrapper) {
         <div class="head">
           <span class="path"
@@ -137,7 +142,7 @@ export function wrapperDrift(
             [busy]="reconcile().kind === 'loading'"
             (pressed)="runReconcile()"
           >
-            Reconcile from wrapper
+            Reconcile from project repository
           </qits-button>
           <qits-button
             variant="ghost"
@@ -187,8 +192,8 @@ export function wrapperDrift(
         }
       } @else {
         <p class="none">
-          This project has no wrapper repository, so there is no configuration to reconcile against.
-          Adopt one to make its <code>.gitmodules</code> the project's membership list.
+          There is no project repository, so there is no configuration to reconcile against. Adopt
+          one to make its <code>.gitmodules</code> the project's membership list.
         </p>
       }
     </qits-card>
@@ -251,7 +256,7 @@ export function wrapperDrift(
     }
   `,
 })
-export class WrapperStatus {
+export class ProjectRepositoryStatus {
   private readonly api = inject(ProjectsApi);
 
   readonly projectId = input.required<string>();
@@ -327,7 +332,7 @@ export class WrapperStatus {
    * neither, and naming the wrapper is the only true thing left to say about it.
    */
   protected entryLabel(entry: ReconcileEntryDto): string {
-    return entry.path ?? entry.name ?? 'this wrapper';
+    return entry.path ?? entry.name ?? 'this project repository';
   }
 
   protected readonly domainResult = computed(() => {

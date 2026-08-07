@@ -51,8 +51,8 @@ import { LOADING, failed, ready, type Loadable } from '../ui/loadable';
 
         @if (selected(); as projectId) {
           <ul class="links">
-            <li><a [routerLink]="['/', projectId]">Components</a></li>
-            <li><a [routerLink]="['/', projectId, 'repositories', 'new']">New repository</a></li>
+            <li><a [routerLink]="['/', projectId]">Overview</a></li>
+            <li><a [routerLink]="['/', projectId, 'project-setup']">Project setup</a></li>
           </ul>
         }
       }

@@ -4,9 +4,10 @@ import { CreateRepositoryPage } from './create/create-repository-page';
 import { LandingPage } from './landing/landing-page';
 import { NotFound } from './not-found/not-found';
 import { ProjectPage } from './project/project-page';
+import { ProjectSetupPage } from './project/project-setup-page';
 
 /**
- * Four routes, all of them inside the platform chrome.
+ * Five routes, all of them inside the platform chrome.
  *
  * `QitsMainLayout` is the root *route* component rather than something the shell templates, so the
  * bar, the navigation and the project picker hanging under it mount once and survive every
@@ -23,10 +24,16 @@ import { ProjectPage } from './project/project-page';
  * link and one reached from the sub-menu are the same page. That is view state, so it is a query
  * parameter and not a segment.
  *
- * <p>Repository **detail is deliberately absent**. Every card on the project page is therefore
- * inert rather than linking somewhere unbuilt — a dead link is worse than no link.
+ * <p><b>`project-setup` is a segment because setting a project up is rare.</b> The project's own
+ * address used to carry the component groups and the reconcile, which made the page a reader
+ * arrives at most often the page they need least. Splitting them puts configuration one deliberate
+ * click away and leaves `:projectId` free for what a project is mostly for. It is a path segment
+ * rather than a query parameter because it is a different *place*, not a view of the same one.
  *
- * <p>All four load eagerly. There are four of them, they share every component below them, and a
+ * <p>Repository **detail is deliberately absent**. Every card on the setup page is therefore inert
+ * rather than linking somewhere unbuilt — a dead link is worse than no link.
+ *
+ * <p>All five load eagerly. There are five of them, they share every component below them, and a
  * lazy chunk boundary here would be ceremony that costs a round trip.
  *
  * <p>The `**` route sits *inside* the layout, unlike spa-home's. spa-home is mounted at the gateway
@@ -41,6 +48,7 @@ export const routes: Routes = [
     children: [
       { path: '', component: LandingPage },
       { path: ':projectId', component: ProjectPage },
+      { path: ':projectId/project-setup', component: ProjectSetupPage },
       { path: ':projectId/repositories/new', component: CreateRepositoryPage },
       { path: '**', component: NotFound },
     ],

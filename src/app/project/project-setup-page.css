@@ -2,6 +2,10 @@
   display: block;
 }
 
+.back {
+  margin: 0 0 0.75rem;
+}
+
 .head {
   display: flex;
   align-items: center;

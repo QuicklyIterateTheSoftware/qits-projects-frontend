@@ -84,6 +84,12 @@ describe('ProjectsNav', () => {
     );
   }
 
+  function hrefs(): (string | null)[] {
+    return Array.from(element().querySelectorAll('.links a')).map((link) =>
+      link.getAttribute('href'),
+    );
+  }
+
   it('offers one option per project and nothing chosen at the root', async () => {
     await mount(['p1', 'p2']);
 
@@ -100,7 +106,18 @@ describe('ProjectsNav', () => {
     await settle();
 
     expect(pill()).toBe('p2 project');
-    expect(links()).toEqual(['Components', 'New repository']);
+    expect(links()).toEqual(['Overview', 'Project setup']);
+    // Both are addresses under the chosen project, so switching projects moves both at once.
+    expect(hrefs()).toEqual(['/p2', '/p2/project-setup']);
+  });
+
+  /** The links follow the picker rather than the page, so they are right from a deep link too. */
+  it('points the links at the project the setup page is showing', async () => {
+    await router.navigate(['/', 'p1', 'project-setup']);
+    await mount(['p1']);
+
+    expect(pill()).toBe('p1 project');
+    expect(hrefs()).toEqual(['/p1', '/p1/project-setup']);
   });
 
   /** Deep link: the seed matters as much as the stream — no NavigationEnd arrives before render. */

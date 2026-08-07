@@ -125,10 +125,11 @@ describe('CreateRepositoryPage', () => {
     await settle();
 
     expect(router.url).toBe('/p1');
-    // The project page took over and read the list that now contains it.
+    // The project page took over. It reads the shared project list to name itself and nothing
+    // else — the components live behind project-setup now.
     http.expectOne('/projects/api/projects').flush({ entries: [] });
-    http.expectOne('/projects/api/projects/p1/repositories').flush({ entries: [], wrapper: null });
     await settle();
+    http.verify();
   });
 
   it('sends a url and no name in the attach mode', async () => {
@@ -162,8 +163,8 @@ describe('CreateRepositoryPage', () => {
 
     expect(router.url).toBe('/p1');
     http.expectOne('/projects/api/projects').flush({ entries: [] });
-    http.expectOne('/projects/api/projects/p1/repositories').flush({ entries: [], wrapper: null });
     await settle();
+    http.verify();
   });
 
   it('will not submit without a type', async () => {

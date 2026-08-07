@@ -1,5 +1,7 @@
+<p class="back"><a [routerLink]="['/', projectId()]">← Back to the project</a></p>
+
 <header class="head">
-  <h1>{{ heading() }}</h1>
+  <h1>Project setup</h1>
   <a class="new" [routerLink]="['/', projectId(), 'repositories', 'new']">New repository</a>
 </header>
 
@@ -11,7 +13,7 @@
 />
 
 @if (loaded()) {
-  <app-wrapper-status
+  <app-project-repository-status
     [projectId]="projectId()"
     [wrapper]="wrapper()"
     [repositories]="repositories()"

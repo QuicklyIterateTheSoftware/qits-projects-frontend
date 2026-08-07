@@ -1,103 +1,73 @@
-import {
-  ChangeDetectionStrategy,
-  Component,
-  computed,
-  effect,
-  inject,
-  signal,
-} from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, RouterLink, convertToParamMap } from '@angular/router';
-import {
-  COMPONENT_TYPES,
-  normalizeArchetype,
-  type PlaceableArchetype,
-  type ProjectDto,
-  type RepositoryDto,
-  type WrapperDto,
-} from '../api/dto';
-import { ProjectsApi, type ProjectComponents } from '../api/projects-api';
+import type { ProjectDto } from '../api/dto';
 import { ProjectsStore } from '../api/projects-store';
-import { Async } from '../ui/async';
-import { LOADING, failed, ready, type Loadable } from '../ui/loadable';
-import { ComponentCard } from './component-card';
-import { WrapperStatus } from './wrapper-status';
-
-/** The bucket for anything the six groups do not name — visible, and never a "New" affordance. */
-export const OTHER_GROUP = 'OTHER';
-
-/** One heading on the project page and the repositories under it. */
-export interface ComponentGroup {
-  /** The archetype, or {@link OTHER_GROUP}. */
-  readonly key: string;
-  readonly label: string;
-  /** What one of them is called, for “New <singular>”. Empty for the other bucket. */
-  readonly singular: string;
-  /** What a "New …" link prefills the create page with. Null for the other bucket. */
-  readonly archetype: PlaceableArchetype | null;
-  readonly repositories: readonly RepositoryDto[];
-}
 
 /**
- * The project's repositories, arranged the way its wrapper directory is.
+ * A project: its name, and the way in to setting it up.
  *
- * Three rules, and each of them exists because the alternative loses a repository:
+ * <p><b>Deliberately almost empty, and it is the emptiness that is the change.</b> This address
+ * used to carry everything — the project repository's state, the six component groups, the
+ * reconcile — and all of that is configuration, which is touched rarely. So the page a reader
+ * arrives at most often was the page they needed least, and there was nowhere to put what a project
+ * is mostly *for*. That work moved to `project-setup`, and this is now the space it left.
  *
- * - **The six groups are always drawn, empty or not.** An empty group is the create affordance —
- *   "this project has no daemons yet, and here is how it gets one" — so hiding it would make the
- *   only way to add the first daemon a URL somebody had to know.
- * - **`PROJECT` is excluded.** The wrapper is not a component of itself; it is drawn above, as the
- *   project's configuration.
- * - **Anything else lands in a visible other bucket** — a fork, a template, an archetype this build
- *   has never heard of. Dropping them would be a page that quietly under-reports what the project
- *   holds; the bucket says "these exist and they are in no group", which is true.
- */
-export function groupComponents(repositories: readonly RepositoryDto[]): readonly ComponentGroup[] {
-  const normalised = repositories.map((repository) => ({
-    repository,
-    archetype: normalizeArchetype(repository.archetype),
-  }));
-
-  const groups: ComponentGroup[] = COMPONENT_TYPES.map((type) => ({
-    key: type.archetype,
-    label: type.label,
-    singular: type.singular,
-    archetype: type.archetype,
-    repositories: normalised
-      .filter((entry) => entry.archetype === type.archetype)
-      .map((entry) => entry.repository),
-  }));
-
-  const placeable = new Set<string>(COMPONENT_TYPES.map((type) => type.archetype));
-  const other = normalised
-    .filter((entry) => entry.archetype !== 'PROJECT' && !placeable.has(entry.archetype))
-    .map((entry) => entry.repository);
-
-  return other.length === 0
-    ? groups
-    : [
-        ...groups,
-        { key: OTHER_GROUP, label: 'Other', singular: '', archetype: null, repositories: other },
-      ];
-}
-
-/**
- * One project: its wrapper's state, and its components grouped by what they are.
+ * <p>What fills it comes later. Until then it says which project is on screen and offers one
+ * action, which is more honest than padding it with a summary of the page next door.
  *
- * <p>The id comes from the route rather than from a selection held anywhere, so this page is a
- * bookmark and a back button as much as it is a click. The fetch is keyed on it: choosing another
- * project in the sub-navigation re-uses this component instance with a new parameter, which is why
- * the read lives in an effect rather than in the constructor.
+ * <p>It makes **no request of its own**: the name comes from the shared project list the
+ * sub-navigation has already read, so arriving here costs nothing.
  */
 @Component({
   selector: 'app-project-page',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [Async, ComponentCard, RouterLink, WrapperStatus],
-  templateUrl: './project-page.html',
-  styleUrl: './project-page.css',
+  imports: [RouterLink],
+  template: `
+    <h1>{{ heading() }}</h1>
+    @if (description(); as description) {
+      <p class="description">{{ description }}</p>
+    }
+
+    <p class="actions">
+      <a class="setup" routerLink="project-setup">Project setup</a>
+    </p>
+  `,
+  styles: `
+    :host {
+      display: block;
+    }
+    h1 {
+      margin: 0 0 0.5rem;
+      font-size: 1.25rem;
+      font-weight: 600;
+      overflow-wrap: anywhere;
+    }
+    .description {
+      margin: 0 0 1rem;
+      color: #374151;
+    }
+    .actions {
+      margin: 1rem 0 0;
+    }
+    /* An anchor rather than a qits-button: it is a navigation, and a button that navigates loses
+       the middle click, the context menu and the status bar a link gives for free. */
+    .setup {
+      display: inline-block;
+      padding: 0.4rem 0.9rem;
+      font-weight: 600;
+      color: #111827;
+      background: #fff;
+      border: 1px solid #6b7280;
+      border-radius: 999px;
+      text-decoration: none;
+    }
+    .setup:hover {
+      background: #f3f4f6;
+    }
+  `,
 })
 export class ProjectPage {
-  private readonly api = inject(ProjectsApi);
   private readonly store = inject(ProjectsStore);
   private readonly route = inject(ActivatedRoute);
 
@@ -105,38 +75,19 @@ export class ProjectPage {
 
   protected readonly projectId = computed(() => this.params().get('projectId') ?? '');
 
-  protected readonly components = signal<Loadable<ProjectComponents>>(LOADING);
-
   private readonly projects = signal<readonly ProjectDto[]>([]);
 
-  /** The project's display name, once the shared list has answered. The id until then. */
-  protected readonly heading = computed(() => {
+  private readonly project = computed(() => {
     const id = this.projectId();
-    return this.projects().find((project) => project.id === id)?.name ?? id;
+    return this.projects().find((project) => project.id === id);
   });
 
-  protected readonly repositories = computed<readonly RepositoryDto[]>(() => {
-    const state = this.components();
-    return state.kind === 'ready' ? state.value.repositories : [];
-  });
+  /** The project's display name, once the shared list has answered. The id until then. */
+  protected readonly heading = computed(() => this.project()?.name ?? this.projectId());
 
-  protected readonly wrapper = computed<WrapperDto | null>(() => {
-    const state = this.components();
-    return state.kind === 'ready' ? state.value.wrapper : null;
-  });
-
-  protected readonly groups = computed(() => groupComponents(this.repositories()));
-
-  /** True once there is an answer, so the groups are only drawn over real data. */
-  protected readonly loaded = computed(() => this.components().kind === 'ready');
+  protected readonly description = computed(() => this.project()?.description ?? '');
 
   constructor() {
-    effect(() => {
-      const projectId = this.projectId();
-      if (projectId) {
-        void this.load(projectId);
-      }
-    });
     void this.loadProjects();
   }
 
@@ -145,33 +96,7 @@ export class ProjectPage {
       this.projects.set(await this.store.projects());
     } catch {
       // The heading falls back to the id. A page that could not name its project is still a page,
-      // and the components below it are what the reader came for.
-    }
-  }
-
-  /** Read the components, blanking what is on screen first — arrival, a project hop, a retry. */
-  protected async load(projectId = this.projectId()): Promise<void> {
-    this.components.set(LOADING);
-    await this.read(projectId);
-  }
-
-  /**
-   * Read them again **without** blanking the page.
-   *
-   * This is what the reconcile triggers, and the difference matters: dropping to a loading state
-   * would destroy the panel whose outcome report the reader is at that moment reading. The rows
-   * behind it are a moment stale for one round trip, which is a smaller lie than taking the answer
-   * away.
-   */
-  protected refresh(): Promise<void> {
-    return this.read(this.projectId());
-  }
-
-  private async read(projectId: string): Promise<void> {
-    try {
-      this.components.set(ready(await this.api.components(projectId)));
-    } catch (error) {
-      this.components.set(failed(error));
+      // and the one action on it works either way.
     }
   }
 }

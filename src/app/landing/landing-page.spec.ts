@@ -71,10 +71,11 @@ describe('LandingPage', () => {
     await settle();
 
     expect(router.url).toBe('/p1');
-    // The project page took over and made its own read; the landing page is gone.
-    http.expectOne('/projects/api/projects/p1/repositories').flush({ entries: [], wrapper: null });
+    // The project page took over. It names itself from the list the store already holds, so the
+    // redirect costs no second request at all.
     await settle();
     expect(text()).toContain('p1 project');
+    http.verify();
   });
 
   it('asks for a choice when there is more than one, and lists them', async () => {
