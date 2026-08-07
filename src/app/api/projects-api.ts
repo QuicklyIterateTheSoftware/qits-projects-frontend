@@ -3,6 +3,7 @@ import { Injectable, inject } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { QITS_API_BASE } from './api-base';
 import type {
+  BackupSyncResponse,
   CreateRepositoryRequest,
   CreateRepositoryResponse,
   ProjectDto,
@@ -102,6 +103,22 @@ export class ProjectsApi {
     return firstValueFrom(
       this.http.post<ProjectReconcileResponse>(
         `${this.base}/projects/api/projects/${encodeURIComponent(projectId)}/reconcile`,
+        null,
+      ),
+    );
+  }
+
+  /**
+   * Ask the platform to push every repository in this project to its backup remote.
+   *
+   * **202, not 200.** The answer says how many were scheduled and nothing about how they went,
+   * because none of them has gone yet — so a caller cannot await an outcome and must not pretend
+   * to. Re-reading the list a moment later is the honest follow-up, and it is what the page does.
+   */
+  syncBackups(projectId: string): Promise<BackupSyncResponse> {
+    return firstValueFrom(
+      this.http.post<BackupSyncResponse>(
+        `${this.base}/projects/api/projects/${encodeURIComponent(projectId)}/repositories/backup-sync`,
         null,
       ),
     );

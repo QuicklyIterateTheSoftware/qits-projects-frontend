@@ -27,6 +27,7 @@ function repository(
     mainBranch: 'main',
     archetype,
     projectId: 'p1',
+    lastBackup: null,
     ...over,
   };
 }

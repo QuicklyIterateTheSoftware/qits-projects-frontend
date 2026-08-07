@@ -103,6 +103,35 @@ export interface RepositoryDto {
   readonly mainBranch: string;
   readonly archetype: RepositoryArchetype;
   readonly projectId: string;
+  readonly lastBackup: BackupAttemptDto | null;
+}
+
+/**
+ * How the last push to the backup remote went.
+ *
+ * `AUTH_REQUIRED` is the one outcome with a **cure the reader can apply**, and that is why it is
+ * not folded into `FAILED`: the credential store the platform pushes with is shared, so one
+ * interactive sign-in fixes every repository at once. `UNREACHABLE` and `FAILED` are reports —
+ * a forge that is down, a remote that refuses the ref — and neither is actionable from here.
+ */
+export type BackupOutcome = 'SUCCEEDED' | 'AUTH_REQUIRED' | 'UNREACHABLE' | 'FAILED';
+
+/** One backup attempt. `at` is an ISO-8601 instant; `detail` carries the server's words, if any. */
+export interface BackupAttemptDto {
+  readonly outcome: BackupOutcome;
+  readonly at: string;
+  readonly detail: string | null;
+}
+
+/**
+ * What a project-wide backup sync accepted: how many repositories were scheduled.
+ *
+ * A 202, not a 200, and the number is the whole answer — the work happens after the response, so
+ * there are no outcomes to report yet. That asymmetry is what shapes the screen: the page cannot
+ * await a result, so it re-reads the list a moment later rather than pretending to know.
+ */
+export interface BackupSyncResponse {
+  readonly scheduled: number;
 }
 
 /** One line of the wrapper's `.gitmodules`, as the server read it at the wrapper's main tip. */

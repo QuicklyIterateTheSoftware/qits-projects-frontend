@@ -1,10 +1,11 @@
 /**
  * The small conversions the pages need, kept out of the templates so they can be asserted directly.
  *
- * There is nothing here about time. qits-spa-ci's copy of this file is mostly timestamps, because a
- * run happens at a moment; a project's components are a *structure*, and none of the four reads
- * this app makes carries an instant worth drawing. The copy is deliberate per-SPA duplication —
- * what is copied is the convention, not the function list.
+ * This file carried no time at all until backups arrived, and the reason it does now is worth
+ * keeping: a project's components are a *structure*, so nothing about them happens at a moment —
+ * but a backup does, and "when did this last reach the forge" is the only question its badge
+ * answers. The copy from qits-spa-ci is deliberate per-SPA duplication; what is copied is the
+ * convention, not the function list.
  */
 
 import type { RepositoryDto, WrapperEntryDto } from '../api/dto';
@@ -77,4 +78,147 @@ export function wrapperDirectory(entry: Pick<WrapperEntryDto, 'path'>): string {
  */
 export function isGitSafeName(name: string): boolean {
   return /^[A-Za-z0-9_][A-Za-z0-9._-]*$/.test(name) && !name.endsWith('.git');
+}
+
+/** Months as the platform abbreviates them, for a timestamp too old to say in hours. */
+const MONTHS = [
+  'Jan',
+  'Feb',
+  'Mar',
+  'Apr',
+  'May',
+  'Jun',
+  'Jul',
+  'Aug',
+  'Sep',
+  'Oct',
+  'Nov',
+  'Dec',
+] as const;
+
+function parseInstant(iso: string | null | undefined): Date | null {
+  if (!iso) {
+    return null;
+  }
+  const date = new Date(iso);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function pad(value: number): string {
+  return value.toString().padStart(2, '0');
+}
+
+/**
+ * `31 Jul 2026 14:02:11Z` — the exact instant, in **UTC**, for a badge's tooltip.
+ *
+ * UTC rather than the browser's zone, and the `Z` says so out loud: the services stamp `Instant`s,
+ * and a browser-local rendering would make two people looking at the same backup disagree about
+ * when it happened.
+ */
+export function formatInstant(iso: string | null): string {
+  const date = parseInstant(iso);
+  if (!date) {
+    return NONE;
+  }
+  return (
+    `${date.getUTCDate()} ${MONTHS[date.getUTCMonth()]} ${date.getUTCFullYear()} ` +
+    `${pad(date.getUTCHours())}:${pad(date.getUTCMinutes())}:${pad(date.getUTCSeconds())}Z`
+  );
+}
+
+/**
+ * `just now`, `12m ago`, `3h ago`, `5d ago`, then a date.
+ *
+ * A badge answers "is this current?", and that is a question about *distance*, not about a
+ * timestamp — an operator reading "4h ago" knows the answer without arithmetic, where an ISO
+ * instant makes them do it. Past about a month the distance stops meaning anything and the date is
+ * the more useful fact, so it switches rather than counting to 400 days.
+ *
+ * A future timestamp reads as `just now` rather than as a negative: clock skew between the server
+ * and the browser is real, and "in -3m" is a bug report about the wrong system.
+ */
+export function formatRelativeTime(iso: string | null, nowMs: number = Date.now()): string {
+  const date = parseInstant(iso);
+  if (!date) {
+    return NONE;
+  }
+  const seconds = Math.round((nowMs - date.getTime()) / 1000);
+  if (seconds < 60) {
+    return 'just now';
+  }
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) {
+    return `${minutes}m ago`;
+  }
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) {
+    return `${hours}h ago`;
+  }
+  const days = Math.floor(hours / 24);
+  if (days < 30) {
+    return `${days}d ago`;
+  }
+  return `${date.getUTCDate()} ${MONTHS[date.getUTCMonth()]} ${date.getUTCFullYear()}`;
+}
+
+/**
+ * The sign-in terminal's socket address, on the same origin the page came from.
+ *
+ * `http` → `ws` and `https` → `wss` by prefix, because the server rejects a cross-origin handshake
+ * outright: the upgrade carries the browser's session cookie, and that only happens same-origin.
+ * So there is no configurable host here on purpose.
+ */
+export function remoteLoginUrl(origin: string, repoId: string): string {
+  const socketOrigin = origin.replace(/\/+$/, '').replace(/^http/, 'ws');
+  return `${socketOrigin}/projects/api/repositories/${encodeURIComponent(repoId)}/remote-login`;
+}
+
+/**
+ * ANSI escape sequences: CSI (`ESC [ … final`), OSC (`ESC ] … BEL`), and the bell on its own.
+ */
+const ANSI = new RegExp(
+  '\u001b\\[[0-?]*[ -/]*[@-~]' +
+    '|\u001b\\][^\u0007\u001b]*(?:\u0007|\u001b\\\\)' +
+    '|\u001b[()][0-9A-Za-z]' +
+    '|\u001b[@-Z\\\\-_]' +
+    '|\u0007',
+  'g',
+);
+
+/** Escape codes removed rather than interpreted — interpreting them is a terminal emulator's job. */
+export function stripAnsi(text: string): string {
+  return text.replace(ANSI, '');
+}
+
+/**
+ * Raw PTY output, rendered honestly as text.
+ *
+ * <p><b>This is an approximation and it says so.</b> The server sends what git wrote to a real
+ * `xterm-256color` PTY — colours, and in principle cursor addressing. Colour codes are stripped,
+ * and the two motions that actually occur in a line-oriented prompt are honoured: a carriage return
+ * moves to column 0 so the next characters **overwrite** (which is how git's progress counter
+ * repaints one line), and a backspace erases one. Anything that addresses the screen in two
+ * dimensions is stripped, not obeyed, so a full-screen curses program would render as nonsense
+ * here. git's username and password prompts are not one, which is the whole scope of this pane.
+ */
+export function renderTerminalText(raw: string): string {
+  return stripAnsi(raw).replace(/\r\n/g, '\n').split('\n').map(collapseLine).join('\n');
+}
+
+/** One line's carriage returns and backspaces, resolved into the characters that would be visible. */
+function collapseLine(line: string): string {
+  let out = '';
+  let column = 0;
+  for (const character of line) {
+    if (character === '\r') {
+      column = 0;
+    } else if (character === '\b') {
+      column = Math.max(0, column - 1);
+      out = out.slice(0, column);
+    } else {
+      out = out.slice(0, column) + character + out.slice(column + 1);
+      column += 1;
+    }
+  }
+  return out;
 }

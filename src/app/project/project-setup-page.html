@@ -20,6 +20,13 @@
     (changed)="refresh()"
   />
 
+  <app-backup-panel
+    [projectId]="projectId()"
+    [repositories]="repositories()"
+    [projectRepositoryId]="wrapper()?.repositoryId ?? null"
+    (changed)="refresh()"
+  />
+
   @for (group of groups(); track group.key) {
     <section class="group">
       <header class="group-head">

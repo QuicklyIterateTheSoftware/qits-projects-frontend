@@ -2,7 +2,57 @@ import { DOCUMENT } from '@angular/common';
 import { ChangeDetectionStrategy, Component, computed, inject, input } from '@angular/core';
 import { QitsBadge, QitsCard } from '@qits/ui-components';
 import { normalizeArchetype, type RepositoryDto } from '../api/dto';
-import { NONE, cloneUrl, repositoryLabel } from '../ui/format';
+import type { QitsBadgeTone } from '@qits/ui-components';
+import { NONE, cloneUrl, formatInstant, formatRelativeTime, repositoryLabel } from '../ui/format';
+
+/** What the backup badge says, and how loudly. `title` is the hover text; it may be empty. */
+export interface BackupBadge {
+  readonly label: string;
+  readonly tone: QitsBadgeTone;
+  readonly title: string;
+}
+
+/**
+ * The badge for one repository's last backup, or **nothing at all**.
+ *
+ * <p>Nothing is the right answer for a repository with no backup remote: it is not behind, it is
+ * not failing, and there is nothing to fix — a badge saying "never backed up" on a repository
+ * nobody asked to back up would be an invented problem. That is the one case where silence beats a
+ * label, and it is why this returns null rather than a neutral badge.
+ *
+ * <p><b>`AUTH_REQUIRED` is the only outcome the reader can act on</b>, so it says what to do —
+ * "sign-in needed" — where the other two failures say what happened. Both of those carry the
+ * server's `detail` as hover text rather than on the badge, because a badge is a word and a reason
+ * is a sentence.
+ */
+export function backupBadge(
+  repository: Pick<RepositoryDto, 'backupUrl' | 'lastBackup'>,
+  nowMs: number = Date.now(),
+): BackupBadge | null {
+  if (!repository.backupUrl) {
+    return null;
+  }
+  const attempt = repository.lastBackup;
+  if (!attempt) {
+    return { label: 'never backed up', tone: 'neutral', title: '' };
+  }
+  const when = formatInstant(attempt.at);
+  const detail = attempt.detail ? `${attempt.detail} (${when})` : when;
+  switch (attempt.outcome) {
+    case 'SUCCEEDED':
+      return {
+        label: `backed up ${formatRelativeTime(attempt.at, nowMs)}`,
+        tone: 'success',
+        title: detail,
+      };
+    case 'AUTH_REQUIRED':
+      return { label: 'sign-in needed', tone: 'warning', title: detail };
+    case 'UNREACHABLE':
+      return { label: 'remote unreachable', tone: 'warning', title: detail };
+    default:
+      return { label: 'backup failed', tone: 'warning', title: detail };
+  }
+}
 
 /**
  * One component repository: what it is called, what it is, where it is cloned from, where it is
@@ -33,7 +83,14 @@ import { NONE, cloneUrl, repositoryLabel } from '../ui/format';
     <qits-card>
       <div class="head">
         <span class="name">{{ label() }}</span>
-        <qits-badge [label]="archetype()" tone="neutral" />
+        <span class="badges">
+          @if (backupState(); as backup) {
+            <span [title]="backup.title"
+              ><qits-badge [label]="backup.label" [tone]="backup.tone"
+            /></span>
+          }
+          <qits-badge [label]="archetype()" tone="neutral" />
+        </span>
       </div>
       <dl class="facts">
         <dt>Clone</dt>
@@ -59,6 +116,12 @@ import { NONE, cloneUrl, repositoryLabel } from '../ui/format';
     .name {
       font-weight: 600;
       overflow-wrap: anywhere;
+    }
+    .badges {
+      display: flex;
+      align-items: center;
+      gap: 0.35rem;
+      flex-wrap: wrap;
     }
     .facts {
       display: grid;
@@ -102,4 +165,7 @@ export class ComponentCard {
 
   /** The twin the platform syncs to, or nothing — an absence, not an explanation. */
   protected readonly backup = computed(() => this.repository().backupUrl ?? NONE);
+
+  /** How the last backup went, or null for a repository nobody asked to back up. */
+  protected readonly backupState = computed(() => backupBadge(this.repository()));
 }

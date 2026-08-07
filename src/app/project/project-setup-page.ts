@@ -18,6 +18,7 @@ import {
 import { ProjectsApi, type ProjectComponents } from '../api/projects-api';
 import { Async } from '../ui/async';
 import { LOADING, failed, ready, type Loadable } from '../ui/loadable';
+import { BackupPanel } from './backup-panel';
 import { ComponentCard } from './component-card';
 import { ProjectRepositoryStatus } from './project-repository-status';
 
@@ -97,7 +98,7 @@ export function groupComponents(repositories: readonly RepositoryDto[]): readonl
 @Component({
   selector: 'app-project-setup-page',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [Async, ComponentCard, ProjectRepositoryStatus, RouterLink],
+  imports: [Async, BackupPanel, ComponentCard, ProjectRepositoryStatus, RouterLink],
   templateUrl: './project-setup-page.html',
   styleUrl: './project-setup-page.css',
 })
