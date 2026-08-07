@@ -6,6 +6,7 @@ import { Router, provideRouter } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
 import { routes } from '../app.routes';
 import type {
+  ReconcileEntryDto,
   RepositoryArchetype,
   RepositoryDto,
   SyncStatusDto,
@@ -26,6 +27,23 @@ function repository(
     mainBranch: 'main',
     archetype,
     projectId: 'p1',
+    ...over,
+  };
+}
+
+/**
+ * One line of a reconcile report. Every field but `outcome` is nullable on the wire, so the default
+ * here is the *ordinary* line — a wrapper entry that was kept — and each test overrides only the
+ * fields whose nullness is the thing it is about.
+ */
+function entry(over: Partial<ReconcileEntryDto> = {}): ReconcileEntryDto {
+  return {
+    path: 'services/qits-ci',
+    name: 'qits-ci',
+    repositoryId: 'qits-ci',
+    archetype: 'SERVICE',
+    outcome: 'KEPT',
+    warning: null,
     ...over,
   };
 }
@@ -264,23 +282,30 @@ describe('ProjectPage', () => {
     expect(page().querySelector('app-wrapper-status')?.textContent).toContain('in sync');
   });
 
-  it('reconciles from the wrapper, reports every path, and re-reads the list', async () => {
+  it('reconciles from the wrapper, reports every line, and re-reads the list', async () => {
     await open();
     await load([repository('qits-ci', 'SERVICE')]);
 
     await click('Reconcile from wrapper');
     http.expectOne('/projects/api/projects/p1/repositories/reconcile').flush({
-      outcomes: [
-        { path: 'services/qits-ci', repositoryId: 'qits-ci', action: 'KEPT', detail: null },
-        { path: 'libs/qits-new', repositoryId: 'qits-new', action: 'CREATED', detail: 'cloned' },
+      projectId: 'p1',
+      wrapperRepositoryId: 'qits-qits',
+      branch: 'main',
+      entries: [
+        entry({ path: 'services/qits-ci', name: 'qits-ci', repositoryId: 'qits-ci' }),
+        entry({
+          path: 'libs/qits-new',
+          name: 'qits-new',
+          repositoryId: 'qits-new',
+          archetype: 'LIBRARY',
+          outcome: 'CREATED',
+        }),
       ],
-      warnings: ['no archetype for directory "docs"'],
     });
     await settle();
 
     expect(text()).toContain('libs/qits-new');
     expect(text()).toContain('CREATED');
-    expect(text()).toContain('no archetype for directory "docs"');
 
     // The reconcile rewrote rows, so the page reads them again rather than trusting the outcomes.
     // It does not blank while it does — the report above is what the reader is looking at — and it
@@ -291,6 +316,95 @@ describe('ProjectPage', () => {
     expect(text()).toContain('qits-new');
     expect(text()).toContain('libs/qits-new');
     http.verify();
+  });
+
+  /** The warning belongs to the line it explains, so it is drawn on that line and nowhere else. */
+  it('shows a skipped line’s warning beside the line it is about', async () => {
+    await open();
+    await load([repository('qits-ci', 'SERVICE')]);
+
+    await click('Reconcile from wrapper');
+    http.expectOne('/projects/api/projects/p1/repositories/reconcile').flush({
+      projectId: 'p1',
+      wrapperRepositoryId: 'qits-qits',
+      branch: 'main',
+      entries: [
+        entry({
+          path: 'docs/handbook',
+          name: 'handbook',
+          repositoryId: null,
+          outcome: 'SKIPPED',
+          warning: "'docs' is not one of this project's component directories",
+        }),
+      ],
+    });
+    await settle();
+    flushComponents([repository('qits-ci', 'SERVICE')]);
+    await settle();
+
+    const line = page().querySelector('.outcomes li');
+    expect(line?.textContent).toContain('docs/handbook');
+    expect(line?.textContent).toContain('SKIPPED');
+    expect(line?.querySelector('.warning')?.textContent).toContain('component directories');
+  });
+
+  /** No entry named it, which is why its row went — so there is no path to report it under. */
+  it('reports a deregistration by its alias, because it has no wrapper path', async () => {
+    await open();
+    await load([repository('qits-ci', 'SERVICE')]);
+
+    await click('Reconcile from wrapper');
+    http.expectOne('/projects/api/projects/p1/repositories/reconcile').flush({
+      projectId: 'p1',
+      wrapperRepositoryId: 'qits-qits',
+      branch: 'main',
+      entries: [
+        entry({
+          path: null,
+          name: 'testing-repo',
+          repositoryId: 'r9',
+          outcome: 'DEREGISTERED',
+        }),
+      ],
+    });
+    await settle();
+    flushComponents([]);
+    await settle();
+
+    const line = page().querySelector('.outcomes li');
+    expect(line?.textContent).toContain('testing-repo');
+    expect(line?.textContent).toContain('DEREGISTERED');
+    expect(line?.textContent).not.toContain('null');
+  });
+
+  /** An empty .gitmodules is answered with one line about nothing, and it must still read. */
+  it('names the wrapper itself for a line carrying neither path nor name', async () => {
+    await open();
+    await load([repository('qits-ci', 'SERVICE')]);
+
+    await click('Reconcile from wrapper');
+    http.expectOne('/projects/api/projects/p1/repositories/reconcile').flush({
+      projectId: 'p1',
+      wrapperRepositoryId: 'qits-qits',
+      branch: 'main',
+      entries: [
+        entry({
+          path: null,
+          name: null,
+          repositoryId: 'qits-qits',
+          outcome: 'SKIPPED',
+          warning: 'The wrapper declares no submodules, so nothing was registered.',
+        }),
+      ],
+    });
+    await settle();
+    flushComponents([repository('qits-ci', 'SERVICE')]);
+    await settle();
+
+    const line = page().querySelector('.outcomes li');
+    expect(line?.textContent).toContain('this wrapper');
+    expect(line?.textContent).toContain('declares no submodules');
+    expect(line?.textContent).not.toContain('null');
   });
 
   it('re-asserts the dns record without touching the components', async () => {

@@ -163,28 +163,48 @@ export interface CreateRepositoryResponse {
   readonly wrapperPath: string;
 }
 
-/** What the reconcile did with one wrapper path. */
-export type ReconcileAction =
+/** What the reconcile did with one wrapper entry, or with one row the wrapper no longer names. */
+export type ReconcileOutcome =
   'CREATED' | 'ADOPTED' | 'KEPT' | 'ARCHETYPE_UPDATED' | 'DEREGISTERED' | 'SKIPPED';
 
-/** One path's outcome. `repositoryId` is null where nothing was resolved — a SKIPPED entry. */
-export interface ReconcileOutcomeDto {
-  readonly path: string;
+/**
+ * One line of the reconcile's answer, and **every field but `outcome` can be null**.
+ *
+ * The nulls are the shape of the three things a line can be about, so a renderer that assumed a
+ * path would print `null` on two of them:
+ *
+ * - a wrapper entry: `path` is `<directory>/<name>`, `name` is what `../<name>.git` resolves to;
+ * - a **deregistration**: no entry named it, so there is no path — `name` is the row's alias and
+ *   `repositoryId` the row that is now gone (its repository on the git host is not);
+ * - the **empty-manifest** answer: a wrapper declaring no submodules is answered with a single
+ *   `SKIPPED` line carrying neither path nor name, because deregistering every component on the
+ *   strength of a file that is not there would delete the project's contents.
+ *
+ * `warning` is why an outcome is what it is, when the outcome does not say it — and it rides
+ * **per entry**. There is no list of warnings beside the entries: a warning belongs to the line it
+ * explains, and a page showing them apart could not say which path was skipped for which reason.
+ */
+export interface ReconcileEntryDto {
+  readonly path: string | null;
+  readonly name: string | null;
   readonly repositoryId: string | null;
-  readonly action: ReconcileAction;
-  readonly detail: string | null;
+  readonly archetype: RepositoryArchetype | null;
+  readonly outcome: ReconcileOutcome;
+  readonly warning: string | null;
 }
 
 /**
- * The wrapper reconcile's answer.
+ * The wrapper reconcile's answer: which wrapper was read, and what became of every line in it.
  *
- * `warnings` is not an error channel: a path under a directory no archetype names is skipped and
- * said out loud, and the rest of the reconcile still ran. A page that dropped them would leave an
- * entry silently absent from every group.
+ * A per-entry failure is still a 200 — the outcomes *are* the result. The two error codes are about
+ * the request instead: 404 for no such project, 400 for a project with no wrapper to reconcile
+ * against, which is why the panel only offers the button when there is one.
  */
 export interface WrapperReconcileResponse {
-  readonly outcomes: readonly ReconcileOutcomeDto[];
-  readonly warnings: readonly string[];
+  readonly projectId: string;
+  readonly wrapperRepositoryId: string;
+  readonly branch: string;
+  readonly entries: readonly ReconcileEntryDto[];
 }
 
 /** What re-asserting a project's dns record came to. `NOT_CONFIGURED` is not a failure. */

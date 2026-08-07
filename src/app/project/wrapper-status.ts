@@ -15,6 +15,7 @@ import {
   COMPONENT_TYPES,
   normalizeArchetype,
   type ProjectReconcileResponse,
+  type ReconcileEntryDto,
   type RepositoryDto,
   type SyncStatusDto,
   type WrapperDto,
@@ -153,22 +154,22 @@ export function wrapperDrift(
         }
         @if (reconciled(); as result) {
           <div class="outcomes">
-            @if (result.outcomes.length === 0) {
+            @if (result.entries.length === 0) {
               <p>Nothing to do — every submodule already matched a repository.</p>
             } @else {
               <ul>
-                @for (outcome of result.outcomes; track outcome.path) {
+                @for (entry of result.entries; track $index) {
                   <li>
-                    <code>{{ outcome.path }}</code> — {{ outcome.action }}
-                    @if (outcome.detail) {
-                      <span class="detail">({{ outcome.detail }})</span>
+                    <code>{{ entryLabel(entry) }}</code> — {{ entry.outcome }}
+                    @if (entry.archetype) {
+                      <span class="detail">{{ entry.archetype }}</span>
+                    }
+                    @if (entry.warning) {
+                      <span class="warning">⚠ {{ entry.warning }}</span>
                     }
                   </li>
                 }
               </ul>
-            }
-            @for (warning of result.warnings; track warning) {
-              <p class="warning">⚠ {{ warning }}</p>
             }
           </div>
         }
@@ -239,7 +240,8 @@ export function wrapperDrift(
       color: #6b7280;
     }
     .warning {
-      margin: 0.25rem 0 0;
+      display: block;
+      margin: 0.1rem 0 0.3rem;
       color: #92400e;
     }
     .failed {
@@ -316,6 +318,17 @@ export class WrapperStatus {
     const state = this.reconcile();
     return state.kind === 'ready' ? state.value : undefined;
   });
+
+  /**
+   * What one line of the report is about, given that a line need not be about a path.
+   *
+   * A deregistration has no wrapper path — no entry named it, which is the whole reason its row
+   * went — so it is reported by the alias it was registered under. The empty-manifest answer has
+   * neither, and naming the wrapper is the only true thing left to say about it.
+   */
+  protected entryLabel(entry: ReconcileEntryDto): string {
+    return entry.path ?? entry.name ?? 'this wrapper';
+  }
 
   protected readonly domainResult = computed(() => {
     const state = this.domain();

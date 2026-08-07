@@ -128,13 +128,58 @@ describe('ProjectsApi', () => {
 
     expect(request.request.method).toBe('POST');
     request.flush({
-      outcomes: [{ path: 'services/qits-ci', repositoryId: 'r1', action: 'KEPT', detail: null }],
-      warnings: ['no archetype for directory "docs"'],
+      projectId: 'p1',
+      wrapperRepositoryId: 'qits-qits',
+      branch: 'main',
+      entries: [
+        {
+          path: 'services/qits-ci',
+          name: 'qits-ci',
+          repositoryId: 'r1',
+          archetype: 'SERVICE',
+          outcome: 'KEPT',
+          warning: null,
+        },
+        // A warning rides the line it explains; there is no list of them beside the entries.
+        {
+          path: 'docs/handbook',
+          name: 'handbook',
+          repositoryId: null,
+          archetype: null,
+          outcome: 'SKIPPED',
+          warning: "'docs' is not one of this project's component directories",
+        },
+      ],
     });
 
     await expect(reconciled).resolves.toMatchObject({
-      outcomes: [{ action: 'KEPT' }],
-      warnings: ['no archetype for directory "docs"'],
+      wrapperRepositoryId: 'qits-qits',
+      branch: 'main',
+      entries: [{ outcome: 'KEPT' }, { outcome: 'SKIPPED', warning: expect.any(String) }],
+    });
+  });
+
+  /** A deregistration is a line about a row, not about a path, so it carries no path at all. */
+  it('keeps a deregistration’s null path rather than inventing one', async () => {
+    const reconciled = api.reconcileRepositories('p1');
+    http.expectOne('/projects/api/projects/p1/repositories/reconcile').flush({
+      projectId: 'p1',
+      wrapperRepositoryId: 'qits-qits',
+      branch: 'main',
+      entries: [
+        {
+          path: null,
+          name: 'testing-repo',
+          repositoryId: 'r9',
+          archetype: 'SERVICE',
+          outcome: 'DEREGISTERED',
+          warning: null,
+        },
+      ],
+    });
+
+    await expect(reconciled).resolves.toMatchObject({
+      entries: [{ path: null, name: 'testing-repo', outcome: 'DEREGISTERED' }],
     });
   });
 
