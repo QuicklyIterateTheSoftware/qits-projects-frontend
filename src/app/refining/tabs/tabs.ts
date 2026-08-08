@@ -6,9 +6,9 @@
  * the same files and the same agent behind it. Trimming it to "the ones refining needs" would be
  * guessing before anyone has refined anything, and re-adding a tab later costs a line here.
  *
- * All six render {@link ../panel-placeholder#PanelPlaceholder} in this phase. They are declared now,
- * with their real slugs and labels, so the shell is final and the panels land into a row that does not
- * move under them — a tab appearing later would change every existing `?tab=` link's neighbours.
+ * All six were declared before any of them had a panel, so that the shell was final and the panels
+ * could land into a row that did not move under them — a tab appearing later would change every
+ * existing `?tab=` link's neighbours. All six have their panel now.
  */
 
 /** How loud a tab's label dot is. */

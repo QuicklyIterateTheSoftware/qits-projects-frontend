@@ -205,11 +205,27 @@ describe('RefiningPage', () => {
   }
 
   /**
+   * The Files panel's own budget: the whole eager tree, and the detection behind the framework footer.
+   *
+   * Two requests and no more, however deep the tree — only wholly-ignored directories are fetched a
+   * level at a time, and nothing here opens one.
+   */
+  function answerFilesPanel(workspaceRowId = 7): void {
+    http
+      .expectOne(`/workspaces/container/${workspaceRowId}/files`)
+      .flush({ paths: [], lazyDirs: [], generation: 'gen-1' });
+    http
+      .expectOne(`/workspaces/container/${workspaceRowId}/detection`)
+      .flush({ projects: [], frameworks: [], links: [], generation: 'gen-1' });
+  }
+
+  /**
    * The Agents panel's own budget: the session lineage, the harnesses, the plugin store, and the
    * detection that sorts the recommended plugins first.
    *
-   * The detection read is here because **nothing else in this SPA has published one yet** — it is the
-   * file browser's read, handed over through a shared entry whose other end lands with the Files tab.
+   * The detection read is here because the Files tab is the other end of that shared entry and these
+   * tests do not open it. Open Files first and this read is already paid — which is the entry's whole
+   * purpose, and why the id is a parameter rather than a constant.
    *
    * The lineage answers **one** session rather than none, and that is not padding: no history at all is
    * the one branch that launches an agent by itself, so an empty answer here would put a `POST /agents`
@@ -396,6 +412,10 @@ describe('RefiningPage', () => {
         .find((tab) => tab.textContent?.trim() === 'Files')!
         .click();
       await settle();
+      // Selecting a tab that has never been opened costs that tab's requests, which is exactly why the
+      // tab is in the URL: it is expensive state, so it is addressable state.
+      answerFilesPanel();
+      await settle();
 
       expect(TestBed.inject(Location).path()).toContain('tab=files');
       expect(element().querySelector('.tab.active')?.textContent?.trim()).toBe('Files');
@@ -414,6 +434,8 @@ describe('RefiningPage', () => {
       expect(refining.remounts()).toBe(0);
 
       await harness.navigateByUrl(`${URL_BASE}?tab=files`);
+      await settle();
+      answerFilesPanel();
       await settle();
       expect(refining.remounts()).toBe(0);
 
@@ -438,8 +460,8 @@ describe('RefiningPage', () => {
   });
 
   describe('the tab row', () => {
-    /** The shell was final before any panel landed, so no phase ever moves a link's neighbours. */
-    it('keeps all six tabs, and the four still to come say what is coming', async () => {
+    /** The shell was final before any panel landed, so no phase ever moved a link's neighbours. */
+    it('keeps all six tabs, in the order a fresh page opens with', async () => {
       await open();
 
       expect(tabs().map((tab) => tab.textContent?.trim())).toEqual([
@@ -450,15 +472,8 @@ describe('RefiningPage', () => {
         'Web view',
         'Agents',
       ]);
-
-      tabs()
-        .find((tab) => tab.textContent?.trim() === 'Files')!
-        .click();
-      await settle();
-
-      expect(element().querySelector('app-panel-placeholder')?.textContent).toContain(
-        'wrapper checkout',
-      );
+      // Every one of them has its panel now, so the fallback placeholder is never what a tab draws.
+      expect(element().querySelector('app-panel-placeholder')).toBeNull();
     });
 
     it('grows the transient tab when a process is running, pinned to the front and selected', async () => {
@@ -501,6 +516,75 @@ describe('RefiningPage', () => {
       expect(text()).toContain('The prompt');
       expect(text()).toContain('Start the conversation');
       expect(element().querySelector('app-agents-panel')).toBeNull();
+    });
+
+    it('builds the files panel on its tab, pointed at the resolved workspace’s container', async () => {
+      await open();
+      expect(element().querySelector('app-files-panel')).toBeNull();
+
+      tabs()
+        .find((tab) => tab.textContent?.trim() === 'Files')!
+        .click();
+      await settle();
+      answerFilesPanel();
+      await settle();
+
+      expect(element().querySelector('app-files-panel')).not.toBeNull();
+    });
+
+    /**
+     * The services feed is narrowed server-side by **repository and workspace label**, neither of which
+     * is in this page's URL — the wrapper comes from the repositories read and the label off the
+     * resolved workspace row. Getting either wrong would show another workspace's events under this
+     * epic's heading, which is the one thing this wiring can do that looks fine.
+     */
+    it('builds the services panel with the wrapper and the workspace label it resolved', async () => {
+      await open();
+
+      tabs()
+        .find((tab) => tab.textContent?.trim() === 'Services')!
+        .click();
+      await settle();
+      http.expectOne('/workspaces/container/7/services').flush({ services: [] });
+      const feed = http.expectOne(
+        (candidate) => candidate.url === '/workspaces/api/service-events',
+      );
+      expect(feed.request.params.get('repoId')).toBe('qits-qits');
+      expect(feed.request.params.get('workspaceId')).toBe('refining-epic-refining-workspace');
+      feed.flush({ events: [] });
+      await settle();
+
+      expect(element().querySelector('app-services-panel')).not.toBeNull();
+    });
+
+    /** The command list is already in hand from Chat, so this tab pays for three reads and not four. */
+    it('builds the actions panel on its tab, and shares the command list with chat', async () => {
+      await open();
+
+      tabs()
+        .find((tab) => tab.textContent?.trim() === 'Actions')!
+        .click();
+      await settle();
+      http.expectOne('/workspaces/container/7/commands/actions').flush({ actions: [] });
+      http.expectOne('/workspaces/container/7/bootstrap-commands').flush({ steps: [] });
+      http.expectOne('/workspaces/api/workspaces/7/bootstrap-runs').flush({ runs: [] });
+      http.expectNone('/workspaces/container/7/commands');
+      await settle();
+
+      expect(element().querySelector('app-actions-panel')).not.toBeNull();
+    });
+
+    it('builds the web view panel on its tab, off the same shared services entry', async () => {
+      await open();
+
+      tabs()
+        .find((tab) => tab.textContent?.trim() === 'Web view')!
+        .click();
+      await settle();
+      http.expectOne('/workspaces/container/7/services').flush({ services: [] });
+      await settle();
+
+      expect(element().querySelector('app-web-view-panel')).not.toBeNull();
     });
 
     it('builds the agents panel only when its tab is chosen, and then reads that container', async () => {

@@ -4,11 +4,10 @@ import { Router } from '@angular/router';
 /**
  * A span of lines, counted from one and inclusive at both ends.
  *
- * Declared here rather than on the viewer, which is where the original keeps it: **navigation lands
- * before the panel it navigates to.** The chat prompt's reference chips jump at exact ranges today and
- * the Files tab arrives in the next phase, so the type has to live on the side that already has a
- * reader. The viewer takes it from here when it lands, which is also the honest direction — the URL
- * contract owns the shape it carries.
+ * Declared here rather than on the viewer, which is where the original keeps it. It started that way
+ * because navigation landed a phase before the panel it navigates to, and it stays that way because it
+ * is the honest direction: the URL contract — `lines=12-20` — owns the shape it carries, and the
+ * viewer is one reader of it beside the chat prompt's reference chips.
  */
 export interface LineRange {
   readonly startLine: number;
@@ -24,9 +23,8 @@ export interface LineRange {
  * four. The Files panel loads off an `effect` watching the URL and never off a click, so a press and
  * a pasted link are indistinguishable to it.
  *
- * **This is the whole seam, and the far end of it is not built yet.** Both entry points are complete —
- * the presses that call them are on screen, and they write the parameters below — but nothing in this
- * SPA reads them until the Files panel arrives with the next phase. That order is deliberate rather
+ * **The far end is the Files panel**, which reads every parameter below off an `effect` and never off
+ * the call that wrote it. The two sides landed a phase apart, and that order was deliberate rather
  * than accidental: a URL write is the one form of cross-tab call that costs the caller nothing to make
  * early, and dropping the chips' "open this" affordance until the reader existed would have meant
  * copying the prompt panel twice.

@@ -7,11 +7,11 @@ import { WorkspaceEvents } from './workspace-events';
  * The one command-list entry, owned in one place. Copied from qits-spa-workspaces with the refining
  * page's chat and agents tabs.
  *
- * Three surfaces read this list here — the Chat tab's "is a conversation live", the Agents session
- * tree and the embedded session — and the Actions run history joins them with the next phase. The rule
- * that makes several readers affordable is **identical key and identical result shape**, or they
- * silently stop sharing. In a signals codebase that means exactly this: one `@Injectable` owning one
- * signal, injected everywhere, never a second fetch against the same URL.
+ * Five surfaces read this list here — the Chat tab's "is a conversation live", the Agents session tree,
+ * the embedded session, the Actions run history and the Actions tab's own label dot. The rule that
+ * makes several readers affordable is **identical key and identical result shape**, or they silently
+ * stop sharing. In a signals codebase that means exactly this: one `@Injectable` owning one signal,
+ * injected everywhere, never a second fetch against the same URL.
  *
  * **It owns its own freshness.** The `commands` hint fires when a command's lifecycle changes, and
  * the transcript sweep nudges it again on exit — so the refetch belongs here rather than in each

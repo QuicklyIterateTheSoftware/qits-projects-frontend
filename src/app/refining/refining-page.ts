@@ -11,25 +11,31 @@ import {
 import { toSignal } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, Router, convertToParamMap } from '@angular/router';
 import { QitsButton } from '@qits/ui-components';
+import { WorkspaceCommands } from '../api/workspace-commands';
 import { WorkspaceDaemonApi } from '../api/workspace-daemon-api';
 import { WorkspaceEvents, anyOf } from '../api/workspace-events';
+import { WorkspaceServices } from '../api/workspace-services';
 import { WorkspacesApi } from '../api/workspaces-api';
 import type { WorkspaceDto } from '../api/workspaces-dto';
 import { refiningBranch, refiningEpicSlug, type EpicNode } from '../project/epics-model';
 import { Async } from '../ui/async';
 import { IDLE, LOADING, describeError, failed, ready, type Loadable } from '../ui/loadable';
+import { ActionsPanel } from './actions/actions-panel';
 import { ActivityBar } from './activity-bar';
 import { AgentActivityMemory } from './agent-activity-memory';
 import { AgentsPanel } from './agents/agents-panel';
 import { ChatPanel } from './chat/chat-panel';
+import { FilesPanel } from './files/files-panel';
 import type { MergeResult } from './merge/merge-outcome';
 import { PanelPlaceholder } from './panel-placeholder';
 import { RefiningService } from './refining-service';
+import { ServicesPanel } from './services/services-panel';
 import { StartingPanel } from './starting/starting-panel';
 import { StatusStrip } from './status-strip';
 import { TabHost } from './tabs/tab-host';
 import { TabPanel } from './tabs/tab-panel';
 import { DEFAULT_TAB, DURABLE_TABS, STARTING_SLUG, isDurableTab, type TabDef } from './tabs/tabs';
+import { WebViewPanel } from './web-view/web-view-panel';
 
 /**
  * How long the transient tab stays after its operation finishes.
@@ -42,16 +48,11 @@ export const LINGER_MS = 5000;
 /**
  * What each durable tab says while its panel is still to come.
  *
- * Four left: Chat and Agents have their panels now. Each sentence names the surface rather than
- * apologising, because a tab that says what is coming is a better screen than an empty box — and the
- * row was final before any panel landed, so no `?tab=` link's neighbours ever move.
+ * Empty now that all six have one. Kept, because {@link RefiningPage.panelNote} is what a tab added
+ * ahead of its panel falls back to, and a placeholder that names the surface is a better screen than
+ * an empty box.
  */
-const PANEL_NOTES: Readonly<Record<string, string>> = {
-  files: 'Browsing and reading the wrapper checkout, submodules included.',
-  services: 'The services this workspace is running, and their durable event feed.',
-  actions: 'The workspace’s actions and its bootstrap chain.',
-  'web-view': 'A framed view of whatever this workspace is serving.',
-};
+const PANEL_NOTES: Readonly<Record<string, string>> = {};
 
 /** What the page had to resolve before it could show anything: the wrapper, and the epic. */
 interface Subject {
@@ -123,16 +124,20 @@ interface Subject {
   selector: 'app-refining-page',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
+    ActionsPanel,
     ActivityBar,
     AgentsPanel,
     Async,
     ChatPanel,
+    FilesPanel,
     PanelPlaceholder,
     QitsButton,
+    ServicesPanel,
     StartingPanel,
     StatusStrip,
     TabHost,
     TabPanel,
+    WebViewPanel,
   ],
   templateUrl: './refining-page.html',
   styleUrl: './refining-page.css',
@@ -143,6 +148,8 @@ export class RefiningPage {
   private readonly daemon = inject(WorkspaceDaemonApi);
   private readonly events = inject(WorkspaceEvents);
   private readonly memory = inject(AgentActivityMemory);
+  private readonly serviceEntry = inject(WorkspaceServices);
+  private readonly commandEntry = inject(WorkspaceCommands);
   private readonly router = inject(Router);
   private readonly route = inject(ActivatedRoute);
 
@@ -344,14 +351,45 @@ export class RefiningPage {
   );
 
   /**
+   * A terminal run this workspace is doing that no agent is driving — the Actions dot.
+   *
+   * The split is deliberate and each dot points at its own tab: a chat has the Chat tab's, an agent run
+   * has the Agents tab's, and a service has the Services tab's. It is only the *label* that is
+   * narrowed, so a glance at the strip says which tab to open rather than merely that something is
+   * happening somewhere.
+   *
+   * "Agent-driven" is read off `agentSessions` rather than off the kind, because an interactive agent
+   * launch is a PTY like any other terminal run — what makes it the agent's is that a session is pinned
+   * to it.
+   */
+  private readonly runningAction = computed(() => {
+    const state = this.commandEntry.commands();
+    if (state.kind !== 'ready') {
+      return false;
+    }
+    return state.value.some(
+      (command) =>
+        command.kind === 'TERMINAL' &&
+        command.status === 'RUNNING' &&
+        command.agentSessions.length === 0,
+    );
+  });
+
+  /**
    * The row: the transient tab when there is one, then the six.
    *
-   * The Agents dot is drawn from the workspace entry the strip already holds, so it costs no request.
-   * The others get theirs when their panels land — a dot on a tab nobody has opened would otherwise
-   * mean a fetch on every page open for a tab nobody may visit.
+   * **Every dot here is drawn from something already in hand, and none of them costs a request.** The
+   * Agents dot reads the workspace entry the strip already holds; the Services and Actions dots read
+   * the two shared entries, which answer "nothing to say" until a panel has asked for them. That is
+   * what keeps this page's load budget at what it says it is: a dot on a tab nobody has opened would
+   * otherwise mean a fetch on every page open for a tab nobody may visit, on a screen whose stated
+   * property is that an idle workspace produces no traffic at all. Absence of a dot means "not asked",
+   * never "nothing running", and one click resolves it.
    */
   protected readonly tabs = computed<readonly TabDef[]>(() => {
     const activity = this.workspace()?.agentActivity ?? null;
+    const servicesDot = this.serviceEntry.dot();
+    const running = this.runningAction();
     const durable = DURABLE_TABS.map((tab) => {
       if (tab.slug === 'agents' && activity) {
         return {
@@ -360,6 +398,12 @@ export class RefiningPage {
           dotTitle:
             activity === 'BUSY' ? 'The agent is working' : `Agent ${activity.toLowerCase()}`,
         };
+      }
+      if (tab.slug === 'services' && servicesDot) {
+        return { ...tab, dot: servicesDot, dotTitle: this.serviceEntry.dotTitle() };
+      }
+      if (tab.slug === 'actions' && running) {
+        return { ...tab, dot: 'accent' as const, dotTitle: 'An action is running' };
       }
       return tab;
     });

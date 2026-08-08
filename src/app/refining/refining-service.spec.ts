@@ -114,6 +114,15 @@ describe('RefiningService', () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
   }
 
+  /**
+   * Two tests below make their rejection assertion **before** the flush that causes it, and await it
+   * afterwards. That is not style: {@link settle} spans a macrotask, so those flows reject while
+   * nothing is listening, and node reports an unhandled rejection whatever a later
+   * `await expect(…).rejects` goes on to say about it. Attaching the matcher first is the same
+   * assertion, made in the order the promise actually settles in. The rest reject in the same turn
+   * their assertion is made, so they read the ordinary way round.
+   */
+
   /** The repositories listing, which carries the wrapper as a marked block beside the rows. */
   async function flushComponents(
     wrapperId: string | null = 'qits-qits',
@@ -154,10 +163,10 @@ describe('RefiningService', () => {
 
     /** No wrapper is nothing to branch on, so there is no plausible answer to invent. */
     it('refuses a project with no wrapper rather than guessing a repository', async () => {
-      const answer = refining.wrapper('p1');
+      const refused = expect(refining.wrapper('p1')).rejects.toThrow('no wrapper repository');
       await flushComponents(null);
 
-      await expect(answer).rejects.toThrow('no wrapper repository');
+      await refused;
     });
   });
 
@@ -255,7 +264,7 @@ describe('RefiningService', () => {
 
     /** If the re-read finds nothing either, the failure is reported rather than smoothed over. */
     it('rejects when both creates are refused and no workspace turns up', async () => {
-      const answer = refining.open('p1', node());
+      const refused = expect(refining.open('p1', node())).rejects.toMatchObject({ status: 409 });
       await flushComponents();
       await flushWorkspaces();
 
@@ -265,7 +274,7 @@ describe('RefiningService', () => {
       await settle();
       await flushWorkspaces();
 
-      await expect(answer).rejects.toMatchObject({ status: 409 });
+      await refused;
     });
 
     /** Only a 409 is the branch-is-taken story. Anything else is the caller's to report. */
