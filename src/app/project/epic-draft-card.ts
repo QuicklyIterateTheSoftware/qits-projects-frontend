@@ -1,5 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, input } from '@angular/core';
 import { QitsBadge, QitsCard } from '@qits/ui-components';
+import { MarkdownView } from '../ui/markdown-view';
 import { epicBadge, type EpicNode } from './epics-model';
 
 /** What a draft with nothing written in it says, rather than leaving the space blank. */
@@ -28,18 +29,28 @@ const NO_FEATURES = 'No features drafted yet.';
  *
  * <p>The dashed frame is the whole visual difference, and it is on this host rather than inside the
  * card, so `qits-card` stays untouched.
+ *
+ * <p><b>Every description here is markdown, and is drawn as such.</b> The refinement agent writes
+ * headings, bold, backtick spans and fenced blocks into all three levels, so the description that
+ * leads the card and the notes in the outline go through {@link MarkdownView} — printing them as
+ * text put `## Status page A public **status page**…` on one line, which is the plan being read out
+ * as punctuation instead of as a plan.
  */
 @Component({
   selector: 'app-epic-draft-card',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [QitsBadge, QitsCard],
+  imports: [MarkdownView, QitsBadge, QitsCard],
   template: `
     <qits-card [heading]="node().epic.title">
       <span qitsCardActions>
         <qits-badge [label]="badge().label" [tone]="badge().tone" />
       </span>
 
-      <p class="description" [class.absent]="!node().epic.description">{{ description() }}</p>
+      @if (node().epic.description; as text) {
+        <app-markdown class="description" [text]="text" />
+      } @else {
+        <p class="description absent">{{ noDescription }}</p>
+      }
 
       @if (node().features.length === 0) {
         <p class="absent">{{ noFeatures }}</p>
@@ -49,7 +60,7 @@ const NO_FEATURES = 'No features drafted yet.';
             <li class="feature">
               <span class="title">{{ child.feature.title }}</span>
               @if (child.feature.description; as note) {
-                <span class="note">{{ note }}</span>
+                <app-markdown class="note" [text]="note" />
               }
 
               @if (child.tasks.length > 0) {
@@ -58,7 +69,7 @@ const NO_FEATURES = 'No features drafted yet.';
                     <li class="task">
                       <span class="title">{{ task.title }}</span>
                       @if (task.description; as note) {
-                        <span class="note">{{ note }}</span>
+                        <app-markdown class="note" [text]="note" />
                       }
                     </li>
                   }
@@ -122,9 +133,8 @@ export class EpicDraftCard {
   readonly node = input.required<EpicNode>();
 
   protected readonly noFeatures = NO_FEATURES;
+  protected readonly noDescription = NO_DESCRIPTION;
 
   /** Always the lifecycle here — a draft has nothing implemented to derive a badge from. */
   protected readonly badge = computed(() => epicBadge(this.node()));
-
-  protected readonly description = computed(() => this.node().epic.description ?? NO_DESCRIPTION);
 }

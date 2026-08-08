@@ -29,8 +29,12 @@
         >
       }
     </p>
-    @if (description()) {
-      <p class="description">{{ description() }}</p>
+    <!--
+      The epic's description is markdown — the refining agent writes headings and code spans into it —
+      so the header renders it rather than printing its punctuation.
+    -->
+    @if (description(); as description) {
+      <app-markdown class="description" [text]="description" />
     }
   </header>
 

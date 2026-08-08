@@ -20,6 +20,7 @@ import type { WorkspaceDto } from '../api/workspaces-dto';
 import { refiningBranch, refiningEpicSlug, type EpicNode } from '../project/epics-model';
 import { Async } from '../ui/async';
 import { IDLE, LOADING, describeError, failed, ready, type Loadable } from '../ui/loadable';
+import { MarkdownView } from '../ui/markdown-view';
 import { ActionsPanel } from './actions/actions-panel';
 import { ActivityBar } from './activity-bar';
 import { AgentActivityMemory } from './agent-activity-memory';
@@ -130,6 +131,7 @@ interface Subject {
     Async,
     ChatPanel,
     FilesPanel,
+    MarkdownView,
     PanelPlaceholder,
     QitsButton,
     ServicesPanel,
