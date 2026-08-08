@@ -72,9 +72,11 @@ describe('LandingPage', () => {
 
     expect(router.url).toBe('/p1');
     // The project page took over. It names itself from the list the store already holds, so the
-    // redirect costs no second request at all.
+    // redirect costs no second project read — only the epics the page is there to show.
     await settle();
     expect(text()).toContain('p1 project');
+    http.expectOne('/projects/api/projects/p1/epics').flush({ entries: [] });
+    await settle();
     http.verify();
   });
 

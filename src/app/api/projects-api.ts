@@ -6,12 +6,18 @@ import type {
   BackupSyncResponse,
   CreateRepositoryRequest,
   CreateRepositoryResponse,
+  EpicDto,
+  EpicEntriesResponse,
+  FeatureDto,
+  FeatureEntriesResponse,
   ProjectDto,
   ProjectEntriesResponse,
   ProjectReconcileResponse,
   RepositoryDto,
   RepositoryEntriesResponse,
   SyncStatusDto,
+  TaskDto,
+  TaskEntriesResponse,
   WrapperDto,
   WrapperReconcileResponse,
 } from './dto';
@@ -122,6 +128,41 @@ export class ProjectsApi {
         null,
       ),
     );
+  }
+
+  /**
+   * One project's epics.
+   *
+   * The three levels of the plan are three reads, one per level, because that is what the service
+   * offers — there is no nested answer. The caller fans out and assembles the tree.
+   */
+  async epics(projectId: string): Promise<readonly EpicDto[]> {
+    const response = await firstValueFrom(
+      this.http.get<EpicEntriesResponse>(
+        `${this.base}/projects/api/projects/${encodeURIComponent(projectId)}/epics`,
+      ),
+    );
+    return response.entries.map((entry) => entry.epic);
+  }
+
+  /** One epic's features. */
+  async features(epicId: string): Promise<readonly FeatureDto[]> {
+    const response = await firstValueFrom(
+      this.http.get<FeatureEntriesResponse>(
+        `${this.base}/projects/api/epics/${encodeURIComponent(epicId)}/features`,
+      ),
+    );
+    return response.entries.map((entry) => entry.feature);
+  }
+
+  /** One feature's tasks. */
+  async tasks(featureId: string): Promise<readonly TaskDto[]> {
+    const response = await firstValueFrom(
+      this.http.get<TaskEntriesResponse>(
+        `${this.base}/projects/api/features/${encodeURIComponent(featureId)}/tasks`,
+      ),
+    );
+    return response.entries.map((entry) => entry.task);
   }
 
   /** One repository's main branch against its remote, measured without fetching objects. */
