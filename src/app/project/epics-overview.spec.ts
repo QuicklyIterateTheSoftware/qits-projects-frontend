@@ -1,6 +1,7 @@
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { Router, provideRouter } from '@angular/router';
 import type { EpicDto, FeatureDto, TaskDto } from '../api/dto';
 import { EVENT_SOURCE_FACTORY, type EventSourceLike } from '../api/event-source';
 import { EpicsOverview } from './epics-overview';
@@ -95,6 +96,7 @@ describe('EpicsOverview', () => {
       providers: [
         provideHttpClient(),
         provideHttpClientTesting(),
+        provideRouter([]),
         {
           provide: EVENT_SOURCE_FACTORY,
           useValue: (url: string) => {
@@ -459,6 +461,17 @@ describe('EpicsOverview', () => {
       );
     });
 
+    it('offers refine ahead of the freeze on a draft, and not on an implementation epic', async () => {
+      await loadGroups();
+      const labels = (selector: string) =>
+        Array.from(element().querySelectorAll(`${selector} button`)).map((node) =>
+          node.textContent?.trim(),
+        );
+
+      expect(labels('#epic-e1')).toEqual(['Refine', 'Start implementation', 'Abandon']);
+      expect(labels('#epic-e2')).toEqual(['Supersede', 'Abandon']);
+    });
+
     /** A refused move changed nothing, so the tree stays and the server's sentence sits beside it. */
     it('surfaces a refused move next to the epic and leaves the tree alone', async () => {
       await loadGroups();
@@ -477,6 +490,95 @@ describe('EpicsOverview', () => {
         'Could not move this epic — 409 an epic with no features cannot be frozen.',
       );
       http.expectNone('/projects/api/projects/p1/epics');
+      expect(element().querySelector('app-epic-draft-card')).not.toBeNull();
+    });
+  });
+
+  /**
+   * Refine is a press on the same row as the transitions and almost nothing else about it is the same:
+   * it moves no epic, it writes to a different service, and it ends in a navigation. The two things it
+   * *does* share are the two worth asserting — the busy state that holds every other button, and the
+   * failure pinned beside the card it is about.
+   */
+  describe('refining a draft', () => {
+    it('starts a workspace on refining/<slug> in the wrapper, then goes to the refining page', async () => {
+      await loadGroups();
+      const router = TestBed.inject(Router);
+      const went: string[] = [];
+      vi.spyOn(router, 'navigate').mockImplementation(async (commands: readonly unknown[]) => {
+        went.push(commands.join('/'));
+        return true;
+      });
+
+      buttonNamed('Refine').click();
+      await settle();
+
+      // The wrapper comes from the repositories listing, which already carries it beside the rows.
+      http.expectOne('/projects/api/projects/p1/repositories').flush({
+        entries: [
+          {
+            repository: {
+              id: 'qits-qits',
+              name: 'qits-qits',
+              backupUrl: null,
+              mainBranch: 'main',
+              archetype: 'PROJECT',
+              projectId: 'p1',
+              lastBackup: null,
+            },
+          },
+        ],
+        wrapper: { repositoryId: 'qits-qits', branch: 'main', entries: [] },
+      });
+      await settle();
+
+      http
+        .expectOne((request) => request.url === '/workspaces/api/workspaces')
+        .flush({ entries: [] });
+      await settle();
+
+      const create = http.expectOne(
+        (request) => request.method === 'POST' && request.url === '/workspaces/api/workspaces',
+      );
+      expect(create.request.body).toMatchObject({
+        repositoryId: 'qits-qits',
+        branch: 'refining/draft',
+        parent: '',
+        adoptExisting: false,
+      });
+      create.flush({ workspace: { id: 7, workspaceId: 'refining-draft', status: 'ACTIVE' } });
+      await settle();
+
+      expect(went).toEqual(['p1/epics/draft/refining']);
+      // Nothing about the epic changed, so the tree is not re-read.
+      http.expectNone('/projects/api/projects/p1/epics');
+    });
+
+    it('holds every button while the workspace is being started', async () => {
+      await loadGroups();
+
+      buttonNamed('Refine').click();
+      await settle();
+
+      expect(Array.from(element().querySelectorAll('button')).every((node) => node.disabled)).toBe(
+        true,
+      );
+    });
+
+    /** A project with no wrapper has nothing to branch on, and that lands beside the card. */
+    it('pins the reason beside the card when there is nowhere to cut the branch', async () => {
+      await loadGroups();
+
+      buttonNamed('Refine').click();
+      await settle();
+      http
+        .expectOne('/projects/api/projects/p1/repositories')
+        .flush({ entries: [], wrapper: null });
+      await settle();
+
+      expect(element().querySelector('#epic-e1')?.textContent).toContain(
+        'this project has no wrapper repository',
+      );
       expect(element().querySelector('app-epic-draft-card')).not.toBeNull();
     });
   });

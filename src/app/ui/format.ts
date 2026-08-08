@@ -6,12 +6,78 @@
  * but a backup does, and "when did this last reach the forge" is the only question its badge
  * answers. The copy from qits-spa-ci is deliberate per-SPA duplication; what is copied is the
  * convention, not the function list.
+ *
+ * The three at the top — `shortSha`, `relativeSince`, `driftLabel` — came the same way from
+ * qits-spa-workspaces, with the refining page that reads them.
  */
 
 import type { RepositoryDto, WrapperEntryDto } from '../api/dto';
 
 /** What is drawn where there is nothing to draw — one em dash, everywhere. */
 export const NONE = '—';
+
+/**
+ * The first seven characters of a sha, as git itself abbreviates.
+ *
+ * Every caller carries the full sha in the element's `title`, because seven characters is a label and
+ * the whole thing is the fact — and a merge commit is a thing people paste into `git show`.
+ */
+export function shortSha(sha: string): string {
+  return sha.slice(0, 7);
+}
+
+/**
+ * How long ago an instant was, in the coarsest unit that is still true: `4m ago`, `2h ago`, `3d ago`,
+ * and `just now` under a minute.
+ *
+ * Coarse on purpose, and separate from {@link formatRelativeTime} rather than folded into it: this
+ * one answers "since when has the daemon been connected", where the useful reading is "since this
+ * morning" or "since a moment ago". `formatRelativeTime` switches to a *date* past about a month
+ * because a backup that old is dated rather than distant, and a daemon connection never is.
+ *
+ * An unparseable timestamp answers {@link NONE} rather than `Invalid Date`.
+ */
+export function relativeSince(iso: string, now: Date = new Date()): string {
+  const then = Date.parse(iso);
+  if (Number.isNaN(then)) {
+    return NONE;
+  }
+  const seconds = Math.max(0, Math.round((now.getTime() - then) / 1000));
+  if (seconds < 60) {
+    return 'just now';
+  }
+  if (seconds < 3600) {
+    return `${Math.floor(seconds / 60)}m ago`;
+  }
+  if (seconds < 86400) {
+    return `${Math.floor(seconds / 3600)}h ago`;
+  }
+  return `${Math.floor(seconds / 86400)}d ago`;
+}
+
+/**
+ * `3 ahead · 1 behind`, or `up to date` — how far a workspace's branch has drifted from its parent.
+ *
+ * Null counts are unknown rather than zero (qits-workspaces answers null when it could not compute
+ * them), and unknown is drawn as nothing at all: a branch reported as "up to date" because the
+ * service could not measure it would be the strip's one outright lie.
+ */
+export function driftLabel(ahead: number | null, behind: number | null): string {
+  if (ahead === null || behind === null) {
+    return '';
+  }
+  if (ahead === 0 && behind === 0) {
+    return 'up to date';
+  }
+  const parts: string[] = [];
+  if (ahead > 0) {
+    parts.push(`${ahead} ahead`);
+  }
+  if (behind > 0) {
+    parts.push(`${behind} behind`);
+  }
+  return parts.join(' · ');
+}
 
 /**
  * What a repository row is called.

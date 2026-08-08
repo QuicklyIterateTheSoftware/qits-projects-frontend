@@ -9,11 +9,18 @@ const NO_FEATURES = 'No features drafted yet.';
 /**
  * An epic still being written: the same card shell, drawn as a draft.
  *
- * <p><b>No branch names and no status badges on the rows.</b> Nothing here has been implemented,
- * and nothing has a branch — the scope is not frozen, so a slug can still change and any branch
- * name composed from it would be a ref that never existed. Showing "open" against every line would
- * be equally empty: in this phase *everything* is open, so the badge would carry no information and
- * would only make the draft look like work in progress.
+ * <p><b>No branch names and no status badges on the rows.</b> Nothing here has been implemented, and
+ * none of these lines has a branch — the scope is not frozen, so a slug can still change and any
+ * `epic/`, `feature/` or `task/` name composed from it would be a ref that never existed. Showing
+ * "open" against every line would be equally empty: in this phase *everything* is open, so the badge
+ * would carry no information and would only make the draft look like work in progress.
+ *
+ * <p><b>One branch is an exception, and it is not one of the plan's.</b> A draft being refined has a
+ * `refining/<slug>` branch on the project's wrapper repository — the workspace the Refine button opens,
+ * where the plan is written. It is a fresh top-level namespace precisely so that it cannot be read as
+ * the epic's own branch, and it belongs to the *session*, not to any line in the outline below. So it
+ * is deliberately not drawn here either: the card is the plan, and the branch is where the work of
+ * changing it happens.
  *
  * <p>The description leads instead, because a draft is read to judge the idea, not to track it. The
  * outline under it is the shape so far, and a feature with no tasks is a feature nobody has broken

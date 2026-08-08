@@ -52,8 +52,14 @@ export function describeError(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-/** The `message` field of an error body, when the body is one. */
-function serverMessage(body: unknown): string | null {
+/**
+ * The `message` field of an error body, when the body is one.
+ *
+ * Exported because one reader needs the raw sentence rather than the formatted one: the refining
+ * page's merge classifier matches the service's own prose to tell six different 409s apart, and
+ * {@link describeError}'s `"<status> <message>"` would put a number in front of every pattern.
+ */
+export function serverMessage(body: unknown): string | null {
   if (typeof body === 'object' && body !== null && 'message' in body) {
     const message = (body as { message: unknown }).message;
     return typeof message === 'string' ? message : null;

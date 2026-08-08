@@ -2,11 +2,14 @@ import {
   NONE,
   basename,
   cloneUrl,
+  driftLabel,
   formatRelativeTime,
   isGitSafeName,
+  relativeSince,
   remoteLoginUrl,
   renderTerminalText,
   repositoryLabel,
+  shortSha,
   wrapperDirectory,
 } from './format';
 
@@ -164,5 +167,62 @@ describe('renderTerminalText', () => {
   /** Two-dimensional motion is stripped, not obeyed: this pane is not a terminal emulator. */
   it('strips cursor addressing instead of pretending to honour it', () => {
     expect(renderTerminalText(esc + '[2J' + esc + '[H' + 'clean')).toBe('clean');
+  });
+});
+
+describe('shortSha', () => {
+  it('abbreviates to seven characters, as git does', () => {
+    expect(shortSha('9f2c1ab3d4e5f60718293a4b5c6d7e8f90123456')).toBe('9f2c1ab');
+  });
+});
+
+/**
+ * Coarse on purpose. A daemon that reconnected 40 seconds ago is a daemon that just reconnected, and a
+ * second-accurate number would invite a precision the value does not have.
+ */
+describe('relativeSince', () => {
+  const now = new Date('2026-08-08T12:00:00Z');
+
+  it('reads under a minute as just now', () => {
+    expect(relativeSince('2026-08-08T11:59:31Z', now)).toBe('just now');
+  });
+
+  it('counts in the coarsest unit that is still true', () => {
+    expect(relativeSince('2026-08-08T11:12:00Z', now)).toBe('48m ago');
+    expect(relativeSince('2026-08-08T06:00:00Z', now)).toBe('6h ago');
+    expect(relativeSince('2026-08-05T12:00:00Z', now)).toBe('3d ago');
+  });
+
+  /** Clock skew is real, and "in -3m" is a bug report about the wrong system. */
+  it('reads a future instant as just now rather than as a negative', () => {
+    expect(relativeSince('2026-08-08T12:05:00Z', now)).toBe('just now');
+  });
+
+  it('answers the em dash for an instant it cannot parse', () => {
+    expect(relativeSince('not a date', now)).toBe(NONE);
+  });
+});
+
+/**
+ * Unknown counts are drawn as nothing at all. A branch reported as "up to date" because the service
+ * could not measure it would be the status strip's one outright lie.
+ */
+describe('driftLabel', () => {
+  it('names both directions when both have moved', () => {
+    expect(driftLabel(3, 1)).toBe('3 ahead · 1 behind');
+  });
+
+  it('names only the direction that moved', () => {
+    expect(driftLabel(3, 0)).toBe('3 ahead');
+    expect(driftLabel(0, 2)).toBe('2 behind');
+  });
+
+  it('says up to date only when it was measured as zero', () => {
+    expect(driftLabel(0, 0)).toBe('up to date');
+  });
+
+  it('draws nothing when a count was never computed', () => {
+    expect(driftLabel(null, 0)).toBe('');
+    expect(driftLabel(3, null)).toBe('');
   });
 });
