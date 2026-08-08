@@ -12,6 +12,7 @@ import {
   groupEpics,
   isDone,
   refiningBranch,
+  refiningEpicSlug,
   taskBranch,
   taskStatus,
   type EpicNode,
@@ -103,6 +104,20 @@ describe('branch names', () => {
   it('gives a refining branch its own namespace, above the plan’s three', () => {
     expect(refiningBranch('epics-overview')).toBe('refining/epics-overview');
     expect(refiningBranch('epics-overview').startsWith('epic/')).toBe(false);
+  });
+
+  /**
+   * The inverse is what bridges a *workspace* to the *epic* page that shows it — the activity bar's one
+   * job. Nothing stores the pairing, so a branch that does not spell it maps to nothing, and saying so
+   * is the only way the bar can refuse to draw a button that goes nowhere.
+   */
+  it('reads the epic back out of a refining branch, and refuses every other branch', () => {
+    expect(refiningEpicSlug('refining/epics-overview')).toBe('epics-overview');
+    expect(refiningEpicSlug(refiningBranch('a-b-c'))).toBe('a-b-c');
+    expect(refiningEpicSlug('epic/epics-overview')).toBeNull();
+    expect(refiningEpicSlug('feature/epics-overview/read-the-epics')).toBeNull();
+    expect(refiningEpicSlug('refining/')).toBeNull();
+    expect(refiningEpicSlug(null)).toBeNull();
   });
 });
 

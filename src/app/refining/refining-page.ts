@@ -15,9 +15,13 @@ import { WorkspaceDaemonApi } from '../api/workspace-daemon-api';
 import { WorkspaceEvents, anyOf } from '../api/workspace-events';
 import { WorkspacesApi } from '../api/workspaces-api';
 import type { WorkspaceDto } from '../api/workspaces-dto';
-import { refiningBranch, type EpicNode } from '../project/epics-model';
+import { refiningBranch, refiningEpicSlug, type EpicNode } from '../project/epics-model';
 import { Async } from '../ui/async';
 import { IDLE, LOADING, describeError, failed, ready, type Loadable } from '../ui/loadable';
+import { ActivityBar } from './activity-bar';
+import { AgentActivityMemory } from './agent-activity-memory';
+import { AgentsPanel } from './agents/agents-panel';
+import { ChatPanel } from './chat/chat-panel';
 import type { MergeResult } from './merge/merge-outcome';
 import { PanelPlaceholder } from './panel-placeholder';
 import { RefiningService } from './refining-service';
@@ -38,17 +42,15 @@ export const LINGER_MS = 5000;
 /**
  * What each durable tab says while its panel is still to come.
  *
- * All six, in this phase. Each sentence names the surface rather than apologising, because a tab that
- * says what is coming is a better screen than an empty box — and the row has to be final before the
- * panels land, or every existing `?tab=` link's neighbours would move under it.
+ * Four left: Chat and Agents have their panels now. Each sentence names the surface rather than
+ * apologising, because a tab that says what is coming is a better screen than an empty box — and the
+ * row was final before any panel landed, so no `?tab=` link's neighbours ever move.
  */
 const PANEL_NOTES: Readonly<Record<string, string>> = {
-  chat: 'Talking the plan through with the refinement agent, with the prompt panel and dictation.',
   files: 'Browsing and reading the wrapper checkout, submodules included.',
   services: 'The services this workspace is running, and their durable event feed.',
   actions: 'The workspace’s actions and its bootstrap chain.',
   'web-view': 'A framed view of whatever this workspace is serving.',
-  agents: 'The coding agent’s terminal, its session lineage and its plugins.',
 };
 
 /** What the page had to resolve before it could show anything: the wrapper, and the epic. */
@@ -120,7 +122,18 @@ interface Subject {
 @Component({
   selector: 'app-refining-page',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [Async, PanelPlaceholder, QitsButton, StartingPanel, StatusStrip, TabHost, TabPanel],
+  imports: [
+    ActivityBar,
+    AgentsPanel,
+    Async,
+    ChatPanel,
+    PanelPlaceholder,
+    QitsButton,
+    StartingPanel,
+    StatusStrip,
+    TabHost,
+    TabPanel,
+  ],
   templateUrl: './refining-page.html',
   styleUrl: './refining-page.css',
 })
@@ -129,6 +142,7 @@ export class RefiningPage {
   private readonly workspacesApi = inject(WorkspacesApi);
   private readonly daemon = inject(WorkspaceDaemonApi);
   private readonly events = inject(WorkspaceEvents);
+  private readonly memory = inject(AgentActivityMemory);
   private readonly router = inject(Router);
   private readonly route = inject(ActivatedRoute);
 
@@ -285,6 +299,27 @@ export class RefiningPage {
   protected readonly workspaceRowId = computed(() => this.workspace()?.id ?? 0);
 
   /**
+   * The other epics being refined right now — the activity bar's row.
+   *
+   * **Refining branches only, and that narrowing is what makes the row pressable.** The bar's job is
+   * "who needs me next", and a press has to land somewhere: this SPA addresses a workspace by the epic
+   * it refines, so a workspace on `epic/…`, on a feature branch or on a hand-cut branch has no page
+   * here to open. Carrying it would be a button that either goes nowhere or leaves for another SPA
+   * mid-thought. So the row reads as *which epics have an agent working*, which is the question a
+   * reader of this page actually has.
+   *
+   * The filter costs nothing: the listing is already in hand for the branch match above, and the bar
+   * drops workspaces without agent activity itself.
+   */
+  protected readonly refiningPeers = computed<readonly WorkspaceDto[]>(() => {
+    const state = this.workspaces();
+    if (state.kind !== 'ready') {
+      return [];
+    }
+    return state.value.filter((entry) => refiningEpicSlug(entry.branch) !== null);
+  });
+
+  /**
    * The wrapper's workspaces are known, and none of them is on this branch.
    *
    * That is the create offer's condition and it needs both halves: an unanswered listing is not an
@@ -371,7 +406,10 @@ export class RefiningPage {
       return;
     }
     try {
-      this.workspaces.set(ready(await this.workspacesApi.workspaces(repositoryId)));
+      const workspaces = await this.workspacesApi.workspaces(repositoryId);
+      // Before the signal, so the bar's order is settled by the time anything renders it.
+      this.memory.observe(workspaces);
+      this.workspaces.set(ready(workspaces));
     } catch (error) {
       this.workspaces.set(failed(error));
     }
@@ -423,6 +461,25 @@ export class RefiningPage {
       this.startFailure.set(describeError(error));
     } finally {
       this.starting.set(false);
+    }
+  }
+
+  /**
+   * An activity-bar press: that epic's refining page, on its Chat tab, which is where the next prompt
+   * goes.
+   *
+   * The workspace row id is deliberately *not* in the URL. It is resolved from the branch on arrival,
+   * exactly as this page resolves its own — so the row the bar was drawn from can be gone by the time
+   * the press lands and the destination still comes out right.
+   */
+  protected openPeer(workspaceRowId: number): void {
+    const branch =
+      this.refiningPeers().find((entry) => entry.id === workspaceRowId)?.branch ?? null;
+    const slug = refiningEpicSlug(branch);
+    if (slug) {
+      void this.router.navigate([this.projectId(), 'epics', slug, 'refining'], {
+        queryParams: { tab: 'chat' },
+      });
     }
   }
 

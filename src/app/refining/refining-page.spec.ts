@@ -165,7 +165,7 @@ describe('RefiningPage', () => {
 
   /**
    * Open the page and answer everything it asks for: the subject, the wrapper's workspaces, and — when
-   * one matched — the transient tab's process lookup.
+   * one matched — the transient tab's process lookup and the selected tab's own budget.
    */
   async function open(
     url = URL_BASE,
@@ -181,6 +181,53 @@ describe('RefiningPage', () => {
     for (const request of http.match((candidate) => candidate.url.endsWith('/active-process'))) {
       request.flush({ technicalProcessId: processId });
     }
+    await settle();
+    await answerChatPanel();
+  }
+
+  /**
+   * The Chat panel's own budget, paid whenever Chat is the selected tab — which a bare URL makes it.
+   *
+   * It is the panel's and not the shell's, which is the whole reason the tab is in the URL: expensive
+   * state is addressable state. The container's command list first, then the saved draft once the list
+   * has said nothing is running. Matched rather than expected, because a page showing no workspace — or
+   * one showing the transient tab — mounts no chat panel and asks for neither.
+   */
+  async function answerChatPanel(): Promise<void> {
+    for (const request of http.match((candidate) => candidate.url.endsWith('/commands'))) {
+      request.flush({ entries: [] });
+    }
+    await settle();
+    for (const request of http.match((candidate) => candidate.url.endsWith('/prompt-draft'))) {
+      request.flush({ message: 'none' }, { status: 404, statusText: 'Not Found' });
+    }
+    await settle();
+  }
+
+  /**
+   * The Agents panel's own budget: the session lineage, the harnesses, the plugin store, and the
+   * detection that sorts the recommended plugins first.
+   *
+   * The detection read is here because **nothing else in this SPA has published one yet** — it is the
+   * file browser's read, handed over through a shared entry whose other end lands with the Files tab.
+   *
+   * The lineage answers **one** session rather than none, and that is not padding: no history at all is
+   * the one branch that launches an agent by itself, so an empty answer here would put a `POST /agents`
+   * on a test about mounting a panel.
+   */
+  async function answerAgentsPanel(workspaceRowId = 7): Promise<void> {
+    const base = `/workspaces/container/${workspaceRowId}`;
+    http
+      .expectOne(`${base}/agent-sessions`)
+      .flush({ sessions: [{ sessionId: 's-1', subagents: [], children: [] }] });
+    http
+      .expectOne(`${base}/agents/available`)
+      .flush({ agents: ['CLAUDE'], defaultAgent: 'CLAUDE' });
+    await settle();
+    http.expectOne(`${base}/agent-plugins`).flush({ installed: [] });
+    http
+      .expectOne(`${base}/detection`)
+      .flush({ projects: [], frameworks: [], links: [], generation: 'gen-1' });
     await settle();
   }
 
@@ -217,6 +264,7 @@ describe('RefiningPage', () => {
       await settle();
 
       expect(streams.map((stream) => stream.url)).toEqual(['/workspaces/api/workspaces/7/events']);
+      await answerChatPanel();
     });
 
     it('names the epic and the branch it is refined on', async () => {
@@ -296,6 +344,7 @@ describe('RefiningPage', () => {
         technicalProcessId: null,
       });
       await settle();
+      await answerChatPanel();
 
       expect(element().querySelector('app-tab-host')).not.toBeNull();
       expect(text()).not.toContain('No refining workspace is open');
@@ -328,6 +377,7 @@ describe('RefiningPage', () => {
         technicalProcessId: null,
       });
       await settle();
+      await answerChatPanel();
     });
   });
 
@@ -388,8 +438,8 @@ describe('RefiningPage', () => {
   });
 
   describe('the tab row', () => {
-    /** The shell is final before the panels land, so a later phase never moves a link's neighbours. */
-    it('declares all six tabs now, each naming the surface that is coming', async () => {
+    /** The shell was final before any panel landed, so no phase ever moves a link's neighbours. */
+    it('keeps all six tabs, and the four still to come say what is coming', async () => {
       await open();
 
       expect(tabs().map((tab) => tab.textContent?.trim())).toEqual([
@@ -400,8 +450,14 @@ describe('RefiningPage', () => {
         'Web view',
         'Agents',
       ]);
+
+      tabs()
+        .find((tab) => tab.textContent?.trim() === 'Files')!
+        .click();
+      await settle();
+
       expect(element().querySelector('app-panel-placeholder')?.textContent).toContain(
-        'refinement agent',
+        'wrapper checkout',
       );
     });
 
@@ -424,6 +480,72 @@ describe('RefiningPage', () => {
 
       expect(agents.querySelector('.dot')?.classList.contains('accent')).toBe(true);
       expect(agents.querySelector<HTMLElement>('.dot')?.title).toBe('The agent is working');
+    });
+  });
+
+  /**
+   * The interactive panels, mounted where the workspace detail page mounts them.
+   *
+   * What is asserted here is the *wiring*, not the panels — each has its own spec, copied with it. What
+   * only this page can get wrong is which workspace row a panel is pointed at, and when it is built at
+   * all: a panel created on page open rather than on tab selection would put its whole budget on every
+   * reader of every tab.
+   */
+  describe('the panels', () => {
+    it('mounts the chat panel on the tab a bare URL selects, pointed at the resolved workspace', async () => {
+      await open();
+
+      expect(element().querySelector('app-chat-panel')).not.toBeNull();
+      // The prompt panel, because nothing is running — which is the chat tab's other half.
+      expect(element().querySelector('app-prompt-panel')).not.toBeNull();
+      expect(text()).toContain('The prompt');
+      expect(text()).toContain('Start the conversation');
+      expect(element().querySelector('app-agents-panel')).toBeNull();
+    });
+
+    it('builds the agents panel only when its tab is chosen, and then reads that container', async () => {
+      await open();
+      expect(element().querySelector('app-agents-panel')).toBeNull();
+
+      tabs()
+        .find((tab) => tab.textContent?.trim() === 'Agents')!
+        .click();
+      await settle();
+      await answerAgentsPanel();
+
+      expect(element().querySelector('app-agents-panel')).not.toBeNull();
+      expect(text()).toContain('Plugins');
+    });
+
+    /**
+     * The activity bar is a "who needs me next" queue, and a press has to land somewhere. This SPA
+     * addresses a workspace by the epic it refines, so a workspace on any other branch has no page here
+     * — carrying it would draw a button that goes nowhere.
+     */
+    it('shows only refining workspaces in the activity bar, and presses through to that epic', async () => {
+      await open(URL_BASE, [
+        workspace(),
+        workspace({ id: 8, branch: 'refining/another-epic', agentActivity: 'WAITING' }),
+        workspace({ id: 9, branch: 'epic/some-frozen-epic', agentActivity: 'BUSY' }),
+      ]);
+
+      const entries = Array.from(element().querySelectorAll<HTMLElement>('.bar .entry'));
+      expect(entries.map((entry) => entry.textContent?.trim())).toEqual([
+        'refining/another-epicWaiting on you',
+      ]);
+
+      entries[0].click();
+      await settle();
+
+      expect(TestBed.inject(Location).path()).toBe('/p1/epics/another-epic/refining?tab=chat');
+
+      // The destination resolves itself from the URL, exactly as this page did — the row id the button
+      // was drawn from is not carried. What it finds is that page's business; these reads are answered
+      // only so the verifier has nothing left over.
+      for (const request of http.match(() => true)) {
+        request.flush({ entries: [] });
+      }
+      await settle();
     });
   });
 });

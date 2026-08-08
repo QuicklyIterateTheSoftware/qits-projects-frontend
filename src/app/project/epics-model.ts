@@ -66,6 +66,21 @@ export function refiningBranch(epicSlug: string): string {
   return `refining/${epicSlug}`;
 }
 
+/**
+ * The epic a branch refines, or null if it refines none.
+ *
+ * <p>The inverse of {@link refiningBranch}, and it lives beside it so the two forms of one rule cannot
+ * drift apart. The reader is the refining page's activity bar: the bar knows a *workspace*, the page is
+ * addressed by an *epic*, and this is the only thing that bridges them — nothing stores the pairing.
+ *
+ * <p>The prefix has to be there and something has to follow it. A branch called exactly `refining/`
+ * would otherwise map to the empty slug, which is a URL that resolves to no epic at all.
+ */
+export function refiningEpicSlug(branch: string | null): string | null {
+  const slug = branch?.startsWith('refining/') ? branch.slice('refining/'.length) : '';
+  return slug ? slug : null;
+}
+
 /** What a line's badge says, and how loudly. */
 export interface StatusBadge {
   readonly label: string;
