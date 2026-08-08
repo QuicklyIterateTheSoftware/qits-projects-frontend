@@ -1,9 +1,15 @@
 import type { EpicDto, FeatureDto, TaskDto } from '../api/dto';
 import {
+  actionsFor,
+  epicAnchor,
+  epicBadge,
   epicBranch,
   epicStatus,
+  epicTitles,
   featureBranch,
   featureStatus,
+  groupEpics,
+  isDone,
   taskBranch,
   taskStatus,
   type EpicNode,
@@ -19,6 +25,8 @@ function epic(over: Partial<EpicDto> = {}): EpicDto {
     title: 'Epics on the project page',
     slug: 'epics-overview',
     description: null,
+    status: 'IMPLEMENTATION',
+    supersededByEpicId: null,
     createdAt: AT,
     updatedAt: AT,
     ...over,
@@ -56,8 +64,13 @@ function task(over: Partial<TaskDto> = {}): TaskDto {
   };
 }
 
-function node(features: readonly FeatureNode[]): EpicNode {
-  return { epic: epic(), features };
+function node(features: readonly FeatureNode[], over: Partial<EpicDto> = {}): EpicNode {
+  return { epic: epic(over), features };
+}
+
+/** An epic whose every feature is implemented — the shape "done" is derived from. */
+function finished(over: Partial<EpicDto> = {}): EpicNode {
+  return node([{ feature: feature({ implementedOn: AT }), tasks: [] }], over);
 }
 
 /**
@@ -134,5 +147,153 @@ describe('epicStatus', () => {
   /** No completion field of its own, so an epic with no features has no evidence to read. */
   it('is open for an epic with no features at all', () => {
     expect(epicStatus(node([]))).toEqual({ label: 'open', tone: 'neutral' });
+  });
+});
+
+describe('epicBadge', () => {
+  it('says the lifecycle everywhere the lifecycle is the answer', () => {
+    expect(epicBadge(node([], { status: 'REFINING' }))).toEqual({
+      label: 'refining',
+      tone: 'info',
+    });
+    expect(epicBadge(node([], { status: 'SUPERSEDED' }))).toEqual({
+      label: 'superseded',
+      tone: 'neutral',
+    });
+    expect(epicBadge(node([], { status: 'ABANDONED' }))).toEqual({
+      label: 'abandoned',
+      tone: 'danger',
+    });
+  });
+
+  /** In implementation the question is how far along, so the features keep answering it. */
+  it('keeps the derived badge while an epic is being implemented', () => {
+    expect(epicBadge(finished())).toEqual({ label: 'implemented', tone: 'success' });
+    expect(epicBadge(node([{ feature: feature(), tasks: [] }]))).toEqual({
+      label: 'open',
+      tone: 'neutral',
+    });
+  });
+});
+
+/**
+ * Done is derived, and that is the one rule in this file a stored status could quietly break: an
+ * epic becomes done by having its last feature implemented, with nothing pressed.
+ */
+describe('isDone', () => {
+  it('is done when an implementation epic has every feature implemented', () => {
+    expect(isDone(finished())).toBe(true);
+  });
+
+  it('is not done while a feature is still open', () => {
+    expect(
+      isDone(
+        node([
+          { feature: feature({ id: 'f1', implementedOn: AT }), tasks: [] },
+          { feature: feature({ id: 'f2' }), tasks: [] },
+        ]),
+      ),
+    ).toBe(false);
+  });
+
+  /** An epic with no features has no evidence, so it cannot be done — the `epicStatus` rule again. */
+  it('is not done for an epic with no features', () => {
+    expect(isDone(node([]))).toBe(false);
+  });
+
+  /** Only implementation can be done; a draft with nothing in it must not read as finished. */
+  it('is not done in any other phase', () => {
+    expect(isDone(finished({ status: 'REFINING' }))).toBe(false);
+    expect(isDone(finished({ status: 'SUPERSEDED' }))).toBe(false);
+    expect(isDone(finished({ status: 'ABANDONED' }))).toBe(false);
+  });
+});
+
+describe('groupEpics', () => {
+  it('splits the epics into the five sections the overview draws', () => {
+    const draft = node([], { id: 'e1', status: 'REFINING' });
+    const running = node([{ feature: feature(), tasks: [] }], { id: 'e2' });
+    const done = finished({ id: 'e3' });
+    const old = node([], { id: 'e4', status: 'SUPERSEDED', supersededByEpicId: 'e1' });
+    const dropped = node([], { id: 'e5', status: 'ABANDONED' });
+
+    const groups = groupEpics([draft, running, done, old, dropped]);
+
+    expect(groups.refining).toEqual([draft]);
+    expect(groups.implementation).toEqual([running]);
+    expect(groups.done).toEqual([done]);
+    expect(groups.superseded).toEqual([old]);
+    expect(groups.abandoned).toEqual([dropped]);
+  });
+
+  /** Done is carved out of implementation, so a finished epic must not appear in both. */
+  it('takes a finished epic out of implementation rather than listing it twice', () => {
+    const groups = groupEpics([finished({ id: 'e3' })]);
+
+    expect(groups.implementation).toEqual([]);
+    expect(groups.done).toHaveLength(1);
+  });
+
+  it('keeps the service’s order inside a group', () => {
+    const first = node([], { id: 'e1', status: 'REFINING' });
+    const second = node([], { id: 'e2', status: 'REFINING' });
+
+    expect(groupEpics([first, second]).refining.map((entry) => entry.epic.id)).toEqual([
+      'e1',
+      'e2',
+    ]);
+  });
+
+  it('answers five empty groups for no epics at all', () => {
+    expect(groupEpics([])).toEqual({
+      refining: [],
+      implementation: [],
+      done: [],
+      superseded: [],
+      abandoned: [],
+    });
+  });
+});
+
+/** The server validates every move; this list only decides which press is worth offering. */
+describe('actionsFor', () => {
+  it('offers a draft the freeze and the drop', () => {
+    expect(actionsFor('REFINING')).toEqual([
+      { target: 'IMPLEMENTATION', label: 'Start implementation', confirmLabel: null },
+      { target: 'ABANDONED', label: 'Abandon', confirmLabel: 'Confirm abandon?' },
+    ]);
+  });
+
+  it('offers implementation the supersede and the drop', () => {
+    expect(actionsFor('IMPLEMENTATION').map((action) => action.target)).toEqual([
+      'SUPERSEDED',
+      'ABANDONED',
+    ]);
+  });
+
+  /** Both destructive moves ask twice; starting implementation is the ordinary next step. */
+  it('asks for a confirmation on everything that throws a plan away', () => {
+    expect(actionsFor('REFINING')[0].confirmLabel).toBeNull();
+    for (const action of [...actionsFor('REFINING').slice(1), ...actionsFor('IMPLEMENTATION')]) {
+      expect(action.confirmLabel).toContain('Confirm');
+    }
+  });
+
+  it('offers nothing on a terminal epic', () => {
+    expect(actionsFor('SUPERSEDED')).toEqual([]);
+    expect(actionsFor('ABANDONED')).toEqual([]);
+  });
+});
+
+describe('epicTitles and epicAnchor', () => {
+  it('resolves an id to the title a link has to say', () => {
+    const titles = epicTitles([node([], { id: 'e1', title: 'The draft' })]);
+
+    expect(titles.get('e1')).toBe('The draft');
+    expect(titles.get('e9')).toBeUndefined();
+  });
+
+  it('names a card’s anchor after the epic', () => {
+    expect(epicAnchor('e1')).toBe('epic-e1');
   });
 });

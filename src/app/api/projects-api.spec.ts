@@ -203,13 +203,80 @@ describe('ProjectsApi', () => {
             title: 'Epics on the project page',
             slug: 'epics-overview',
             description: 'show the plan where the reader arrives',
+            status: 'IMPLEMENTATION',
+            supersededByEpicId: null,
             createdAt: '2026-08-08T09:00:00Z',
             updatedAt: '2026-08-08T09:00:00Z',
           },
         },
       ],
     });
-    await expect(epics).resolves.toMatchObject([{ id: 'e1', slug: 'epics-overview' }]);
+    await expect(epics).resolves.toMatchObject([
+      { id: 'e1', slug: 'epics-overview', status: 'IMPLEMENTATION' },
+    ]);
+  });
+
+  /**
+   * A transition answers two rows, and the successor is the one a caller is tempted to drop.
+   * Superseding *creates* the draft that replaces the epic, so keeping only `epic` would lose it.
+   */
+  it('posts the transition target and keeps both rows of the answer', async () => {
+    const moved = api.transitionEpic('e1', 'SUPERSEDED');
+    const request = http.expectOne('/projects/api/epics/e1/transition');
+
+    expect(request.request.method).toBe('POST');
+    expect(request.request.body).toEqual({ target: 'SUPERSEDED' });
+
+    request.flush({
+      epic: {
+        id: 'e1',
+        projectId: 'p1',
+        title: 'Epics on the project page',
+        slug: 'epics-overview',
+        description: null,
+        status: 'SUPERSEDED',
+        supersededByEpicId: 'e2',
+        createdAt: '2026-08-08T09:00:00Z',
+        updatedAt: '2026-08-08T11:00:00Z',
+      },
+      successor: {
+        id: 'e2',
+        projectId: 'p1',
+        title: 'Epics on the project page',
+        slug: 'epics-overview',
+        description: null,
+        status: 'REFINING',
+        supersededByEpicId: null,
+        createdAt: '2026-08-08T11:00:00Z',
+        updatedAt: '2026-08-08T11:00:00Z',
+      },
+    });
+
+    await expect(moved).resolves.toMatchObject({
+      epic: { id: 'e1', status: 'SUPERSEDED', supersededByEpicId: 'e2' },
+      successor: { id: 'e2', status: 'REFINING' },
+    });
+  });
+
+  /** Every move but superseding answers a null successor, and the null has to survive as one. */
+  it('keeps a missing successor as null', async () => {
+    const moved = api.transitionEpic('e1', 'IMPLEMENTATION');
+    http.expectOne('/projects/api/epics/e1/transition').flush({
+      epic: {
+        id: 'e1',
+        projectId: 'p1',
+        title: 'Epics on the project page',
+        slug: 'epics-overview',
+        description: null,
+        status: 'IMPLEMENTATION',
+        supersededByEpicId: null,
+        createdAt: '2026-08-08T09:00:00Z',
+        updatedAt: '2026-08-08T11:00:00Z',
+      },
+      successor: null,
+    });
+
+    await expect(moved).resolves.toMatchObject({ successor: null });
   });
 
   it('unwraps the feature entries', async () => {

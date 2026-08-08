@@ -8,6 +8,8 @@ import type {
   CreateRepositoryResponse,
   EpicDto,
   EpicEntriesResponse,
+  EpicStatus,
+  EpicTransitionResponse,
   FeatureDto,
   FeatureEntriesResponse,
   ProjectDto,
@@ -143,6 +145,26 @@ export class ProjectsApi {
       ),
     );
     return response.entries.map((entry) => entry.epic);
+  }
+
+  /**
+   * Move one epic to another point in its life: freeze a draft, supersede it, abandon it.
+   *
+   * The whole answer is kept, successor and all, rather than reduced to the epic — superseding
+   * spawns a draft, and a caller that dropped it would have no way to say what replaced what. An
+   * illegal move is a 409 whose `message` says why, which is a sentence for the reader rather than
+   * a state this client should have prevented.
+   *
+   * The server's answer is not spliced into the tree: a transition can change more than the one
+   * row, so the caller re-reads instead.
+   */
+  transitionEpic(epicId: string, target: EpicStatus): Promise<EpicTransitionResponse> {
+    return firstValueFrom(
+      this.http.post<EpicTransitionResponse>(
+        `${this.base}/projects/api/epics/${encodeURIComponent(epicId)}/transition`,
+        { target },
+      ),
+    );
   }
 
   /** One epic's features. */

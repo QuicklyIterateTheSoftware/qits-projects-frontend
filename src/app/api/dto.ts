@@ -157,6 +157,19 @@ export interface WrapperDto {
 }
 
 /**
+ * Where an epic stands in its life, as the service stores it.
+ *
+ * **There is no `DONE` on the wire, and that is on purpose.** Done is read off the features — an
+ * `IMPLEMENTATION` epic whose every feature is implemented — so storing it would be a second copy
+ * of a fact the tree already carries, free to disagree with it. See `isDone` in the epics model.
+ *
+ * `REFINING` is the draft phase: everything is still being written. `IMPLEMENTATION` freezes the
+ * scope and only the implemented markers move after it. `SUPERSEDED` sent the plan back to the
+ * drawing board and names the draft that replaced it. `ABANDONED` is terminal.
+ */
+export type EpicStatus = 'REFINING' | 'IMPLEMENTATION' | 'SUPERSEDED' | 'ABANDONED';
+
+/**
  * An epic: the backbone of a change to the platform.
  *
  * An epic may hold features and a feature may hold tasks, so the three together are the plan for a
@@ -173,8 +186,23 @@ export interface EpicDto {
   readonly title: string;
   readonly slug: string;
   readonly description: string | null;
+  readonly status: EpicStatus;
+  /** The draft that replaced this one. Set only on a `SUPERSEDED` epic; null on every other. */
+  readonly supersededByEpicId: string | null;
   readonly createdAt: string;
   readonly updatedAt: string;
+}
+
+/**
+ * What a transition came to: the epic in its new state, and the draft it spawned.
+ *
+ * `successor` is a second row, not a field of the first, because superseding **creates** an epic —
+ * a fresh `REFINING` copy of the frozen scope. Every other transition answers a null there, so a
+ * caller that assumed a successor would invent one for an abandonment.
+ */
+export interface EpicTransitionResponse {
+  readonly epic: EpicDto;
+  readonly successor: EpicDto | null;
 }
 
 /**

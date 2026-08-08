@@ -13,6 +13,8 @@ function epic(id: string, slug: string, over: Partial<EpicDto> = {}): EpicDto {
     title: `Epic ${slug}`,
     slug,
     description: null,
+    status: 'IMPLEMENTATION',
+    supersededByEpicId: null,
     createdAt: AT,
     updatedAt: AT,
     ...over,
@@ -120,6 +122,21 @@ describe('EpicsOverview', () => {
     );
   }
 
+  /** The section headings, open ones and collapsed ones alike, in the order they are drawn. */
+  function sections(): string[] {
+    return Array.from(element().querySelectorAll('.group > h3, .group > summary')).map(
+      (node) => node.textContent?.trim() ?? '',
+    );
+  }
+
+  function buttonNamed(label: string): HTMLButtonElement {
+    const found = Array.from(element().querySelectorAll('button')).find(
+      (node) => node.textContent?.trim() === label,
+    );
+    expect(found, `no button named “${label}”`).toBeTruthy();
+    return found as HTMLButtonElement;
+  }
+
   /** One epic, two features, tasks on one of them — the whole fan-out, in one tree. */
   async function loadTree(): Promise<void> {
     await mount();
@@ -133,6 +150,26 @@ describe('EpicsOverview', () => {
       task('t2', 'assemble-the-tree'),
     ]);
     await flushTasks('f2', []);
+  }
+
+  /** One epic in every phase, including the derived one — the whole grouped screen at once. */
+  async function loadGroups(): Promise<void> {
+    await mount();
+    await flushEpics([
+      epic('e1', 'draft', { status: 'REFINING', description: 'a plan still being written' }),
+      epic('e2', 'running'),
+      epic('e3', 'finished'),
+      epic('e4', 'old', { status: 'SUPERSEDED', supersededByEpicId: 'e1' }),
+      epic('e5', 'dropped', { status: 'ABANDONED' }),
+    ]);
+    await flushFeatures('e1', [feature('f1', 'draft-feature', { description: 'what it will do' })]);
+    await flushFeatures('e2', [feature('f2', 'running-feature')]);
+    await flushFeatures('e3', [feature('f3', 'done-feature', { implementedOn: AT })]);
+    await flushFeatures('e4', []);
+    await flushFeatures('e5', []);
+    await flushTasks('f1', [task('t1', 'draft-task', { description: 'the detail' })]);
+    await flushTasks('f2', []);
+    await flushTasks('f3', []);
   }
 
   it('draws the tree in plan order, with the branch each line belongs on', async () => {
@@ -223,5 +260,184 @@ describe('EpicsOverview', () => {
 
     expect(text()).not.toContain('epics-overview');
     expect(branches()).toEqual(['epic/other-plan']);
+  });
+
+  /**
+   * The grouping is the panel's shape, and "done" is the part of it nothing on the wire says: an
+   * epic reaches it by having its last feature implemented, not by anyone pressing anything.
+   */
+  describe('grouped by lifecycle', () => {
+    it('draws the five sections in the order a reader works down them', async () => {
+      await loadGroups();
+
+      expect(sections()).toEqual([
+        'Refining',
+        'Implementation',
+        'Done (1)',
+        'Superseded (1)',
+        'Abandoned (1)',
+      ]);
+    });
+
+    it('puts every epic in exactly one section', async () => {
+      await loadGroups();
+
+      expect(element().querySelectorAll('app-epic-draft-card')).toHaveLength(1);
+      // The implementation card is drawn for the running epic and the finished one.
+      expect(element().querySelectorAll('app-epic-card')).toHaveLength(2);
+      expect(element().querySelectorAll('app-epic-summary-row')).toHaveLength(2);
+    });
+
+    /** The record is collapsed; the work is not, so neither is behind a click. */
+    it('collapses the record sections and leaves the work sections open', async () => {
+      await loadGroups();
+
+      const disclosures = Array.from(element().querySelectorAll('details'));
+      expect(disclosures).toHaveLength(3);
+      expect(disclosures.every((node) => !node.open)).toBe(true);
+    });
+
+    it('leaves out a record section the project has nothing in', async () => {
+      await loadTree();
+
+      expect(element().querySelectorAll('details')).toHaveLength(0);
+      expect(sections()).toEqual(['Refining', 'Implementation']);
+    });
+
+    /** An empty work section is a fact, not blank space. */
+    it('says an always-visible section is empty rather than drawing nothing', async () => {
+      await loadTree();
+
+      expect(text()).toContain('No epic is being drafted.');
+      expect(text()).not.toContain('No epic is being implemented.');
+    });
+
+    it('keeps the overall empty message for a project with no epics at all', async () => {
+      await mount();
+      await flushEpics([]);
+
+      expect(text()).toContain('This project has no epics yet.');
+      expect(sections()).toEqual([]);
+    });
+  });
+
+  describe('the draft card', () => {
+    it('leads with the description and outlines the features and tasks', async () => {
+      await loadGroups();
+      const draft = element().querySelector('app-epic-draft-card');
+
+      expect(draft?.textContent).toContain('a plan still being written');
+      expect(draft?.textContent).toContain('Feature draft-feature');
+      expect(draft?.textContent).toContain('what it will do');
+      expect(draft?.textContent).toContain('Task draft-task');
+      expect(draft?.textContent).toContain('the detail');
+    });
+
+    /** Nothing is frozen and nothing is implemented, so there is no branch and no row status. */
+    it('names no branches and badges no rows', async () => {
+      await loadGroups();
+      const draft = element().querySelector('app-epic-draft-card');
+
+      expect(draft?.querySelectorAll('.branch')).toHaveLength(0);
+      expect(draft?.querySelectorAll('.qits-badge')).toHaveLength(1);
+      expect(draft?.querySelector('.qits-badge')?.textContent?.trim()).toBe('refining');
+    });
+  });
+
+  describe('the terminal rows', () => {
+    it('draws a dropped epic as one row with a tone of its own', async () => {
+      await loadGroups();
+      const rows = Array.from(element().querySelectorAll('app-epic-summary-row'));
+
+      expect(rows[1].textContent).toContain('Epic dropped');
+      expect(rows[1].querySelector('.qits-badge')?.textContent?.trim()).toBe('abandoned');
+      expect(rows[1].querySelector('.qits-badge')?.className).toContain('qits-badge-danger');
+    });
+
+    it('links a superseded epic to the draft that replaced it', async () => {
+      await loadGroups();
+      const link = element().querySelector('a.successor');
+
+      expect(link?.textContent).toContain('superseded by Epic draft');
+      expect(link?.getAttribute('href')).toBe('#epic-e1');
+      // The anchor is a card on this same screen, not a promise.
+      expect(element().querySelector('#epic-e1')).not.toBeNull();
+    });
+  });
+
+  describe('transitions', () => {
+    it('freezes a draft on one press and re-reads the whole tree', async () => {
+      await loadGroups();
+
+      buttonNamed('Start implementation').click();
+      await settle();
+
+      const request = http.expectOne('/projects/api/epics/e1/transition');
+      expect(request.request.method).toBe('POST');
+      expect(request.request.body).toEqual({ target: 'IMPLEMENTATION' });
+      request.flush({ epic: epic('e1', 'draft'), successor: null });
+      await settle();
+
+      // The answer is not spliced in — the panel reads the tree again.
+      await flushEpics([epic('e1', 'draft')]);
+      await flushFeatures('e1', []);
+
+      expect(branches()).toEqual(['epic/draft']);
+      expect(element().querySelector('app-epic-draft-card')).toBeNull();
+    });
+
+    /** Superseding throws a plan away, so the button asks first — in itself, not in a dialog. */
+    it('asks once before superseding, and sends nothing until it is answered', async () => {
+      await loadGroups();
+
+      buttonNamed('Supersede').click();
+      await settle();
+      http.expectNone('/projects/api/epics/e2/transition');
+
+      buttonNamed('Confirm supersede?').click();
+      await settle();
+
+      const request = http.expectOne('/projects/api/epics/e2/transition');
+      expect(request.request.body).toEqual({ target: 'SUPERSEDED' });
+      request.flush({
+        epic: epic('e2', 'running', { status: 'SUPERSEDED', supersededByEpicId: 'e9' }),
+        successor: epic('e9', 'running', { status: 'REFINING' }),
+      });
+      await settle();
+
+      http.expectOne('/projects/api/projects/p1/epics');
+    });
+
+    it('holds every button while a move is in flight', async () => {
+      await loadGroups();
+
+      buttonNamed('Start implementation').click();
+      await settle();
+
+      expect(Array.from(element().querySelectorAll('button')).every((node) => node.disabled)).toBe(
+        true,
+      );
+    });
+
+    /** A refused move changed nothing, so the tree stays and the server's sentence sits beside it. */
+    it('surfaces a refused move next to the epic and leaves the tree alone', async () => {
+      await loadGroups();
+
+      buttonNamed('Start implementation').click();
+      await settle();
+      http
+        .expectOne('/projects/api/epics/e1/transition')
+        .flush(
+          { message: 'an epic with no features cannot be frozen' },
+          { status: 409, statusText: 'Conflict' },
+        );
+      await settle();
+
+      expect(element().querySelector('#epic-e1')?.textContent).toContain(
+        'Could not move this epic — 409 an epic with no features cannot be frozen.',
+      );
+      http.expectNone('/projects/api/projects/p1/epics');
+      expect(element().querySelector('app-epic-draft-card')).not.toBeNull();
+    });
   });
 });
