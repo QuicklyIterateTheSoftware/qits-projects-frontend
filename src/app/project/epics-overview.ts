@@ -1,13 +1,16 @@
 import {
   ChangeDetectionStrategy,
   Component,
+  DestroyRef,
   computed,
   effect,
   inject,
   input,
   signal,
+  untracked,
 } from '@angular/core';
 import type { EpicStatus } from '../api/dto';
+import { ProjectEvents } from '../api/project-events';
 import { ProjectsApi } from '../api/projects-api';
 import { Async } from '../ui/async';
 import { Empty } from '../ui/empty';
@@ -56,13 +59,30 @@ interface Failure {
  *
  * <p>A transition re-reads the whole tree rather than splicing the answer in: superseding creates a
  * second epic, and a panel that patched one row would show a draft that is not there.
+ *
+ * <p><b>It listens as well as reads.</b> A refinement agent — or another tab — changes these epics
+ * without this page doing anything, so the project's live channel hints and the panel re-reads. The
+ * hint carries nothing, which is the point: there is no pushed shape to reconcile against a tree
+ * this deep.
+ *
+ * <p><b>A hint's refresh is quiet.</b> Only an arrival, a project hop and the retry show the loading
+ * state; a hint swaps the tree underneath the reader when it lands. Blanking the panel on every hint
+ * would make the page flash for as long as an agent kept typing, and it would be dishonest — what is
+ * on screen is a moment old, not unknown. For the same reason a quiet re-read that *fails* leaves
+ * the tree standing: the next hint corrects it, and one bad round trip should not take the plan off
+ * the screen.
  */
 @Component({
   selector: 'app-epics-overview',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [Async, Empty, EpicActions, EpicCard, EpicDraftCard, EpicSummaryRow],
   template: `
-    <h2>Epics</h2>
+    <header>
+      <h2>Epics</h2>
+      @if (behind()) {
+        <p class="behind" role="status">Live updates are reconnecting — briefly behind.</p>
+      }
+    </header>
 
     <app-async
       [state]="epics()"
@@ -168,11 +188,26 @@ interface Failure {
       display: block;
       margin: 1.5rem 0 0;
     }
-    h2 {
+    /* The marker shares the heading's line, so it appears and disappears without moving anything
+       below it — a channel that flaps must not make the plan jump under the reader's eye. */
+    header {
+      display: flex;
+      align-items: baseline;
+      gap: 0.6rem;
+      flex-wrap: wrap;
       margin: 0 0 0.5rem;
+    }
+    h2 {
+      margin: 0;
       font-size: 1rem;
       font-weight: 600;
       color: #111827;
+    }
+    .behind {
+      margin: 0;
+      color: #6b7280;
+      font-size: 0.8rem;
+      font-style: italic;
     }
     h3 {
       margin: 0 0 0.4rem;
@@ -203,6 +238,7 @@ interface Failure {
 })
 export class EpicsOverview {
   private readonly api = inject(ProjectsApi);
+  private readonly events = inject(ProjectEvents);
 
   readonly projectId = input.required<string>();
 
@@ -223,13 +259,49 @@ export class EpicsOverview {
 
   private readonly titles = computed(() => epicTitles(this.nodes()));
 
+  /** Whether the channel has ever been up. Nothing is "behind" before it has ever been current. */
+  private readonly wasLive = signal(false);
+
+  /**
+   * Whether to say the panel is lagging. It stays quiet on a page that never had a channel at all —
+   * an SSE endpoint an older service does not serve is not a reader's problem.
+   */
+  protected readonly behind = computed(() => this.wasLive() && !this.events.connected());
+
+  /** Which project the last run of the read effect was for, so a hop is told apart from a hint. */
+  private watching: string | null = null;
+
+  /** The hint count that run had seen. The number itself means nothing; only its movement does. */
+  private hinted = 0;
+
+  /** How many reads have started. A read that is no longer the newest is dropped when it lands. */
+  private attempt = 0;
+
   constructor() {
     effect(() => {
       const projectId = this.projectId();
-      if (projectId) {
-        void this.load(projectId);
+      const hints = this.events.invalidations('epics')();
+      if (!projectId) {
+        return;
+      }
+      // Arrival and a project hop show the loading state. A hint on the project already on screen
+      // never does — that is the whole difference between the two ways this effect runs.
+      const quiet = projectId === this.watching && hints !== this.hinted;
+      this.watching = projectId;
+      this.hinted = hints;
+      untracked(() => {
+        this.events.connect(projectId);
+        void this.load(projectId, quiet);
+      });
+    });
+
+    effect(() => {
+      if (this.events.connected()) {
+        this.wasLive.set(true);
       }
     });
+
+    inject(DestroyRef).onDestroy(() => this.events.close());
   }
 
   protected anchor(node: EpicNode): string {
@@ -276,19 +348,42 @@ export class EpicsOverview {
     }
   }
 
-  /** Read the whole tree, blanking what is on screen first — arrival, a project hop, a retry. */
-  protected async load(projectId = this.projectId()): Promise<void> {
-    this.epics.set(LOADING);
+  /**
+   * Read the whole tree.
+   *
+   * A loud read blanks what is on screen first — arrival, a project hop, a retry, a transition. A
+   * quiet one leaves the tree up and swaps it when the new one arrives, and leaves it up when the
+   * new one does not: a hint's refresh that failed means the panel is a moment old, which is what it
+   * already was, so taking the plan off the screen would report a problem by causing a worse one.
+   */
+  protected async load(projectId = this.projectId(), quiet = false): Promise<void> {
+    if (!quiet) {
+      this.epics.set(LOADING);
+    }
+    this.attempt += 1;
+    const attempt = this.attempt;
     try {
       const tree = await this.read(projectId);
-      if (projectId === this.projectId()) {
+      if (this.newest(projectId, attempt)) {
         this.epics.set(ready(tree));
       }
     } catch (error) {
-      if (projectId === this.projectId()) {
+      if (this.newest(projectId, attempt) && !(quiet && this.loaded())) {
         this.epics.set(failed(error));
       }
     }
+  }
+
+  /**
+   * Whether an answer that has just landed is still the one the panel is waiting for.
+   *
+   * Two ways it is not. The project may have moved on — the fan-out is several round trips deep, so
+   * a hop lands easily while an older tree is still assembling. Or a newer read may have started for
+   * the *same* project: hints arrive while an agent works, and an older tree overwriting a newer one
+   * would put the panel a step behind and keep it there until the next hint.
+   */
+  private newest(projectId: string, attempt: number): boolean {
+    return attempt === this.attempt && projectId === this.projectId();
   }
 
   /** The epics, then their features, then their tasks — each level in parallel across its parents. */

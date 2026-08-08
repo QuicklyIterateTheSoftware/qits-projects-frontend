@@ -5,6 +5,19 @@ import { TestBed } from '@angular/core/testing';
 import { Router, provideRouter } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
 import { routes } from '../app.routes';
+import { EVENT_SOURCE_FACTORY, type EventSourceFactory } from '../api/event-source';
+
+/**
+ * A stream that never says anything. jsdom has no `EventSource` at all, and the epics overview
+ * opens one — a spec about anything else only needs the channel to exist.
+ */
+const SILENT: EventSourceFactory = () => ({
+  onopen: null,
+  onmessage: null,
+  onerror: null,
+  // Nothing to close: nothing was ever opened.
+  close: () => undefined,
+});
 
 /**
  * The project's own address: its name, the way in to setting it up, and its epics.
@@ -24,6 +37,7 @@ describe('ProjectPage', () => {
         provideLocationMocks(),
         provideHttpClient(),
         provideHttpClientTesting(),
+        { provide: EVENT_SOURCE_FACTORY, useValue: SILENT },
       ],
     });
     http = TestBed.inject(HttpTestingController);

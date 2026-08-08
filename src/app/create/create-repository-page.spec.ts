@@ -5,6 +5,19 @@ import { TestBed } from '@angular/core/testing';
 import { Router, provideRouter } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
 import { routes } from '../app.routes';
+import { EVENT_SOURCE_FACTORY, type EventSourceFactory } from '../api/event-source';
+
+/**
+ * A stream that never says anything. A finished create goes back to the project page, whose epics
+ * overview opens a live channel — and jsdom has no `EventSource` at all.
+ */
+const SILENT: EventSourceFactory = () => ({
+  onopen: null,
+  onmessage: null,
+  onerror: null,
+  // Nothing to close: nothing was ever opened.
+  close: () => undefined,
+});
 
 /**
  * The create form, and the one thing about it a server rule depends on: the body carries `name`
@@ -22,6 +35,7 @@ describe('CreateRepositoryPage', () => {
         provideLocationMocks(),
         provideHttpClient(),
         provideHttpClientTesting(),
+        { provide: EVENT_SOURCE_FACTORY, useValue: SILENT },
       ],
     });
     http = TestBed.inject(HttpTestingController);

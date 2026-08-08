@@ -2,7 +2,34 @@ import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import type { EpicDto, FeatureDto, TaskDto } from '../api/dto';
+import { EVENT_SOURCE_FACTORY, type EventSourceLike } from '../api/event-source';
 import { EpicsOverview } from './epics-overview';
+
+/** The project's live channel, with every lifecycle moment turned into a method call. */
+class FakeStream implements EventSourceLike {
+  onopen: ((event: Event) => void) | null = null;
+  onmessage: ((event: MessageEvent<string>) => void) | null = null;
+  onerror: ((event: Event) => void) | null = null;
+  closed = false;
+
+  constructor(readonly url: string) {}
+
+  close(): void {
+    this.closed = true;
+  }
+
+  connect(): void {
+    this.onopen?.(new Event('open'));
+  }
+
+  emit(topic: string): void {
+    this.onmessage?.(new MessageEvent<string>('message', { data: topic }));
+  }
+
+  drop(): void {
+    this.onerror?.(new Event('error'));
+  }
+}
 
 const AT = '2026-08-08T09:00:00Z';
 
@@ -60,10 +87,23 @@ function task(id: string, slug: string, over: Partial<TaskDto> = {}): TaskDto {
 describe('EpicsOverview', () => {
   let http: HttpTestingController;
   let fixture: ComponentFixture<EpicsOverview>;
+  let streams: FakeStream[];
 
   beforeEach(() => {
+    streams = [];
     TestBed.configureTestingModule({
-      providers: [provideHttpClient(), provideHttpClientTesting()],
+      providers: [
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        {
+          provide: EVENT_SOURCE_FACTORY,
+          useValue: (url: string) => {
+            const stream = new FakeStream(url);
+            streams.push(stream);
+            return stream;
+          },
+        },
+      ],
     });
     http = TestBed.inject(HttpTestingController);
   });
@@ -438,6 +478,129 @@ describe('EpicsOverview', () => {
       );
       http.expectNone('/projects/api/projects/p1/epics');
       expect(element().querySelector('app-epic-draft-card')).not.toBeNull();
+    });
+  });
+
+  /**
+   * A refinement agent changes these epics while the reader watches, so the panel has to re-read
+   * without being asked — and the whole difficulty is doing that *quietly*. A hint fires on every
+   * agent step; a panel that blanked itself for each one would flash for as long as the agent
+   * worked, and would say "unknown" about a tree it is still holding.
+   */
+  describe('live updates', () => {
+    it('opens one channel for the project it is showing', async () => {
+      await loadTree();
+
+      expect(streams.map((stream) => stream.url)).toEqual(['/projects/api/projects/p1/events']);
+    });
+
+    it('re-reads on a hint and never shows the loading state while it does', async () => {
+      await loadTree();
+
+      streams[0].emit('epics');
+      await settle();
+
+      // The old tree is still on screen while the new one assembles: no blank, no flash.
+      expect(element().querySelector('.async-loading')).toBeNull();
+      expect(text()).toContain('Epic epics-overview');
+
+      await flushEpics([epic('e1', 'epics-overview'), epic('e2', 'new-plan')]);
+      await flushFeatures('e1', []);
+      await flushFeatures('e2', []);
+
+      expect(branches()).toEqual(['epic/epics-overview', 'epic/new-plan']);
+    });
+
+    /** No replay protocol exists, so a reconnect has to assume it missed everything. */
+    it('re-reads on a connect, because the gap it closes is one it cannot see', async () => {
+      await loadTree();
+
+      streams[0].connect();
+      await settle();
+
+      await flushEpics([epic('e2', 'new-plan')]);
+      await flushFeatures('e2', []);
+
+      expect(branches()).toEqual(['epic/new-plan']);
+    });
+
+    it('asks for nothing on the heartbeat, on another panel’s topic, or on a topic it never heard of', async () => {
+      await loadTree();
+
+      streams[0].emit('ping');
+      streams[0].emit('agent-activity');
+      streams[0].emit('a-topic-from-a-newer-service');
+      await settle();
+
+      http.expectNone('/projects/api/projects/p1/epics');
+    });
+
+    it('moves the channel to the new project when the page hops', async () => {
+      await loadTree();
+
+      fixture.componentRef.setInput('projectId', 'p2');
+      await settle();
+      await flushEpics([epic('e9', 'other-plan')], 'p2');
+      await flushFeatures('e9', []);
+
+      expect(streams.map((stream) => stream.url)).toEqual([
+        '/projects/api/projects/p1/events',
+        '/projects/api/projects/p2/events',
+      ]);
+      expect(streams[0].closed).toBe(true);
+    });
+
+    /** A hint's read that failed leaves the panel a moment old, which is what it already was. */
+    it('keeps the tree standing when a hint’s re-read fails', async () => {
+      await loadTree();
+
+      streams[0].emit('epics');
+      await settle();
+      http
+        .expectOne('/projects/api/projects/p1/epics')
+        .flush(null, { status: 503, statusText: 'Down' });
+      await settle();
+
+      expect(text()).toContain('Epic epics-overview');
+      expect(text()).not.toContain('Could not load the epics');
+    });
+
+    /** Only the hint's read is forgiving. A read the page asked for still says what happened. */
+    it('still blanks and reports a failure on a read the page asked for', async () => {
+      await loadTree();
+
+      fixture.componentRef.setInput('projectId', 'p2');
+      await settle();
+      http
+        .expectOne('/projects/api/projects/p2/epics')
+        .flush(null, { status: 503, statusText: 'Down' });
+      await settle();
+
+      expect(text()).toContain('Could not load the epics — 503');
+      expect(element().querySelector('app-epic-card')).toBeNull();
+    });
+
+    it('says it is behind only once it has been current', async () => {
+      await loadTree();
+      expect(element().querySelector('.behind')).toBeNull();
+
+      // A channel that never came up is not something the reader can be behind.
+      streams[0].drop();
+      await settle();
+      expect(element().querySelector('.behind')).toBeNull();
+
+      streams[0].connect();
+      await settle();
+      await flushEpics([epic('e1', 'epics-overview')]);
+      await flushFeatures('e1', []);
+      expect(element().querySelector('.behind')).toBeNull();
+
+      streams[0].drop();
+      await settle();
+
+      expect(element().querySelector('.behind')?.textContent).toContain('briefly behind');
+      // The plan itself stays exactly where it was — the marker shares the heading's line.
+      expect(branches()).toEqual(['epic/epics-overview']);
     });
   });
 });
