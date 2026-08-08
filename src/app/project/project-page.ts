@@ -3,6 +3,7 @@ import { toSignal } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, RouterLink, convertToParamMap } from '@angular/router';
 import type { ProjectDto } from '../api/dto';
 import { ProjectsStore } from '../api/projects-store';
+import { RefinementPanel } from './agent/refinement-panel';
 import { EpicsOverview } from './epics-overview';
 
 /**
@@ -17,11 +18,16 @@ import { EpicsOverview } from './epics-overview';
  * <p>The name itself still **costs nothing** — it comes from the shared project list the
  * sub-navigation has already read. The epics are this page's own read, and they are the only one;
  * the overview owns it, along with its loading, empty and failed states.
+ *
+ * <p>The refinement agent sits between the two, and it sits there **dormant**: the panel is one
+ * collapsed row until somebody asks for it, so arriving here still costs exactly the epics read.
+ * Its place is deliberate — the agent is what changes the plan below it, so it reads as the way in
+ * to that plan rather than as a tool parked at the bottom of the page.
  */
 @Component({
   selector: 'app-project-page',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [EpicsOverview, RouterLink],
+  imports: [EpicsOverview, RefinementPanel, RouterLink],
   template: `
     <h1>{{ heading() }}</h1>
     @if (description(); as description) {
@@ -31,6 +37,8 @@ import { EpicsOverview } from './epics-overview';
     <p class="actions">
       <a class="setup" routerLink="project-setup">Project setup</a>
     </p>
+
+    <app-refinement-panel [projectId]="projectId()" />
 
     <app-epics-overview [projectId]="projectId()" />
   `,

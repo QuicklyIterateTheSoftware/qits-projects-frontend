@@ -20,11 +20,14 @@ const SILENT: EventSourceFactory = () => ({
 });
 
 /**
- * The project's own address: its name, the way in to setting it up, and its epics.
+ * The project's own address: its name, the way in to setting it up, the refinement agent, and its
+ * epics.
  *
- * The read worth pinning is the one it does **not** make. The components read that used to happen
- * here moved behind `project-setup`, and a page that quietly kept making it would pay for a screen
- * nobody is looking at. The epics are the page's only request, and the overview owns it.
+ * The reads worth pinning are the ones it does **not** make. The components read that used to
+ * happen here moved behind `project-setup`, and a page that quietly kept making it would pay for a
+ * screen nobody is looking at. The refinement agent is the same rule with a much larger bill: a
+ * container is an image pull and a repository clone, so the panel is closed and silent until it is
+ * asked for. The epics are the page's only request, and the overview owns it.
  */
 describe('ProjectPage', () => {
   let http: HttpTestingController;
@@ -86,6 +89,24 @@ describe('ProjectPage', () => {
     expect(page().querySelector('h1')?.textContent).toContain('qits');
     expect(page().textContent).toContain('the platform');
     // No components read: those live behind project-setup now.
+    http.verify();
+  });
+
+  /**
+   * The panel is on the page and has cost nothing. `http.verify()` above already proves the second
+   * half; this states the first, so that a panel accidentally made eager fails here by name rather
+   * than as an unexpected request in an unrelated test.
+   */
+  it('offers the refinement agent closed, having asked nothing about it', async () => {
+    await open();
+    flushProjects([{ id: 'p1', name: 'qits' }]);
+    flushEpics();
+    await settle();
+
+    const toggle = page().querySelector<HTMLButtonElement>('button.toggle');
+    expect(toggle?.textContent).toContain('Refinement agent');
+    expect(toggle?.getAttribute('aria-expanded')).toBe('false');
+    expect(page().textContent).toContain('Not started');
     http.verify();
   });
 
