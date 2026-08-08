@@ -1,0 +1,102 @@
+@if (mounted()) {
+  <app-async
+    [state]="subject()"
+    loadingLabel="Resolving the epic and its wrapper repository"
+    errorLabel="Could not open this refining workspace"
+    (retry)="reload()"
+  />
+
+  <app-async
+    [state]="workspaces()"
+    loadingLabel="Looking for the refining workspace"
+    errorLabel="Could not read the wrapper’s workspaces"
+    (retry)="onChanged()"
+  />
+
+  <header class="head">
+    <p class="crumb">
+      <button type="button" class="back" (click)="backToEpics()">Epics</button>
+      <span class="sep">/</span>
+      <span>Refining</span>
+    </p>
+    <h1>{{ title() }}</h1>
+    <p class="meta">
+      <code>{{ branch() }}</code>
+      @if (repositoryId()) {
+        <span class="sep">·</span>
+        <span
+          >on the wrapper <code>{{ repositoryId() }}</code></span
+        >
+      }
+    </p>
+    @if (description()) {
+      <p class="description">{{ description() }}</p>
+    }
+  </header>
+
+  @if (workspace(); as ws) {
+    <app-status-strip
+      [workspace]="ws"
+      [mainBranch]="mainBranch()"
+      [reachability]="reachability()"
+      [live]="live()"
+      (changed)="onChanged()"
+      (started)="onStarted($event)"
+      (merged)="onMerged($event)"
+    />
+
+    @if (landed().length > 0) {
+      <section class="landed" aria-label="What landed from this page">
+        <ul>
+          @for (record of landed(); track record.commitSha) {
+            <li>
+              @if (record.version) {
+                <strong>{{ record.version }}</strong> —
+              }
+              <code>{{ record.branch }}</code> → <code>{{ record.targetBranch }}</code
+              >, merge commit <code>{{ record.commitSha }}</code>
+            </li>
+          }
+        </ul>
+      </section>
+    }
+
+    <app-tab-host
+      [tabs]="tabs()"
+      [selected]="selected()"
+      label="Refining"
+      (selectTab)="chooseTab($event)"
+    >
+      @if (shownProcessId(); as processId) {
+        <ng-template appTabPanel="starting">
+          <app-starting-panel [processId]="processId" (settled)="onSettled()" />
+        </ng-template>
+      }
+      @for (tab of durableTabs; track tab.slug) {
+        <ng-template [appTabPanel]="tab.slug">
+          <app-panel-placeholder [title]="tab.label" [note]="panelNote(tab.slug)" />
+        </ng-template>
+      }
+    </app-tab-host>
+  } @else if (absent()) {
+    <!--
+      Not a 404. A discard resolves the workspace and leaves the branch behind, so an epic that was
+      being refined yesterday resolves to nothing today — and the answer to that is the same press the
+      epics list offers, made here rather than somewhere else.
+    -->
+    <section class="offer" aria-label="Start refining">
+      <h2>No refining workspace is open for this epic</h2>
+      <p>
+        Refining happens in a workspace on <code>{{ branch() }}</code
+        >, and there is none active right now — either nobody has started one, or the last one was
+        discarded. Starting one cuts the branch if it is not there and adopts it if it is.
+      </p>
+      <qits-button variant="primary" [busy]="starting()" (pressed)="startRefining()">
+        Start refining
+      </qits-button>
+      @if (startFailure(); as message) {
+        <p class="fault" role="alert">That did not work — {{ message }}.</p>
+      }
+    </section>
+  }
+}

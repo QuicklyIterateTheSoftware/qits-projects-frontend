@@ -5,9 +5,10 @@ import { LandingPage } from './landing/landing-page';
 import { NotFound } from './not-found/not-found';
 import { ProjectPage } from './project/project-page';
 import { ProjectSetupPage } from './project/project-setup-page';
+import { RefiningPage } from './refining/refining-page';
 
 /**
- * Five routes, all of them inside the platform chrome.
+ * Six routes, all of them inside the platform chrome.
  *
  * `QitsMainLayout` is the root *route* component rather than something the shell templates, so the
  * bar, the navigation and the project picker hanging under it mount once and survive every
@@ -33,8 +34,23 @@ import { ProjectSetupPage } from './project/project-setup-page';
  * <p>Repository **detail is deliberately absent**. Every card on the setup page is therefore inert
  * rather than linking somewhere unbuilt — a dead link is worse than no link.
  *
- * <p>All five load eagerly. There are five of them, they share every component below them, and a
- * lazy chunk boundary here would be ceremony that costs a round trip.
+ * <p><b>The refining route names an epic and never a workspace.</b>
+ * `:projectId/epics/:epicSlug/refining` is where an epic is worked out, and the workspace behind it is
+ * *looked up* — the ACTIVE workspace on `refining/<epicSlug>` in the project's wrapper repository.
+ * Nothing stores that association, so an address carrying a workspace row id would be a link that rots
+ * the moment the workspace is discarded and a new one started: it would point at a resolved workspace
+ * with no container, for an epic that is being refined right now. The slug is the epic's immutable
+ * git-safe identity, which is what the branch name is composed from, so the URL and the branch stay in
+ * step by construction.
+ *
+ * <p><b>Which tab is open rides in `?tab=`, not in a trailing segment.</b> A trailing segment would
+ * make a tab switch free (Angular reuses a component across a parameter change) and would make an
+ * *epic* switch free too — which is the bug, not the feature: the page would keep showing the previous
+ * epic's workspace. Keeping the tab in the query string leaves the path meaning "which epic", makes a
+ * bare URL mean "no tab pinned" by simple absence, and keeps every tab a shareable link.
+ *
+ * <p>All six load eagerly. There are six of them, they share every component below them, and a lazy
+ * chunk boundary here would be ceremony that costs a round trip.
  *
  * <p>The `**` route sits *inside* the layout, unlike spa-home's. spa-home is mounted at the gateway
  * root, where an unrecognised first segment belongs to another application and has to be handed
@@ -49,6 +65,7 @@ export const routes: Routes = [
       { path: '', component: LandingPage },
       { path: ':projectId', component: ProjectPage },
       { path: ':projectId/project-setup', component: ProjectSetupPage },
+      { path: ':projectId/epics/:epicSlug/refining', component: RefiningPage },
       { path: ':projectId/repositories/new', component: CreateRepositoryPage },
       { path: '**', component: NotFound },
     ],

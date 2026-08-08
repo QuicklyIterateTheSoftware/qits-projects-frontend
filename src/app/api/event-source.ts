@@ -9,19 +9,27 @@ import { InjectionToken } from '@angular/core';
  * same shape, and the same reasoning, as `web-socket.ts` beside it: a browser primitive this app
  * cannot otherwise drive, named down to the members it actually sets.
  *
- * Deliberately smaller than the real thing: no `addEventListener`, because the one stream on this
+ * Deliberately smaller than the real thing: no `addEventListener`, because every stream on this
  * screen is unnamed-event-only, and no `withCredentials`, because everything is same-origin — which
  * is what carries the session cookie, the same reason {@link ./api-base#QITS_API_BASE} is empty.
- * No `readyState` either: the browser reconnects a dropped stream by itself, so nothing here has a
- * decision to make about the state it is in — `onopen` and `onerror` say everything this app acts
- * on.
+ *
+ * `readyState` is **optional**, and the optionality is the point rather than laziness. Most streams
+ * here never look at it: the browser reconnects a dropped stream by itself, so `onopen` and `onerror`
+ * say everything a hint channel acts on. The one reader is the refining page's technical-process log,
+ * where a stream that closed for good is a *different state* from one about to retry — a process id
+ * the server has evicted answers 404, which the browser treats as fatal. So a fake that never needs
+ * the distinction may leave the member off, and one that tests it sets it.
  */
 export interface EventSourceLike {
   onopen: ((event: Event) => void) | null;
   onmessage: ((event: MessageEvent<string>) => void) | null;
   onerror: ((event: Event) => void) | null;
+  readonly readyState?: number;
   close(): void;
 }
+
+/** `EventSource.CLOSED` — the browser has given up and will not retry by itself. */
+export const EVENT_SOURCE_CLOSED = 2;
 
 /** Opens a stream at a URL. One function, so a fake is one function. */
 export type EventSourceFactory = (url: string) => EventSourceLike;
@@ -29,9 +37,10 @@ export type EventSourceFactory = (url: string) => EventSourceLike;
 /**
  * How this application opens a live stream.
  *
- * A token rather than a bare `new EventSource(url)` for one reason: the stream carries the
- * behaviour most worth testing — invalidate-everything-on-connect, the quiet refresh, the project
- * hop — and none of it is reachable without driving `onopen` and `onmessage` by hand.
+ * A token rather than a bare `new EventSource(url)` for one reason: the streams carry the behaviour
+ * most worth testing — invalidate-everything-on-connect, the quiet refresh, the project hop,
+ * rebuild-from-replay, the terminal frame — and none of it is reachable without driving `onopen` and
+ * `onmessage` by hand.
  */
 export const EVENT_SOURCE_FACTORY = new InjectionToken<EventSourceFactory>('qits.event-source', {
   providedIn: 'root',

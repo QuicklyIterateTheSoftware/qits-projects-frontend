@@ -9,9 +9,10 @@ import {
   signal,
   untracked,
 } from '@angular/core';
-import type { EpicStatus } from '../api/dto';
+import { Router } from '@angular/router';
 import { ProjectEvents } from '../api/project-events';
 import { ProjectsApi } from '../api/projects-api';
+import { RefiningService } from '../refining/refining-service';
 import { Async } from '../ui/async';
 import { Empty } from '../ui/empty';
 import { LOADING, describeError, failed, ready, type Loadable } from '../ui/loadable';
@@ -19,12 +20,21 @@ import { EpicActions } from './epic-actions';
 import { EpicCard } from './epic-card';
 import { EpicDraftCard } from './epic-draft-card';
 import { EpicSummaryRow } from './epic-summary-row';
-import { actionsFor, epicAnchor, epicTitles, groupEpics, type EpicNode } from './epics-model';
+import {
+  actionKey,
+  actionsFor,
+  epicAnchor,
+  epicTitles,
+  groupEpics,
+  type EpicAction,
+  type EpicNode,
+} from './epics-model';
 
-/** Which epic a transition is running against, and where it is trying to take it. */
+/** Which epic an action is running against, and which of its buttons it is. */
 interface InFlight {
   readonly id: string;
-  readonly target: EpicStatus;
+  /** The action's {@link actionKey} — a status for a transition, `refine` for the refining workspace. */
+  readonly key: string;
 }
 
 /** Why the last transition on one epic did not happen, kept beside the epic it is about. */
@@ -59,6 +69,12 @@ interface Failure {
  *
  * <p>A transition re-reads the whole tree rather than splicing the answer in: superseding creates a
  * second epic, and a panel that patched one row would show a draft that is not there.
+ *
+ * <p><b>One of a draft's buttons is not a transition.</b> Refine starts (or re-enters) a workspace on
+ * the wrapper's `refining/<slug>` branch and navigates to it, leaving the epic exactly where it was.
+ * It shares this panel's busy state and its error pinning — a project with no wrapper, a git host that
+ * refused the ref and a workspaces service that is down all land beside the card, because in every one
+ * of them the screen is still correct and only the workspace is missing — and it shares nothing else.
  *
  * <p><b>It listens as well as reads.</b> A refinement agent — or another tab — changes these epics
  * without this page doing anything, so the project's live channel hints and the panel re-reads. The
@@ -109,7 +125,7 @@ interface Failure {
                     [disabled]="inFlight() !== null"
                     [running]="running(node)"
                     [error]="error(node)"
-                    (chosen)="transition(node, $event)"
+                    (chosen)="choose(node, $event)"
                   />
                 </div>
               }
@@ -131,7 +147,7 @@ interface Failure {
                     [disabled]="inFlight() !== null"
                     [running]="running(node)"
                     [error]="error(node)"
-                    (chosen)="transition(node, $event)"
+                    (chosen)="choose(node, $event)"
                   />
                 </div>
               }
@@ -151,7 +167,7 @@ interface Failure {
                     [disabled]="inFlight() !== null"
                     [running]="running(node)"
                     [error]="error(node)"
-                    (chosen)="transition(node, $event)"
+                    (chosen)="choose(node, $event)"
                   />
                 </div>
               }
@@ -239,6 +255,8 @@ interface Failure {
 export class EpicsOverview {
   private readonly api = inject(ProjectsApi);
   private readonly events = inject(ProjectEvents);
+  private readonly refining = inject(RefiningService);
+  private readonly router = inject(Router);
 
   readonly projectId = input.required<string>();
 
@@ -312,9 +330,9 @@ export class EpicsOverview {
     return actionsFor(node.epic.status);
   }
 
-  protected running(node: EpicNode): EpicStatus | null {
+  protected running(node: EpicNode): string | null {
     const flight = this.inFlight();
-    return flight?.id === node.epic.id ? flight.target : null;
+    return flight?.id === node.epic.id ? flight.key : null;
   }
 
   protected error(node: EpicNode): string | null {
@@ -329,23 +347,42 @@ export class EpicsOverview {
   }
 
   /**
-   * Move one epic, then re-read everything.
+   * Do what the button asked for — one of two quite different things, told apart by the action's own
+   * discriminant rather than by reading a status.
    *
-   * A failure — the 409 an illegal move answers — leaves the tree alone and puts the server's
-   * sentence beside the card, because the screen is still correct: nothing moved.
+   * The two share the busy state and the error-pinning and nothing else: a transition moves the epic and
+   * re-reads the tree, refining leaves the epic exactly where it was and navigates away.
    */
-  protected async transition(node: EpicNode, target: EpicStatus): Promise<void> {
+  protected async choose(node: EpicNode, action: EpicAction): Promise<void> {
     const id = node.epic.id;
-    this.inFlight.set({ id, target });
+    this.inFlight.set({ id, key: actionKey(action) });
     this.failure.set(null);
     try {
-      await this.api.transitionEpic(id, target);
-      await this.load();
+      if (action.kind === 'refine') {
+        await this.refine(node);
+      } else {
+        await this.api.transitionEpic(id, action.target);
+        await this.load();
+      }
     } catch (error) {
       this.failure.set({ id, message: describeError(error) });
     } finally {
       this.inFlight.set(null);
     }
+  }
+
+  /**
+   * Open this epic's refining workspace, starting one if there is none, then go to it.
+   *
+   * <p><b>The tree is not re-read afterwards, because nothing about it changed.</b> The epic is
+   * `REFINING` before the press and `REFINING` after it — what the press produced is a branch and a
+   * container in another service — so re-reading would be several round trips confirming a tree the
+   * page is about to leave anyway. That is the difference from a transition, and it is why the two
+   * share only the busy state and the failure.
+   */
+  private async refine(node: EpicNode): Promise<void> {
+    await this.refining.open(this.projectId(), node);
+    await this.router.navigate([this.projectId(), 'epics', node.epic.slug, 'refining']);
   }
 
   /**

@@ -44,6 +44,28 @@ export function taskBranch(epicSlug: string, featureSlug: string, taskSlug: stri
   return `task/${epicSlug}/${featureSlug}/${taskSlug}`;
 }
 
+/**
+ * The branch a **refining** epic is worked out on: `refining/<epic>`.
+ *
+ * <p>`refining/` is a fresh top-level prefix, so it cannot collide with `epic/`, `feature/` or
+ * `task/` at any depth — and that separation is what the name is for. The other three are branches of
+ * the *plan*, cut once the scope is frozen; this one is where the plan is written, and it exists while
+ * the slug can still change. Keeping them in different namespaces means a refining branch is never
+ * mistaken for the epic's own.
+ *
+ * <p>Composed like the others rather than stored, for the same reason: the name is a rule, and a
+ * stored copy of a rule is free to drift from it. **Nothing records which workspace refines which
+ * epic** — the refining workspace of an epic *is* the ACTIVE workspace on this branch in the project's
+ * wrapper repository, looked up by branch match every time. No column, no drift, and a discarded
+ * workspace simply stops being found.
+ *
+ * <p>The branch lives on the **wrapper** repository, not on a component, because refining is about the
+ * whole plan: it reads and writes epics, features and tasks that span every component the project has.
+ */
+export function refiningBranch(epicSlug: string): string {
+  return `refining/${epicSlug}`;
+}
+
 /** What a line's badge says, and how loudly. */
 export interface StatusBadge {
   readonly label: string;
@@ -160,52 +182,94 @@ export function groupEpics(nodes: readonly EpicNode[]): EpicGroups {
 }
 
 /**
- * One move a reader can make on an epic: where it goes, what the button says, and what it says
- * once, before it does it.
+ * A move that takes the epic to another point in its life.
  *
- * `confirmLabel` is null for a move worth making by accident. Freezing a draft is one of those —
- * it is the ordinary next step and the epic is still there afterwards — while superseding and
- * abandoning throw away a plan, so each asks in the button itself rather than in a browser dialog
- * the page cannot style or test.
+ * `confirmLabel` is null for a move worth making by accident. Freezing a draft is one of those — it is
+ * the ordinary next step and the epic is still there afterwards — while superseding and abandoning
+ * throw away a plan, so each asks in the button itself rather than in a browser dialog the page cannot
+ * style or test.
  */
-export interface EpicAction {
+export interface EpicTransitionAction {
+  readonly kind: 'transition';
   readonly target: EpicStatus;
   readonly label: string;
   readonly confirmLabel: string | null;
 }
 
-const START: EpicAction = {
+/**
+ * Open the refining workspace: start (or re-enter) a real qits-workspaces workspace on the wrapper's
+ * `refining/<slug>` branch and go to it.
+ *
+ * <p><b>It is not a status transition, and the discriminant is what keeps it from pretending to be
+ * one.</b> The epic does not move: it is `REFINING` before the press and `REFINING` after it. Reaching
+ * this through {@link EpicStatus} would mean inventing a fifth status the service has never heard of,
+ * and every reader of the epic's status would then have to know that one of its values is not a status.
+ *
+ * <p>No confirmation, because nothing is thrown away: the flow is find-or-create, so a second press
+ * lands in the workspace the first one made.
+ */
+export interface EpicRefineAction {
+  readonly kind: 'refine';
+  readonly label: string;
+  readonly confirmLabel: null;
+}
+
+/** One move a reader can make on an epic — a lifecycle transition, or opening its refining workspace. */
+export type EpicAction = EpicTransitionAction | EpicRefineAction;
+
+const REFINE: EpicRefineAction = { kind: 'refine', label: 'Refine', confirmLabel: null };
+const START: EpicTransitionAction = {
+  kind: 'transition',
   target: 'IMPLEMENTATION',
   label: 'Start implementation',
   confirmLabel: null,
 };
-const SUPERSEDE: EpicAction = {
+const SUPERSEDE: EpicTransitionAction = {
+  kind: 'transition',
   target: 'SUPERSEDED',
   label: 'Supersede',
   confirmLabel: 'Confirm supersede?',
 };
-const ABANDON: EpicAction = {
+const ABANDON: EpicTransitionAction = {
+  kind: 'transition',
   target: 'ABANDONED',
   label: 'Abandon',
   confirmLabel: 'Confirm abandon?',
 };
 
 /**
- * What can be done to an epic in a given phase — the service's legal transitions, mirrored.
+ * What can be done to an epic in a given phase — the service's legal transitions, mirrored, plus the
+ * one action that is not a transition.
  *
- * Mirrored rather than guessed at from the buttons: the server validates every move and answers a
- * 409 for the rest, so this list is only about not offering a press that cannot work. The two
- * terminal states offer nothing, which is what makes their rows a summary rather than a card.
+ * Mirrored rather than guessed at from the buttons: the server validates every move and answers a 409
+ * for the rest, so this list is only about not offering a press that cannot work. The two terminal
+ * states offer nothing, which is what makes their rows a summary rather than a card.
+ *
+ * <p><b>Refine comes first on a draft, ahead of freezing it.</b> The order is the order of the work:
+ * refining is what a `REFINING` epic is *for*, and freezing the scope is what you do when the refining
+ * is finished. Putting the ordinary next step at the front and the ending second would make the
+ * destructive-adjacent press the closest one to hand.
  */
 export function actionsFor(status: EpicStatus): readonly EpicAction[] {
   switch (status) {
     case 'REFINING':
-      return [START, ABANDON];
+      return [REFINE, START, ABANDON];
     case 'IMPLEMENTATION':
       return [SUPERSEDE, ABANDON];
     default:
       return [];
   }
+}
+
+/**
+ * What identifies one action among the row — for `track`, and for saying which button is busy.
+ *
+ * A transition is identified by where it goes, which is unique within a phase; refine is identified by
+ * being refine. The status values and the literal `'refine'` cannot collide, because `EpicStatus` is
+ * closed and screaming-case.
+ */
+export function actionKey(action: EpicAction): string {
+  return action.kind === 'refine' ? 'refine' : action.target;
 }
 
 /** Every epic's title by id, so a superseded row can name the draft that replaced it. */

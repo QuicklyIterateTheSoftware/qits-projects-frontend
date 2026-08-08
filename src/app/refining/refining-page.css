@@ -1,0 +1,93 @@
+:host {
+  display: block;
+}
+
+.crumb {
+  display: flex;
+  align-items: baseline;
+  gap: 0.35rem;
+  margin: 0 0 0.2rem;
+  color: #6b7280;
+  font-size: 0.82rem;
+}
+
+/* A button and not a link: the destination is a route with a fragment, and the router owns both. */
+.back {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: #2563eb;
+  font: inherit;
+  cursor: pointer;
+}
+
+.back:hover {
+  text-decoration: underline;
+}
+
+.head h1 {
+  margin: 0;
+  font-size: 1.35rem;
+}
+
+.meta {
+  margin: 0.15rem 0 0;
+  color: #6b7280;
+  font-size: 0.88rem;
+}
+
+.sep {
+  margin: 0 0.35rem;
+}
+
+.crumb .sep {
+  margin: 0;
+}
+
+.description {
+  margin: 0.4rem 0 0;
+  max-width: 44rem;
+  color: #374151;
+  font-size: 0.9rem;
+  overflow-wrap: anywhere;
+}
+
+.landed {
+  margin: 0.6rem 0 0;
+  font-size: 0.85rem;
+}
+
+.landed ul {
+  margin: 0;
+  padding-left: 1.1rem;
+}
+
+/* The offer is a surface rather than an error box: nothing is wrong, there is simply nothing open. */
+.offer {
+  margin: 1rem 0 0;
+  padding: 0.9rem 1rem;
+  border: 1px solid #c7d2fe;
+  border-radius: 0.5rem;
+  background: #eef2ff;
+  color: #3730a3;
+  max-width: 44rem;
+}
+
+.offer h2 {
+  margin: 0 0 0.35rem;
+  font-size: 1rem;
+}
+
+.offer p {
+  margin: 0 0 0.6rem;
+}
+
+.fault {
+  margin: 0.5rem 0 0;
+  color: #b91c1c;
+  overflow-wrap: anywhere;
+}
+
+code {
+  font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, monospace;
+}

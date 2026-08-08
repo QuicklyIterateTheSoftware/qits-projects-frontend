@@ -1,5 +1,6 @@
 import type { EpicDto, FeatureDto, TaskDto } from '../api/dto';
 import {
+  actionKey,
   actionsFor,
   epicAnchor,
   epicBadge,
@@ -10,6 +11,7 @@ import {
   featureStatus,
   groupEpics,
   isDone,
+  refiningBranch,
   taskBranch,
   taskStatus,
   type EpicNode,
@@ -92,6 +94,15 @@ describe('branch names', () => {
     expect(taskBranch('epics-overview', 'read-the-epics', 'add-the-endpoints')).toBe(
       'task/epics-overview/read-the-epics/add-the-endpoints',
     );
+  });
+
+  /**
+   * A fresh top-level prefix, which is the whole point: a refining branch is where the plan is written
+   * and cannot be read as the epic's own branch at any depth.
+   */
+  it('gives a refining branch its own namespace, above the plan’s three', () => {
+    expect(refiningBranch('epics-overview')).toBe('refining/epics-overview');
+    expect(refiningBranch('epics-overview').startsWith('epic/')).toBe(false);
   });
 });
 
@@ -257,31 +268,70 @@ describe('groupEpics', () => {
 
 /** The server validates every move; this list only decides which press is worth offering. */
 describe('actionsFor', () => {
-  it('offers a draft the freeze and the drop', () => {
+  /**
+   * Refine leads, and the order is the order of the work: refining is what a draft is *for*, and
+   * freezing the scope is what you do when the refining is finished.
+   */
+  it('offers a draft the refine, then the freeze, then the drop', () => {
     expect(actionsFor('REFINING')).toEqual([
-      { target: 'IMPLEMENTATION', label: 'Start implementation', confirmLabel: null },
-      { target: 'ABANDONED', label: 'Abandon', confirmLabel: 'Confirm abandon?' },
+      { kind: 'refine', label: 'Refine', confirmLabel: null },
+      {
+        kind: 'transition',
+        target: 'IMPLEMENTATION',
+        label: 'Start implementation',
+        confirmLabel: null,
+      },
+      {
+        kind: 'transition',
+        target: 'ABANDONED',
+        label: 'Abandon',
+        confirmLabel: 'Confirm abandon?',
+      },
     ]);
   });
 
-  it('offers implementation the supersede and the drop', () => {
-    expect(actionsFor('IMPLEMENTATION').map((action) => action.target)).toEqual([
+  /**
+   * The discriminant, not the status. Refine leaves the epic exactly where it was, so reaching it
+   * through `EpicStatus` would mean inventing a fifth status the service has never heard of.
+   */
+  it('marks refine as the one action that is not a transition', () => {
+    const [refine, ...transitions] = actionsFor('REFINING');
+
+    expect(refine.kind).toBe('refine');
+    expect(refine).not.toHaveProperty('target');
+    expect(transitions.every((action) => action.kind === 'transition')).toBe(true);
+  });
+
+  it('offers implementation the supersede and the drop, and no refine', () => {
+    expect(actionsFor('IMPLEMENTATION').map((action) => actionKey(action))).toEqual([
       'SUPERSEDED',
       'ABANDONED',
     ]);
   });
 
-  /** Both destructive moves ask twice; starting implementation is the ordinary next step. */
-  it('asks for a confirmation on everything that throws a plan away', () => {
-    expect(actionsFor('REFINING')[0].confirmLabel).toBeNull();
-    for (const action of [...actionsFor('REFINING').slice(1), ...actionsFor('IMPLEMENTATION')]) {
-      expect(action.confirmLabel).toContain('Confirm');
-    }
+  /** Both destructive moves ask twice. Refining and freezing take nothing away. */
+  it('asks for a confirmation on everything that throws a plan away, and nothing else', () => {
+    const asked = [...actionsFor('REFINING'), ...actionsFor('IMPLEMENTATION')]
+      .filter((action) => action.confirmLabel !== null)
+      .map((action) => actionKey(action));
+
+    expect(asked).toEqual(['ABANDONED', 'SUPERSEDED', 'ABANDONED']);
   });
 
   it('offers nothing on a terminal epic', () => {
     expect(actionsFor('SUPERSEDED')).toEqual([]);
     expect(actionsFor('ABANDONED')).toEqual([]);
+  });
+});
+
+/** Keys have to be unique within a row, because they are both the `track` and the busy marker. */
+describe('actionKey', () => {
+  it('identifies a transition by where it goes and refine by being refine', () => {
+    expect(actionsFor('REFINING').map((action) => actionKey(action))).toEqual([
+      'refine',
+      'IMPLEMENTATION',
+      'ABANDONED',
+    ]);
   });
 });
 
