@@ -191,6 +191,75 @@ describe('ProjectsApi', () => {
     await expect(reconciled).resolves.toEqual({ domain: 'REGISTERED', domainDetail: null });
   });
 
+  /** Three levels, three entry keys — `epic`, `feature`, `task` — and each is unwrapped as its own. */
+  it('unwraps the epic entries', async () => {
+    const epics = api.epics('p1');
+    http.expectOne('/projects/api/projects/p1/epics').flush({
+      entries: [
+        {
+          epic: {
+            id: 'e1',
+            projectId: 'p1',
+            title: 'Epics on the project page',
+            slug: 'epics-overview',
+            description: 'show the plan where the reader arrives',
+            createdAt: '2026-08-08T09:00:00Z',
+            updatedAt: '2026-08-08T09:00:00Z',
+          },
+        },
+      ],
+    });
+    await expect(epics).resolves.toMatchObject([{ id: 'e1', slug: 'epics-overview' }]);
+  });
+
+  it('unwraps the feature entries', async () => {
+    const features = api.features('e1');
+    http.expectOne('/projects/api/epics/e1/features').flush({
+      entries: [
+        {
+          feature: {
+            id: 'f1',
+            epicId: 'e1',
+            title: 'Read the epics',
+            slug: 'read-the-epics',
+            description: null,
+            dependsOnFeatureId: null,
+            implementedOn: '2026-08-08T10:00:00Z',
+            createdAt: '2026-08-08T09:00:00Z',
+            updatedAt: '2026-08-08T10:00:00Z',
+          },
+        },
+      ],
+    });
+    // `implementedOn` here, `implementedAt` on a task: the wire's inconsistency, kept.
+    await expect(features).resolves.toMatchObject([
+      { id: 'f1', implementedOn: '2026-08-08T10:00:00Z' },
+    ]);
+  });
+
+  it('unwraps the task entries', async () => {
+    const tasks = api.tasks('f1');
+    http.expectOne('/projects/api/features/f1/tasks').flush({
+      entries: [
+        {
+          task: {
+            id: 't1',
+            featureId: 'f1',
+            repositoryId: 'r1',
+            title: 'Add the endpoints',
+            slug: 'add-the-endpoints',
+            description: null,
+            dependsOnTaskId: null,
+            implementedAt: null,
+            createdAt: '2026-08-08T09:00:00Z',
+            updatedAt: '2026-08-08T09:00:00Z',
+          },
+        },
+      ],
+    });
+    await expect(tasks).resolves.toMatchObject([{ id: 't1', implementedAt: null }]);
+  });
+
   it('reads a repository’s sync status', async () => {
     const status = api.syncStatus('w1');
     http.expectOne('/projects/api/repositories/w1/sync-status').flush({

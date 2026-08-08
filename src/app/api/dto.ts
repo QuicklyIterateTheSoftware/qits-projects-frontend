@@ -8,7 +8,7 @@
  * response records inside the request type, so a generator names them positionally: qits-projects'
  * committed document already calls the list-projects response `Response19` and one entry `Entry4`.
  * A page written against `Entry4` is worse than one written against the interfaces below, and the
- * total surface is six endpoints.
+ * total surface is a handful of endpoints.
  */
 
 /**
@@ -156,6 +156,63 @@ export interface WrapperDto {
   readonly entries: readonly WrapperEntryDto[];
 }
 
+/**
+ * An epic: the backbone of a change to the platform.
+ *
+ * An epic may hold features and a feature may hold tasks, so the three together are the plan for a
+ * change rather than three unrelated lists. `slug` is the git-safe identity the branch convention
+ * is composed from; `title` is the editable display one. `createdAt` and `updatedAt` are ISO-8601
+ * instants.
+ *
+ * There is **no completion field** here, and that shapes what a status badge can honestly say —
+ * see `epicStatus` in the epics model.
+ */
+export interface EpicDto {
+  readonly id: string;
+  readonly projectId: string;
+  readonly title: string;
+  readonly slug: string;
+  readonly description: string | null;
+  readonly createdAt: string;
+  readonly updatedAt: string;
+}
+
+/**
+ * A feature under an epic. `dependsOnFeatureId` names a sibling that has to land first.
+ *
+ * <p><b>Completion is `implementedOn` here and `implementedAt` on a task.</b> That is what the wire
+ * says, so it is what this file says. Renaming one on the way in would leave every reader of this
+ * client believing in a field no response carries, and the inconsistency is the service's to
+ * settle — not this client's to paper over.
+ */
+export interface FeatureDto {
+  readonly id: string;
+  readonly epicId: string;
+  readonly title: string;
+  readonly slug: string;
+  readonly description: string | null;
+  readonly dependsOnFeatureId: string | null;
+  /** ISO-8601 instant, or null while the feature is open. The task's twin is `implementedAt`. */
+  readonly implementedOn: string | null;
+  readonly createdAt: string;
+  readonly updatedAt: string;
+}
+
+/** A task under a feature, in one repository. Completion is `implementedAt` — see {@link FeatureDto}. */
+export interface TaskDto {
+  readonly id: string;
+  readonly featureId: string;
+  readonly repositoryId: string;
+  readonly title: string;
+  readonly slug: string;
+  readonly description: string | null;
+  readonly dependsOnTaskId: string | null;
+  /** ISO-8601 instant, or null while the task is open. The feature's twin is `implementedOn`. */
+  readonly implementedAt: string | null;
+  readonly createdAt: string;
+  readonly updatedAt: string;
+}
+
 /** projects' list envelope: entries, each wrapping the thing it lists. */
 export interface ProjectEntriesResponse {
   readonly entries: readonly { readonly project: ProjectDto }[];
@@ -165,6 +222,25 @@ export interface ProjectEntriesResponse {
 export interface RepositoryEntriesResponse {
   readonly entries: readonly { readonly repository: RepositoryDto }[];
   readonly wrapper: WrapperDto | null;
+}
+
+/**
+ * The same envelope at each level of the plan, and **the entry key is the level's own name**:
+ * `epic`, then `feature`, then `task`. They are mirrored one by one rather than folded into a
+ * generic wrapper, because the key is the part a generic type would have to guess.
+ */
+export interface EpicEntriesResponse {
+  readonly entries: readonly { readonly epic: EpicDto }[];
+}
+
+/** One epic's features. */
+export interface FeatureEntriesResponse {
+  readonly entries: readonly { readonly feature: FeatureDto }[];
+}
+
+/** One feature's tasks. */
+export interface TaskEntriesResponse {
+  readonly entries: readonly { readonly task: TaskDto }[];
 }
 
 /**

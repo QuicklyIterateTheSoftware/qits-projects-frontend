@@ -7,12 +7,11 @@ import { RouterTestingHarness } from '@angular/router/testing';
 import { routes } from '../app.routes';
 
 /**
- * The project's own address, which is now nearly empty on purpose.
+ * The project's own address: its name, the way in to setting it up, and its epics.
  *
- * There is little to assert and that is the assertion: this page names the project, offers the way
- * in to setting it up, and — the part worth pinning — **asks the service for nothing of its own**.
- * The components read that used to happen here moved behind `project-setup`, and a page that
- * quietly kept making it would pay for a screen nobody is looking at.
+ * The read worth pinning is the one it does **not** make. The components read that used to happen
+ * here moved behind `project-setup`, and a page that quietly kept making it would pay for a screen
+ * nobody is looking at. The epics are the page's only request, and the overview owns it.
  */
 describe('ProjectPage', () => {
   let http: HttpTestingController;
@@ -55,13 +54,19 @@ describe('ProjectPage', () => {
     });
   }
 
+  /** The epics are the page's own read; every test has to answer it. */
+  function flushEpics(projectId = 'p1') {
+    http.expectOne(`/projects/api/projects/${projectId}/epics`).flush({ entries: [] });
+  }
+
   function page(): HTMLElement {
     return harness.fixture.nativeElement as HTMLElement;
   }
 
-  it('names the project and asks for nothing else', async () => {
+  it('names the project and reads its epics, and nothing else', async () => {
     await open();
     flushProjects([{ id: 'p1', name: 'qits', description: 'the platform' }]);
+    flushEpics();
     await settle();
 
     expect(page().querySelector('h1')?.textContent).toContain('qits');
@@ -70,9 +75,20 @@ describe('ProjectPage', () => {
     http.verify();
   });
 
+  it('says the project has no epics rather than leaving the section blank', async () => {
+    await open();
+    flushProjects([{ id: 'p1', name: 'qits' }]);
+    flushEpics();
+    await settle();
+
+    expect(page().textContent).toContain('Epics');
+    expect(page().textContent).toContain('This project has no epics yet.');
+  });
+
   it('offers project setup as a link under the project’s own address', async () => {
     await open();
     flushProjects([{ id: 'p1', name: 'qits' }]);
+    flushEpics();
     await settle();
 
     const setup = page().querySelector<HTMLAnchorElement>('a.setup');
@@ -84,6 +100,7 @@ describe('ProjectPage', () => {
   it('navigates to the setup page when the action is followed', async () => {
     await open();
     flushProjects([{ id: 'p1', name: 'qits' }]);
+    flushEpics();
     await settle();
 
     page().querySelector<HTMLAnchorElement>('a.setup')?.click();
@@ -99,6 +116,7 @@ describe('ProjectPage', () => {
   it('falls back to the id when the project list could not be read', async () => {
     await open();
     http.expectOne('/projects/api/projects').flush(null, { status: 503, statusText: 'Down' });
+    flushEpics();
     await settle();
 
     expect(page().querySelector('h1')?.textContent).toContain('p1');
@@ -108,6 +126,7 @@ describe('ProjectPage', () => {
   it('shows nothing but the name for a project id the list does not contain', async () => {
     await open('/nope');
     flushProjects([{ id: 'p1', name: 'qits' }]);
+    flushEpics('nope');
     await settle();
 
     expect(page().querySelector('h1')?.textContent).toContain('nope');
