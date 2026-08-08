@@ -1,6 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, input } from '@angular/core';
 import { QitsBadge, QitsCard } from '@qits/ui-components';
 import { NONE } from '../ui/format';
+import { MarkdownView } from '../ui/markdown-view';
 import {
   epicBranch,
   epicStatus,
@@ -23,6 +24,14 @@ interface Row {
   /** The right cell's classes. */
   readonly right: string;
   readonly text: string;
+  /**
+   * Whether {@link text} is markdown to render rather than a label to print.
+   *
+   * True on the summary line and nowhere else: that line is the epic's *description*, which is
+   * written in markdown, while every row below it is a title — one line of words that would gain
+   * nothing from a renderer and could only be surprised by it.
+   */
+  readonly markdown: boolean;
   /** Null on the summary line, whose badge sits in the card header instead. */
   readonly badge: StatusBadge | null;
   readonly branch: string;
@@ -48,7 +57,8 @@ function rowsOf(node: EpicNode): readonly Row[] {
       key: node.epic.id,
       left: 'cell left summary',
       right: 'cell right summary',
-      text: node.epic.description ?? NONE,
+      text: node.epic.description || NONE,
+      markdown: Boolean(node.epic.description),
       badge: null,
       branch: epicBranch(epicSlug),
       compare: compareText(epicBranch(epicSlug), TRUNK),
@@ -63,6 +73,7 @@ function rowsOf(node: EpicNode): readonly Row[] {
       left: 'cell left',
       right: 'cell right',
       text: child.feature.title,
+      markdown: false,
       badge: featureStatus(child.feature),
       branch,
       compare: compareText(branch, epicBranch(epicSlug)),
@@ -75,6 +86,7 @@ function rowsOf(node: EpicNode): readonly Row[] {
         left: 'cell left indent',
         right: 'cell right',
         text: task.title,
+        markdown: false,
         badge: taskStatus(task),
         branch: taskRef,
         compare: compareText(taskRef, branch),
@@ -96,11 +108,16 @@ function rowsOf(node: EpicNode): readonly Row[] {
  * on, and the obvious next question is what is on that branch — but there is no comparison view in
  * this build, so an anchor here would be a promise it cannot keep, and a dead link is worse than no
  * link. The placeholder says the view does not exist and its hover text says what it would show.
+ *
+ * <p><b>The summary line is markdown, and only it.</b> The epic's description is written with
+ * headings, bold and code in it, so it is rendered rather than printed — the same fix the draft card
+ * needed, applied here because an epic under implementation has the same description it had while it
+ * was a draft. The rows below it are titles, and they stay text.
  */
 @Component({
   selector: 'app-epic-card',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [QitsBadge, QitsCard],
+  imports: [MarkdownView, QitsBadge, QitsCard],
   template: `
     <qits-card [heading]="node().epic.title">
       <span qitsCardActions>
@@ -110,7 +127,11 @@ function rowsOf(node: EpicNode): readonly Row[] {
       <div class="rows">
         @for (row of rows(); track row.key) {
           <span [class]="row.left">
-            <span class="text">{{ row.text }}</span>
+            @if (row.markdown) {
+              <app-markdown class="text" [text]="row.text" />
+            } @else {
+              <span class="text">{{ row.text }}</span>
+            }
             @if (row.badge; as badge) {
               <qits-badge [label]="badge.label" [tone]="badge.tone" />
             }
@@ -165,7 +186,10 @@ function rowsOf(node: EpicNode): readonly Row[] {
     .text {
       color: #111827;
     }
+    /* The rendered description is a flex item, and a zero min-width is what lets a wide code block
+       scroll inside it rather than push the branch column off the card. */
     .summary .text {
+      min-width: 0;
       color: #6b7280;
     }
     .branch {

@@ -30,7 +30,7 @@ const EPIC = {
   projectId: 'p1',
   title: 'Epic refining workspace',
   slug: 'epic-refining-workspace',
-  description: 'a third action on a draft',
+  description: 'a third action on a **draft**',
   status: 'REFINING',
   supersededByEpicId: null,
   createdAt: AT,
@@ -289,6 +289,14 @@ describe('RefiningPage', () => {
       expect(text()).toContain('Epic refining workspace');
       expect(text()).toContain('refining/epic-refining-workspace');
       expect(text()).toContain('a third action on a draft');
+    });
+
+    /** The description is markdown, so the header renders it rather than printing its punctuation. */
+    it('renders the epic’s description as markdown', async () => {
+      await open();
+
+      expect(element().querySelector('.description strong')?.textContent).toBe('draft');
+      expect(text()).not.toContain('**');
     });
 
     /** Loose matching would open another epic's workspace, which is the worst thing this page can do. */

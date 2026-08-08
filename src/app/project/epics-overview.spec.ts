@@ -254,6 +254,20 @@ describe('EpicsOverview', () => {
     expect(element().querySelectorAll('a')).toHaveLength(0);
   });
 
+  /**
+   * An epic under implementation carries the same markdown description it had as a draft, so the
+   * summary line renders it. The rows below are titles and stay text.
+   */
+  it('renders the epic’s description as markdown on the summary line', async () => {
+    await mount();
+    await flushEpics([epic('e1', 'shipping', { description: 'A public **status page**.' })]);
+    await flushFeatures('e1', []);
+    const card = element().querySelector('app-epic-card');
+
+    expect(card?.querySelector('.summary strong')?.textContent).toBe('status page');
+    expect(card?.textContent).not.toContain('**');
+  });
+
   it('says so plainly when the project has no epics', async () => {
     await mount();
     await flushEpics([]);
@@ -373,6 +387,33 @@ describe('EpicsOverview', () => {
       expect(draft?.textContent).toContain('what it will do');
       expect(draft?.textContent).toContain('Task draft-task');
       expect(draft?.textContent).toContain('the detail');
+    });
+
+    /**
+     * The bug this pins. Every description on the three levels is markdown, and the card used to
+     * print it verbatim — `## Status page A public **status page**…`, the plan read out as
+     * punctuation.
+     */
+    it('renders the markdown in the description and in the outline’s notes', async () => {
+      await mount();
+      await flushEpics([
+        epic('e1', 'draft', {
+          status: 'REFINING',
+          description: '## Status page\n\nA public **status page** for `qits-ci`.',
+        }),
+      ]);
+      await flushFeatures('e1', [
+        feature('f1', 'draft-feature', { description: 'ships **daily**' }),
+      ]);
+      await flushTasks('f1', []);
+      const draft = element().querySelector('app-epic-draft-card');
+
+      expect(draft?.querySelector('h2')?.textContent).toBe('Status page');
+      expect(draft?.querySelector('.description strong')?.textContent).toBe('status page');
+      expect(draft?.querySelector('.description code')?.textContent).toBe('qits-ci');
+      expect(draft?.querySelector('.note strong')?.textContent).toBe('daily');
+      expect(draft?.textContent).not.toContain('##');
+      expect(draft?.textContent).not.toContain('**');
     });
 
     /** Nothing is frozen and nothing is implemented, so there is no branch and no row status. */
