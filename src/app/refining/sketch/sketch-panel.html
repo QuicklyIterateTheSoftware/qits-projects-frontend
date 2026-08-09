@@ -4,6 +4,56 @@
     prompt draft. It is kept beside the draft and survives a container recreate.
   </p>
 
+  <app-async
+    [state]="attachments()"
+    loadingLabel="Loading the attached images"
+    errorLabel="Could not load the attached images"
+    (retry)="reload()"
+  />
+
+  <!--
+    The gallery is a document picker: one tile per drawing, plus “New”. Picking a tile opens that
+    drawing on the canvas below, so the canvas always shows the tile that is lit.
+  -->
+  <ul class="gallery" aria-label="Sketches on this workspace">
+    <li class="cell">
+      <button
+        type="button"
+        class="tile"
+        [class.on]="newSelected()"
+        [attr.aria-pressed]="newSelected()"
+        (click)="selectNew()"
+      >
+        <span class="preview blank" aria-hidden="true"></span>
+        <span class="caption">New</span>
+      </button>
+    </li>
+
+    @for (attachment of rows(); track attachment.id) {
+      <li class="cell">
+        <button
+          type="button"
+          class="tile"
+          [class.on]="isSelected(attachment)"
+          [attr.aria-pressed]="isSelected(attachment)"
+          (click)="select(attachment)"
+        >
+          <img class="preview" [src]="src(attachment)" alt="" />
+          <span class="caption">{{ attachment.label }}</span>
+        </button>
+        <button
+          type="button"
+          class="kill"
+          [attr.aria-label]="'Delete ' + attachment.label"
+          [disabled]="isRemoving(attachment.id)"
+          (click)="remove(attachment)"
+        >
+          ×
+        </button>
+      </li>
+    }
+  </ul>
+
   <div class="tools" role="toolbar" aria-label="Sketch tools">
     <div class="group" role="group" aria-label="Tool">
       <button
@@ -80,47 +130,13 @@
       [busy]="attaching()"
       [disabled]="attaching()"
       (pressed)="attach()"
-      >Attach to prompt</qits-button
+      >{{ saveLabel() }}</qits-button
     >
-    @if (attached()) {
-      <span class="done" role="status">Attached ✓</span>
+    @if (done(); as word) {
+      <span class="done" role="status">{{ word }} ✓</span>
     }
     @if (attachFailure(); as message) {
-      <span class="fault" role="alert">That did not attach — {{ message }}.</span>
+      <span class="fault" role="alert">{{ message }}</span>
     }
   </div>
-</section>
-
-<section class="attached" aria-label="Attached images">
-  <h3>Attached to this workspace</h3>
-
-  <app-async
-    [state]="attachments()"
-    loadingLabel="Loading the attached images"
-    errorLabel="Could not load the attached images"
-    (retry)="reload()"
-  />
-
-  @if (attachments().kind === 'ready') {
-    @if (rows().length === 0) {
-      <app-empty message="Nothing is attached to this workspace’s prompt draft yet." />
-    } @else {
-      <ul class="strip">
-        @for (attachment of rows(); track attachment.id) {
-          <li class="thumb">
-            <img [src]="src(attachment)" [alt]="attachment.label" />
-            <span class="label">{{ attachment.label }}</span>
-            <qits-button
-              variant="ghost"
-              size="sm"
-              [busy]="isRemoving(attachment.id)"
-              [disabled]="isRemoving(attachment.id)"
-              (pressed)="remove(attachment)"
-              >Remove</qits-button
-            >
-          </li>
-        }
-      </ul>
-    }
-  }
 </section>

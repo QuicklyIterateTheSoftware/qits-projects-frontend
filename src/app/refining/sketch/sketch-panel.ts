@@ -17,7 +17,6 @@ import type { PromptAttachmentDto } from '../../api/prompt-attachments-api';
 import { PromptAttachmentsApi } from '../../api/prompt-attachments-api';
 import { WorkspaceEvents } from '../../api/workspace-events';
 import { Async } from '../../ui/async';
-import { Empty } from '../../ui/empty';
 import {
   IDLE,
   LOADING,
@@ -65,13 +64,14 @@ export const MAX_HISTORY = 30;
 const FLASH_MS = 2000;
 
 /**
- * The Sketch tab: a drawing surface, and the whole attach loop around it.
+ * The Sketch tab: a drawing surface, a gallery of the drawings on this workspace, and the save loop
+ * between them.
  *
  * Ported from the legacy webui's Sketch tab, with one change of shape. There, the drawing was handed
  * to a prompt-draft service and the *Chat* tab rendered the attached images. Here nothing else
  * renders them yet, so a panel that only uploaded would be a dead end — you would press the button
  * and have no way to see that anything happened, or to take it back. So this panel owns the loop end
- * to end: draw, attach, see the strip below, remove.
+ * to end: pick, draw, save, delete.
  *
  * ## What the drawing is, and what it is not
  *
@@ -80,6 +80,37 @@ const FLASH_MS = 2000;
  * qits-workspaces has no `taskPrompt` MCP tool yet, so nothing serves these images to a coding
  * agent. The copy on screen says "attached to this workspace's prompt draft" and deliberately does
  * not promise more than that. When the tool lands, the sentence changes and nothing else does.
+ *
+ * ## The gallery is a document picker
+ *
+ * The strip above the canvas holds one tile per attachment, plus a "New" tile that is picked on
+ * load. **Picking a tile opens that drawing for editing**, the way a file list opens a file: the
+ * image is drawn onto the canvas and becomes the undo baseline, so undo steps back to what was
+ * saved and never to a blank canvas nobody asked for.
+ *
+ * The gallery sits *above* the canvas and there is no second list below it. An earlier shape had
+ * both — a picker on top and a "Attached to this workspace" strip underneath — and two renderings of
+ * the same rows on one screen is worse than either alone.
+ *
+ * The strip shows every attachment, not only the ones drawn here. Nothing else in this SPA attaches
+ * an image yet, but when something does, this is the only place a reader can see or delete one, and
+ * hiding rows from the one view that has them would strand them.
+ *
+ * ## Saving, and why it creates before it deletes
+ *
+ * The save button does one of two things, and its label says which:
+ *
+ * - **On "New"** it creates a row, numbered on from the sketches already on the workspace, and then
+ *   *selects what it created*. You are editing that drawing from then on, not sitting on a blank
+ *   New tile that would create a near-duplicate on the next press.
+ * - **On an existing sketch** it saves over that row: same label, new bytes. The service has no
+ *   update endpoint, so it is a POST of the new image followed by a DELETE of the old row.
+ *
+ * **The create comes first, always.** Deleting first would leave a window in which the only copy of
+ * the drawing is the one in this browser tab, and a failed upload in that window loses the work. In
+ * this order the worst case is a duplicate, which is visible in the gallery and can be deleted — so
+ * a DELETE that fails after the POST succeeded is reported rather than swallowed, and the list is
+ * re-read so the duplicate is on screen instead of hiding.
  *
  * ## The drawing core, and why each part is the way it is
  *
@@ -98,16 +129,16 @@ const FLASH_MS = 2000;
  * - **The 2D context is checked before `new Atrament(...)`.** Atrament dereferences it in its
  *   constructor, and jsdom's canvas has none — the specs would throw on construction.
  * - **Undo is a snapshot stack**, pushed on atrament's `strokeend`, capped at {@link MAX_HISTORY} by
- *   evicting index 1. Never index 0: that is the blank baseline, and undo must always be able to
- *   reach a clean canvas. A plain `slice(-MAX_HISTORY)` would drop the baseline first.
- * - **The undo repaint is asynchronous** (`Image.onload`), so two quick undos can complete out of
- *   order. A monotonic sequence number makes a superseded repaint bail, which is what keeps the
- *   pixels agreeing with the history.
+ *   evicting index 1. Never index 0: that is the baseline — blank, or the drawing that was loaded —
+ *   and undo must always be able to reach it. A plain `slice(-MAX_HISTORY)` would drop it first.
+ * - **Every repaint is asynchronous** (`Image.onload`), so two quick undos, or two quick tile
+ *   clicks, are two decodes whose completion order is not guaranteed. One monotonic sequence number
+ *   covers both paths, so a superseded repaint bails and the last press wins.
  *
  * ## What it loads
  *
- * **One request on first open**: `GET …/prompt-attachments`, the strip below the canvas. It reloads
- * on a `prompt-attachments` hint, and on its own attach and remove.
+ * **One request on first open**: `GET …/prompt-attachments`, which is the gallery. It reloads on a
+ * `prompt-attachments` hint, and on its own save and delete.
  *
  * It follows the quiet-panel visibility rule: no refetching behind another tab, one catch-up read on
  * becoming visible. **The canvas keeps its ink either way** — the tab host keeps hidden panels
@@ -117,7 +148,7 @@ const FLASH_MS = 2000;
 @Component({
   selector: 'app-sketch-panel',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [Async, Empty, QitsButton],
+  imports: [Async, QitsButton],
   templateUrl: './sketch-panel.html',
   styleUrl: './sketch-panel.css',
 })
@@ -147,27 +178,31 @@ export class SketchPanel {
   protected readonly color = signal<string>(COLORS[0].value);
   protected readonly weight = signal<number>(WEIGHTS[1].value);
 
-  /** Snapshots as data URLs, blank baseline first. Undo pops back to the previous one. */
+  /** Snapshots as data URLs, the baseline first. Undo pops back to the previous one. */
   private readonly history = signal<readonly string[]>([]);
 
-  /** There is something beyond the blank baseline to step back to. */
+  /** There is something beyond the baseline to step back to. */
   protected readonly canUndo = computed(() => this.history().length > 1);
 
   protected readonly attaching = signal(false);
-  protected readonly attached = signal(false);
+
+  /** The confirmation word to flash — "Attached" or "Saved" — or `null` for nothing on screen. */
+  protected readonly done = signal<string | null>(null);
+
+  /** A whole sentence, because the two failures here are not the same kind of bad news. */
   protected readonly attachFailure = signal<string | null>(null);
 
-  /** The strip below the canvas. */
+  /** The gallery above the canvas. */
   protected readonly attachments = signal<Loadable<readonly PromptAttachmentDto[]>>(IDLE);
 
-  /** Rows with a remove in flight, keyed by id so one press spins one row. */
+  /** Rows with a delete in flight, keyed by id so one press spins one tile. */
   protected readonly removing = signal<ReadonlySet<string>>(new Set<string>());
 
   private readonly attachmentHints = this.events.invalidations('prompt-attachments');
 
   private atrament?: AtramentLike;
   private ready = false;
-  private flash?: ReturnType<typeof setTimeout>;
+  private flashTimer?: ReturnType<typeof setTimeout>;
   /** Bumped per repaint request; a deferred `Image.onload` paints only if it is still the latest. */
   private repaintSeq = 0;
 
@@ -197,7 +232,7 @@ export class SketchPanel {
     });
 
     inject(DestroyRef).onDestroy(() => {
-      clearTimeout(this.flash);
+      clearTimeout(this.flashTimer);
       this.atrament?.destroy();
     });
   }
@@ -252,8 +287,8 @@ export class SketchPanel {
     }
     this.history.update((history) => {
       const next = [...history, element.toDataURL('image/png')];
-      // Evict the oldest *stroke* (index 1), never the blank baseline at index 0 — undo must always
-      // be able to reach a clean canvas.
+      // Evict the oldest *stroke* (index 1), never the baseline at index 0 — undo must always be
+      // able to reach the drawing this session started from.
       if (next.length > MAX_HISTORY) {
         next.splice(1, next.length - MAX_HISTORY);
       }
@@ -286,14 +321,14 @@ export class SketchPanel {
     }
   }
 
-  /** Step back one snapshot, never past the blank baseline. */
+  /** Step back one snapshot, never past the baseline. */
   undo(): void {
     const history = this.history();
     if (history.length <= 1) {
       return;
     }
     const next = history.slice(0, -1);
-    this.repaint(next[next.length - 1]);
+    this.repaint(next[next.length - 1], 'step-back');
     this.history.set(next);
   }
 
@@ -303,18 +338,28 @@ export class SketchPanel {
     if (!element) {
       return;
     }
+    // Claim the sequence: a tile's decode that is still in flight must not land on the clean canvas.
+    this.repaintSeq++;
     this.paintWhite();
     this.history.set([element.toDataURL('image/png')]);
   }
 
   /**
-   * Repaint from a snapshot, leaving atrament's mode alone.
+   * Repaint from an image, leaving atrament's mode alone.
    *
-   * Decoding an image is asynchronous, and two undos in quick succession are two `onload`s whose
-   * completion order is not guaranteed to match the order they were requested in. The sequence stamp
-   * makes the superseded one bail, so the pixels always end up on the snapshot `history` names.
+   * Decoding is asynchronous, and two presses in quick succession are two `onload`s whose completion
+   * order is not guaranteed to match the order they were requested in. The sequence stamp makes the
+   * superseded one bail, so the pixels always end up where the last press said.
+   *
+   * The two modes differ in what they are repainting *from*:
+   *
+   * - `step-back` replays a snapshot this panel took, which is already opaque, so it clears and
+   *   draws.
+   * - `load` opens a stored attachment. It fills white first — a PNG with transparent regions would
+   *   otherwise show whatever was underneath — and, once the pixels are down, makes the loaded
+   *   drawing the undo baseline. Undo then reaches the drawing as saved and stops there.
    */
-  private repaint(dataUrl: string): void {
+  private repaint(dataUrl: string, mode: 'step-back' | 'load'): void {
     const element = this.canvasRef()?.nativeElement;
     const context = this.context();
     if (!element || !context) {
@@ -329,14 +374,22 @@ export class SketchPanel {
       context.save();
       context.setTransform(1, 0, 0, 1, 0, 0);
       context.globalCompositeOperation = 'source-over';
-      context.clearRect(0, 0, element.width, element.height);
+      if (mode === 'load') {
+        context.fillStyle = '#ffffff';
+        context.fillRect(0, 0, element.width, element.height);
+      } else {
+        context.clearRect(0, 0, element.width, element.height);
+      }
       context.drawImage(image, 0, 0, element.width, element.height);
       context.restore();
+      if (mode === 'load') {
+        this.history.set([element.toDataURL('image/png')]);
+      }
     };
     image.src = dataUrl;
   }
 
-  // ---- the attachments -------------------------------------------------------------------------
+  // ---- the gallery -----------------------------------------------------------------------------
 
   protected readonly rows = computed<readonly PromptAttachmentDto[]>(() => {
     const state = this.attachments();
@@ -348,6 +401,32 @@ export class SketchPanel {
     () => this.rows().filter((row) => row.source === 'SKETCH').length,
   );
 
+  /** Which tile is picked. `null` is the "New" tile, and it is where the panel opens. */
+  private readonly selectedId = signal<string | null>(null);
+
+  /**
+   * The row the canvas is editing, or `null` for a new drawing.
+   *
+   * Derived rather than stored, so a row that vanishes underneath the selection — deleted in another
+   * tab, say — quietly reads as "New" instead of leaving the panel pointed at nothing. The next save
+   * then creates, which is the only honest thing left to do with those pixels.
+   */
+  protected readonly selectedRow = computed<PromptAttachmentDto | null>(() => {
+    const id = this.selectedId();
+    return id === null ? null : (this.rows().find((row) => row.id === id) ?? null);
+  });
+
+  protected readonly newSelected = computed(() => this.selectedRow() === null);
+
+  /** The save button says which of the two things it will do. */
+  protected readonly saveLabel = computed(() =>
+    this.newSelected() ? 'Attach to prompt' : 'Save changes',
+  );
+
+  protected isSelected(attachment: PromptAttachmentDto): boolean {
+    return this.selectedRow()?.id === attachment.id;
+  }
+
   protected isRemoving(id: string): boolean {
     return this.removing().has(id);
   }
@@ -357,14 +436,28 @@ export class SketchPanel {
     return `data:${attachment.mimeType};base64,${attachment.dataBase64 ?? ''}`;
   }
 
+  /** Start a drawing that has no row behind it: blank canvas, blank baseline. */
+  protected selectNew(): void {
+    this.selectedId.set(null);
+    this.clearCanvas();
+  }
+
+  /** Open a stored drawing for editing. The canvas is replaced, and so is the undo baseline. */
+  protected select(attachment: PromptAttachmentDto): void {
+    this.selectedId.set(attachment.id);
+    this.repaint(this.src(attachment), 'load');
+  }
+
   /**
-   * Export the drawing and attach it to this workspace's prompt draft.
+   * Save the drawing: a new row on "New", or new bytes over the picked row.
    *
-   * The label continues the workspace's own numbering — `Sketch 3` when two are already attached —
-   * rather than counting this session's presses, so a reload does not restart at one.
+   * A new row continues the workspace's own numbering — `Sketch 3` when two are already attached —
+   * rather than counting this session's presses, so a reload does not restart at one. **A save-over
+   * never renumbers**: it keeps the label the drawing already had, because it is the same drawing.
    *
-   * The 413 is named rather than printed as a status code: it is the only failure here the reader
-   * can act on, and "the image is over the size limit" is what tells them to clear some detail.
+   * The order is create, then delete, and it is not interchangeable — see the class note. The 413 is
+   * named rather than printed as a status code: it is the only failure here the reader can act on,
+   * and "the image is over the size limit" is what tells them to clear some detail.
    */
   protected async attach(): Promise<void> {
     const element = this.canvasRef()?.nativeElement;
@@ -372,29 +465,53 @@ export class SketchPanel {
     if (!element || workspaceRowId <= 0 || this.attaching()) {
       return;
     }
+    const replacing = this.selectedRow();
     this.attaching.set(true);
     this.attachFailure.set(null);
     try {
-      await this.api.attach(workspaceRowId, {
+      const created = await this.api.attach(workspaceRowId, {
         mimeType: 'image/png',
-        label: `Sketch ${this.sketchCount() + 1}`,
-        source: 'SKETCH',
+        label: replacing ? replacing.label : `Sketch ${this.sketchCount() + 1}`,
+        source: replacing ? replacing.source : 'SKETCH',
         dataBase64: exportSketch(element),
       });
-      this.flashAttached();
+      // The selection follows the bytes: the row just written is the one being edited now.
+      this.selectedId.set(created.id);
+      if (replacing) {
+        try {
+          await this.api.remove(workspaceRowId, replacing.id);
+        } catch (error) {
+          this.attachFailure.set(
+            `The new copy saved, but the old one is still there — ${describeError(error)}. ` +
+              'Delete whichever you do not want.',
+          );
+          // Re-read, so the duplicate this left behind is on screen rather than hidden.
+          await this.load(workspaceRowId);
+          return;
+        }
+      }
+      this.flashDone(replacing ? 'Saved' : 'Attached');
       await this.load(workspaceRowId);
     } catch (error) {
+      // Nothing was written, so the gallery is still true — no re-read here.
       this.attachFailure.set(
         statusOf(error) === 413
-          ? 'the image is over the size limit — clear some detail and try again'
-          : describeError(error),
+          ? 'That did not attach — the image is over the size limit, so clear some detail and try again.'
+          : `That did not attach — ${describeError(error)}.`,
       );
     } finally {
       this.attaching.set(false);
     }
   }
 
-  /** Take one attachment back off the workspace, then re-read the strip. */
+  /**
+   * Delete one attachment.
+   *
+   * Deleting the drawing on the canvas falls back to "New" and clears it — a selection pointing at a
+   * row that is gone would offer to "save changes" to nothing. Deleting any other tile leaves the
+   * canvas exactly as it is; the reader is drawing, and tidying the gallery is not a reason to
+   * disturb that.
+   */
   protected async remove(attachment: PromptAttachmentDto): Promise<void> {
     const workspaceRowId = this.workspaceRowId();
     if (workspaceRowId <= 0 || this.isRemoving(attachment.id)) {
@@ -404,7 +521,7 @@ export class SketchPanel {
     try {
       await this.api.remove(workspaceRowId, attachment.id);
     } catch (error) {
-      // Reported where the list is, not beside the canvas: this failed the strip, not the drawing.
+      // Reported where the gallery is, not beside the canvas: this failed the list, not the drawing.
       this.attachments.set(failed(error));
       return;
     } finally {
@@ -414,6 +531,9 @@ export class SketchPanel {
         return next;
       });
     }
+    if (this.selectedId() === attachment.id) {
+      this.selectNew();
+    }
     await this.load(workspaceRowId);
   }
 
@@ -421,17 +541,17 @@ export class SketchPanel {
     void this.load(this.workspaceRowId());
   }
 
-  private flashAttached(): void {
-    this.attached.set(true);
-    clearTimeout(this.flash);
-    this.flash = setTimeout(() => this.attached.set(false), FLASH_MS);
+  private flashDone(word: string): void {
+    this.done.set(word);
+    clearTimeout(this.flashTimer);
+    this.flashTimer = setTimeout(() => this.done.set(null), FLASH_MS);
   }
 
   /**
    * Whether to read now.
    *
    * A hint that lands while another tab is showing is remembered and spent as one catch-up read on
-   * becoming visible — refetching behind a hidden tab would pay for a strip nobody is looking at.
+   * becoming visible — refetching behind a hidden tab would pay for a gallery nobody is looking at.
    */
   private decideRead(workspaceRowId: number, hint: number, visible: boolean): void {
     if (workspaceRowId <= 0) {
