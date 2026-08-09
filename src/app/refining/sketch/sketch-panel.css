@@ -105,7 +105,8 @@
   gap: 0.5rem;
   max-width: 1024px;
   margin: 0 0 0.6rem;
-  padding: 0 0 0.25rem;
+  /* The 2px of side and top padding is what keeps a selected tile's outline off the scroll edge. */
+  padding: 2px 2px 0.25rem;
   overflow-x: auto;
   list-style: none;
 }
@@ -160,11 +161,17 @@
   white-space: nowrap;
 }
 
-/* A plain × in the corner of the tile it deletes. No dialog: the row is one press away from gone. */
+/*
+  A plain × in the corner of the tile it deletes. No dialog: the row is one press away from gone.
+
+  It sits *inside* the tile rather than hanging off its corner, and that is not a style choice. The
+  gallery scrolls sideways, and a box with `overflow-x: auto` clips the other axis too — so a badge
+  overhanging the top edge gets its top half cut off, which is what the first version did.
+*/
 .kill {
   position: absolute;
-  top: -0.35rem;
-  right: -0.35rem;
+  top: 0.2rem;
+  right: 0.2rem;
   width: 1.15rem;
   height: 1.15rem;
   padding: 0;
