@@ -60,13 +60,19 @@
 }
 
 /*
-  `touch-action: none` is load-bearing: without it a stylus or a finger scrolls the page instead of
-  drawing on the canvas.
+  Two rules here are load-bearing rather than cosmetic.
+
+  `touch-action: none`: without it a stylus or a finger scrolls the page instead of drawing.
+
+  `max-width` is the canvas' own logical width. The buffer is a fixed 1024x640 and CSS scales it, so
+  a wider box does not buy a bigger drawing — it magnifies the same pixels, which blurs every stroke
+  and hands a napkin the height of the viewport. Capping at 1:1 keeps the ink sharp and the panel a
+  panel; a narrower window still scales down, where losing detail is the point.
 */
 .canvas {
   display: block;
   width: 100%;
-  max-width: 100%;
+  max-width: 1024px;
   border: 1px solid #e5e7eb;
   border-radius: 0.375rem;
   background: #ffffff;
