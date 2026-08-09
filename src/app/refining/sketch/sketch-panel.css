@@ -96,45 +96,94 @@
   font-size: 0.85rem;
 }
 
-.attached {
-  margin-top: 1rem;
-  padding-top: 0.75rem;
-  border-top: 1px solid #e5e7eb;
-}
-
-.attached h3 {
-  margin: 0 0 0.35rem;
-  color: #111827;
-  font-size: 0.9rem;
-}
-
-.strip {
+/*
+  The gallery: one row of tiles, aligned with the canvas and scrolling sideways rather than wrapping
+  into a wall of thumbnails that pushes the canvas off the screen.
+*/
+.gallery {
   display: flex;
-  flex-wrap: wrap;
-  gap: 0.75rem;
-  margin: 0.35rem 0 0;
-  padding: 0;
+  gap: 0.5rem;
+  max-width: 1024px;
+  margin: 0 0 0.6rem;
+  padding: 0 0 0.25rem;
+  overflow-x: auto;
   list-style: none;
 }
 
-.thumb {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 0.25rem;
-  width: 10rem;
+.cell {
+  position: relative;
+  flex: 0 0 auto;
 }
 
-.thumb img {
+.tile {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  width: 7rem;
+  padding: 0.25rem;
+  border: 1px solid #d1d5db;
+  border-radius: 0.375rem;
+  background: #ffffff;
+  font: inherit;
+  cursor: pointer;
+}
+
+.tile:hover {
+  border-color: #9ca3af;
+}
+
+/* The selected-state idiom of this panel: a #2563eb edge, as on `.chip.on` and `.swatch.on`. */
+.tile.on {
+  border-color: #2563eb;
+  outline: 1px solid #2563eb;
+}
+
+.preview {
+  display: block;
   width: 100%;
-  height: 6.25rem;
-  border: 1px solid #e5e7eb;
+  height: 4rem;
   border-radius: 0.25rem;
   background: #ffffff;
   object-fit: contain;
 }
 
-.label {
+.blank {
+  border: 1px dashed #d1d5db;
+}
+
+.caption {
+  overflow: hidden;
   color: #6b7280;
-  font-size: 0.78rem;
+  font-size: 0.72rem;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* A plain × in the corner of the tile it deletes. No dialog: the row is one press away from gone. */
+.kill {
+  position: absolute;
+  top: -0.35rem;
+  right: -0.35rem;
+  width: 1.15rem;
+  height: 1.15rem;
+  padding: 0;
+  border: 1px solid #d1d5db;
+  border-radius: 50%;
+  background: #ffffff;
+  color: #6b7280;
+  font: inherit;
+  font-size: 0.8rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.kill:hover:not(:disabled) {
+  border-color: #b91c1c;
+  color: #b91c1c;
+}
+
+.kill:disabled {
+  cursor: default;
+  opacity: 0.5;
 }
