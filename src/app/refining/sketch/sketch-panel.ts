@@ -96,21 +96,30 @@ const FLASH_MS = 2000;
  * an image yet, but when something does, this is the only place a reader can see or delete one, and
  * hiding rows from the one view that has them would strand them.
  *
- * ## Saving, and why it creates before it deletes
+ * ## Saving: the reader chooses, and the create comes first
  *
- * The save button does one of two things, and its label says which:
+ * On "New" there is one button — **Attach to prompt** — because there is only one thing it could
+ * mean. It creates a row, numbered on from the sketches already on the workspace, and then *selects
+ * what it created*. You are editing that drawing from then on, not sitting on a blank New tile that
+ * would make a near-duplicate on the next press.
  *
- * - **On "New"** it creates a row, numbered on from the sketches already on the workspace, and then
- *   *selects what it created*. You are editing that drawing from then on, not sitting on a blank
- *   New tile that would create a near-duplicate on the next press.
- * - **On an existing sketch** it saves over that row: same label, new bytes. The service has no
- *   update endpoint, so it is a POST of the new image followed by a DELETE of the old row.
+ * On a stored sketch there are **two**, and that is the point:
  *
- * **The create comes first, always.** Deleting first would leave a window in which the only copy of
- * the drawing is the one in this browser tab, and a failed upload in that window loses the work. In
- * this order the worst case is a duplicate, which is visible in the gallery and can be deleted — so
- * a DELETE that fails after the POST succeeded is reported rather than swallowed, and the list is
- * re-read so the duplicate is on screen instead of hiding.
+ * - **Update** (primary) saves over the picked row: same label, same source, new bytes.
+ * - **Save new** (secondary) leaves the picked row alone and creates another sketch from what is on
+ *   the canvas, then selects it — the same landing as the New path.
+ *
+ * A single save-over came first and was wrong. Both are ordinary things to want after editing a
+ * drawing — correcting it, and branching off it — and no rule about which one a press meant can be
+ * right every time. Guessing costs the reader either an overwrite they did not want or a duplicate
+ * they have to clean up. Two buttons ask at the only moment the answer is known.
+ *
+ * The service has no update endpoint, so **Update** is a POST of the new image followed by a DELETE
+ * of the old row. **The create comes first, always.** Deleting first would leave a window in which
+ * the only copy of the drawing is the one in this browser tab, and a failed upload in that window
+ * loses the work. In this order the worst case is a duplicate, which is visible in the gallery and
+ * can be deleted — so a DELETE that fails after the POST succeeded is reported rather than
+ * swallowed, and the list is re-read so the duplicate is on screen instead of hiding.
  *
  * ## The drawing core, and why each part is the way it is
  *
@@ -186,7 +195,7 @@ export class SketchPanel {
 
   protected readonly attaching = signal(false);
 
-  /** The confirmation word to flash — "Attached" or "Saved" — or `null` for nothing on screen. */
+  /** The confirmation word to flash — "Attached" or "Updated" — or `null` for nothing on screen. */
   protected readonly done = signal<string | null>(null);
 
   /** A whole sentence, because the two failures here are not the same kind of bad news. */
@@ -416,12 +425,8 @@ export class SketchPanel {
     return id === null ? null : (this.rows().find((row) => row.id === id) ?? null);
   });
 
+  /** Nothing is picked, so there is one thing a save could mean and one button offering it. */
   protected readonly newSelected = computed(() => this.selectedRow() === null);
-
-  /** The save button says which of the two things it will do. */
-  protected readonly saveLabel = computed(() =>
-    this.newSelected() ? 'Attach to prompt' : 'Save changes',
-  );
 
   protected isSelected(attachment: PromptAttachmentDto): boolean {
     return this.selectedRow()?.id === attachment.id;
@@ -449,23 +454,26 @@ export class SketchPanel {
   }
 
   /**
-   * Save the drawing: a new row on "New", or new bytes over the picked row.
+   * Save the drawing — as a new row, or over the picked one.
+   *
+   * `intent` is the button that was pressed, not a guess from the state: `update` replaces the
+   * picked row, `new` always creates. "New" offers only `new`, because there is nothing to update.
    *
    * A new row continues the workspace's own numbering — `Sketch 3` when two are already attached —
-   * rather than counting this session's presses, so a reload does not restart at one. **A save-over
+   * rather than counting this session's presses, so a reload does not restart at one. **An update
    * never renumbers**: it keeps the label the drawing already had, because it is the same drawing.
    *
    * The order is create, then delete, and it is not interchangeable — see the class note. The 413 is
    * named rather than printed as a status code: it is the only failure here the reader can act on,
    * and "the image is over the size limit" is what tells them to clear some detail.
    */
-  protected async attach(): Promise<void> {
+  protected async save(intent: 'update' | 'new'): Promise<void> {
     const element = this.canvasRef()?.nativeElement;
     const workspaceRowId = this.workspaceRowId();
     if (!element || workspaceRowId <= 0 || this.attaching()) {
       return;
     }
-    const replacing = this.selectedRow();
+    const replacing = intent === 'update' ? this.selectedRow() : null;
     this.attaching.set(true);
     this.attachFailure.set(null);
     try {
@@ -490,7 +498,8 @@ export class SketchPanel {
           return;
         }
       }
-      this.flashDone(replacing ? 'Saved' : 'Attached');
+      // The confirmation echoes the button that was pressed, so it is obvious which one landed.
+      this.flashDone(replacing ? 'Updated' : 'Attached');
       await this.load(workspaceRowId);
     } catch (error) {
       // Nothing was written, so the gallery is still true — no re-read here.

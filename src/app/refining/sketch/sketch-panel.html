@@ -124,14 +124,31 @@
     aria-label="Sketch canvas — draw with the mouse or a stylus"
   ></canvas>
 
+  <!--
+    On “New” a save can only mean one thing. On a stored sketch it means two, and which one is only
+    knowable by the reader — so both are offered rather than guessed at.
+  -->
   <div class="attach">
-    <qits-button
-      variant="primary"
-      [busy]="attaching()"
-      [disabled]="attaching()"
-      (pressed)="attach()"
-      >{{ saveLabel() }}</qits-button
-    >
+    @if (newSelected()) {
+      <qits-button
+        variant="primary"
+        [busy]="attaching()"
+        [disabled]="attaching()"
+        (pressed)="save('new')"
+        >Attach to prompt</qits-button
+      >
+    } @else {
+      <qits-button
+        variant="primary"
+        [busy]="attaching()"
+        [disabled]="attaching()"
+        (pressed)="save('update')"
+        >Update</qits-button
+      >
+      <qits-button variant="secondary" [disabled]="attaching()" (pressed)="save('new')"
+        >Save new</qits-button
+      >
+    }
     @if (done(); as word) {
       <span class="done" role="status">{{ word }} ✓</span>
     }

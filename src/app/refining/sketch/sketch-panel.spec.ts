@@ -115,8 +115,10 @@ class PanelHost {
  * this session's presses, so a reload does not restart at one; a panel that counted clicks would
  * pass a naive test and produce two "Sketch 1"s in an afternoon.
  *
- * **The document-picker model is asserted.** Saving over a picked sketch must keep the label, and
- * must POST before it DELETEs — the other order risks the only copy of a drawing.
+ * **The document-picker model is asserted.** With a sketch picked there are two saves and the
+ * difference between them is the whole feature: "Update" keeps the label and POSTs before it DELETEs
+ * — the other order risks the only copy of a drawing — while "Save new" writes another row and
+ * touches nothing that was already there.
  *
  * **The visibility rule is asserted.** A hint arriving behind another tab must be spent as one
  * catch-up read on return, not as a fetch nobody is looking at.
@@ -205,6 +207,16 @@ describe('SketchPanel', () => {
   const tile = (caption: string): HTMLButtonElement =>
     tiles().find((candidate) => candidate.textContent?.trim() === caption)!;
 
+  /** Press the `qits-button` with this caption — the wiring of a label to a save is the point. */
+  const press = (caption: string): void => {
+    const buttons = (fixture.nativeElement as HTMLElement).querySelectorAll<HTMLButtonElement>(
+      'button.qits-button',
+    );
+    Array.from(buttons)
+      .find((each) => each.textContent?.trim() === caption)!
+      .click();
+  };
+
   /** A tile's × , found the way a screen reader would. */
   const kill = (name: string): HTMLButtonElement =>
     (fixture.nativeElement as HTMLElement).querySelector<HTMLButtonElement>(
@@ -288,7 +300,7 @@ describe('SketchPanel', () => {
       attachment('a3', 'Pasted image 1', 'PASTE'),
     ]);
 
-    void panel()['attach']();
+    void panel()['save']('new');
     await settle();
     const post = http.expectOne(URL);
     expect(post.request.method).toBe('POST');
@@ -322,7 +334,7 @@ describe('SketchPanel', () => {
   it('names the size cap when the server refuses the image as too large', async () => {
     await open([]);
 
-    void panel()['attach']();
+    void panel()['save']('new');
     await settle();
     http
       .expectOne(URL)
@@ -366,7 +378,9 @@ describe('SketchPanel', () => {
     expect(tile('Sketch 1').getAttribute('aria-pressed')).toBe('false');
     // "New" is a blank page, so there is nothing to delete on it.
     expect(kill('Delete New')).toBeNull();
+    // One button: with nothing picked, a save can only mean one thing.
     expect(text()).toContain('Attach to prompt');
+    expect(text()).not.toContain('Update');
   });
 
   it('loads the picked sketch onto the canvas and makes it the undo baseline', async () => {
@@ -388,8 +402,10 @@ describe('SketchPanel', () => {
     expect(panel()['history']()).toHaveLength(1);
     expect(panel()['canUndo']()).toBe(false);
     expect(tile('Sketch 1').getAttribute('aria-pressed')).toBe('true');
-    // The button now tells the truth about which of the two things it does.
-    expect(text()).toContain('Save changes');
+    // Both saves are offered, because which one a press means is the reader's to say.
+    expect(text()).toContain('Update');
+    expect(text()).toContain('Save new');
+    expect(text()).not.toContain('Attach to prompt');
   });
 
   it('clears back to a blank canvas on “New”, even with a tile’s decode still in flight', async () => {
@@ -410,7 +426,7 @@ describe('SketchPanel', () => {
   it('selects what it just created, so the next save edits it instead of adding another', async () => {
     await open([]);
 
-    void panel()['attach']();
+    void panel()['save']('new');
     await settle();
     const post = http.expectOne(URL);
     expect(post.request.body.label).toBe('Sketch 1');
@@ -432,15 +448,15 @@ describe('SketchPanel', () => {
     expect(tile('Sketch 1').getAttribute('aria-pressed')).toBe('true');
     expect(tile('New').getAttribute('aria-pressed')).toBe('false');
     expect(text()).toContain('Attached');
-    expect(text()).toContain('Save changes');
+    expect(text()).toContain('Update');
   });
 
-  it('saves over the picked sketch: a new copy under the same label, then the old row', async () => {
+  it('“Update” saves over the picked sketch: a new copy under the same label, then the old row', async () => {
     await open([attachment('a1', 'Sketch 1'), attachment('a2', 'Sketch 2')]);
     tile('Sketch 2').click();
     await settle();
 
-    void panel()['attach']();
+    void panel()['save']('update');
     await settle();
     const post = http.expectOne(URL);
     expect(post.request.method).toBe('POST');
@@ -476,7 +492,48 @@ describe('SketchPanel', () => {
       'Sketch 1',
       'Sketch 2',
     ]);
-    expect(text()).toContain('Saved');
+    expect(text()).toContain('Updated');
+  });
+
+  it('“Save new” from a stored sketch adds one and leaves the original alone', async () => {
+    await open([attachment('a1', 'Sketch 1')]);
+    tile('Sketch 1').click();
+    await settle();
+    fixture.detectChanges();
+
+    press('Save new');
+    await settle();
+    const post = http.expectOne(URL);
+    expect(post.request.method).toBe('POST');
+    // A new row, numbered on from the sketch count — not a copy of the picked row's label.
+    expect(post.request.body).toMatchObject({ label: 'Sketch 2', source: 'SKETCH' });
+    post.flush(
+      {
+        id: 'a2',
+        mimeType: 'image/png',
+        label: 'Sketch 2',
+        source: 'SKETCH',
+        createdAt: '2026-08-09T09:30:00Z',
+      },
+      { status: 201, statusText: 'Created' },
+    );
+    await settle();
+
+    // No DELETE: the picked sketch was branched from, not replaced. The next read is the gallery's.
+    http
+      .expectOne(URL)
+      .flush({ attachments: [attachment('a1', 'Sketch 1'), attachment('a2', 'Sketch 2')] });
+    await settle();
+    fixture.detectChanges();
+
+    expect(tiles().map((each) => each.textContent?.trim())).toEqual([
+      'New',
+      'Sketch 1',
+      'Sketch 2',
+    ]);
+    // The selection follows the bytes, the same as it does from "New".
+    expect(panel()['selectedRow']()?.id).toBe('a2');
+    expect(text()).toContain('Attached');
   });
 
   it('keeps the new copy and says so when the old row will not delete', async () => {
@@ -484,7 +541,7 @@ describe('SketchPanel', () => {
     tile('Sketch 1').click();
     await settle();
 
-    void panel()['attach']();
+    void panel()['save']('update');
     await settle();
     http.expectOne(URL).flush(
       {
