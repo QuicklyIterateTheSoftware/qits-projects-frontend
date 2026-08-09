@@ -430,7 +430,7 @@ describe('RefiningPage', () => {
     });
 
     it('normalises an unknown slug away rather than obeying it', async () => {
-      await open(`${URL_BASE}?tab=sketch`);
+      await open(`${URL_BASE}?tab=whiteboard`);
       await settle();
 
       expect(TestBed.inject(Location).path()).toBe(URL_BASE);
@@ -468,13 +468,18 @@ describe('RefiningPage', () => {
   });
 
   describe('the tab row', () => {
-    /** The shell was final before any panel landed, so no phase ever moved a link's neighbours. */
-    it('keeps all six tabs, in the order a fresh page opens with', async () => {
+    /**
+     * The shell was final before any panel landed, so no phase ever moved a link's neighbours.
+     * Sketch arrived later, with its panel, and sits after Files because that is where the legacy
+     * app's row had it.
+     */
+    it('keeps all seven tabs, in the order a fresh page opens with', async () => {
       await open();
 
       expect(tabs().map((tab) => tab.textContent?.trim())).toEqual([
         'Chat',
         'Files',
+        'Sketch',
         'Services',
         'Actions',
         'Web view',
@@ -538,6 +543,24 @@ describe('RefiningPage', () => {
       await settle();
 
       expect(element().querySelector('app-files-panel')).not.toBeNull();
+    });
+
+    /**
+     * The sketch panel attaches to the **host's** workspace row rather than to a container, so the
+     * only thing this wiring can get wrong is which workspace a drawing lands on.
+     */
+    it('builds the sketch panel on its tab, pointed at the resolved workspace row', async () => {
+      await open();
+      expect(element().querySelector('app-sketch-panel')).toBeNull();
+
+      tabs()
+        .find((tab) => tab.textContent?.trim() === 'Sketch')!
+        .click();
+      await settle();
+      http.expectOne('/workspaces/api/workspaces/7/prompt-attachments').flush({ attachments: [] });
+      await settle();
+
+      expect(element().querySelector('app-sketch-panel')).not.toBeNull();
     });
 
     /**

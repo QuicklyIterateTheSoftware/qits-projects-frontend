@@ -1,0 +1,126 @@
+<section class="board" aria-label="Sketch">
+  <p class="note">
+    Draw a rough picture — an arrow, a layout, “move this here” — and attach it to this workspace’s
+    prompt draft. It is kept beside the draft and survives a container recreate.
+  </p>
+
+  <div class="tools" role="toolbar" aria-label="Sketch tools">
+    <div class="group" role="group" aria-label="Tool">
+      <button
+        type="button"
+        class="chip"
+        [class.on]="mode() === 'draw'"
+        [attr.aria-pressed]="mode() === 'draw'"
+        (click)="setMode('draw')"
+      >
+        Pen
+      </button>
+      <button
+        type="button"
+        class="chip"
+        [class.on]="mode() === 'erase'"
+        [attr.aria-pressed]="mode() === 'erase'"
+        (click)="setMode('erase')"
+      >
+        Eraser
+      </button>
+    </div>
+
+    <div class="group" role="group" aria-label="Colour">
+      @for (swatch of colors; track swatch.value) {
+        <button
+          type="button"
+          class="swatch"
+          [class.on]="color() === swatch.value"
+          [style.background-color]="swatch.value"
+          [attr.aria-label]="swatch.label"
+          [attr.aria-pressed]="color() === swatch.value"
+          (click)="setColor(swatch.value)"
+        ></button>
+      }
+    </div>
+
+    <div class="group" role="group" aria-label="Stroke width">
+      @for (stroke of weights; track stroke.value) {
+        <button
+          type="button"
+          class="chip"
+          [class.on]="weight() === stroke.value"
+          [attr.aria-pressed]="weight() === stroke.value"
+          (click)="setWeight(stroke.value)"
+        >
+          {{ stroke.label }}
+        </button>
+      }
+    </div>
+
+    <div class="group">
+      <qits-button variant="ghost" size="sm" [disabled]="!canUndo()" (pressed)="undo()"
+        >Undo</qits-button
+      >
+      <qits-button variant="ghost" size="sm" (pressed)="clearCanvas()">Clear</qits-button>
+    </div>
+  </div>
+
+  <!--
+    A fixed logical buffer scaled by CSS: `aspect-ratio` keeps the drawn pixels and the visible box in
+    step, so a stroke lands under the pointer at any width. `touch-action: none` (in the stylesheet)
+    is what stops a stylus scrolling the page instead of drawing.
+  -->
+  <canvas
+    #canvas
+    class="canvas"
+    [style.aspect-ratio]="aspectRatio"
+    aria-label="Sketch canvas — draw with the mouse or a stylus"
+  ></canvas>
+
+  <div class="attach">
+    <qits-button
+      variant="primary"
+      [busy]="attaching()"
+      [disabled]="attaching()"
+      (pressed)="attach()"
+      >Attach to prompt</qits-button
+    >
+    @if (attached()) {
+      <span class="done" role="status">Attached ✓</span>
+    }
+    @if (attachFailure(); as message) {
+      <span class="fault" role="alert">That did not attach — {{ message }}.</span>
+    }
+  </div>
+</section>
+
+<section class="attached" aria-label="Attached images">
+  <h3>Attached to this workspace</h3>
+
+  <app-async
+    [state]="attachments()"
+    loadingLabel="Loading the attached images"
+    errorLabel="Could not load the attached images"
+    (retry)="reload()"
+  />
+
+  @if (attachments().kind === 'ready') {
+    @if (rows().length === 0) {
+      <app-empty message="Nothing is attached to this workspace’s prompt draft yet." />
+    } @else {
+      <ul class="strip">
+        @for (attachment of rows(); track attachment.id) {
+          <li class="thumb">
+            <img [src]="src(attachment)" [alt]="attachment.label" />
+            <span class="label">{{ attachment.label }}</span>
+            <qits-button
+              variant="ghost"
+              size="sm"
+              [busy]="isRemoving(attachment.id)"
+              [disabled]="isRemoving(attachment.id)"
+              (pressed)="remove(attachment)"
+              >Remove</qits-button
+            >
+          </li>
+        }
+      </ul>
+    }
+  }
+</section>

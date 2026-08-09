@@ -23,8 +23,8 @@ import type { TabDef } from './tabs';
  * - **`@if (latched)` inside a `[style.display]` wrapper.** `latched` flips true the first time a tab
  *   is selected and never flips back, so a panel is created once, on first selection, and then only
  *   hidden. That is exactly "expensive panels initialise on first selection, then persist", said in
- *   the framework. Rendering all seven eagerly with `display` alone would keep the contract and fire
- *   seven loads on page open; `@if (active)` would fire one load and break the contract.
+ *   the framework. Rendering all eight eagerly with `display` alone would keep the contract and fire
+ *   eight loads on page open; `@if (active)` would fire one load and break the contract.
  * - **Two loops with two orders.** The strip renders {@link ordered}, which is the user's; the panel
  *   container renders the templates in declaration order, which never changes. Moving a panel in the
  *   document would reload its iframe and reset its scroll — the very thing keep-mounted prevents — so
@@ -42,7 +42,7 @@ import type { TabDef } from './tabs';
  * becoming visible. A host that decided that centrally would be deciding it wrong for three panels.
  *
  * Reordering is **in-session only**: a local signal that dies with the page. Per-browser persistence
- * costs a stored-order migration every time a tab is added or renamed, on a row of six.
+ * costs a stored-order migration every time a tab is added or renamed, on a row of seven.
  */
 @Component({
   selector: 'app-tab-host',

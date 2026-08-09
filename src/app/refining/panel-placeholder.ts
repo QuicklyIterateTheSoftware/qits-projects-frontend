@@ -9,7 +9,7 @@ import { ChangeDetectionStrategy, Component, input } from '@angular/core';
  * surface that was coming rather than drawing an empty box, so the row was honest about being early
  * instead of looking broken.
  *
- * **All six tabs have their panel now, so nothing draws this today.** It is kept as the fallback a tab
+ * **Every tab has its panel now, so nothing draws this today.** It is kept as the fallback a tab
  * added ahead of its panel lands on, because that order is the one this shell was built for.
  *
  * It is a real panel as far as the host is concerned — created on first selection, then kept — which
