@@ -12,7 +12,7 @@ import {
   viewChild,
 } from '@angular/core';
 import { QitsButton } from '@qits/ui-components';
-import Atrament, { MODE_DRAW, MODE_ERASE } from 'atrament';
+import { MODE_DRAW, MODE_ERASE } from 'atrament';
 import type { PromptAttachmentDto } from '../../api/prompt-attachments-api';
 import { PromptAttachmentsApi } from '../../api/prompt-attachments-api';
 import { WorkspaceEvents } from '../../api/workspace-events';
@@ -27,6 +27,7 @@ import {
   statusOf,
   type Loadable,
 } from '../../ui/loadable';
+import { ATRAMENT_FACTORY, type AtramentLike } from './atrament-factory';
 import { exportSketch } from './image-export';
 
 /** A pen colour: the CSS value atrament draws with, plus the word a screen reader hears. */
@@ -88,7 +89,9 @@ const FLASH_MS = 2000;
  *   the drawn buffer and the visible box in step, so a stroke lands under the pointer at any width.
  * - **`touch-action: none`.** Without it a stylus or a finger scrolls the page instead of drawing.
  * - **Atrament is constructed once**, in a one-shot `effect` behind a `ready` latch, from the
- *   `viewChild` canvas — the same shape every wrapped vanilla library uses here.
+ *   `viewChild` canvas — the same shape every wrapped vanilla library uses here. It comes from
+ *   {@link ./atrament-factory#ATRAMENT_FACTORY} rather than a bare `new`, so a spec can hand over a
+ *   fake without depending on which spec file loaded the module first.
  * - **The white fill happens after construction.** Atrament sets `canvas.width`/`height`, and
  *   assigning either resets the pixel buffer; filling first would fill a buffer that is about to be
  *   wiped.
@@ -121,6 +124,7 @@ const FLASH_MS = 2000;
 export class SketchPanel {
   private readonly api = inject(PromptAttachmentsApi);
   private readonly events = inject(WorkspaceEvents);
+  private readonly newAtrament = inject(ATRAMENT_FACTORY);
 
   /** Which workspace the drawing is attached to. The row id, which is what the host addresses. */
   readonly workspaceRowId = input.required<number>();
@@ -161,7 +165,7 @@ export class SketchPanel {
 
   private readonly attachmentHints = this.events.invalidations('prompt-attachments');
 
-  private atrament?: Atrament;
+  private atrament?: AtramentLike;
   private ready = false;
   private flash?: ReturnType<typeof setTimeout>;
   /** Bumped per repaint request; a deferred `Image.onload` paints only if it is still the latest. */
@@ -208,7 +212,7 @@ export class SketchPanel {
     }
     // Construct first: atrament assigns `canvas.width`/`height`, which resets the pixel buffer, so a
     // white fill before this point would be wiped.
-    const atrament = new Atrament(element, {
+    const atrament = this.newAtrament(element, {
       width: CANVAS_WIDTH,
       height: CANVAS_HEIGHT,
       color: this.color(),

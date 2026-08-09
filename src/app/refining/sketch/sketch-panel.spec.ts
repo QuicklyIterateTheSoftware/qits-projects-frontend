@@ -6,62 +6,51 @@ import { vi } from 'vitest';
 import { EVENT_SOURCE_FACTORY, type EventSourceLike } from '../../api/event-source';
 import type { PromptAttachmentDto, PromptAttachmentSource } from '../../api/prompt-attachments-api';
 import { WorkspaceEvents } from '../../api/workspace-events';
+import { ATRAMENT_FACTORY, type AtramentFactory, type AtramentLike } from './atrament-factory';
 import { MAX_HISTORY, SketchPanel } from './sketch-panel';
 
-/** What the test drives the fake atrament instance with. */
-interface FakeAtramentInstance {
-  canvas: HTMLCanvasElement;
+/**
+ * The drawing instance the panel gets, recording what it was told and replaying its own events.
+ *
+ * Reached through {@link ATRAMENT_FACTORY}, not `vi.mock('atrament', …)`. The module mock only ever
+ * worked while this file was the first to load the module: with one worker every spec shares one
+ * registry, and `refining-page.spec.ts` mounts the page that imports the real library first. The
+ * token has no such ordering.
+ */
+class FakeAtrament implements AtramentLike {
+  static instances: FakeAtrament[] = [];
+  static destroyed = 0;
+
+  readonly canvas: HTMLCanvasElement;
   color: string;
   weight: number;
-  mode: string;
-  emit(type: string): void;
-}
+  mode: 'draw' | 'erase';
+  private readonly listeners = new Map<string, (event?: unknown) => void>();
 
-// Built inside `vi.hoisted` so it exists before the hoisted `vi.mock` factory runs. A plain
-// top-level class would still be in its temporal dead zone there — "default is not a constructor".
-const { FakeAtrament } = vi.hoisted(() => {
-  class FakeAtrament {
-    static instances: FakeAtramentInstance[] = [];
-    static destroyed = 0;
-
-    readonly canvas: HTMLCanvasElement;
-    color: string;
-    weight: number;
-    mode: string;
-    private readonly listeners = new Map<string, (event?: unknown) => void>();
-
-    constructor(
-      canvas: HTMLCanvasElement,
-      options: { color?: string; weight?: number; mode?: string },
-    ) {
-      this.canvas = canvas;
-      this.color = options.color ?? '';
-      this.weight = options.weight ?? 0;
-      this.mode = options.mode ?? 'draw';
-      FakeAtrament.instances.push(this);
-    }
-    addEventListener(type: string, handler: (event?: unknown) => void): void {
-      this.listeners.set(type, handler);
-    }
-    removeEventListener(): void {
-      // Nothing here detaches a listener; the panel destroys the instance instead.
-    }
-    destroy(): void {
-      FakeAtrament.destroyed++;
-    }
-    /** Dispatch a registered event — a finished stroke, in practice. */
-    emit(type: string): void {
-      this.listeners.get(type)?.();
-    }
+  constructor(
+    canvas: HTMLCanvasElement,
+    options: { color?: string; weight?: number; mode?: 'draw' | 'erase' },
+  ) {
+    this.canvas = canvas;
+    this.color = options.color ?? '';
+    this.weight = options.weight ?? 0;
+    this.mode = options.mode ?? 'draw';
+    FakeAtrament.instances.push(this);
   }
-  return { FakeAtrament };
-});
-
-vi.mock('atrament', () => ({
-  default: FakeAtrament,
-  MODE_DRAW: 'draw',
-  MODE_ERASE: 'erase',
-}));
+  addEventListener(type: string, handler: (event?: unknown) => void): void {
+    this.listeners.set(type, handler);
+  }
+  removeEventListener(): void {
+    // Nothing here detaches a listener; the panel destroys the instance instead.
+  }
+  destroy(): void {
+    FakeAtrament.destroyed++;
+  }
+  /** Dispatch a registered event — a finished stroke, in practice. */
+  emit(type: string): void {
+    this.listeners.get(type)?.();
+  }
+}
 
 class FakeStream implements EventSourceLike {
   onopen: ((event: Event) => void) | null = null;
@@ -106,8 +95,9 @@ class PanelHost {
 /**
  * The Sketch tab: the drawing core, and the attach loop this SPA needed on top of it.
  *
- * Atrament is mocked, because what is worth asserting is *this panel's* behaviour around it — the
- * undo stack, the eraser rule, the teardown — and a real canvas cannot exist under jsdom anyway.
+ * Atrament is faked through {@link ATRAMENT_FACTORY}, because what is worth asserting is *this
+ * panel's* behaviour around it — the undo stack, the eraser rule, the teardown — and a real canvas
+ * cannot exist under jsdom anyway.
  *
  * **The label numbering is asserted.** It continues the workspace's own sketch count rather than
  * this session's presses, so a reload does not restart at one; a panel that counted clicks would
@@ -153,6 +143,10 @@ describe('SketchPanel', () => {
         provideHttpClient(),
         provideHttpClientTesting(),
         { provide: EVENT_SOURCE_FACTORY, useValue: () => new FakeStream() },
+        {
+          provide: ATRAMENT_FACTORY,
+          useValue: ((canvas, options) => new FakeAtrament(canvas, options)) as AtramentFactory,
+        },
       ],
     });
     http = TestBed.inject(HttpTestingController);
