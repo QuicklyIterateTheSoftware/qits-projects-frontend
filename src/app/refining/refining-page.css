@@ -52,14 +52,8 @@
   overflow-wrap: anywhere;
 }
 
-.landed {
-  margin: 0.6rem 0 0;
-  font-size: 0.85rem;
-}
-
-.landed ul {
-  margin: 0;
-  padding-left: 1.1rem;
+.resolution-actions {
+  margin-top: 0.75rem;
 }
 
 /* The offer is a surface rather than an error box: nothing is wrong, there is simply nothing open. */

@@ -228,7 +228,7 @@ describe('RefiningService', () => {
       await expect(answer).resolves.toMatchObject({ id: 7 });
     });
 
-    /** What a discard leaves behind: the ref survives, the workspace does not. */
+    /** An externally-created ref can still be adopted after the optimistic create sees it. */
     it('adopts a branch that is already there, once, after the create is refused', async () => {
       const answer = refining.open('p1', node());
       await flushComponents();

@@ -37,11 +37,29 @@ export interface PickedElement {
   readonly sourceFiles: readonly string[];
 }
 
+/** A paragraph or insertion point picked in the epic document. */
+export interface EpicReference {
+  readonly slug: string;
+  readonly startLine: number;
+  readonly endLine: number;
+  readonly excerpt: string;
+}
+
 /** What the prompt panel writes to the server and reads back. */
 export interface DraftComposition {
   readonly text: string;
   readonly references: readonly CodeReference[];
   readonly elements: readonly PickedElement[];
+  readonly epics: readonly EpicReference[];
+}
+
+export function epicReferenceLabel(reference: EpicReference): string {
+  return `Epic: ${reference.slug}\nLines: ${reference.startLine}:${reference.endLine}`;
+}
+
+export function epicReferenceText(reference: EpicReference): string {
+  const label = epicReferenceLabel(reference);
+  return reference.excerpt ? `${label}\n\n${reference.excerpt}` : label;
 }
 
 /** The `path:start-end` label a reference is known by, on its chip and in the text it inserts. */
@@ -73,12 +91,16 @@ export class PickedContext {
   private readonly workspaceRowId = signal(0);
   private readonly refs = signal<readonly CodeReference[]>([]);
   private readonly picks = signal<readonly PickedElement[]>([]);
+  private readonly epicRefs = signal<readonly EpicReference[]>([]);
 
   readonly references = this.refs.asReadonly();
   readonly elements = this.picks.asReadonly();
+  readonly epics = this.epicRefs.asReadonly();
 
   /** Whether anything has been picked. The rows are drawn only when there is something in them. */
-  readonly any = computed(() => this.refs().length > 0 || this.picks().length > 0);
+  readonly any = computed(
+    () => this.refs().length > 0 || this.picks().length > 0 || this.epicRefs().length > 0,
+  );
 
   /** Point at a workspace. A change empties the picks; the same id is a no-op. */
   use(workspaceRowId: number): void {
@@ -88,6 +110,7 @@ export class PickedContext {
     this.workspaceRowId.set(workspaceRowId);
     this.refs.set([]);
     this.picks.set([]);
+    this.epicRefs.set([]);
   }
 
   /** Pick a line range. Picking the same range twice keeps one, so a double click is harmless. */
@@ -116,16 +139,59 @@ export class PickedContext {
     this.picks.update((current) => current.filter((entry) => entry.selector !== selector));
   }
 
+  addEpic(reference: EpicReference): void {
+    const label = epicReferenceLabel(reference);
+    this.epicRefs.update((current) =>
+      current.some((entry) => epicReferenceLabel(entry) === label)
+        ? current
+        : [...current, reference],
+    );
+  }
+
+  removeEpic(label: string): void {
+    this.epicRefs.update((current) =>
+      current.filter((entry) => epicReferenceLabel(entry) !== label),
+    );
+  }
+
   clear(): void {
     this.refs.set([]);
     this.picks.set([]);
+    this.epicRefs.set([]);
   }
 
   /** Adopt what a restored draft carried. */
   restore(composition: DraftComposition): void {
     this.refs.set(composition.references ?? []);
     this.picks.set(composition.elements ?? []);
+    this.epicRefs.set(composition.epics ?? []);
   }
+
+  /**
+   * Restore a draft without erasing context picked while the prompt panel was mounting.
+   *
+   * The Epic panel can add a reference and then reveal Chat. Chat's draft read finishes later, so a
+   * replacement restore would make the selection appear briefly and vanish. Existing local entries
+   * lead each union; the saved draft fills in everything that was not picked in this visit.
+   */
+  merge(composition: DraftComposition): void {
+    this.refs.update((current) => mergeBy(current, composition.references ?? [], referenceLabel));
+    this.picks.update((current) =>
+      mergeBy(current, composition.elements ?? [], (entry) => entry.selector),
+    );
+    this.epicRefs.update((current) =>
+      mergeBy(current, composition.epics ?? [], epicReferenceLabel),
+    );
+  }
+}
+
+function mergeBy<T>(
+  current: readonly T[],
+  restored: readonly T[],
+  key: (entry: T) => string,
+): readonly T[] {
+  const present = new Set(current.map(key));
+  return [...current, ...restored.filter((entry) => !present.has(key(entry)))];
 }
 
 /**
@@ -139,7 +205,7 @@ export function parseComposition(content: string): DraftComposition {
   try {
     const value: unknown = JSON.parse(content);
     if (typeof value !== 'object' || value === null) {
-      return { text: '', references: [], elements: [] };
+      return { text: '', references: [], elements: [], epics: [] };
     }
     const record = value as Record<string, unknown>;
     return {
@@ -150,9 +216,10 @@ export function parseComposition(content: string): DraftComposition {
       elements: Array.isArray(record['elements'])
         ? (record['elements'] as readonly PickedElement[])
         : [],
+      epics: Array.isArray(record['epics']) ? (record['epics'] as readonly EpicReference[]) : [],
     };
   } catch {
-    return { text: '', references: [], elements: [] };
+    return { text: '', references: [], elements: [], epics: [] };
   }
 }
 
@@ -170,6 +237,9 @@ export function serializePrompt(composition: DraftComposition): string {
     parts.push(composition.text.trim());
   }
   const extras = [
+    ...composition.epics
+      .filter((reference) => !composition.text.includes(epicReferenceLabel(reference)))
+      .map(epicReferenceText),
     ...composition.references
       .filter((reference) => !composition.text.includes(referenceLabel(reference)))
       .map(referenceText),

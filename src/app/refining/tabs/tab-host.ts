@@ -107,10 +107,15 @@ import type { TabDef } from './tabs';
       display: block;
     }
     .strip {
+      position: sticky;
+      top: 0;
+      z-index: 10;
       display: flex;
       gap: 0.25rem;
       overflow-x: auto;
+      background: #ffffff;
       border-bottom: 1px solid #e5e7eb;
+      box-shadow: 0 1px 0 rgb(17 24 39 / 0.03);
     }
     .tab {
       display: inline-flex;

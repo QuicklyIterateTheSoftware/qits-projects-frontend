@@ -1,13 +1,13 @@
 <section class="board" aria-label="Sketch">
   <p class="note">
-    Draw a rough picture — an arrow, a layout, “move this here” — and attach it to this workspace’s
-    prompt draft. It is kept beside the draft and survives a container recreate.
+    Draw a rough picture — an arrow, a layout, “move this here” — and save it with this refinement.
+    It survives a container recreate and can be placed in the epic document.
   </p>
 
   <app-async
     [state]="attachments()"
-    loadingLabel="Loading the attached images"
-    errorLabel="Could not load the attached images"
+    loadingLabel="Loading saved images"
+    errorLabel="Could not load saved images"
     (retry)="reload()"
   />
 
@@ -135,7 +135,7 @@
         [busy]="attaching()"
         [disabled]="attaching()"
         (pressed)="save('new')"
-        >Attach to prompt</qits-button
+        >Save</qits-button
       >
     } @else {
       <qits-button

@@ -43,7 +43,13 @@
     <p class="problem" role="alert">⚠ {{ problem }}</p>
   }
 
-  <section class="log" aria-label="The conversation" aria-live="polite">
+  <section
+    #log
+    class="log"
+    aria-label="The conversation"
+    aria-live="polite"
+    (scroll)="rememberScrollPosition()"
+  >
     @if (conversation().items.length === 0) {
       <p class="note">
         @if (status() === 'open') {
@@ -63,6 +69,49 @@
     </p>
   } @else {
     <footer class="compose">
+      @if (picked.any()) {
+        <section class="attached" aria-label="Context attached to the next message">
+          <span class="attached-label">Attached to next message</span>
+          <div class="chips">
+            @for (epic of picked.epics(); track epicLabel(epic)) {
+              <span class="chip">
+                <code>{{ epicLabel(epic) }}</code>
+                <button
+                  type="button"
+                  [attr.aria-label]="'Remove ' + epicLabel(epic)"
+                  (click)="picked.removeEpic(epicLabel(epic))"
+                >
+                  ×
+                </button>
+              </span>
+            }
+            @for (reference of picked.references(); track referenceLabel(reference)) {
+              <span class="chip">
+                <code>{{ referenceLabel(reference) }}</code>
+                <button
+                  type="button"
+                  [attr.aria-label]="'Remove ' + referenceLabel(reference)"
+                  (click)="picked.removeReference(referenceLabel(reference))"
+                >
+                  ×
+                </button>
+              </span>
+            }
+            @for (element of picked.elements(); track element.selector) {
+              <span class="chip">
+                <code>{{ element.selector }}</code>
+                <button
+                  type="button"
+                  [attr.aria-label]="'Remove ' + element.selector"
+                  (click)="picked.removeElement(element.selector)"
+                >
+                  ×
+                </button>
+              </span>
+            }
+          </div>
+        </section>
+      }
       <label class="box">
         <span class="sr">Your next message</span>
         <textarea

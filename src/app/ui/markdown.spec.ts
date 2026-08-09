@@ -103,22 +103,24 @@ describe('code', () => {
     );
   });
 
-  it('renders a fenced block, dropping the info string', () => {
-    expect(renderMarkdown('```ts\nconst a = 1;\n```')).toBe('<pre><code>const a = 1;</code></pre>');
+  it('renders a fenced block and carries its language class', () => {
+    expect(renderMarkdown('```ts\nconst a = 1;\n```')).toBe(
+      '<pre><code class="language-ts">const a = 1;\n</code></pre>',
+    );
   });
 
   it('keeps the blank lines and the indentation inside a block', () => {
-    expect(renderMarkdown('```\na\n\n  b\n```')).toBe('<pre><code>a\n\n  b</code></pre>');
+    expect(renderMarkdown('```\na\n\n  b\n```')).toBe('<pre><code>a\n\n  b\n</code></pre>');
   });
 
   it('accepts tilde fences, and a longer fence than three', () => {
-    expect(renderMarkdown('~~~\na\n~~~')).toBe('<pre><code>a</code></pre>');
-    expect(renderMarkdown('````\n```\n````')).toBe('<pre><code>```</code></pre>');
+    expect(renderMarkdown('~~~\na\n~~~')).toBe('<pre><code>a\n</code></pre>');
+    expect(renderMarkdown('````\n```\n````')).toBe('<pre><code>```\n</code></pre>');
   });
 
   /** A description someone is still typing, not an error — so it renders what is there. */
   it('closes an unclosed fence at the end of the text', () => {
-    expect(renderMarkdown('```\nhalf written')).toBe('<pre><code>half written</code></pre>');
+    expect(renderMarkdown('```\nhalf written')).toBe('<pre><code>half written\n</code></pre>');
   });
 });
 
@@ -138,10 +140,9 @@ describe('lists', () => {
     );
   });
 
-  /** A third level flattens into the second rather than recursing — see the renderer's comment. */
-  it('flattens a third level into the second', () => {
+  it('supports standard deeply nested lists', () => {
     expect(renderMarkdown('- a\n  - b\n    - c')).toBe(
-      '<ul><li>a<ul><li>b</li><li>c</li></ul></li></ul>',
+      '<ul><li>a<ul><li>b<ul><li>c</li></ul></li></ul></li></ul>',
     );
   });
 
@@ -198,13 +199,13 @@ describe('links', () => {
 describe('escaping', () => {
   it('renders a script tag as the characters it is', () => {
     expect(renderMarkdown('<script>alert(1)</script>')).toBe(
-      '<p>&lt;script&gt;alert(1)&lt;/script&gt;</p>',
+      '&lt;script&gt;alert(1)&lt;/script&gt;',
     );
   });
 
   it('renders an event handler on an image as text', () => {
     expect(renderMarkdown('<img src=x onerror=alert(1)>')).toBe(
-      '<p>&lt;img src=x onerror=alert(1)&gt;</p>',
+      '&lt;img src=x onerror=alert(1)&gt;',
     );
   });
 
@@ -222,7 +223,7 @@ describe('escaping', () => {
   /** A code block is where markup is most likely to appear honestly, and it still comes out as text. */
   it('escapes a code block that closes the tags around it', () => {
     expect(renderMarkdown('```\n</code></pre><script>alert(1)</script>\n```')).toBe(
-      '<pre><code>&lt;/code&gt;&lt;/pre&gt;&lt;script&gt;alert(1)&lt;/script&gt;</code></pre>',
+      '<pre><code>&lt;/code&gt;&lt;/pre&gt;&lt;script&gt;alert(1)&lt;/script&gt;\n</code></pre>',
     );
   });
 

@@ -69,7 +69,50 @@
   display: flex;
   align-items: flex-end;
   gap: 0.6rem;
+  flex-wrap: wrap;
   margin-top: 0.85rem;
+}
+
+.attached {
+  flex: 1 0 100%;
+  padding: 0.45rem 0.55rem;
+  border: 1px solid #bfdbfe;
+  border-radius: 0.4rem;
+  background: #eff6ff;
+}
+
+.attached-label {
+  display: block;
+  margin-bottom: 0.35rem;
+  color: #1e40af;
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.chips {
+  display: flex;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.2rem 0.35rem;
+  border-radius: 0.3rem;
+  background: #ffffff;
+  color: #1e3a8a;
+  font-size: 0.78rem;
+  white-space: pre-line;
+}
+
+.chip button {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #64748b;
+  cursor: pointer;
 }
 
 .box {

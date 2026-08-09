@@ -2,12 +2,14 @@ import {
   ChangeDetectionStrategy,
   Component,
   DestroyRef,
+  ElementRef,
   computed,
   effect,
   inject,
   input,
   signal,
   untracked,
+  viewChild,
 } from '@angular/core';
 import { QitsButton } from '@qits/ui-components';
 import { CommandsApi, type CommandDto } from '../../api/commands-api';
@@ -19,6 +21,12 @@ import { describeError } from '../../ui/loadable';
 import { ChatSocket, type ChatLink } from './chat-socket';
 import { EMPTY_CONVERSATION, buildConversation } from './chat-model';
 import { Conversation } from './conversation';
+import {
+  PickedContext,
+  epicReferenceLabel,
+  referenceLabel,
+  serializePrompt,
+} from './picked-context';
 import { PromptPanel } from './prompt-panel';
 
 /**
@@ -68,16 +76,22 @@ import { PromptPanel } from './prompt-panel';
   styleUrl: './chat-panel.css',
 })
 export class ChatPanel {
+  private static readonly TAIL_THRESHOLD_PX = 32;
+
   private readonly commands = inject(WorkspaceCommands);
   private readonly api = inject(CommandsApi);
   private readonly daemon = inject(WorkspaceDaemonApi);
   private readonly openSocket = inject(WEB_SOCKET_FACTORY);
+  protected readonly picked = inject(PickedContext);
 
   /** Which workspace's container this conversation lives in. */
   readonly workspaceRowId = input.required<number>();
 
   /** The workspace's stated goal, handed to the refinement request. */
   readonly preamble = input<string | null>(null);
+
+  /** Whether the keep-mounted tab is currently measurable on screen. */
+  readonly visible = input(true);
 
   protected readonly commandsState = this.commands.commands;
 
@@ -93,6 +107,9 @@ export class ChatPanel {
    */
   private readonly socket = signal<ChatSocket | null>(null);
   private readonly attached = signal<string | null>(null);
+  private readonly log = viewChild<ElementRef<HTMLElement>>('log');
+  private followTail = true;
+  private followedCommandId: string | null = null;
 
   constructor() {
     effect(() => {
@@ -102,6 +119,7 @@ export class ChatPanel {
         // workspace changes, but a panel that only worked because its host tore it down would be a
         // dependency nobody wrote down.
         this.bridged.set(null);
+        this.picked.use(workspaceRowId);
         this.commands.use(workspaceRowId);
       });
     });
@@ -119,6 +137,32 @@ export class ChatPanel {
       const command = this.session();
       const workspaceRowId = this.workspaceRowId();
       untracked(() => this.attach(workspaceRowId, command?.id ?? null));
+    });
+
+    // Remember whether the reader was at the tail before the DOM grows. Recalculating that after a
+    // message renders would mistake the newly added height for a deliberate scroll away from the
+    // bottom. A new conversation always starts at its tail; later updates only follow while the
+    // reader has left it there.
+    effect(() => {
+      const element = this.log()?.nativeElement;
+      const commandId = this.session()?.id ?? null;
+      const visible = this.visible();
+      this.conversation();
+      if (!element || !visible) {
+        return;
+      }
+
+      untracked(() => {
+        if (commandId !== this.followedCommandId) {
+          this.followedCommandId = commandId;
+          this.followTail = true;
+        }
+        queueMicrotask(() => {
+          if (this.log()?.nativeElement === element && this.followTail) {
+            element.scrollTop = element.scrollHeight;
+          }
+        });
+      });
     });
 
     inject(DestroyRef).onDestroy(() => this.detach());
@@ -147,7 +191,19 @@ export class ChatPanel {
 
   protected readonly draft = signal('');
 
-  protected readonly canSend = computed(() => this.draft().trim().length > 0 && this.live());
+  protected readonly outgoing = computed(() =>
+    serializePrompt({
+      text: this.draft(),
+      references: this.picked.references(),
+      elements: this.picked.elements(),
+      epics: this.picked.epics(),
+    }).trim(),
+  );
+
+  protected readonly canSend = computed(() => this.outgoing().length > 0 && this.live());
+
+  protected epicLabel = epicReferenceLabel;
+  protected referenceLabel = referenceLabel;
 
   // ---- what the panel does ------------------------------------------------------------------------
 
@@ -158,7 +214,7 @@ export class ChatPanel {
   }
 
   protected send(): void {
-    const text = this.draft().trim();
+    const text = this.outgoing();
     const socket = this.socket();
     if (!text || !socket) {
       return;
@@ -167,6 +223,7 @@ export class ChatPanel {
     // Never an optimistic bubble: the turn appears when the server echoes it, which is what makes
     // the live view and a later replay agree.
     this.draft.set('');
+    this.picked.clear();
   }
 
   protected onKey(event: KeyboardEvent): void {
@@ -174,6 +231,15 @@ export class ChatPanel {
       event.preventDefault();
       this.send();
     }
+  }
+
+  protected rememberScrollPosition(): void {
+    const element = this.log()?.nativeElement;
+    if (!element) {
+      return;
+    }
+    const distanceFromTail = element.scrollHeight - element.clientHeight - element.scrollTop;
+    this.followTail = distanceFromTail <= ChatPanel.TAIL_THRESHOLD_PX;
   }
 
   /** End the run. Invalidates on settled, not on success — a failed terminate still refetches. */

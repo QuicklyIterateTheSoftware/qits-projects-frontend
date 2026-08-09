@@ -22,6 +22,8 @@ import { LevelMeter } from './level-meter';
 import {
   PickedContext,
   elementText,
+  epicReferenceLabel,
+  epicReferenceText,
   parseComposition,
   referenceLabel,
   referenceText,
@@ -218,6 +220,7 @@ export class PromptPanel {
     text: this.text(),
     references: this.picked.references(),
     elements: this.picked.elements(),
+    epics: this.picked.epics(),
   }));
 
   /** Whether there is anything to launch with. An empty prompt is not a launch. */
@@ -278,6 +281,15 @@ export class PromptPanel {
     const reference = this.picked.references()[index];
     if (reference) {
       this.insert(referenceText(reference));
+    }
+  }
+
+  protected epicLabel = epicReferenceLabel;
+
+  protected insertEpic(index: number): void {
+    const reference = this.picked.epics()[index];
+    if (reference) {
+      this.insert(epicReferenceText(reference));
     }
   }
 
@@ -420,7 +432,7 @@ export class PromptPanel {
       }
       const composition = parseComposition(draft.content);
       this.text.set(composition.text);
-      this.picked.restore(composition);
+      this.picked.merge(composition);
       this.lastWrittenAt = draft.updatedAt;
       this.restoredAt.set(draft.updatedAt);
       this.save.set('clean');
@@ -449,7 +461,7 @@ export class PromptPanel {
       }
       const composition = parseComposition(draft.content);
       this.text.set(composition.text);
-      this.picked.restore(composition);
+      this.picked.merge(composition);
       this.lastWrittenAt = draft.updatedAt;
       this.restoredAt.set(draft.updatedAt);
     } catch {

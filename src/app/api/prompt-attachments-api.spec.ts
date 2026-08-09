@@ -116,6 +116,30 @@ describe('PromptAttachmentsApi', () => {
     await expect(answer).rejects.toBeDefined();
   });
 
+  it('updates a saved image in place and exposes its browser-loadable content URL', async () => {
+    expect(api.contentUrl(7, 'image/one')).toBe(
+      '/workspaces/api/workspaces/7/prompt-attachments/image%2Fone/content',
+    );
+
+    const answer = api.update(7, 'a1', {
+      mimeType: 'image/png',
+      label: 'Sketch 1',
+      source: 'SKETCH',
+      dataBase64: 'AAAA',
+    });
+    const request = http.expectOne(`${URL}/a1`);
+    expect(request.request.method).toBe('PUT');
+    request.flush({
+      id: 'a1',
+      mimeType: 'image/png',
+      label: 'Sketch 1',
+      source: 'SKETCH',
+      createdAt: '2026-08-09T09:05:00Z',
+    });
+
+    expect((await answer).id).toBe('a1');
+  });
+
   it('removes one attachment by id, scoped to its workspace', async () => {
     const answer = api.remove(7, 'a1');
     const request = http.expectOne(`${URL}/a1`);
