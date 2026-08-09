@@ -116,9 +116,8 @@ class PanelHost {
  * pass a naive test and produce two "Sketch 1"s in an afternoon.
  *
  * **The document-picker model is asserted.** With a sketch picked there are two saves and the
- * difference between them is the whole feature: "Update" keeps the label and POSTs before it DELETEs
- * — the other order risks the only copy of a drawing — while "Save new" writes another row and
- * touches nothing that was already there.
+ * difference between them is the whole feature: "Update" preserves the row id used by document
+ * URLs, while "Save new" writes another row and touches nothing that was already there.
  *
  * **The visibility rule is asserted.** A hint arriving behind another tab must be spent as one
  * catch-up read on return, not as a fetch nobody is looking at.
@@ -327,7 +326,7 @@ describe('SketchPanel', () => {
     await settle();
     fixture.detectChanges();
 
-    expect(text()).toContain('Attached');
+    expect(text()).toContain('Saved');
     expect(text()).toContain('Sketch 3');
   });
 
@@ -379,7 +378,7 @@ describe('SketchPanel', () => {
     // "New" is a blank page, so there is nothing to delete on it.
     expect(kill('Delete New')).toBeNull();
     // One button: with nothing picked, a save can only mean one thing.
-    expect(text()).toContain('Attach to prompt');
+    expect(text()).toContain('Save');
     expect(text()).not.toContain('Update');
   });
 
@@ -447,46 +446,40 @@ describe('SketchPanel', () => {
 
     expect(tile('Sketch 1').getAttribute('aria-pressed')).toBe('true');
     expect(tile('New').getAttribute('aria-pressed')).toBe('false');
-    expect(text()).toContain('Attached');
+    expect(text()).toContain('Saved');
     expect(text()).toContain('Update');
   });
 
-  it('“Update” saves over the picked sketch: a new copy under the same label, then the old row', async () => {
+  it('“Update” replaces the picked sketch in place so document URLs remain valid', async () => {
     await open([attachment('a1', 'Sketch 1'), attachment('a2', 'Sketch 2')]);
     tile('Sketch 2').click();
     await settle();
 
     void panel()['save']('update');
     await settle();
-    const post = http.expectOne(URL);
-    expect(post.request.method).toBe('POST');
+    const update = http.expectOne(`${URL}/a2`);
+    expect(update.request.method).toBe('PUT');
     // A save-over is the same drawing, so it keeps its label and never renumbers.
-    expect(post.request.body).toMatchObject({ label: 'Sketch 2', source: 'SKETCH' });
-    post.flush(
+    expect(update.request.body).toMatchObject({ label: 'Sketch 2', source: 'SKETCH' });
+    update.flush(
       {
-        id: 'a3',
+        id: 'a2',
         mimeType: 'image/png',
         label: 'Sketch 2',
         source: 'SKETCH',
         createdAt: '2026-08-09T09:20:00Z',
       },
-      { status: 201, statusText: 'Created' },
+      { status: 200, statusText: 'OK' },
     );
-    await settle();
-
-    // Create first, delete second: the other order risks the only copy of the drawing.
-    const remove = http.expectOne(`${URL}/a2`);
-    expect(remove.request.method).toBe('DELETE');
-    remove.flush(null, { status: 204, statusText: 'No Content' });
     await settle();
 
     http
       .expectOne(URL)
-      .flush({ attachments: [attachment('a1', 'Sketch 1'), attachment('a3', 'Sketch 2')] });
+      .flush({ attachments: [attachment('a1', 'Sketch 1'), attachment('a2', 'Sketch 2')] });
     await settle();
     fixture.detectChanges();
 
-    expect(panel()['selectedRow']()?.id).toBe('a3');
+    expect(panel()['selectedRow']()?.id).toBe('a2');
     expect(tiles().map((each) => each.textContent?.trim())).toEqual([
       'New',
       'Sketch 1',
@@ -533,41 +526,7 @@ describe('SketchPanel', () => {
     ]);
     // The selection follows the bytes, the same as it does from "New".
     expect(panel()['selectedRow']()?.id).toBe('a2');
-    expect(text()).toContain('Attached');
-  });
-
-  it('keeps the new copy and says so when the old row will not delete', async () => {
-    await open([attachment('a1', 'Sketch 1')]);
-    tile('Sketch 1').click();
-    await settle();
-
-    void panel()['save']('update');
-    await settle();
-    http.expectOne(URL).flush(
-      {
-        id: 'a2',
-        mimeType: 'image/png',
-        label: 'Sketch 1',
-        source: 'SKETCH',
-        createdAt: '2026-08-09T09:20:00Z',
-      },
-      { status: 201, statusText: 'Created' },
-    );
-    await settle();
-    http
-      .expectOne(`${URL}/a1`)
-      .flush({ message: 'nope' }, { status: 500, statusText: 'Server Error' });
-    await settle();
-
-    // Re-read anyway, so the duplicate is on screen instead of hiding.
-    http
-      .expectOne(URL)
-      .flush({ attachments: [attachment('a1', 'Sketch 1'), attachment('a2', 'Sketch 1')] });
-    await settle();
-    fixture.detectChanges();
-
-    expect(text()).toContain('the old one is still there');
-    expect(panel()['selectedRow']()?.id).toBe('a2');
+    expect(text()).toContain('Saved');
   });
 
   it('falls back to “New” with a clean canvas when the sketch being edited is deleted', async () => {

@@ -4,7 +4,7 @@ import { HttpTestingController, provideHttpClientTesting } from '@angular/common
 import { provideLocationMocks } from '@angular/common/testing';
 import { TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
-import { provideRouter } from '@angular/router';
+import { Router, provideRouter } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
 import { EVENT_SOURCE_FACTORY, type EventSourceLike } from '../api/event-source';
 import type { WorkspaceDto } from '../api/workspaces-dto';
@@ -182,24 +182,32 @@ describe('RefiningPage', () => {
       request.flush({ technicalProcessId: processId });
     }
     await settle();
-    await answerChatPanel();
+    if (url.includes('tab=chat')) {
+      await answerChatPanel();
+    }
   }
 
   /**
-   * The Chat panel's own budget, paid whenever Chat is the selected tab — which a bare URL makes it.
+   * The Chat panel's own budget, paid only when Chat is explicitly selected.
    *
    * It is the panel's and not the shell's, which is the whole reason the tab is in the URL: expensive
    * state is addressable state. The container's command list first, then the saved draft once the list
    * has said nothing is running. Matched rather than expected, because a page showing no workspace — or
    * one showing the transient tab — mounts no chat panel and asks for neither.
    */
-  async function answerChatPanel(): Promise<void> {
+  async function answerChatPanel(savedContent: string | null = null): Promise<void> {
     for (const request of http.match((candidate) => candidate.url.endsWith('/commands'))) {
       request.flush({ entries: [] });
     }
     await settle();
     for (const request of http.match((candidate) => candidate.url.endsWith('/prompt-draft'))) {
-      request.flush({ message: 'none' }, { status: 404, statusText: 'Not Found' });
+      if (savedContent === null) {
+        request.flush({ message: 'none' }, { status: 404, statusText: 'Not Found' });
+      } else {
+        request.flush({
+          draft: { content: savedContent, updatedAt: '2026-08-09T10:00:00Z' },
+        });
+      }
     }
     await settle();
   }
@@ -233,6 +241,7 @@ describe('RefiningPage', () => {
    */
   async function answerAgentsPanel(workspaceRowId = 7): Promise<void> {
     const base = `/workspaces/container/${workspaceRowId}`;
+    http.expectOne(`${base}/commands`).flush({ entries: [] });
     http
       .expectOne(`${base}/agent-sessions`)
       .flush({ sessions: [{ sessionId: 's-1', subagents: [], children: [] }] });
@@ -280,7 +289,6 @@ describe('RefiningPage', () => {
       await settle();
 
       expect(streams.map((stream) => stream.url)).toEqual(['/workspaces/api/workspaces/7/events']);
-      await answerChatPanel();
     });
 
     it('names the epic and the branch it is refined on', async () => {
@@ -297,6 +305,56 @@ describe('RefiningPage', () => {
 
       expect(element().querySelector('.description strong')?.textContent).toBe('draft');
       expect(text()).not.toContain('**');
+    });
+
+    it('puts the implementation and abandonment decisions directly below the epic', async () => {
+      await open();
+
+      const actions = element().querySelector('.head app-epic-actions');
+      expect(actions).not.toBeNull();
+      expect(actions?.textContent).toContain('Start implementation');
+      expect(actions?.textContent).toContain('Abandon');
+    });
+
+    it('starts implementation through the same epic transition as the overview', async () => {
+      await open();
+      const navigate = vi.spyOn(TestBed.inject(Router), 'navigate').mockResolvedValue(true);
+
+      buttonNamed('Start implementation').click();
+      await settle();
+
+      const request = http.expectOne('/projects/api/epics/e1/transition');
+      expect(request.request.method).toBe('POST');
+      expect(request.request.body).toEqual({ target: 'IMPLEMENTATION' });
+      request.flush({ epic: { ...EPIC, status: 'IMPLEMENTATION' }, successor: null });
+      await settle();
+
+      expect(navigate).toHaveBeenCalledWith(['p1'], { fragment: 'epic-e1' });
+      http.expectNone('/workspaces/api/workspaces/7/discard');
+    });
+
+    it('confirms abandonment, deletes the refinement workspace first, then abandons the epic', async () => {
+      await open();
+      const navigate = vi.spyOn(TestBed.inject(Router), 'navigate').mockResolvedValue(true);
+
+      buttonNamed('Abandon').click();
+      await settle();
+      http.expectNone('/workspaces/api/workspaces/7/discard');
+      http.expectNone('/projects/api/epics/e1/transition');
+
+      buttonNamed('Confirm abandon?').click();
+      await settle();
+      const discard = http.expectOne('/workspaces/api/workspaces/7/discard');
+      expect(discard.request.body).toEqual({ result: 'Epic abandoned during refinement.' });
+      discard.flush({ success: true });
+      await settle();
+
+      const transition = http.expectOne('/projects/api/epics/e1/transition');
+      expect(transition.request.body).toEqual({ target: 'ABANDONED' });
+      transition.flush({ epic: { ...EPIC, status: 'ABANDONED' }, successor: null });
+      await settle();
+
+      expect(navigate).toHaveBeenCalledWith(['p1'], { fragment: 'epic-e1' });
     });
 
     /** Loose matching would open another epic's workspace, which is the worst thing this page can do. */
@@ -320,10 +378,7 @@ describe('RefiningPage', () => {
     });
   });
 
-  /**
-   * A discard resolves the workspace and leaves the branch behind, so this is the ordinary state of an
-   * epic that was refined and then stopped — not an error, and not a 404.
-   */
+  /** A missing or discarded workspace is an ordinary recoverable state, not an error or a 404. */
   describe('when no workspace is open', () => {
     it('offers to start one instead of drawing a broken page', async () => {
       await open(URL_BASE, []);
@@ -410,7 +465,7 @@ describe('RefiningPage', () => {
       await open();
 
       expect(TestBed.inject(Location).path()).toBe(URL_BASE);
-      expect(element().querySelector('.tab.active')?.textContent?.trim()).toBe('Chat');
+      expect(element().querySelector('.tab.active')?.textContent?.trim()).toBe('Epic');
     });
 
     it('puts the chosen tab in the query string, so every tab is a link', async () => {
@@ -469,21 +524,19 @@ describe('RefiningPage', () => {
 
   describe('the tab row', () => {
     /**
-     * The shell was final before any panel landed, so no phase ever moved a link's neighbours.
-     * Sketch arrived later, with its panel, and sits after Files because that is where the legacy
-     * app's row had it.
+     * The epic document leads, followed by the workspace tools inherited from workspace detail.
      */
-    it('keeps all seven tabs, in the order a fresh page opens with', async () => {
+    it('keeps the epic first and all workspace tools after it', async () => {
       await open();
 
       expect(tabs().map((tab) => tab.textContent?.trim())).toEqual([
-        'Chat',
+        'Epic',
         'Files',
         'Sketch',
-        'Services',
-        'Actions',
         'Web view',
         'Agents',
+        'Container',
+        'Chat',
       ]);
       // Every one of them has its panel now, so the fallback placeholder is never what a tab draws.
       expect(element().querySelector('app-panel-placeholder')).toBeNull();
@@ -492,7 +545,8 @@ describe('RefiningPage', () => {
     it('grows the transient tab when a process is running, pinned to the front and selected', async () => {
       await open(URL_BASE, [workspace()], 'proc-1');
 
-      expect(tabs()[0].textContent?.trim()).toBe('Starting');
+      expect(tabs()[0].textContent?.trim()).toBe('Epic');
+      expect(tabs()[1].textContent?.trim()).toBe('Starting');
       expect(element().querySelector('.tab.active')?.textContent?.trim()).toBe('Starting');
       // The transient tab is deliberately not in the URL: it unmounts, and a link to it lands nowhere.
       expect(TestBed.inject(Location).path()).toBe(URL_BASE);
@@ -509,6 +563,30 @@ describe('RefiningPage', () => {
       expect(agents.querySelector('.dot')?.classList.contains('accent')).toBe(true);
       expect(agents.querySelector<HTMLElement>('.dot')?.title).toBe('The agent is working');
     });
+
+    it('starts a stopped container once on route entry and exposes its process', async () => {
+      await harness.navigateByUrl(URL_BASE);
+      await flushSubject();
+      http
+        .expectOne(WORKSPACES_URL)
+        .flush({ entries: [{ workspace: workspace({ runtimeStatus: 'STOPPED' }) }] });
+      await settle();
+
+      http.expectOne('/workspaces/api/workspaces/7/active-process').flush({
+        technicalProcessId: null,
+      });
+      const ensure = http.expectOne('/workspaces/api/workspaces/7/ensure-container');
+      expect(ensure.request.method).toBe('POST');
+      ensure.flush({ workspace: workspace({ runtimeStatus: 'PROVISIONING' }), technicalProcessId: 'p1' });
+      await settle();
+
+      http.expectOne(WORKSPACES_URL).flush({ entries: [{ workspace: workspace() }] });
+      await settle();
+
+      expect(element().querySelector('.tab.active')?.textContent?.trim()).toBe('Starting');
+      expect(tabs().map((tab) => tab.textContent?.trim())).toContain('Container');
+      http.expectNone('/workspaces/api/workspaces/7/ensure-container');
+    });
   });
 
   /**
@@ -520,8 +598,107 @@ describe('RefiningPage', () => {
    * reader of every tab.
    */
   describe('the panels', () => {
-    it('mounts the chat panel on the tab a bare URL selects, pointed at the resolved workspace', async () => {
+    it('keeps container status out of Epic and mounts it on the Container tab', async () => {
       await open();
+
+      expect(element().querySelector('app-status-strip')).toBeNull();
+      tabs()
+        .find((tab) => tab.textContent?.trim() === 'Container')!
+        .click();
+      await settle();
+
+      expect(element().querySelector('app-status-strip')).not.toBeNull();
+      expect(text()).toContain('Working tree');
+      expect(text()).not.toContain('Resolution');
+      expect(text()).not.toContain('Release');
+      expect(text()).not.toContain('Integrate');
+    });
+
+    it('places a saved image at a chosen writing point in the epic markdown', async () => {
+      await open();
+      const paragraph = element().querySelector<HTMLElement>('app-epic-document .block')!;
+
+      paragraph.dispatchEvent(
+        new MouseEvent('contextmenu', { clientX: 250, clientY: 250, bubbles: true }),
+      );
+      await settle();
+      element().querySelector<HTMLButtonElement>('[aria-label="Insert a saved image"]')!.click();
+      await settle();
+      http.expectOne('/workspaces/api/workspaces/7/prompt-attachments').flush({
+        attachments: [
+          {
+            id: 'image-1',
+            mimeType: 'image/png',
+            label: 'Sketch 1',
+            source: 'SKETCH',
+            createdAt: AT,
+            dataBase64: 'cG5n',
+          },
+        ],
+      });
+      await settle();
+
+      element().querySelector<HTMLButtonElement>('.insert')!.click();
+      await settle();
+      buttonNamed('Sketch 1').click();
+      await settle();
+
+      const update = http.expectOne('/projects/api/epics/e1');
+      expect(update.request.method).toBe('PUT');
+      expect(update.request.body.description).toBe(
+        '![Sketch 1](/workspaces/api/workspaces/7/prompt-attachments/image-1/content)\n\na third action on a **draft**',
+      );
+      update.flush({
+        epic: {
+          ...EPIC,
+          description: update.request.body.description,
+        },
+      });
+      await settle();
+
+      expect(element().querySelector('app-epic-document img')?.getAttribute('src')).toBe(
+        'data:image/png;base64,cG5n',
+      );
+    });
+
+    it('sends a clicked epic paragraph to Chat with its source lines', async () => {
+      await open();
+
+      const paragraph = element().querySelector<HTMLElement>('app-epic-document .block')!;
+      paragraph.click();
+      await settle();
+      expect(element().querySelector('.tab.active')?.textContent?.trim()).toBe('Epic');
+
+      paragraph.dispatchEvent(
+        new MouseEvent('contextmenu', { clientX: 250, clientY: 250, bubbles: true }),
+      );
+      await settle();
+      element()
+        .querySelector<HTMLButtonElement>('[aria-label="Attach this epic passage to chat"]')!
+        .click();
+      await settle();
+      await answerChatPanel(
+        JSON.stringify({ text: 'An existing draft', references: [], elements: [], epics: [] }),
+      );
+
+      expect(element().querySelector('.tab.active')?.textContent?.trim()).toBe('Chat');
+      expect(text()).toContain('Epic: epic-refining-workspace');
+      expect(text()).toContain('Lines: 1:1');
+      expect(element().querySelector<HTMLTextAreaElement>('textarea.prompt')?.value).toBe(
+        'An existing draft',
+      );
+    });
+
+    it('keeps chat dormant on the epic, then mounts it when explicitly selected', async () => {
+      await open();
+
+      expect(element().querySelector('app-chat-panel')).toBeNull();
+
+      tabs()
+        .find((tab) => tab.textContent?.trim() === 'Chat')!
+        .click();
+      await settle();
+      await answerChatPanel();
 
       expect(element().querySelector('app-chat-panel')).not.toBeNull();
       // The prompt panel, because nothing is running — which is the chat tab's other half.
@@ -561,48 +738,6 @@ describe('RefiningPage', () => {
       await settle();
 
       expect(element().querySelector('app-sketch-panel')).not.toBeNull();
-    });
-
-    /**
-     * The services feed is narrowed server-side by **repository and workspace label**, neither of which
-     * is in this page's URL — the wrapper comes from the repositories read and the label off the
-     * resolved workspace row. Getting either wrong would show another workspace's events under this
-     * epic's heading, which is the one thing this wiring can do that looks fine.
-     */
-    it('builds the services panel with the wrapper and the workspace label it resolved', async () => {
-      await open();
-
-      tabs()
-        .find((tab) => tab.textContent?.trim() === 'Services')!
-        .click();
-      await settle();
-      http.expectOne('/workspaces/container/7/services').flush({ services: [] });
-      const feed = http.expectOne(
-        (candidate) => candidate.url === '/workspaces/api/service-events',
-      );
-      expect(feed.request.params.get('repoId')).toBe('qits-qits');
-      expect(feed.request.params.get('workspaceId')).toBe('refining-epic-refining-workspace');
-      feed.flush({ events: [] });
-      await settle();
-
-      expect(element().querySelector('app-services-panel')).not.toBeNull();
-    });
-
-    /** The command list is already in hand from Chat, so this tab pays for three reads and not four. */
-    it('builds the actions panel on its tab, and shares the command list with chat', async () => {
-      await open();
-
-      tabs()
-        .find((tab) => tab.textContent?.trim() === 'Actions')!
-        .click();
-      await settle();
-      http.expectOne('/workspaces/container/7/commands/actions').flush({ actions: [] });
-      http.expectOne('/workspaces/container/7/bootstrap-commands').flush({ steps: [] });
-      http.expectOne('/workspaces/api/workspaces/7/bootstrap-runs').flush({ runs: [] });
-      http.expectNone('/workspaces/container/7/commands');
-      await settle();
-
-      expect(element().querySelector('app-actions-panel')).not.toBeNull();
     });
 
     it('builds the web view panel on its tab, off the same shared services entry', async () => {

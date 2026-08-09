@@ -130,10 +130,11 @@ type Pending = 'terminate' | 'stop' | null;
 
           @default {
             <app-terminal-view
-              [lines]="session.lines()"
+              [frames]="session.frames()"
               [attached]="live()"
               label="Refinement agent session"
               (data)="session.send($event)"
+              (resized)="session.resize($event.cols, $event.rows)"
             />
 
             <div class="actions">

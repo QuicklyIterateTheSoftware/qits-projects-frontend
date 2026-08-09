@@ -11,27 +11,38 @@ import {
 import { toSignal } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, Router, convertToParamMap } from '@angular/router';
 import { QitsButton } from '@qits/ui-components';
-import { WorkspaceCommands } from '../api/workspace-commands';
 import { WorkspaceDaemonApi } from '../api/workspace-daemon-api';
 import { WorkspaceEvents, anyOf } from '../api/workspace-events';
-import { WorkspaceServices } from '../api/workspace-services';
+import { ProjectsApi } from '../api/projects-api';
 import { WorkspacesApi } from '../api/workspaces-api';
 import type { WorkspaceDto } from '../api/workspaces-dto';
-import { refiningBranch, refiningEpicSlug, type EpicNode } from '../project/epics-model';
+import { EpicActions } from '../project/epic-actions';
+import {
+  actionKey,
+  actionsFor,
+  refiningBranch,
+  refiningEpicSlug,
+  type EpicAction,
+  type EpicNode,
+} from '../project/epics-model';
 import { Async } from '../ui/async';
 import { IDLE, LOADING, describeError, failed, ready, type Loadable } from '../ui/loadable';
-import { MarkdownView } from '../ui/markdown-view';
-import { ActionsPanel } from './actions/actions-panel';
 import { ActivityBar } from './activity-bar';
 import { AgentActivityMemory } from './agent-activity-memory';
 import { AgentsPanel } from './agents/agents-panel';
 import { ChatPanel } from './chat/chat-panel';
+import { PickedContext } from './chat/picked-context';
+import {
+  EpicDocument,
+  insertImageAt,
+  type EpicImageInsertion,
+  type EpicSelection,
+} from './epic-document';
 import { FilesPanel } from './files/files-panel';
-import type { MergeResult } from './merge/merge-outcome';
 import { PanelPlaceholder } from './panel-placeholder';
 import { RefiningService } from './refining-service';
-import { ServicesPanel } from './services/services-panel';
 import { SketchPanel } from './sketch/sketch-panel';
+import { SketchSelection } from './sketch/sketch-selection';
 import { StartingPanel } from './starting/starting-panel';
 import { StatusStrip } from './status-strip';
 import { TabHost } from './tabs/tab-host';
@@ -126,16 +137,15 @@ interface Subject {
   selector: 'app-refining-page',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
-    ActionsPanel,
     ActivityBar,
     AgentsPanel,
     Async,
     ChatPanel,
+    EpicActions,
+    EpicDocument,
     FilesPanel,
-    MarkdownView,
     PanelPlaceholder,
     QitsButton,
-    ServicesPanel,
     SketchPanel,
     StartingPanel,
     StatusStrip,
@@ -152,9 +162,10 @@ export class RefiningPage {
   private readonly daemon = inject(WorkspaceDaemonApi);
   private readonly events = inject(WorkspaceEvents);
   private readonly memory = inject(AgentActivityMemory);
-  private readonly serviceEntry = inject(WorkspaceServices);
-  private readonly commandEntry = inject(WorkspaceCommands);
   private readonly router = inject(Router);
+  private readonly picked = inject(PickedContext);
+  private readonly projects = inject(ProjectsApi);
+  private readonly sketchSelection = inject(SketchSelection);
   private readonly route = inject(ActivatedRoute);
 
   private readonly params = toSignal(this.route.paramMap, { initialValue: convertToParamMap({}) });
@@ -174,6 +185,9 @@ export class RefiningPage {
   /** The create offer's own state, so a failure to start one is reported where it was asked for. */
   protected readonly starting = signal(false);
   protected readonly startFailure = signal<string | null>(null);
+  protected readonly autoStartFailure = signal<string | null>(null);
+  private autoContainerRoute: string | null = null;
+  private autoContainerWorkspaceId = 0;
 
   /**
    * The remount guard.
@@ -201,8 +215,12 @@ export class RefiningPage {
   /** Whether the transient tab currently holds the selection. Never written to the URL. */
   private readonly transient = signal(false);
 
-  /** Every merge made from this page — kept because a merge resolves the workspace under it. */
-  protected readonly landed = signal<readonly MergeResult[]>([]);
+  /** The same lifecycle moves offered on a refining epic in the project overview, minus Refine. */
+  protected readonly resolutionActions = actionsFor('REFINING').filter(
+    (action) => action.kind === 'transition',
+  );
+  protected readonly resolutionPending = signal<string | null>(null);
+  protected readonly resolutionFailure = signal<string | null>(null);
 
   /** Which epic the subject on hand was resolved for, so a hop is told from a hint. */
   private resolvedFor: string | null = null;
@@ -242,6 +260,27 @@ export class RefiningPage {
       if (workspaceId > 0) {
         this.events.open(workspaceId);
       }
+    });
+
+    // Entering a refining route makes its in-container tools usable without a separate Start press.
+    // The route key resets the one-shot guard when Angular reuses this component for another epic;
+    // workspace hints do not, so a deliberate Stop is not immediately undone by the next refresh.
+    effect(() => {
+      const routeKey = `${this.projectId()}/${this.epicSlug()}`;
+      if (routeKey !== this.autoContainerRoute) {
+        this.autoContainerRoute = routeKey;
+        this.autoContainerWorkspaceId = 0;
+        this.autoStartFailure.set(null);
+      }
+      const subject = this.resolved();
+      const belongsToRoute =
+        subject?.node.epic.projectId === this.projectId() &&
+        subject.node.epic.slug === this.epicSlug();
+      const workspace = belongsToRoute ? this.workspace() : null;
+      if (!workspace || this.autoContainerWorkspaceId === workspace.id) return;
+      this.autoContainerWorkspaceId = workspace.id;
+      if (workspace.runtimeStatus === 'RUNNING' || workspace.runtimeStatus === 'PROVISIONING') return;
+      untracked(() => void this.startContainerOnEntry(workspace.id));
     });
 
     effect(() => this.guardRemount(this.epicSlug()));
@@ -354,46 +393,9 @@ export class RefiningPage {
     this.transient() && this.shownProcessId() ? STARTING_SLUG : this.urlTab(),
   );
 
-  /**
-   * A terminal run this workspace is doing that no agent is driving — the Actions dot.
-   *
-   * The split is deliberate and each dot points at its own tab: a chat has the Chat tab's, an agent run
-   * has the Agents tab's, and a service has the Services tab's. It is only the *label* that is
-   * narrowed, so a glance at the strip says which tab to open rather than merely that something is
-   * happening somewhere.
-   *
-   * "Agent-driven" is read off `agentSessions` rather than off the kind, because an interactive agent
-   * launch is a PTY like any other terminal run — what makes it the agent's is that a session is pinned
-   * to it.
-   */
-  private readonly runningAction = computed(() => {
-    const state = this.commandEntry.commands();
-    if (state.kind !== 'ready') {
-      return false;
-    }
-    return state.value.some(
-      (command) =>
-        command.kind === 'TERMINAL' &&
-        command.status === 'RUNNING' &&
-        command.agentSessions.length === 0,
-    );
-  });
-
-  /**
-   * The row: the transient tab when there is one, then the seven.
-   *
-   * **Every dot here is drawn from something already in hand, and none of them costs a request.** The
-   * Agents dot reads the workspace entry the strip already holds; the Services and Actions dots read
-   * the two shared entries, which answer "nothing to say" until a panel has asked for them. That is
-   * what keeps this page's load budget at what it says it is: a dot on a tab nobody has opened would
-   * otherwise mean a fetch on every page open for a tab nobody may visit, on a screen whose stated
-   * property is that an idle workspace produces no traffic at all. Absence of a dot means "not asked",
-   * never "nothing running", and one click resolves it.
-   */
+  /** The row: the transient tab when there is one, then the durable refinement tools. */
   protected readonly tabs = computed<readonly TabDef[]>(() => {
     const activity = this.workspace()?.agentActivity ?? null;
-    const servicesDot = this.serviceEntry.dot();
-    const running = this.runningAction();
     const durable = DURABLE_TABS.map((tab) => {
       if (tab.slug === 'agents' && activity) {
         return {
@@ -403,16 +405,14 @@ export class RefiningPage {
             activity === 'BUSY' ? 'The agent is working' : `Agent ${activity.toLowerCase()}`,
         };
       }
-      if (tab.slug === 'services' && servicesDot) {
-        return { ...tab, dot: servicesDot, dotTitle: this.serviceEntry.dotTitle() };
-      }
-      if (tab.slug === 'actions' && running) {
-        return { ...tab, dot: 'accent' as const, dotTitle: 'An action is running' };
-      }
       return tab;
     });
     return this.shownProcessId()
-      ? [{ slug: STARTING_SLUG, label: 'Starting', inUrl: false, pinFront: true }, ...durable]
+      ? [
+          durable[0],
+          { slug: STARTING_SLUG, label: 'Starting', inUrl: false, pinFront: true },
+          ...durable.slice(1),
+        ]
       : durable;
   });
 
@@ -487,6 +487,18 @@ export class RefiningPage {
     }
   }
 
+  private async startContainerOnEntry(workspaceId: number): Promise<void> {
+    this.autoStartFailure.set(null);
+    try {
+      const answer = await this.workspacesApi.ensureContainer(workspaceId);
+      if (answer.technicalProcessId) this.onStarted(answer.technicalProcessId);
+    } catch (error) {
+      this.autoStartFailure.set(describeError(error));
+    } finally {
+      await this.loadWorkspaces(this.repositoryId());
+    }
+  }
+
   // ---- what the page does -----------------------------------------------------------------------
 
   /**
@@ -545,6 +557,39 @@ export class RefiningPage {
     });
   }
 
+  /** Put an epic passage or writing point into prompt context, then reveal Chat to use it. */
+  protected pickEpic(selection: EpicSelection): void {
+    const workspaceId = this.workspaceRowId();
+    if (workspaceId <= 0) {
+      return;
+    }
+    this.picked.use(workspaceId);
+    this.picked.addEpic({ slug: this.epicSlug(), ...selection });
+    this.chooseTab('chat');
+  }
+
+  protected async insertEpicImage(insertion: EpicImageInsertion): Promise<void> {
+    const current = this.resolved();
+    if (!current) return;
+    const description = insertImageAt(
+      current.node.epic.description ?? '',
+      insertion.line,
+      this.workspaceRowId(),
+      insertion.attachment,
+    );
+    const epic = await this.projects.updateEpic(
+      current.node.epic.id,
+      current.node.epic.title,
+      description,
+    );
+    this.subject.set(ready({ ...current, node: { ...current.node, epic } }));
+  }
+
+  protected editSketch(attachmentId: string): void {
+    this.sketchSelection.open(attachmentId);
+    this.chooseTab('sketch');
+  }
+
   /** The Starting tab's process reached its terminal frame. */
   protected onSettled(): void {
     this.events.invalidateAll();
@@ -560,8 +605,33 @@ export class RefiningPage {
     void this.loadWorkspaces(this.repositoryId());
   }
 
-  protected onMerged(result: MergeResult): void {
-    this.landed.update((records) => [result, ...records]);
+  /**
+   * Finish refinement from the document itself.
+   *
+   * Abandoning is intentionally two operations: discard first removes the container, volume,
+   * workspace row and refinement branch; only then is the epic made terminal. If the second request
+   * fails, Refine can recreate the workspace. Reversing that order could leave an abandoned epic
+   * owning an unreachable active workspace with no UI from which to clean it up.
+   */
+  protected async resolveEpic(action: EpicAction): Promise<void> {
+    if (action.kind !== 'transition' || this.resolutionPending()) return;
+    const current = this.resolved();
+    const workspace = this.workspace();
+    if (!current || !workspace) return;
+
+    this.resolutionPending.set(actionKey(action));
+    this.resolutionFailure.set(null);
+    try {
+      if (action.target === 'ABANDONED') {
+        await this.workspacesApi.discard(workspace.id, 'Epic abandoned during refinement.');
+      }
+      await this.projects.transitionEpic(current.node.epic.id, action.target);
+      await this.router.navigate([this.projectId()], { fragment: `epic-${current.node.epic.id}` });
+    } catch (error) {
+      this.resolutionFailure.set(describeError(error));
+    } finally {
+      this.resolutionPending.set(null);
+    }
   }
 
   protected reload(): void {
@@ -591,7 +661,8 @@ export class RefiningPage {
     untracked(() => {
       this.shownProcessId.set(null);
       this.transient.set(false);
-      this.landed.set([]);
+      this.resolutionPending.set(null);
+      this.resolutionFailure.set(null);
       this.startFailure.set(null);
       this.autoSelected = null;
       this.daemon.resetReachability();

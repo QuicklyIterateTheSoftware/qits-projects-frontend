@@ -28,6 +28,7 @@ import {
 } from '../../ui/loadable';
 import { ATRAMENT_FACTORY, type AtramentLike } from './atrament-factory';
 import { exportSketch } from './image-export';
+import { SketchSelection } from './sketch-selection';
 
 /** A pen colour: the CSS value atrament draws with, plus the word a screen reader hears. */
 interface SketchColor {
@@ -165,6 +166,7 @@ export class SketchPanel {
   private readonly api = inject(PromptAttachmentsApi);
   private readonly events = inject(WorkspaceEvents);
   private readonly newAtrament = inject(ATRAMENT_FACTORY);
+  private readonly requestedSelection = inject(SketchSelection);
 
   /** Which workspace the drawing is attached to. The row id, which is what the host addresses. */
   readonly workspaceRowId = input.required<number>();
@@ -238,6 +240,17 @@ export class SketchPanel {
       const hint = this.attachmentHints();
       const visible = this.visible();
       untracked(() => this.decideRead(workspaceRowId, hint, visible));
+    });
+
+    effect(() => {
+      const attachmentId = this.requestedSelection.attachmentId();
+      const row = this.rows().find((candidate) => candidate.id === attachmentId);
+      if (attachmentId && row) {
+        untracked(() => {
+          this.select(row);
+          this.requestedSelection.consumed(attachmentId);
+        });
+      }
     });
 
     inject(DestroyRef).onDestroy(() => {
@@ -477,36 +490,26 @@ export class SketchPanel {
     this.attaching.set(true);
     this.attachFailure.set(null);
     try {
-      const created = await this.api.attach(workspaceRowId, {
+      const payload = {
         mimeType: 'image/png',
         label: replacing ? replacing.label : `Sketch ${this.sketchCount() + 1}`,
         source: replacing ? replacing.source : 'SKETCH',
         dataBase64: exportSketch(element),
-      });
-      // The selection follows the bytes: the row just written is the one being edited now.
+      } as const;
+      const created = replacing
+        ? await this.api.update(workspaceRowId, replacing.id, payload)
+        : await this.api.attach(workspaceRowId, payload);
+      // Updates preserve the id so any markdown image URL keeps pointing at the edited bytes.
       this.selectedId.set(created.id);
-      if (replacing) {
-        try {
-          await this.api.remove(workspaceRowId, replacing.id);
-        } catch (error) {
-          this.attachFailure.set(
-            `The new copy saved, but the old one is still there — ${describeError(error)}. ` +
-              'Delete whichever you do not want.',
-          );
-          // Re-read, so the duplicate this left behind is on screen rather than hidden.
-          await this.load(workspaceRowId);
-          return;
-        }
-      }
       // The confirmation echoes the button that was pressed, so it is obvious which one landed.
-      this.flashDone(replacing ? 'Updated' : 'Attached');
+      this.flashDone(replacing ? 'Updated' : 'Saved');
       await this.load(workspaceRowId);
     } catch (error) {
       // Nothing was written, so the gallery is still true — no re-read here.
       this.attachFailure.set(
         statusOf(error) === 413
-          ? 'That did not attach — the image is over the size limit, so clear some detail and try again.'
-          : `That did not attach — ${describeError(error)}.`,
+          ? 'That did not save — the image is over the size limit, so clear some detail and try again.'
+          : `That did not save — ${describeError(error)}.`,
       );
     } finally {
       this.attaching.set(false);

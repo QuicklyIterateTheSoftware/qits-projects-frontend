@@ -30,6 +30,10 @@ export interface ProjectComponents {
   readonly wrapper: WrapperDto | null;
 }
 
+interface EpicResponse {
+  readonly epic: EpicDto;
+}
+
 /**
  * Everything this app asks qits-projects for.
  *
@@ -145,6 +149,17 @@ export class ProjectsApi {
       ),
     );
     return response.entries.map((entry) => entry.epic);
+  }
+
+  /** Replace a refining epic's human-authored Markdown spine. */
+  async updateEpic(epicId: string, title: string, description: string): Promise<EpicDto> {
+    const response = await firstValueFrom(
+      this.http.put<EpicResponse>(`${this.base}/projects/api/epics/${encodeURIComponent(epicId)}`, {
+        title,
+        description,
+      }),
+    );
+    return response.epic;
   }
 
   /**

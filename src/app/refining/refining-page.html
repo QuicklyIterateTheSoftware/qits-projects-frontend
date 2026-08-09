@@ -13,123 +13,114 @@
     (retry)="onChanged()"
   />
 
-  <header class="head">
-    <p class="crumb">
-      <button type="button" class="back" (click)="backToEpics()">Epics</button>
-      <span class="sep">/</span>
-      <span>Refining</span>
-    </p>
-    <h1>{{ title() }}</h1>
-    <p class="meta">
-      <code>{{ branch() }}</code>
-      @if (repositoryId()) {
-        <span class="sep">·</span>
-        <span
-          >on the wrapper <code>{{ repositoryId() }}</code></span
-        >
-      }
-    </p>
-    <!--
-      The epic's description is markdown — the refining agent writes headings and code spans into it —
-      so the header renders it rather than printing its punctuation.
-    -->
-    @if (description(); as description) {
-      <app-markdown class="description" [text]="description" />
-    }
-  </header>
-
   @if (workspace(); as ws) {
-    <app-status-strip
-      [workspace]="ws"
-      [mainBranch]="mainBranch()"
-      [reachability]="reachability()"
-      [live]="live()"
-      (changed)="onChanged()"
-      (started)="onStarted($event)"
-      (merged)="onMerged($event)"
-    />
-
-    @if (landed().length > 0) {
-      <section class="landed" aria-label="What landed from this page">
-        <ul>
-          @for (record of landed(); track record.commitSha) {
-            <li>
-              @if (record.version) {
-                <strong>{{ record.version }}</strong> —
-              }
-              <code>{{ record.branch }}</code> → <code>{{ record.targetBranch }}</code
-              >, merge commit <code>{{ record.commitSha }}</code>
-            </li>
-          }
-        </ul>
-      </section>
-    }
-
-    <app-activity-bar
-      [workspaces]="refiningPeers()"
-      [currentId]="ws.id"
-      (open)="openPeer($event)"
-    />
-
     <app-tab-host
       [tabs]="tabs()"
       [selected]="selected()"
       label="Refining"
       (selectTab)="chooseTab($event)"
     >
+      <ng-template appTabPanel="epic">
+        <header class="head">
+          <p class="crumb">
+            <button type="button" class="back" (click)="backToEpics()">Epics</button>
+            <span class="sep">/</span>
+            <span>Refining</span>
+          </p>
+          <h1>{{ title() }}</h1>
+          <p class="meta">
+            <code>{{ branch() }}</code>
+            @if (repositoryId()) {
+              <span class="sep">·</span>
+              <span
+                >on the wrapper <code>{{ repositoryId() }}</code></span
+              >
+            }
+          </p>
+          @if (description(); as description) {
+            <app-epic-document
+              class="description"
+              [text]="description"
+              [workspaceRowId]="ws.id"
+              (picked)="pickEpic($event)"
+              (imageInserted)="insertEpicImage($event)"
+              (editImage)="editSketch($event)"
+            />
+          }
+          <app-epic-actions
+            class="resolution-actions"
+            [actions]="resolutionActions"
+            [disabled]="resolutionPending() !== null"
+            [running]="resolutionPending()"
+            [error]="resolutionFailure()"
+            (chosen)="resolveEpic($event)"
+          />
+        </header>
+
+        <app-activity-bar
+          [workspaces]="refiningPeers()"
+          [currentId]="ws.id"
+          (open)="openPeer($event)"
+        />
+      </ng-template>
       @if (shownProcessId(); as processId) {
         <ng-template appTabPanel="starting">
           <app-starting-panel [processId]="processId" (settled)="onSettled()" />
         </ng-template>
       }
       @for (tab of durableTabs; track tab.slug) {
-        <ng-template [appTabPanel]="tab.slug">
-          @if (tab.slug === 'chat') {
-            <app-chat-panel [workspaceRowId]="ws.id" [preamble]="ws.preamble" />
-          } @else if (tab.slug === 'files') {
-            <app-files-panel [workspaceRowId]="ws.id" [visible]="selected() === 'files'" />
-          } @else if (tab.slug === 'sketch') {
-            <app-sketch-panel [workspaceRowId]="ws.id" [visible]="selected() === 'sketch'" />
-          } @else if (tab.slug === 'services') {
-            <app-services-panel
-              [workspaceRowId]="ws.id"
-              [repositoryId]="repositoryId()"
-              [workspaceLabel]="ws.workspaceId"
-              [runtimeStatus]="ws.runtimeStatus"
-              [visible]="selected() === 'services'"
-            />
-          } @else if (tab.slug === 'actions') {
-            <app-actions-panel
-              [workspaceRowId]="ws.id"
-              [runtimeStatus]="ws.runtimeStatus"
-              [visible]="selected() === 'actions'"
-            />
-          } @else if (tab.slug === 'web-view') {
-            <app-web-view-panel [workspaceRowId]="ws.id" />
-          } @else if (tab.slug === 'agents') {
-            <app-agents-panel
-              [workspaceRowId]="ws.id"
-              [activity]="ws.agentActivity"
-              [visible]="selected() === 'agents'"
-            />
-          } @else {
-            <app-panel-placeholder [title]="tab.label" [note]="panelNote(tab.slug)" />
-          }
-        </ng-template>
+        @if (tab.slug !== 'epic') {
+          <ng-template [appTabPanel]="tab.slug">
+            @if (tab.slug === 'chat') {
+              <app-chat-panel
+                [workspaceRowId]="ws.id"
+                [preamble]="ws.preamble"
+                [visible]="selected() === 'chat'"
+              />
+            } @else if (tab.slug === 'files') {
+              <app-files-panel [workspaceRowId]="ws.id" [visible]="selected() === 'files'" />
+            } @else if (tab.slug === 'sketch') {
+              <app-sketch-panel [workspaceRowId]="ws.id" [visible]="selected() === 'sketch'" />
+            } @else if (tab.slug === 'web-view') {
+              <app-web-view-panel [workspaceRowId]="ws.id" />
+            } @else if (tab.slug === 'agents') {
+              <app-agents-panel
+                [workspaceRowId]="ws.id"
+                [activity]="ws.agentActivity"
+                [visible]="selected() === 'agents'"
+              />
+            } @else if (tab.slug === 'container') {
+              @if (autoStartFailure(); as message) {
+                <p class="fault" role="alert">
+                  The container could not be started automatically — {{ message }}.
+                </p>
+              }
+              <app-status-strip
+                [workspace]="ws"
+                [mainBranch]="mainBranch()"
+                [reachability]="reachability()"
+                [live]="live()"
+                (changed)="onChanged()"
+                (started)="onStarted($event)"
+              />
+            } @else {
+              <app-panel-placeholder [title]="tab.label" [note]="panelNote(tab.slug)" />
+            }
+          </ng-template>
+        }
       }
     </app-tab-host>
   } @else if (absent()) {
     <!--
-      Not a 404. A discard resolves the workspace and leaves the branch behind, so an epic that was
-      being refined yesterday resolves to nothing today — and the answer to that is the same press the
-      epics list offers, made here rather than somewhere else.
+      Not a 404. A discarded workspace is gone, so an epic with no active refinement workspace can be
+      restarted with the same press the epics list offers, made here rather than somewhere else.
     -->
     <section class="offer" aria-label="Start refining">
       <h2>No refining workspace is open for this epic</h2>
       <p>
         Refining happens in a workspace on <code>{{ branch() }}</code
         >, and there is none active right now — either nobody has started one, or the last one was
-        discarded. Starting one cuts the branch if it is not there and adopts it if it is.
+        discarded. Starting one creates the branch and workspace again.
       </p>
       <qits-button variant="primary" [busy]="starting()" (pressed)="startRefining()">
         Start refining

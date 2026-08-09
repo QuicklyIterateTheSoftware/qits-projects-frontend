@@ -23,7 +23,7 @@ import { TerminalView } from '../../project/agent/terminal-view';
  * *disabled* — the rule is easier to believe when you can see it refuse.
  *
  * **The terminal is this SPA's own `TerminalView`, not a copy of the workspaces one**, and the
- * difference is worth having rather than merely free. Both render what `AnsiScreen` resolved; this
+ * difference is worth having rather than merely free. Both render the raw PTY stream through xterm.js; this
  * one puts the keyboard in an invisible `<textarea>` instead of on a focusable `<pre>`, because a
  * browser fires `paste` only at an *editable* target — so the workspaces variant is silent on Ctrl+V.
  * Pasting into an agent session is a paragraph-shaped gesture, which is exactly what happens here.
@@ -63,10 +63,11 @@ import { TerminalView } from '../../project/agent/terminal-view';
             every workspace at once. When this terminal exits, the launch you asked for is replayed.
           </p>
           <app-terminal-view
-            [lines]="session.lines()"
+            [frames]="session.frames()"
             [attached]="attached()"
             label="Agent sign-in terminal"
             (data)="session.send($event)"
+            (resized)="session.resize($event.cols, $event.rows)"
           />
         </div>
       }
@@ -83,10 +84,11 @@ import { TerminalView } from '../../project/agent/terminal-view';
                panel, whose default names *its* agent, and a borrowed default is a caption that
                changes when the other feature changes its mind. -->
           <app-terminal-view
-            [lines]="session.lines()"
+            [frames]="session.frames()"
             [attached]="attached()"
             label="Agent session"
             (data)="session.send($event)"
+            (resized)="session.resize($event.cols, $event.rows)"
           />
         </div>
       }

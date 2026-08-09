@@ -198,9 +198,9 @@ export class WorkspacesApi {
   /**
    * Abandon the work: the workspace resolves, unmerged, with an optional markdown note saying why.
    *
-   * The note is the whole record of what was tried — after this call the workspace leaves the active
-   * list and only the history record remains. For a refining workspace that is also what makes the
-   * epic's Refine button offer a *fresh* one: the branch match finds nothing active any more.
+   * The note is the whole record of what was tried — after this call the container, persistent volume
+   * and branch are gone, the workspace leaves the active list, and only its history record remains.
+   * For a refining workspace that makes the epic's Refine button create a fresh branch and workspace.
    */
   async discard(workspaceId: number, result: string): Promise<DiscardResponse> {
     return firstValueFrom(

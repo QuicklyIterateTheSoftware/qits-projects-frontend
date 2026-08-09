@@ -70,6 +70,24 @@ describe('ProjectsApi', () => {
     await expect(components).resolves.toEqual({ repositories: [], wrapper: null });
   });
 
+  it('replaces a refining epic description', async () => {
+    const updated = api.updateEpic(
+      'epic 1',
+      'The epic',
+      'before\n\n![Sketch 1](qits-attachment:Sketch%201)',
+    );
+    const request = http.expectOne('/projects/api/epics/epic%201');
+
+    expect(request.request.method).toBe('PUT');
+    expect(request.request.body).toEqual({
+      title: 'The epic',
+      description: 'before\n\n![Sketch 1](qits-attachment:Sketch%201)',
+    });
+    request.flush({ epic: { id: 'epic 1', title: 'The epic' } });
+
+    await expect(updated).resolves.toMatchObject({ id: 'epic 1' });
+  });
+
   it('sends a name and no url for a blank repository', async () => {
     const created = api.createRepository('p1', { name: 'qits-widgets', archetype: 'SERVICE' });
     const request = http.expectOne('/projects/api/projects/p1/repositories');

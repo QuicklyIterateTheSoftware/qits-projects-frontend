@@ -13,11 +13,9 @@ import { WorkspacesApi } from '../api/workspaces-api';
 import type { WorkspaceDto } from '../api/workspaces-dto';
 import { driftLabel, relativeSince } from '../ui/format';
 import { describeError } from '../ui/loadable';
-import type { MergeResult } from './merge/merge-outcome';
-import { MergePanel } from './merge/merge-panel';
 
 /** Which button is waiting on the server. Never "some mutation is pending" — one Stop must not spin Start. */
-type Pending = 'start' | 'stop' | 'recreate' | 'discard' | null;
+type Pending = 'start' | 'stop' | 'recreate' | null;
 
 /** What the page can say about the in-container daemon right now. */
 type DaemonState = 'connected' | 'gone' | 'not-running';
@@ -34,20 +32,8 @@ const RUNTIME_TONES: Readonly<Record<string, QitsBadgeTone>> = {
  * it. Copied from qits-spa-workspaces' detail shell, where every field here was already on the wire.
  *
  * **The verbs live beside the state they act on**, which is why this is a strip and not a toolbar.
- * Start, Stop and Recreate sit next to the runtime state. The one door home and Discard sit next to the
- * resolution status.
- *
- * **Discard is what ends a refining session**, and it is worth knowing what it leaves behind: the
- * workspace resolves and stops being ACTIVE, so the epic's branch match finds nothing and the Refine
- * button offers a fresh workspace. The `refining/<slug>` ref itself survives, which is why the next
- * create adopts it rather than failing.
- *
- * **One door, never two.** Release is offered when the work goes home to the repository's default
- * branch and Integrate when it goes anywhere else, read from the workspace's parent exactly as the
- * list reads it. Offering both would put a button on the page that answers 409 every time. The
- * reading can be stale and the service says so with `RELEASE_REQUIRED`, which is the only thing that
- * ever changes the door — all of which {@link ./merge/merge-panel#MergePanel} already handles, so
- * this strip hands it the workspace and the default branch and gets out of the way.
+ * Start, Stop and Recreate sit next to the runtime state. Epic lifecycle decisions are deliberately
+ * absent: they belong below the epic document, not among container diagnostics.
  *
  * **Recreate is disabled unless the tree is provably clean.** The service refuses with a 400
  * otherwise, and `clean: null` — what a workspace with no live daemon reports — counts as not clean.
@@ -68,7 +54,7 @@ const RUNTIME_TONES: Readonly<Record<string, QitsBadgeTone>> = {
 @Component({
   selector: 'app-status-strip',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [MergePanel, QitsBadge, QitsButton],
+  imports: [QitsBadge, QitsButton],
   templateUrl: './status-strip.html',
   styleUrl: './status-strip.css',
 })
@@ -91,15 +77,10 @@ export class StatusStrip {
   /** A container verb answered with a process id — the Starting tab attaches to it at once. */
   readonly started = output<string>();
 
-  /** The work went home. The page records it, because this workspace is about to leave the list. */
-  readonly merged = output<MergeResult>();
-
   private readonly api = inject(WorkspacesApi);
 
   protected readonly pending = signal<Pending>(null);
   protected readonly failure = signal<string | null>(null);
-  protected readonly discarding = signal(false);
-  protected readonly discardNote = signal('');
 
   protected readonly runtimeTone = computed<QitsBadgeTone>(
     () => RUNTIME_TONES[this.workspace().runtimeStatus ?? ''] ?? 'neutral',
@@ -179,27 +160,6 @@ export class StatusStrip {
         this.started.emit(answer.technicalProcessId);
       }
     });
-  }
-
-  protected openDiscard(): void {
-    this.discarding.set(true);
-    this.failure.set(null);
-  }
-
-  protected cancelDiscard(): void {
-    this.discarding.set(false);
-    this.discardNote.set('');
-  }
-
-  protected noteTyped(event: Event): void {
-    this.discardNote.set((event.target as HTMLTextAreaElement).value);
-  }
-
-  protected async discard(): Promise<void> {
-    await this.run('discard', () => this.api.discard(this.workspace().id, this.discardNote()));
-    if (!this.failure()) {
-      this.cancelDiscard();
-    }
   }
 
   /**
