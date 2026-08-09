@@ -31,6 +31,7 @@ import type { MergeResult } from './merge/merge-outcome';
 import { PanelPlaceholder } from './panel-placeholder';
 import { RefiningService } from './refining-service';
 import { ServicesPanel } from './services/services-panel';
+import { SketchPanel } from './sketch/sketch-panel';
 import { StartingPanel } from './starting/starting-panel';
 import { StatusStrip } from './status-strip';
 import { TabHost } from './tabs/tab-host';
@@ -49,7 +50,7 @@ export const LINGER_MS = 5000;
 /**
  * What each durable tab says while its panel is still to come.
  *
- * Empty now that all six have one. Kept, because {@link RefiningPage.panelNote} is what a tab added
+ * Empty now that every tab has one. Kept, because {@link RefiningPage.panelNote} is what a tab added
  * ahead of its panel falls back to, and a placeholder that names the surface is a better screen than
  * an empty box.
  */
@@ -135,6 +136,7 @@ interface Subject {
     PanelPlaceholder,
     QitsButton,
     ServicesPanel,
+    SketchPanel,
     StartingPanel,
     StatusStrip,
     TabHost,
@@ -378,7 +380,7 @@ export class RefiningPage {
   });
 
   /**
-   * The row: the transient tab when there is one, then the six.
+   * The row: the transient tab when there is one, then the seven.
    *
    * **Every dot here is drawn from something already in hand, and none of them costs a request.** The
    * Agents dot reads the workspace entry the strip already holds; the Services and Actions dots read

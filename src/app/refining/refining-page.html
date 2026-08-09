@@ -88,6 +88,8 @@
             <app-chat-panel [workspaceRowId]="ws.id" [preamble]="ws.preamble" />
           } @else if (tab.slug === 'files') {
             <app-files-panel [workspaceRowId]="ws.id" [visible]="selected() === 'files'" />
+          } @else if (tab.slug === 'sketch') {
+            <app-sketch-panel [workspaceRowId]="ws.id" [visible]="selected() === 'sketch'" />
           } @else if (tab.slug === 'services') {
             <app-services-panel
               [workspaceRowId]="ws.id"
