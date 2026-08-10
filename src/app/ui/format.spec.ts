@@ -45,19 +45,19 @@ describe('repositoryLabel', () => {
 describe('cloneUrl', () => {
   it('is the git host’s name-addressed route under the browser’s own origin', () => {
     expect(cloneUrl('https://qits.example', 'qits', 'qits-ci')).toBe(
-      'https://qits.example/artifacts/git/qits/qits-ci.git',
+      'https://qits.example/git/qits/qits-ci.git',
     );
   });
 
   it('does not double the slash when the origin carries a trailing one', () => {
     expect(cloneUrl('http://localhost:8080/', 'qits', 'qits-ci')).toBe(
-      'http://localhost:8080/artifacts/git/qits/qits-ci.git',
+      'http://localhost:8080/git/qits/qits-ci.git',
     );
   });
 
   it('escapes a project id or a name that would otherwise change the path', () => {
     expect(cloneUrl('https://qits.example', 'a/b', 'c d')).toBe(
-      'https://qits.example/artifacts/git/a%2Fb/c%20d.git',
+      'https://qits.example/git/a%2Fb/c%20d.git',
     );
   });
 });

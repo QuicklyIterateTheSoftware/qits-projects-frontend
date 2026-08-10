@@ -218,7 +218,7 @@ describe('ProjectSetupPage', () => {
     expect(card?.textContent).toContain('LIBRARY');
     // The clone is this platform's git host, composed rather than read off a field.
     expect(card?.textContent).toContain('Clone');
-    expect(card?.textContent).toContain(`${location.origin}/artifacts/git/p1/qits-angular.git`);
+    expect(card?.textContent).toContain(`${location.origin}/git/p1/qits-angular.git`);
     // The backup is the twin, and it is the only per-repository url on the card.
     expect(card?.textContent).toContain('Backup');
     expect(card?.textContent).toContain('https://github.com/QuicklyIterate/qits-angular.git');
@@ -233,7 +233,7 @@ describe('ProjectSetupPage', () => {
     await load([repository('qits-widgets', 'SERVICE', { backupUrl: null })]);
 
     const card = page().querySelector('app-component-card');
-    expect(card?.textContent).toContain(`${location.origin}/artifacts/git/p1/qits-widgets.git`);
+    expect(card?.textContent).toContain(`${location.origin}/git/p1/qits-widgets.git`);
     expect(card?.textContent).toContain('—');
     // The sentence the old "Origin" line drew for this case is gone with the label.
     expect(card?.textContent).not.toContain('platform');

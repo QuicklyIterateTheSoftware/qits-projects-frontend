@@ -96,16 +96,20 @@ export function repositoryLabel(
 /**
  * Where this repository is cloned from, which is **always** this platform's git host.
  *
- * qits-artifacts serves every component repository on a name-addressed route, and the wrapper's
+ * qits-githost serves every component repository on a name-addressed route, and the wrapper's
  * relative `../<name>.git` resolves to exactly this. So it is composed rather than read off a
  * field: there is no per-repository answer to give, and a stored one could only ever be a second
  * copy of a rule — free to drift, and wrong the moment the platform moves.
+ *
+ * It was `/artifacts/git/…` until the byte-plane split moved the git host out of qits-artifacts
+ * into a service of its own: a repository is not an artifact, it only shared the storage layout.
+ * The gateway routes `/git/*` to it verbatim, so this is the address a reader can paste.
  *
  * `origin` is the browser's own, so the address is the one the reader is already talking to.
  */
 export function cloneUrl(origin: string, projectId: string, name: string): string {
   const host = origin.replace(/\/+$/, '');
-  return `${host}/artifacts/git/${encodeURIComponent(projectId)}/${encodeURIComponent(name)}.git`;
+  return `${host}/git/${encodeURIComponent(projectId)}/${encodeURIComponent(name)}.git`;
 }
 
 /** The basename of a git url, without its `.git` suffix. Empty for no url. */
