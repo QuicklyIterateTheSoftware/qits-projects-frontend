@@ -3,8 +3,22 @@ steps:
     timeout-seconds: 1800
     script: |
       set -eu
-      npm_origin=$(node -p 'new URL(process.env.QITS_NPM_PROXY_URL).origin')
-      sed -i -E "s#(\"resolved\": \")https?://[^/\"]+#\\1$npm_origin#" package-lock.json
+      # THE LOCKFILE, RETARGETED. npm pins an absolute `resolved` URL per package and the committed
+      # lockfile names the host's ports, which do not exist in this container. The byte plane is
+      # TWO SERVICES since the split — qits-platform-mirror holds the npmjs pull-through cache,
+      # qits-artifacts hosts the @qits scope — so no single origin serves both and the PATH is what
+      # tells them apart: an entry under the hosted registry's own pathname
+      # ($QITS_NPM_REGISTRY_URL's, /artifacts/npm/npm/) gets the hosted origin, everything else
+      # gets the proxy's. sed applies -e in sequence, so the broad swap runs first and the narrow
+      # path-anchored one corrects the @qits entries after it. The sibling SPA repos carry the same
+      # block with the full reasoning.
+      npm_hosted_origin=$(node -p 'new URL(process.env.QITS_NPM_REGISTRY_URL).origin')
+      npm_proxy_origin=$(node -p 'new URL(process.env.QITS_NPM_PROXY_URL).origin')
+      npm_hosted_path=$(node -p 'new URL(process.env.QITS_NPM_REGISTRY_URL).pathname')
+      sed -i -E \
+        -e "s#(\"resolved\": \")https?://[^/\"]+#\1$npm_proxy_origin#" \
+        -e "s#(\"resolved\": \")https?://[^/\"]+($npm_hosted_path)#\1$npm_hosted_origin\2#" \
+        package-lock.json
       env npm_config_registry="$QITS_NPM_PROXY_URL" \
           "npm_config_@qits:registry=$QITS_NPM_REGISTRY_URL" \
           npm ci --no-audit --no-fund
