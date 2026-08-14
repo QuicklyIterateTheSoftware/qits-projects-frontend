@@ -39,7 +39,7 @@ describe('MarkdownView', () => {
 
     expect(element.querySelector('h1')).toBeTruthy();
     expect(element.querySelector('blockquote')).toBeTruthy();
-    expect(element.querySelector('pre code')?.textContent).toBe('code');
+    expect(element.querySelector('pre code')?.textContent).toBe('code\n');
     expect(element.querySelector('hr')).toBeTruthy();
     expect(element.querySelector('a')?.getAttribute('href')).toBe('/projects/');
   });

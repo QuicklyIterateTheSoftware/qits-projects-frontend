@@ -72,6 +72,22 @@ describe('PickedContext', () => {
     picked.removeReference('src/main.ts:10-14');
     expect(picked.references()).toHaveLength(0);
   });
+
+  it('merges a restored draft behind context picked before Chat mounted', () => {
+    picked.use(7);
+    picked.addEpic({ slug: 'live', startLine: 3, endLine: 3, excerpt: 'new' });
+
+    picked.merge({
+      text: 'saved',
+      references: [REFERENCE],
+      elements: [ELEMENT],
+      epics: [{ slug: 'saved', startLine: 1, endLine: 2, excerpt: 'old' }],
+    });
+
+    expect(picked.epics().map((entry) => entry.slug)).toEqual(['live', 'saved']);
+    expect(picked.references()).toEqual([REFERENCE]);
+    expect(picked.elements()).toEqual([ELEMENT]);
+  });
 });
 
 describe('referenceLabel', () => {
@@ -88,27 +104,43 @@ describe('parseComposition', () => {
       text: 'hello',
       references: [REFERENCE],
       elements: [ELEMENT],
+      epics: [],
     });
   });
 
   it('degrades to an empty composition rather than throwing on a blob it cannot read', () => {
     // The host validates only that the blob is JSON. A blob from an older build, or from a hand,
     // has to be no worse than "no draft".
-    expect(parseComposition('not json')).toEqual({ text: '', references: [], elements: [] });
-    expect(parseComposition('[]')).toEqual({ text: '', references: [], elements: [] });
-    expect(parseComposition('{"text":42}')).toEqual({ text: '', references: [], elements: [] });
+    expect(parseComposition('not json')).toEqual({
+      text: '',
+      references: [],
+      elements: [],
+      epics: [],
+    });
+    expect(parseComposition('[]')).toEqual({ text: '', references: [], elements: [], epics: [] });
+    expect(parseComposition('{"text":42}')).toEqual({
+      text: '',
+      references: [],
+      elements: [],
+      epics: [],
+    });
   });
 });
 
 describe('serializePrompt', () => {
   it('is the typed text when nothing was picked', () => {
-    expect(serializePrompt({ text: 'do the thing', references: [], elements: [] })).toBe(
+    expect(serializePrompt({ text: 'do the thing', references: [], elements: [], epics: [] })).toBe(
       'do the thing',
     );
   });
 
   it('appends a pick the user never inserted, so the chips do not lie', () => {
-    const prompt = serializePrompt({ text: 'fix this', references: [REFERENCE], elements: [] });
+    const prompt = serializePrompt({
+      text: 'fix this',
+      references: [REFERENCE],
+      elements: [],
+      epics: [],
+    });
 
     expect(prompt).toContain('fix this');
     expect(prompt).toContain('Context picked in the workspace');
@@ -117,13 +149,13 @@ describe('serializePrompt', () => {
 
   it('does not append a pick that is already in the text', () => {
     const text = `look at ${referenceText(REFERENCE)}`;
-    const prompt = serializePrompt({ text, references: [REFERENCE], elements: [] });
+    const prompt = serializePrompt({ text, references: [REFERENCE], elements: [], epics: [] });
 
     expect(prompt).toBe(text);
     expect(prompt).not.toContain('Context picked in the workspace');
   });
 
   it('is empty when there is nothing to say, so an empty draft cannot be launched', () => {
-    expect(serializePrompt({ text: '   ', references: [], elements: [] })).toBe('');
+    expect(serializePrompt({ text: '   ', references: [], elements: [], epics: [] })).toBe('');
   });
 });

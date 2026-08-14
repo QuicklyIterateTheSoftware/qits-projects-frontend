@@ -18,10 +18,6 @@
   min-width: 0;
 }
 
-.field.wide {
-  grid-column: 1 / -1;
-}
-
 .key {
   color: #6b7280;
   font-size: 0.72rem;
@@ -41,36 +37,6 @@
   display: flex;
   gap: 0.35rem;
   flex-wrap: wrap;
-}
-
-.home {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-  align-items: flex-start;
-}
-
-.discard {
-  display: flex;
-  flex-direction: column;
-  gap: 0.35rem;
-  width: 100%;
-  max-width: 34rem;
-}
-
-.field-label {
-  color: #374151;
-  font-size: 0.85rem;
-}
-
-textarea {
-  width: 100%;
-  padding: 0.4rem 0.5rem;
-  border: 1px solid #d1d5db;
-  border-radius: 0.3rem;
-  font: inherit;
-  font-size: 0.88rem;
-  resize: vertical;
 }
 
 .note {

@@ -4,11 +4,11 @@ import { renderMarkdown } from './markdown';
 /**
  * A description, drawn as the markdown it is written in.
  *
- * <p><b>`[innerHTML]` with no `bypassSecurityTrustHtml`.</b> {@link renderMarkdown} escapes every
- * character of the source before wrapping any of it in a tag, so the string handed over here carries
- * no author-supplied markup at all — and binding it plainly means **Angular's sanitizer runs over it
- * as well**. That second pass is the point: bypassing it would trade a safety net for nothing, since
- * the tags this renderer emits are all ones the sanitizer already allows.
+ * <p><b>`[innerHTML]` with no `bypassSecurityTrustHtml`.</b> {@link renderMarkdown} uses the standard
+ * Markdown parser with raw HTML escaped and unsafe URL schemes refused. Binding the result plainly
+ * means **Angular's sanitizer runs over it as well**. That second pass is the point: bypassing it
+ * would trade a safety net for nothing, since the tags the renderer emits are ones the sanitizer
+ * already allows.
  *
  * <p><b>Styled with `::ng-deep`, which is not an oversight.</b> Nodes inserted through `innerHTML`
  * never receive the emulated-encapsulation attribute, so an ordinary `h2 { … }` rule in this

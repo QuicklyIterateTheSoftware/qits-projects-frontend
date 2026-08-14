@@ -126,17 +126,13 @@ describe('StatusStrip', () => {
     expect(text(fixture)).toContain('Recreating the container is the way to replace it');
   });
 
-  it('offers integrate for work parented anywhere but the default branch', async () => {
-    const fixture = await render({ parent: 'epic/widgets' }, { mainBranch: 'main' });
-
-    expect(text(fixture)).toContain('Integrate');
-    expect(text(fixture)).not.toContain('Release into');
-  });
-
-  it('offers release, and only release, for work parented on the default branch', async () => {
+  it('keeps epic lifecycle actions out of container status', async () => {
     const fixture = await render({ parent: 'main' }, { mainBranch: 'main' });
 
-    expect(text(fixture)).toContain('Release');
+    expect(text(fixture)).not.toContain('Resolution');
+    expect(text(fixture)).not.toContain('Release');
+    expect(text(fixture)).not.toContain('Integrate');
+    expect(text(fixture)).not.toContain('Abandon');
   });
 
   it('shows the runtime error the list used to keep to itself', async () => {

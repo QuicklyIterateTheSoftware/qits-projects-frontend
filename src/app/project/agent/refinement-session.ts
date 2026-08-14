@@ -9,7 +9,7 @@ import {
 import { ProjectAgentApi, type AgentContainerDto } from '../../api/project-agent-api';
 import { WEB_SOCKET_FACTORY } from '../../api/web-socket';
 import { describeError, statusOf } from '../../ui/loadable';
-import { TerminalSocket } from './terminal-socket';
+import { EMPTY_TERMINAL_FRAMES, TerminalSocket } from './terminal-socket';
 
 /**
  * Where the refinement session has landed.
@@ -116,8 +116,8 @@ export class RefinementSession {
   /**
    * The attachment, as a signal rather than a field.
    *
-   * It is read *through* by {@link lines} and {@link link}, so replacing the socket re-points both
-   * without copying anything: a computed that reads `socketRef()?.lines()` re-tracks the new
+   * It is read *through* by {@link frames} and {@link link}, so replacing the socket re-points both
+   * without copying anything: a computed that reads `socketRef()?.frames()` re-tracks the new
    * socket's signal the moment the reference changes.
    */
   private readonly socketRef = signal<TerminalSocket | null>(null);
@@ -145,8 +145,8 @@ export class RefinementSession {
   /** What the proxy last said about the daemon — one sentence for the whole panel. */
   readonly reachability = this.host.reachability;
 
-  /** The attached terminal's screen and link state. Empty and `disconnected` while unattached. */
-  readonly lines = computed<readonly string[]>(() => this.socketRef()?.lines() ?? []);
+  /** The attached terminal's raw PTY frames and link state. */
+  readonly frames = computed(() => this.socketRef()?.frames() ?? EMPTY_TERMINAL_FRAMES);
   readonly link = computed(() => this.socketRef()?.status() ?? 'disconnected');
 
   constructor() {

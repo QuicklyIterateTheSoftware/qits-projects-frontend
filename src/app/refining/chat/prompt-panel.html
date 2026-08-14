@@ -85,6 +85,22 @@
       Press a row to put it in the prompt. Anything left unpressed is appended on launch.
     </p>
     <ul>
+      @for (epic of picked.epics(); track epicLabel(epic); let index = $index) {
+        <li>
+          <button type="button" class="row" (click)="insertEpic(index)">
+            <code>{{ epicLabel(epic) }}</code>
+            <span class="excerpt">{{ epic.excerpt || 'Writing point' }}</span>
+          </button>
+          <button
+            type="button"
+            class="drop"
+            [attr.aria-label]="'Remove ' + epicLabel(epic)"
+            (click)="picked.removeEpic(epicLabel(epic))"
+          >
+            ✕
+          </button>
+        </li>
+      }
       @for (reference of picked.references(); track label(reference); let index = $index) {
         <li>
           <button type="button" class="row" (click)="insertReference(index)">

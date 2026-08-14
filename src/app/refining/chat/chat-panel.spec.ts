@@ -7,6 +7,7 @@ import { WorkspaceEvents } from '../../api/workspace-events';
 import { WEB_SOCKET_FACTORY, WEB_SOCKET_OPEN, type WebSocketLike } from '../../api/web-socket';
 import type { CommandDto } from '../../api/commands-api';
 import { ChatPanel } from './chat-panel';
+import { PickedContext } from './picked-context';
 import { SPEECH_RUNTIME, type SpeechRuntime } from './speech-runtime';
 
 class FakeStream implements EventSourceLike {
@@ -70,10 +71,15 @@ const chat = (id: string, status: CommandDto['status']): CommandDto => ({
   selector: 'app-panel-host',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [ChatPanel],
-  template: `<app-chat-panel [workspaceRowId]="workspaceRowId()" [preamble]="null" />`,
+  template: `<app-chat-panel
+    [workspaceRowId]="workspaceRowId()"
+    [preamble]="null"
+    [visible]="visible()"
+  />`,
 })
 class PanelHost {
   readonly workspaceRowId = signal(7);
+  readonly visible = signal(true);
 }
 
 /**
@@ -188,6 +194,74 @@ describe('ChatPanel', () => {
     expect(text()).toContain('On it.');
   });
 
+  it('opens a conversation at the bottom and follows new messages while it remains there', async () => {
+    await listing([chat('cmd-1', 'RUNNING')]);
+    const log = fixture.nativeElement.querySelector('.log') as HTMLElement;
+    let scrollHeight = 500;
+    Object.defineProperties(log, {
+      clientHeight: { configurable: true, value: 100 },
+      scrollHeight: { configurable: true, get: () => scrollHeight },
+      scrollTop: { configurable: true, value: 0, writable: true },
+    });
+
+    latest().connect();
+    latest().deliver(`${JSON.stringify({ type: 'user', text: 'first message' })}\n`);
+    await settle();
+    expect(log.scrollTop).toBe(500);
+
+    log.scrollTop = 400;
+    log.dispatchEvent(new Event('scroll'));
+    scrollHeight = 700;
+    latest().deliver(`${JSON.stringify({ type: 'user', text: 'next message' })}\n`);
+    await settle();
+
+    expect(log.scrollTop).toBe(700);
+  });
+
+  it('does not pull a reader back to the bottom after they scroll up', async () => {
+    await listing([chat('cmd-1', 'RUNNING')]);
+    const log = fixture.nativeElement.querySelector('.log') as HTMLElement;
+    let scrollHeight = 500;
+    Object.defineProperties(log, {
+      clientHeight: { configurable: true, value: 100 },
+      scrollHeight: { configurable: true, get: () => scrollHeight },
+      scrollTop: { configurable: true, value: 100, writable: true },
+    });
+    log.dispatchEvent(new Event('scroll'));
+
+    scrollHeight = 700;
+    latest().connect();
+    latest().deliver(`${JSON.stringify({ type: 'user', text: 'new message' })}\n`);
+    await settle();
+
+    expect(log.scrollTop).toBe(100);
+  });
+
+  it('catches up at the bottom when a following chat tab becomes visible again', async () => {
+    await listing([chat('cmd-1', 'RUNNING')]);
+    const host = fixture.componentInstance;
+    const log = fixture.nativeElement.querySelector('.log') as HTMLElement;
+    let scrollHeight = 500;
+    Object.defineProperties(log, {
+      clientHeight: { configurable: true, value: 100 },
+      scrollHeight: { configurable: true, get: () => scrollHeight },
+      scrollTop: { configurable: true, value: 400, writable: true },
+    });
+    log.dispatchEvent(new Event('scroll'));
+
+    host.visible.set(false);
+    fixture.detectChanges();
+    scrollHeight = 700;
+    latest().connect();
+    latest().deliver(`${JSON.stringify({ type: 'user', text: 'arrived while hidden' })}\n`);
+    await settle();
+    expect(log.scrollTop).toBe(400);
+
+    host.visible.set(true);
+    await settle();
+    expect(log.scrollTop).toBe(700);
+  });
+
   it('says that side-chains join at the end, rather than looking broken', async () => {
     // The live tail covers the main session only; the exit sweep imports the side-chains. Unsaid,
     // that reads as an agent spawning sub-agents whose work never appears.
@@ -212,6 +286,29 @@ describe('ChatPanel', () => {
     expect(latest().sent).toEqual(['{"type":"user","text":"and a test"}']);
     // Nothing on screen until the server echoes it back.
     expect(text()).not.toContain('and a test');
+  });
+
+  it('shows picked epic context in a running chat and sends it with the next message', async () => {
+    await listing([chat('cmd-1', 'RUNNING')]);
+    latest().connect();
+    TestBed.inject(PickedContext).addEpic({
+      slug: 'the-epic',
+      startLine: 12,
+      endLine: 14,
+      excerpt: 'The selected paragraph.',
+    });
+    fixture.detectChanges();
+
+    expect(text()).toContain('Attached to next message');
+    expect(text()).toContain('Epic: the-epic');
+    expect(text()).toContain('Lines: 12:14');
+
+    press('Send');
+
+    const frame = JSON.parse(latest().sent[0]) as { text: string };
+    expect(frame.text).toContain('Epic: the-epic\nLines: 12:14');
+    expect(frame.text).toContain('The selected paragraph.');
+    expect(TestBed.inject(PickedContext).any()).toBe(false);
   });
 
   it('bridges the gap between a launch and the registry hearing about it', async () => {

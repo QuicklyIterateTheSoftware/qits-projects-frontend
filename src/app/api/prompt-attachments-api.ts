@@ -54,6 +54,14 @@ interface AttachmentsResponse {
   readonly attachments: readonly PromptAttachmentDto[];
 }
 
+export function promptAttachmentContentUrl(
+  workspaceRowId: number,
+  attachmentId: string,
+  base = '',
+): string {
+  return `${base}/workspaces/api/workspaces/${encodeURIComponent(workspaceRowId)}/prompt-attachments/${encodeURIComponent(attachmentId)}/content`;
+}
+
 @Injectable({ providedIn: 'root' })
 export class PromptAttachmentsApi {
   private readonly http = inject(HttpClient);
@@ -91,6 +99,25 @@ export class PromptAttachmentsApi {
     return await firstValueFrom(
       this.http.post<PromptAttachmentDto>(this.url(workspaceRowId), attachment),
     );
+  }
+
+  /** Replace the bytes without changing the row id used by document image URLs. */
+  async update(
+    workspaceRowId: number,
+    attachmentId: string,
+    attachment: NewPromptAttachment,
+  ): Promise<PromptAttachmentDto> {
+    return await firstValueFrom(
+      this.http.put<PromptAttachmentDto>(
+        `${this.url(workspaceRowId)}/${encodeURIComponent(attachmentId)}`,
+        attachment,
+      ),
+    );
+  }
+
+  /** Root-absolute, browser-loadable URL for a stored image. */
+  contentUrl(workspaceRowId: number, attachmentId: string): string {
+    return promptAttachmentContentUrl(workspaceRowId, attachmentId, this.base);
   }
 
   /**
