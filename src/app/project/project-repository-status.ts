@@ -87,9 +87,10 @@ export function wrapperDrift(
  *
  * <p>Two reconciles, deliberately kept apart and drawn at different weights. "Reconcile from
  * project repository" rewrites rows — it can create, adopt, re-classify and **deregister** — so it
- * is the primary action and it reports every path it touched. "Re-assert DNS" pushes one record at
- * qits-dns and changes nothing here, so it is a small secondary action; folding the two into one
- * button would make a routine dns nudge also delete rows.
+ * is the primary action and it reports every path it touched. "Re-assert DNS" pushes one record
+ * through the domain-registrar port and changes nothing here, so it is a small secondary action;
+ * folding the two into one button would make a routine dns nudge also delete rows. (Nothing
+ * implements that port since qits-platform-dns left the platform, so it reports FAILED today.)
  */
 @Component({
   selector: 'app-project-repository-status',

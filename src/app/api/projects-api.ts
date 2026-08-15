@@ -110,7 +110,11 @@ export class ProjectsApi {
     );
   }
 
-  /** Re-assert the project's stored dns record against qits-dns. A failure is still a 200. */
+  /**
+   * Re-assert the project's stored dns record through the domain-registrar port. A failure is
+   * still a 200. Nothing implements the port since qits-platform-dns left the platform, so this
+   * currently answers FAILED with a no-registrar detail.
+   */
   reconcileDomain(projectId: string): Promise<ProjectReconcileResponse> {
     return firstValueFrom(
       this.http.post<ProjectReconcileResponse>(
