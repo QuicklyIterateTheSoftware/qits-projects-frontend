@@ -9,7 +9,7 @@ import { RouterTestingHarness } from '@angular/router/testing';
 import { EVENT_SOURCE_FACTORY, type EventSourceLike } from '../api/event-source';
 import type { WorkspaceDto } from '../api/workspaces-dto';
 import { routes } from '../app.routes';
-import { RefiningPage } from './refining-page';
+import { LINGER_MS, RefiningPage } from './refining-page';
 
 class FakeStream implements EventSourceLike {
   onopen: ((event: Event) => void) | null = null;
@@ -553,6 +553,44 @@ describe('RefiningPage', () => {
       expect(streams.map((stream) => stream.url)).toContain(
         '/workspaces/api/technical-processes/proc-1/events',
       );
+    });
+
+    it('keeps the clone/setup tab open after setup failed, so its diagnosis remains readable', async () => {
+      await open(URL_BASE, [workspace()], 'proc-1');
+      const timers = vi.spyOn(globalThis, 'setTimeout');
+      try {
+        const process = streams.find((stream) =>
+          stream.url.endsWith('/technical-processes/proc-1/events'),
+        );
+        expect(process).toBeTruthy();
+
+        process!.onmessage?.(
+          new MessageEvent<string>('message', {
+            data: JSON.stringify({
+              kind: 'done',
+              segment: null,
+              seq: 1,
+              line: null,
+              status: 'failed',
+              hint: null,
+              hintTarget: null,
+            }),
+          }),
+        );
+        await settle();
+        http.expectOne(WORKSPACES_URL).flush({ entries: [{ workspace: workspace() }] });
+        http.expectOne('/workspaces/api/workspaces/7/active-process').flush({
+          technicalProcessId: null,
+        });
+        await settle();
+
+        expect(element().querySelector('.tab.active')?.textContent?.trim()).toBe('Starting');
+        expect(tabs().map((tab) => tab.textContent?.trim())).toContain('Starting');
+        expect(text()).toContain('Finished with a failure. Review the log before trying again.');
+        expect(timers.mock.calls.filter(([, delay]) => delay === LINGER_MS)).toEqual([]);
+      } finally {
+        timers.mockRestore();
+      }
     });
 
     /** The dot is read off the workspace row the strip already holds, so it costs no request. */

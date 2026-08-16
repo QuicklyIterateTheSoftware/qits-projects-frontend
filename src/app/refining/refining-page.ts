@@ -44,6 +44,7 @@ import { RefiningService } from './refining-service';
 import { SketchPanel } from './sketch/sketch-panel';
 import { SketchSelection } from './sketch/sketch-selection';
 import { StartingPanel } from './starting/starting-panel';
+import type { ProcessOutcome } from './starting/process-log';
 import { StatusStrip } from './status-strip';
 import { TabHost } from './tabs/tab-host';
 import { TabPanel } from './tabs/tab-panel';
@@ -211,6 +212,8 @@ export class RefiningPage {
   protected readonly shownProcessId = signal<string | null>(null);
   private linger: ReturnType<typeof setTimeout> | null = null;
   private autoSelected: string | null = null;
+  /** A failed setup stays open until its workspace starts another operation or this page is left. */
+  private retainFailedProcess = false;
 
   /** Whether the transient tab currently holds the selection. Never written to the URL. */
   private readonly transient = signal(false);
@@ -478,8 +481,11 @@ export class RefiningPage {
       const processId = await this.workspacesApi.activeProcess(workspaceId);
       if (processId) {
         this.clearLinger();
+        if (processId !== this.shownProcessId()) {
+          this.retainFailedProcess = false;
+        }
         this.shownProcessId.set(processId);
-      } else if (this.shownProcessId()) {
+      } else if (this.shownProcessId() && !this.retainFailedProcess) {
         this.startLinger();
       }
     } catch {
@@ -590,14 +596,20 @@ export class RefiningPage {
     this.chooseTab('sketch');
   }
 
-  /** The Starting tab's process reached its terminal frame. */
-  protected onSettled(): void {
+  /** The Starting tab's process reached its terminal frame. Failed setup stays available for review. */
+  protected onSettled(outcome: ProcessOutcome): void {
     this.events.invalidateAll();
+    if (outcome === 'failed') {
+      this.clearLinger();
+      this.retainFailedProcess = true;
+      return;
+    }
     this.startLinger();
   }
 
   protected onStarted(processId: string): void {
     this.clearLinger();
+    this.retainFailedProcess = false;
     this.shownProcessId.set(processId);
   }
 
@@ -665,6 +677,7 @@ export class RefiningPage {
       this.resolutionFailure.set(null);
       this.startFailure.set(null);
       this.autoSelected = null;
+      this.retainFailedProcess = false;
       this.daemon.resetReachability();
       this.remounts.update((count) => count + 1);
       this.mounted.set(false);

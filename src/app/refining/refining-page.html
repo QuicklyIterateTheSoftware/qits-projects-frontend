@@ -65,7 +65,7 @@
       </ng-template>
       @if (shownProcessId(); as processId) {
         <ng-template appTabPanel="starting">
-          <app-starting-panel [processId]="processId" (settled)="onSettled()" />
+          <app-starting-panel [processId]="processId" (settled)="onSettled($event)" />
         </ng-template>
       }
       @for (tab of durableTabs; track tab.slug) {

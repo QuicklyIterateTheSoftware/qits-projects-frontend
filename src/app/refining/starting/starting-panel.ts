@@ -12,7 +12,7 @@ import {
   viewChildren,
 } from '@angular/core';
 import { HINT_REMOTE_AUTH } from '../../api/workspaces-dto';
-import { ProcessLog, type ProcessSegment } from './process-log';
+import { ProcessLog, type ProcessOutcome, type ProcessSegment } from './process-log';
 
 /**
  * The transient tab: what a long operation against this workspace is doing, while it does it.
@@ -45,7 +45,7 @@ import { ProcessLog, type ProcessSegment } from './process-log';
           Finished. This tab closes itself in a moment.
         }
         @case ('failed') {
-          Finished with a failure. This tab closes itself in a moment.
+          Finished with a failure. Review the log before trying again.
         }
         @case ('expired') {
           The log stream ended before the process finished (it may have expired).
@@ -200,8 +200,11 @@ export class StartingPanel {
   /** The process to follow. */
   readonly processId = input.required<string>();
 
-  /** The operation reached its terminal frame. The host refreshes everything it just changed. */
-  readonly settled = output<void>();
+  /**
+   * The operation reached its terminal frame. The host refreshes everything it just changed, and
+   * keeps a failed operation visible so its diagnosis is not lost behind the next durable tab.
+   */
+  readonly settled = output<ProcessOutcome>();
 
   protected readonly log = inject(ProcessLog);
   protected readonly remoteAuth = HINT_REMOTE_AUTH;
@@ -212,7 +215,7 @@ export class StartingPanel {
   private readonly manual = signal<ReadonlyMap<string, boolean>>(new Map());
 
   constructor() {
-    effect(() => this.log.attach(this.processId(), () => this.settled.emit()));
+    effect(() => this.log.attach(this.processId(), () => this.settled.emit(this.log.outcome())));
     inject(DestroyRef).onDestroy(() => this.log.detach());
 
     // After the frame that added the line, not before it: the height it scrolls to is the height
