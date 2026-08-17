@@ -23,11 +23,14 @@ const SILENT: EventSourceFactory = () => ({
  * The project's own address: its name, the way in to setting it up, the refinement agent, and its
  * epics.
  *
- * The reads worth pinning are the ones it does **not** make. The components read that used to
- * happen here moved behind `project-setup`, and a page that quietly kept making it would pay for a
- * screen nobody is looking at. The refinement agent is the same rule with a much larger bill: a
- * container is an image pull and a repository clone, so the panel is closed and silent until it is
- * asked for. The epics are the page's only request, and the overview owns it.
+ * The reads worth pinning are the ones it does **not** make. The refinement agent is the rule with
+ * the largest bill: a container is an image pull and a repository clone, so the panel is closed and
+ * silent until it is asked for.
+ *
+ * Two reads it does make. The epics are the page's own subject and the overview owns that request.
+ * The components read is what the ad-hoc workspace link costs: qits-workspaces addresses a create
+ * by repository id, so the wrapper's id is the link, and its absence is why a project without a
+ * wrapper shows no link at all.
  */
 describe('ProjectPage', () => {
   let http: HttpTestingController;
@@ -76,19 +79,29 @@ describe('ProjectPage', () => {
     http.expectOne(`/projects/api/projects/${projectId}/epics`).flush({ entries: [] });
   }
 
+  /** The components read behind the ad-hoc workspace link. `wrapper` null is a project without one. */
+  function flushComponents(wrapperRepositoryId: string | null = 'qits-qits', projectId = 'p1') {
+    http.expectOne(`/projects/api/projects/${projectId}/repositories`).flush({
+      entries: [],
+      wrapper: wrapperRepositoryId
+        ? { repositoryId: wrapperRepositoryId, branch: 'main', entries: [] }
+        : null,
+    });
+  }
+
   function page(): HTMLElement {
     return harness.fixture.nativeElement as HTMLElement;
   }
 
-  it('names the project and reads its epics, and nothing else', async () => {
+  it('names the project and reads its epics and its wrapper, and nothing else', async () => {
     await open();
     flushProjects([{ id: 'p1', name: 'qits', description: 'the platform' }]);
     flushEpics();
+    flushComponents();
     await settle();
 
     expect(page().querySelector('h1')?.textContent).toContain('qits');
     expect(page().textContent).toContain('the platform');
-    // No components read: those live behind project-setup now.
     http.verify();
   });
 
@@ -101,6 +114,7 @@ describe('ProjectPage', () => {
     await open();
     flushProjects([{ id: 'p1', name: 'qits' }]);
     flushEpics();
+    flushComponents();
     await settle();
 
     const toggle = page().querySelector<HTMLButtonElement>('button.toggle');
@@ -114,6 +128,7 @@ describe('ProjectPage', () => {
     await open();
     flushProjects([{ id: 'p1', name: 'qits' }]);
     flushEpics();
+    flushComponents();
     await settle();
 
     expect(page().textContent).toContain('Epics');
@@ -124,6 +139,7 @@ describe('ProjectPage', () => {
     await open();
     flushProjects([{ id: 'p1', name: 'qits' }]);
     flushEpics();
+    flushComponents();
     await settle();
 
     const setup = page().querySelector<HTMLAnchorElement>('a.setup');
@@ -136,15 +152,48 @@ describe('ProjectPage', () => {
     await open();
     flushProjects([{ id: 'p1', name: 'qits' }]);
     flushEpics();
+    flushComponents();
     await settle();
 
     page().querySelector<HTMLAnchorElement>('a.setup')?.click();
     await settle();
 
     expect(TestBed.inject(Router).url).toBe('/p1/project-setup');
-    // Arriving there is what triggers the components read.
+    // The setup page reads the components for itself — the rows, which this page never asked for.
     http.expectOne('/projects/api/projects/p1/repositories').flush({ entries: [], wrapper: null });
     await settle();
+  });
+
+  /**
+   * The ad-hoc workspace: a disposable checkout of the wrapper and every submodule under it.
+   *
+   * A plain `href` and not a `routerLink` — `/workspaces/` is another application behind the same
+   * gateway, so this is a page load and the router knows nothing about the address.
+   */
+  it('links to the workspaces app with the project’s wrapper preselected', async () => {
+    await open();
+    flushProjects([{ id: 'p1', name: 'qits' }]);
+    flushEpics();
+    flushComponents('qits-qits');
+    await settle();
+
+    const adhoc = page().querySelector<HTMLAnchorElement>('a.adhoc');
+    expect(adhoc?.textContent).toContain('Ad-hoc workspace');
+    expect(adhoc?.getAttribute('href')).toBe('/workspaces/?repository=qits-qits');
+  });
+
+  /** No wrapper, nothing to branch: a link that named no repository would offer a create nobody
+   * could complete. */
+  it('offers no ad-hoc workspace for a project with no wrapper', async () => {
+    await open();
+    flushProjects([{ id: 'p1', name: 'qits' }]);
+    flushEpics();
+    flushComponents(null);
+    await settle();
+
+    expect(page().querySelector('a.adhoc')).toBeNull();
+    // The other action is untouched by it.
+    expect(page().querySelector('a.setup')).not.toBeNull();
   });
 
   /** The name is a courtesy; a project list that never answered must not cost the page its action. */
@@ -152,6 +201,7 @@ describe('ProjectPage', () => {
     await open();
     http.expectOne('/projects/api/projects').flush(null, { status: 503, statusText: 'Down' });
     flushEpics();
+    flushComponents();
     await settle();
 
     expect(page().querySelector('h1')?.textContent).toContain('p1');
@@ -162,6 +212,7 @@ describe('ProjectPage', () => {
     await open('/nope');
     flushProjects([{ id: 'p1', name: 'qits' }]);
     flushEpics('nope');
+    flushComponents('nope-nope', 'nope');
     await settle();
 
     expect(page().querySelector('h1')?.textContent).toContain('nope');

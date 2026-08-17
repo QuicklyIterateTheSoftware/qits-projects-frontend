@@ -139,10 +139,11 @@ describe('CreateRepositoryPage', () => {
     await settle();
 
     expect(router.url).toBe('/p1');
-    // The project page took over. It reads the shared project list to name itself and its epics —
-    // the components live behind project-setup now.
+    // The project page took over. It reads the shared project list to name itself, its epics, and
+    // the wrapper behind its ad-hoc workspace link — the component rows live behind project-setup.
     http.expectOne('/projects/api/projects').flush({ entries: [] });
     http.expectOne('/projects/api/projects/p1/epics').flush({ entries: [] });
+    http.expectOne('/projects/api/projects/p1/repositories').flush({ entries: [], wrapper: null });
     await settle();
     http.verify();
   });
@@ -179,6 +180,7 @@ describe('CreateRepositoryPage', () => {
     expect(router.url).toBe('/p1');
     http.expectOne('/projects/api/projects').flush({ entries: [] });
     http.expectOne('/projects/api/projects/p1/epics').flush({ entries: [] });
+    http.expectOne('/projects/api/projects/p1/repositories').flush({ entries: [], wrapper: null });
     await settle();
     http.verify();
   });
