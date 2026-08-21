@@ -49,13 +49,24 @@ describe('cloneUrl', () => {
     );
   });
 
+  /**
+   * The project segment is whatever the caller decided to spell it with, and the page spells it
+   * with the slug. qits-projects resolves the segment by id *or* slug, so an id renders a working
+   * address too — it is just the one nobody can read.
+   */
+  it('spells the project with whichever segment it is given', () => {
+    expect(cloneUrl('https://qits.example', '9f2c-uuid-ish', 'qits-ci')).toBe(
+      'https://qits.example/git/9f2c-uuid-ish/qits-ci.git',
+    );
+  });
+
   it('does not double the slash when the origin carries a trailing one', () => {
     expect(cloneUrl('http://localhost:8080/', 'qits', 'qits-ci')).toBe(
       'http://localhost:8080/git/qits/qits-ci.git',
     );
   });
 
-  it('escapes a project id or a name that would otherwise change the path', () => {
+  it('escapes a project segment or a name that would otherwise change the path', () => {
     expect(cloneUrl('https://qits.example', 'a/b', 'c d')).toBe(
       'https://qits.example/git/a%2Fb/c%20d.git',
     );

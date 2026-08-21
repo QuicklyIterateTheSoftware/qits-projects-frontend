@@ -46,7 +46,7 @@
       } @else {
         <div class="cards">
           @for (repository of group.repositories; track repository.id) {
-            <app-component-card [repository]="repository" />
+            <app-component-card [repository]="repository" [projectSlug]="projectSlug()" />
           }
         </div>
       }

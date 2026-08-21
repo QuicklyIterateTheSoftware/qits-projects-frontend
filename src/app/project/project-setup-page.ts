@@ -12,10 +12,12 @@ import {
   COMPONENT_TYPES,
   normalizeArchetype,
   type PlaceableArchetype,
+  type ProjectDto,
   type RepositoryDto,
   type WrapperDto,
 } from '../api/dto';
 import { ProjectsApi, type ProjectComponents } from '../api/projects-api';
+import { ProjectsStore } from '../api/projects-store';
 import { Async } from '../ui/async';
 import { LOADING, failed, ready, type Loadable } from '../ui/loadable';
 import { BackupPanel } from './backup-panel';
@@ -104,11 +106,27 @@ export function groupComponents(repositories: readonly RepositoryDto[]): readonl
 })
 export class ProjectSetupPage {
   private readonly api = inject(ProjectsApi);
+  private readonly store = inject(ProjectsStore);
   private readonly route = inject(ActivatedRoute);
 
   private readonly params = toSignal(this.route.paramMap, { initialValue: convertToParamMap({}) });
 
   protected readonly projectId = computed(() => this.params().get('projectId') ?? '');
+
+  private readonly projects = signal<readonly ProjectDto[]>([]);
+
+  /**
+   * The project's slug — what the clone urls on this page are spelled with.
+   *
+   * It comes from the shared project list rather than from the components read, which answers
+   * repositories and knows nothing about the project. The list is read once per application
+   * instance and the sub-navigation has usually already asked for it, so this costs no request of
+   * its own; until it answers, and if it never does, the cards fall back to the project id, which
+   * the same route resolves.
+   */
+  protected readonly projectSlug = computed(
+    () => this.projects().find((project) => project.id === this.projectId())?.slug ?? '',
+  );
 
   protected readonly components = signal<Loadable<ProjectComponents>>(LOADING);
 
@@ -128,12 +146,22 @@ export class ProjectSetupPage {
   protected readonly loaded = computed(() => this.components().kind === 'ready');
 
   constructor() {
+    void this.loadProjects();
     effect(() => {
       const projectId = this.projectId();
       if (projectId) {
         void this.load(projectId);
       }
     });
+  }
+
+  /** The shared list, for the slug alone. A failure is silent: the cards fall back to the id. */
+  private async loadProjects(): Promise<void> {
+    try {
+      this.projects.set(await this.store.projects());
+    } catch {
+      // Nothing to say. Every address on this page still works, spelled with the project id.
+    }
   }
 
   /** Read the components, blanking what is on screen first — arrival, a project hop, a retry. */

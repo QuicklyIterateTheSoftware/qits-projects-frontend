@@ -147,6 +147,16 @@ export class ComponentCard {
 
   readonly repository = input.required<RepositoryDto>();
 
+  /**
+   * The project's slug — the public spelling of the clone url's first segment.
+   *
+   * Optional, and empty falls back to `repository.projectId`: the slug arrives with the project
+   * list, which is a second read, and a card drawn before it answers still has to show an address
+   * that works. qits-projects resolves the segment by id *or* slug, so the fallback is a correct
+   * url and not a placeholder — just a less readable one.
+   */
+  readonly projectSlug = input<string>('');
+
   protected readonly none = NONE;
 
   protected readonly label = computed(() => repositoryLabel(this.repository()));
@@ -158,7 +168,7 @@ export class ComponentCard {
     const repository = this.repository();
     return cloneUrl(
       this.document.location?.origin ?? '',
-      repository.projectId,
+      this.projectSlug() || repository.projectId,
       repository.name || repository.id,
     );
   });

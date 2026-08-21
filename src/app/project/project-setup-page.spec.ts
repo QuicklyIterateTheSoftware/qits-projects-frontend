@@ -162,11 +162,23 @@ describe('ProjectSetupPage', () => {
     http.expectOne('/projects/api/repositories/qits-qits/sync-status').flush(status);
   }
 
-  /** The page's whole load: the components, and the project repository's remote probe. */
+  /**
+   * The shared project list. This page reads it for one field — the slug its clone urls are spelled
+   * with — so the slug here is deliberately not the route's `p1`: an assertion that could not tell
+   * the two apart would pass on the id the change removed.
+   */
+  function flushProjects(slug = 'qits'): void {
+    http.expectOne('/projects/api/projects').flush({
+      entries: [{ project: { id: 'p1', name: 'Qits', slug, description: null, dns: null } }],
+    });
+  }
+
+  /** The page's whole load: the project list, the components, and the wrapper's remote probe. */
   async function load(
     repositories: readonly RepositoryDto[],
     wrapper: WrapperDto | null = WRAPPER,
   ): Promise<void> {
+    flushProjects();
     flushComponents(repositories, wrapper);
     await settle();
     if (wrapper) {
@@ -216,9 +228,10 @@ describe('ProjectSetupPage', () => {
     const card = page().querySelector('app-component-card');
     expect(card?.textContent).toContain('qits-angular');
     expect(card?.textContent).toContain('LIBRARY');
-    // The clone is this platform's git host, composed rather than read off a field.
+    // The clone is this platform's git host, composed rather than read off a field, and the
+    // project is spelled with its slug — a UUID is not an address a reader can be given.
     expect(card?.textContent).toContain('Clone');
-    expect(card?.textContent).toContain(`${location.origin}/git/p1/qits-angular.git`);
+    expect(card?.textContent).toContain(`${location.origin}/git/qits/qits-angular.git`);
     // The backup is the twin, and it is the only per-repository url on the card.
     expect(card?.textContent).toContain('Backup');
     expect(card?.textContent).toContain('https://github.com/QuicklyIterate/qits-angular.git');
@@ -233,10 +246,32 @@ describe('ProjectSetupPage', () => {
     await load([repository('qits-widgets', 'SERVICE', { backupUrl: null })]);
 
     const card = page().querySelector('app-component-card');
-    expect(card?.textContent).toContain(`${location.origin}/git/p1/qits-widgets.git`);
+    expect(card?.textContent).toContain(`${location.origin}/git/qits/qits-widgets.git`);
     expect(card?.textContent).toContain('—');
     // The sentence the old "Origin" line drew for this case is gone with the label.
     expect(card?.textContent).not.toContain('platform');
+  });
+
+  /**
+   * The slug arrives on a second read, so a card is drawn before it. The id it falls back to is a
+   * segment the same route resolves — a working address, just an unreadable one — and it is
+   * replaced the moment the list answers rather than being left standing.
+   */
+  it('spells the clone with the project id until the slug arrives', async () => {
+    await open();
+    flushComponents([repository('qits-ci', 'SERVICE')]);
+    await settle();
+    flushSync();
+    await settle();
+
+    const card = () => page().querySelector('app-component-card');
+    expect(card()?.textContent).toContain(`${location.origin}/git/p1/qits-ci.git`);
+
+    flushProjects();
+    await settle();
+
+    expect(card()?.textContent).toContain(`${location.origin}/git/qits/qits-ci.git`);
+    http.verify();
   });
 
   it('badges the wrapper in sync when every submodule has a row and every row a submodule', async () => {

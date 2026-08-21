@@ -106,10 +106,16 @@ export function repositoryLabel(
  * The gateway routes `/git/*` to it verbatim, so this is the address a reader can paste.
  *
  * `origin` is the browser's own, so the address is the one the reader is already talking to.
+ *
+ * @param project the project segment, which is the project's **slug**: `/git/qits/qits-ci` is what
+ *   a person is given to clone. qits-projects resolves the segment by id first and then by slug, so
+ *   the id works too — it is the fallback for a caller that has not got the slug yet, and it is
+ *   what every machine path keeps sending. A UUID in an address a reader is asked to copy is the
+ *   thing this parameter exists to avoid.
  */
-export function cloneUrl(origin: string, projectId: string, name: string): string {
+export function cloneUrl(origin: string, project: string, name: string): string {
   const host = origin.replace(/\/+$/, '');
-  return `${host}/git/${encodeURIComponent(projectId)}/${encodeURIComponent(name)}.git`;
+  return `${host}/git/${encodeURIComponent(project)}/${encodeURIComponent(name)}.git`;
 }
 
 /** The basename of a git url, without its `.git` suffix. Empty for no url. */
