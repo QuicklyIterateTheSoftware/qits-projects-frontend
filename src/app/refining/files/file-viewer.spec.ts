@@ -61,7 +61,7 @@ describe('FileViewer', () => {
 
   function answer(body: Record<string, unknown>): void {
     http
-      .expectOne((request) => request.url === '/workspaces/container/7/files/content')
+      .expectOne((request) => request.url === '/projects/refinement-container/7/files/content')
       .flush(body);
   }
 

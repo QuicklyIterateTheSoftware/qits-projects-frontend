@@ -92,7 +92,7 @@ export class WorkspaceEvents {
     this.close();
     this.streamed = workspaceId;
     const source = this.openStream(
-      `${this.base}/workspaces/api/workspaces/${encodeURIComponent(workspaceId)}/events`,
+      `${this.base}/projects/api/refinements/${encodeURIComponent(workspaceId)}/events`,
     );
     source.onopen = () => this.handleOpen();
     source.onmessage = (event) => this.handleTopic(event.data);

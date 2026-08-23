@@ -61,7 +61,7 @@ describe('ChatSocket', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     opened = [];
-    socket = new ChatSocket('ws://host/workspaces/container/7/chat/commands/c1', open);
+    socket = new ChatSocket('ws://host/projects/refinement-container/7/chat/commands/c1', open);
   });
 
   afterEach(() => {
@@ -72,7 +72,7 @@ describe('ChatSocket', () => {
   it('opens the url it was given and reports itself connecting until it is open', () => {
     socket.connect();
     expect(opened).toHaveLength(1);
-    expect(latest().url).toBe('ws://host/workspaces/container/7/chat/commands/c1');
+    expect(latest().url).toBe('ws://host/projects/refinement-container/7/chat/commands/c1');
     expect(socket.status()).toBe('connecting');
 
     latest().connect();

@@ -102,12 +102,12 @@ describe('AgentSession', () => {
     const service = TestBed.inject(AgentSession);
     service.use(7);
     TestBed.tick();
-    http.expectOne('/workspaces/container/7/agent-sessions').flush({ sessions });
+    http.expectOne('/projects/refinement-container/7/agent-sessions').flush({ sessions });
     http
-      .expectOne('/workspaces/container/7/agents/available')
+      .expectOne('/projects/refinement-container/7/agents/available')
       .flush({ agents: ['CLAUDE', 'KIMI'], defaultAgent: 'CLAUDE' });
     http
-      .expectOne('/workspaces/container/7/commands')
+      .expectOne('/projects/refinement-container/7/commands')
       .flush({ entries: commands.map((entry) => ({ command: entry })) });
     await settle();
     TestBed.tick();
@@ -118,12 +118,12 @@ describe('AgentSession', () => {
   /** Answer whatever a launch left in flight: the refreshed command list and lineage. */
   async function answer(commands: readonly CommandDto[]): Promise<void> {
     http
-      .match('/workspaces/container/7/commands')
+      .match('/projects/refinement-container/7/commands')
       .forEach((request) =>
         request.flush({ entries: commands.map((entry) => ({ command: entry })) }),
       );
     http
-      .match('/workspaces/container/7/agent-sessions')
+      .match('/projects/refinement-container/7/agent-sessions')
       .forEach((request) => request.flush({ sessions: [] }));
     await settle();
     TestBed.tick();
@@ -140,9 +140,9 @@ describe('AgentSession', () => {
   it('1 — attaches to a running interactive agent run, wherever it was started', async () => {
     const service = await open([command({ id: 'c1', agentSessions: [session('s1')] })]);
     expect(service.branch()).toEqual({ kind: 'attached', commandId: 'c1' });
-    expect(sockets[0].url).toContain('/workspaces/container/7/terminal/commands/c1');
+    expect(sockets[0].url).toContain('/projects/refinement-container/7/terminal/commands/c1');
     expect(service.liveSessionId()).toBe('s1');
-    http.expectNone('/workspaces/container/7/agents');
+    http.expectNone('/projects/refinement-container/7/agents');
   });
 
   it('2 — defers to a running chat and launches nothing, even with no session history', async () => {
@@ -152,12 +152,12 @@ describe('AgentSession', () => {
     expect(service.branch()).toEqual({ kind: 'deferred', commandId: 'chat1' });
     expect(sockets).toHaveLength(0);
     // The collision session-pinning exists to prevent: no launch, no attach, a jump link instead.
-    http.expectNone('/workspaces/container/7/agents');
+    http.expectNone('/projects/refinement-container/7/agents');
   });
 
   it('3 — launches fresh when there is no session history at all, once', async () => {
     const service = await open([]);
-    const launch = http.expectOne('/workspaces/container/7/agents');
+    const launch = http.expectOne('/projects/refinement-container/7/agents');
     // No `agentType`: the automatic launch takes the container's own resolved default rather than
     // this page naming one. Only a launch a person asked for may pick a harness.
     expect(launch.request.body).toEqual({ scope: 'REPOSITORY', mode: 'INTERACTIVE' });
@@ -165,10 +165,10 @@ describe('AgentSession', () => {
     expect(launch.request.body.deliverTaskPrompt).toBeUndefined();
     launch.flush({ command: command({ id: 'c9', agentSessions: [session('s9')] }) });
     await settle();
-    http.expectOne('/workspaces/container/7/commands').flush({
+    http.expectOne('/projects/refinement-container/7/commands').flush({
       entries: [{ command: command({ id: 'c9', agentSessions: [session('s9')] }) }],
     });
-    http.expectOne('/workspaces/container/7/agent-sessions').flush({ sessions: [] });
+    http.expectOne('/projects/refinement-container/7/agent-sessions').flush({ sessions: [] });
     await settle();
     TestBed.tick();
     await settle();
@@ -183,7 +183,7 @@ describe('AgentSession', () => {
     expect(service.branch()).toEqual({ kind: 'idle' });
     expect(sockets).toHaveLength(0);
     // **Never automatic.** A recorded session can be gone from the agent's own state.
-    http.expectNone('/workspaces/container/7/agents');
+    http.expectNone('/projects/refinement-container/7/agents');
     expect(service.lastSession()?.sessionId).toBe('s1');
   });
 
@@ -194,7 +194,7 @@ describe('AgentSession', () => {
     );
     void service.resume('s1', true);
     await settle();
-    const launch = http.expectOne('/workspaces/container/7/agents');
+    const launch = http.expectOne('/projects/refinement-container/7/agents');
     expect(launch.request.body).toEqual({
       scope: 'REPOSITORY',
       mode: 'INTERACTIVE',
@@ -203,13 +203,13 @@ describe('AgentSession', () => {
     });
     launch.flush({ command: command({ id: 'c2', agentSessions: [session('s2')] }) });
     await settle();
-    http.match('/workspaces/container/7/commands').forEach((request) =>
+    http.match('/projects/refinement-container/7/commands').forEach((request) =>
       request.flush({
         entries: [{ command: command({ id: 'c2', agentSessions: [session('s2')] }) }],
       }),
     );
     http
-      .match('/workspaces/container/7/agent-sessions')
+      .match('/projects/refinement-container/7/agent-sessions')
       .forEach((request) =>
         request.flush({ sessions: [{ sessionId: 's1', subagents: [], children: [] }] }),
       );
@@ -229,7 +229,7 @@ describe('AgentSession', () => {
     await settle();
     // Not signed in: the launch answers a login terminal with no lineage and the daemon's own name.
     http
-      .expectOne('/workspaces/container/7/agents')
+      .expectOne('/projects/refinement-container/7/agents')
       .flush({ command: command({ id: 'login1', actionName: 'Claude sign-in' }) });
     await settle();
     await answer([command({ id: 'login1', actionName: 'Claude sign-in' })]);
@@ -240,7 +240,7 @@ describe('AgentSession', () => {
     // The operator completes the sign-in and the terminal exits. That is the trigger.
     await refresh([command({ id: 'login1', actionName: 'Claude sign-in', status: 'EXITED' })]);
 
-    const replay = http.expectOne('/workspaces/container/7/agents');
+    const replay = http.expectOne('/projects/refinement-container/7/agents');
     expect(replay.request.body).toEqual({
       scope: 'REPOSITORY',
       mode: 'INTERACTIVE',
@@ -257,13 +257,13 @@ describe('AgentSession', () => {
     service.use(7);
     TestBed.tick();
     http
-      .expectOne('/workspaces/container/7/agent-sessions')
+      .expectOne('/projects/refinement-container/7/agent-sessions')
       .flush({ message: 'no daemon' }, { status: 502, statusText: 'Bad Gateway' });
     http
-      .expectOne('/workspaces/container/7/agents/available')
+      .expectOne('/projects/refinement-container/7/agents/available')
       .flush({}, { status: 502, statusText: 'Bad Gateway' });
     http
-      .expectOne('/workspaces/container/7/commands')
+      .expectOne('/projects/refinement-container/7/commands')
       .flush({ message: 'no daemon' }, { status: 502, statusText: 'Bad Gateway' });
     await settle();
     TestBed.tick();

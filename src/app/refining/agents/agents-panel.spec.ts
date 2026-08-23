@@ -4,7 +4,7 @@ import { ChangeDetectionStrategy, Component, signal } from '@angular/core';
 import { TestBed, type ComponentFixture } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import type { CommandDto } from '../../api/commands-api';
-import type { AgentActivityState } from '../../api/workspaces-dto';
+import type { AgentActivityState } from '../../api/technical-process-dto';
 import { EVENT_SOURCE_FACTORY, type EventSourceLike } from '../../api/event-source';
 import { WEB_SOCKET_FACTORY, WEB_SOCKET_OPEN, type WebSocketLike } from '../../api/web-socket';
 import { WorkspaceEvents } from '../../api/workspace-events';
@@ -131,11 +131,11 @@ describe('AgentsPanel', () => {
   it('reads exactly five surfaces on first open, and nothing twice', async () => {
     const asked = await open();
     expect(asked.sort()).toEqual([
-      '/workspaces/container/7/agent-plugins',
-      '/workspaces/container/7/agent-sessions',
-      '/workspaces/container/7/agents/available',
-      '/workspaces/container/7/commands',
-      '/workspaces/container/7/detection',
+      '/projects/refinement-container/7/agent-plugins',
+      '/projects/refinement-container/7/agent-sessions',
+      '/projects/refinement-container/7/agents/available',
+      '/projects/refinement-container/7/commands',
+      '/projects/refinement-container/7/detection',
     ]);
     http.expectNone(() => true);
   });
@@ -144,7 +144,7 @@ describe('AgentsPanel', () => {
     await open();
     expect(text()).toContain('Sessions are not resumed automatically');
     expect(text()).toContain('Resume the last session');
-    http.expectNone('/workspaces/container/7/agents');
+    http.expectNone('/projects/refinement-container/7/agents');
   });
 
   it('names the activity, including the ended state and how long it lasts', async () => {
@@ -179,18 +179,18 @@ describe('AgentsPanel', () => {
     await settle();
     // The shared command entry keeps itself fresh while hidden — the *panel's* lineage read does not.
     http
-      .match('/workspaces/container/7/commands')
+      .match('/projects/refinement-container/7/commands')
       .forEach((request) => request.flush({ entries: [{ command: finished }] }));
-    http.expectNone('/workspaces/container/7/agent-sessions');
+    http.expectNone('/projects/refinement-container/7/agent-sessions');
 
     host.visible.set(true);
     fixture.detectChanges();
     await settle();
     http
-      .expectOne('/workspaces/container/7/agent-sessions')
+      .expectOne('/projects/refinement-container/7/agent-sessions')
       .flush({ sessions: [{ sessionId: 's1', subagents: [], children: [] }] });
     await settle();
     fixture.detectChanges();
-    http.expectNone('/workspaces/container/7/agent-sessions');
+    http.expectNone('/projects/refinement-container/7/agent-sessions');
   });
 });

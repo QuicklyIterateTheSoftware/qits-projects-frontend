@@ -7,7 +7,7 @@ import { FilesApi } from './files-api';
  * The two reads the file browser is built from, and the one thing about their addressing that is
  * easy to get wrong.
  *
- * The container proxy **rewrites nothing**: `/files` on the daemon is `/workspaces/container/{id}/files`
+ * The container proxy **rewrites nothing**: `/files` on the daemon is `/projects/refinement-container/{id}/files`
  * from the browser, and the daemon is *told* the base path rather than deriving it. So a client that
  * helpfully normalised, or that sent `path=` on the root read, would be describing a different route
  * from the one the contract documents.
@@ -28,12 +28,12 @@ describe('FilesApi', () => {
 
   it('reads the whole eager tree with no path at all', async () => {
     const answer = api.files(7);
-    const request = http.expectOne('/workspaces/container/7/files');
+    const request = http.expectOne('/projects/refinement-container/7/files');
     request.flush({ paths: ['src/main.ts'], lazyDirs: [], generation: 'gen-1' });
 
     // Absent rather than blank: the daemon reads both as "the root", and `path=` would make the
     // request that fetches everything look like a request for a directory called nothing.
-    expect(request.request.urlWithParams).toBe('/workspaces/container/7/files');
+    expect(request.request.urlWithParams).toBe('/projects/refinement-container/7/files');
     expect((await answer).paths).toEqual(['src/main.ts']);
   });
 
@@ -41,7 +41,7 @@ describe('FilesApi', () => {
     const answer = api.files(7, 'node_modules');
     const request = http.expectOne(
       (candidate) =>
-        candidate.url === '/workspaces/container/7/files' &&
+        candidate.url === '/projects/refinement-container/7/files' &&
         candidate.params.get('path') === 'node_modules',
     );
     request.flush({
@@ -55,7 +55,7 @@ describe('FilesApi', () => {
 
   it('reads the detection and its token, which is the point of it', async () => {
     const answer = api.detection(7);
-    http.expectOne('/workspaces/container/7/detection').flush({
+    http.expectOne('/projects/refinement-container/7/detection').flush({
       projects: [{ root: 'webui', frameworkId: 'angular', label: 'Angular' }],
       frameworks: [
         {
@@ -77,7 +77,7 @@ describe('FilesApi', () => {
     http
       .expectOne(
         (candidate) =>
-          candidate.url === '/workspaces/container/7/files/content' &&
+          candidate.url === '/projects/refinement-container/7/files/content' &&
           candidate.params.get('path') === 'service/target/build.log',
       )
       .flush({ path: 'service/target/build.log', binary: false, content: 'a\nb\n' });

@@ -8,7 +8,7 @@ import {
   input,
   untracked,
 } from '@angular/core';
-import type { AgentActivityState } from '../../api/workspaces-dto';
+import type { AgentActivityState } from '../../api/technical-process-dto';
 import { WorkspaceEvents } from '../../api/workspace-events';
 import { Async } from '../../ui/async';
 import { AgentSession } from './agent-session';

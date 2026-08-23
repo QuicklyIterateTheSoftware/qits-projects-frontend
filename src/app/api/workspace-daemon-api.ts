@@ -72,7 +72,7 @@ export class WorkspaceDaemonApi {
    * strips nothing: `/files` on the daemon is `/workspaces/container/7/files` from here.
    */
   containerBase(workspaceRowId: number): string {
-    return `${this.base}/workspaces/container/${encodeURIComponent(workspaceRowId)}`;
+    return `${this.base}/projects/refinement-container/${encodeURIComponent(workspaceRowId)}`;
   }
 
   /** A read against the daemon. `path` starts with a slash and is the daemon's own. */

@@ -1,30 +1,30 @@
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
-import type { WorkspaceDto } from '../api/workspaces-dto';
+import type { RefinementDto } from '../api/refinements-api';
 import type { WorkspaceDaemonReachability } from '../api/workspace-daemon-api';
 import { StatusStrip } from './status-strip';
 
-const workspace = (over: Partial<WorkspaceDto> = {}): WorkspaceDto => ({
+const refinement = (over: Partial<RefinementDto> = {}): RefinementDto => ({
   id: 7,
-  workspaceId: 'task-widgets',
-  parent: 'epic/widgets',
-  branch: 'task/widgets',
-  ahead: 2,
-  behind: 1,
-  conflictsWithParent: false,
-  status: 'ACTIVE',
+  epicId: 'e1',
+  projectId: 'p1',
+  repositoryId: 'qits-qits',
+  branch: 'refining/task-widgets',
+  parent: 'main',
+  label: 'refining-task-widgets',
+  preamble: null,
   runtimeStatus: 'RUNNING',
   runtimeError: null,
   clean: true,
+  ahead: 2,
+  behind: 1,
+  conflictsWithParent: false,
   agentActivity: null,
-  preamble: null,
-  result: null,
-  resolvedAt: null,
   daemonConnectedAt: '2026-08-01T09:00:00Z',
   daemonVersion: '1.4.0',
-  daemonBuildTime: null,
   daemonOutdated: null,
+  createdAt: null,
   ...over,
 });
 
@@ -45,11 +45,11 @@ const workspace = (over: Partial<WorkspaceDto> = {}): WorkspaceDto => ({
  */
 describe('StatusStrip', () => {
   const render = async (
-    over: Partial<WorkspaceDto> = {},
+    over: Partial<RefinementDto> = {},
     options: { mainBranch?: string; reachability?: WorkspaceDaemonReachability } = {},
   ) => {
     const fixture = TestBed.createComponent(StatusStrip);
-    fixture.componentRef.setInput('workspace', workspace(over));
+    fixture.componentRef.setInput('workspace', refinement(over));
     fixture.componentRef.setInput('mainBranch', options.mainBranch ?? 'main');
     fixture.componentRef.setInput('reachability', options.reachability ?? 'unknown');
     await fixture.whenStable();
@@ -164,7 +164,7 @@ describe('StatusStrip', () => {
     await fixture.whenStable();
 
     TestBed.inject(HttpTestingController)
-      .expectOne('/workspaces/api/workspaces/7/ensure-container')
+      .expectOne('/projects/api/refinements/7/ensure-container')
       .flush({ message: 'no' }, { status: 500, statusText: 'Server Error' });
     // The rejection settles through a promise chain the fixture does not own, so let the queue drain.
     await new Promise((resolve) => setTimeout(resolve, 0));

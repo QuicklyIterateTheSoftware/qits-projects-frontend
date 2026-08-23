@@ -204,7 +204,7 @@ describe('WebViewPanel', () => {
       const button = framedButton();
       pickButton().click();
       fixture.detectChanges();
-      http.expectOne('/workspaces/container/7/component-map').flush({
+      http.expectOne('/projects/refinement-container/7/component-map').flush({
         framework: 'angular',
         components: [
           {
@@ -224,7 +224,7 @@ describe('WebViewPanel', () => {
       const button = await armed();
       button.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
       fixture.detectChanges();
-      http.expectNone('/workspaces/container/7/component-map');
+      http.expectNone('/projects/refinement-container/7/component-map');
       expect(TestBed.inject(PickedContext).elements()).toHaveLength(1);
     });
 

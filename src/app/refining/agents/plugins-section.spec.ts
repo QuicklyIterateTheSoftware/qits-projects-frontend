@@ -50,7 +50,7 @@ describe('PluginsSection', () => {
   async function open(installed: readonly { pluginId: string; enabled: boolean }[] = []) {
     fixture = TestBed.createComponent(PluginsHost);
     fixture.detectChanges();
-    http.expectOne('/workspaces/container/7/agent-plugins').flush({ installed });
+    http.expectOne('/projects/refinement-container/7/agent-plugins').flush({ installed });
     await settle();
     fixture.detectChanges();
   }
@@ -59,14 +59,14 @@ describe('PluginsSection', () => {
     await open();
     // The detection entry is empty and this section does ask for one — exactly one, and only
     // because nothing else has. The Files panel's read is what normally fills it.
-    http.expectOne('/workspaces/container/7/detection').flush({
+    http.expectOne('/projects/refinement-container/7/detection').flush({
       projects: [],
       frameworks: [],
       links: [],
       generation: 'g1',
     });
     await settle();
-    http.expectNone('/workspaces/container/7/detection');
+    http.expectNone('/projects/refinement-container/7/detection');
   });
 
   it('takes a detection another panel already read rather than fetching one', async () => {
@@ -77,7 +77,7 @@ describe('PluginsSection', () => {
       generation: 'g1',
     });
     await open();
-    http.expectNone('/workspaces/container/7/detection');
+    http.expectNone('/projects/refinement-container/7/detection');
     expect(rows()[0].textContent).toContain('Recommended');
     expect(rows()[0].textContent).toContain('TypeScript');
   });
@@ -106,12 +106,12 @@ describe('PluginsSection', () => {
     button.click();
     await settle();
     http
-      .expectOne('/workspaces/container/7/agent-plugins/jdtls-lsp/install')
+      .expectOne('/projects/refinement-container/7/agent-plugins/jdtls-lsp/install')
       .flush({ installed: [{ pluginId: 'jdtls-lsp@claude-plugins-official', enabled: true }] });
     await settle();
     fixture.detectChanges();
     // No follow-up read: the install answered with the listing's own envelope.
-    http.expectNone('/workspaces/container/7/agent-plugins');
+    http.expectNone('/projects/refinement-container/7/agent-plugins');
     expect(rows()[0].textContent).toContain('Installed');
   });
 
@@ -126,7 +126,7 @@ describe('PluginsSection', () => {
     rows()[0].querySelector<HTMLButtonElement>('button')!.click();
     await settle();
     http
-      .expectOne('/workspaces/container/7/agent-plugins/jdtls-lsp/install')
+      .expectOne('/projects/refinement-container/7/agent-plugins/jdtls-lsp/install')
       .flush({ message: 'plugins are a Claude Code feature' }, { status: 400, statusText: 'Bad' });
     await settle();
     fixture.detectChanges();

@@ -98,7 +98,7 @@ export class PromptDraftApi {
   }
 
   private url(workspaceRowId: number): string {
-    return `${this.base}/workspaces/api/workspaces/${encodeURIComponent(workspaceRowId)}/prompt-draft`;
+    return `${this.base}/projects/api/refinements/${encodeURIComponent(workspaceRowId)}/prompt-draft`;
   }
 }
 

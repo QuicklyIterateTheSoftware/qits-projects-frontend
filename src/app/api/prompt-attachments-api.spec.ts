@@ -15,7 +15,7 @@ import { PromptAttachmentsApi } from './prompt-attachments-api';
  * swallow "no such workspace".
  */
 describe('PromptAttachmentsApi', () => {
-  const URL = '/workspaces/api/workspaces/7/prompt-attachments';
+  const URL = '/projects/api/refinements/7/prompt-attachments';
 
   let api: PromptAttachmentsApi;
   let http: HttpTestingController;
@@ -118,7 +118,7 @@ describe('PromptAttachmentsApi', () => {
 
   it('updates a saved image in place and exposes its browser-loadable content URL', async () => {
     expect(api.contentUrl(7, 'image/one')).toBe(
-      '/workspaces/api/workspaces/7/prompt-attachments/image%2Fone/content',
+      '/projects/api/refinements/7/prompt-attachments/image%2Fone/content',
     );
 
     const answer = api.update(7, 'a1', {

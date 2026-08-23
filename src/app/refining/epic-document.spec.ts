@@ -26,7 +26,7 @@ describe('epicBlocks', () => {
   });
 
   it('inserts a browser-loadable image URL and migrates an older label reference when rendering', () => {
-    const url = '/workspaces/api/workspaces/7/prompt-attachments/image-1/content';
+    const url = '/projects/api/refinements/7/prompt-attachments/image-1/content';
     expect(imageMarkdown(7, image)).toBe(`![Sketch 1](${url})`);
     expect(insertImageAt('before\n\nafter', 3, 7, image)).toBe(
       `before\n\n![Sketch 1](${url})\n\nafter`,

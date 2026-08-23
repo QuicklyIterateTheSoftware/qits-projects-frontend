@@ -1,6 +1,6 @@
 import { Injectable, inject, signal, type Signal } from '@angular/core';
 import { QITS_API_BASE } from '../../api/api-base';
-import type { TechnicalProcessFrame } from '../../api/workspaces-dto';
+import type { TechnicalProcessFrame } from '../../api/technical-process-dto';
 import {
   EVENT_SOURCE_CLOSED,
   EVENT_SOURCE_FACTORY,
@@ -78,7 +78,7 @@ export class ProcessLog {
     this.settled = onSettled;
     this.state.set('running');
     const source = this.openStream(
-      `${this.base}/workspaces/api/technical-processes/${encodeURIComponent(processId)}/events`,
+      `${this.base}/projects/api/technical-processes/${encodeURIComponent(processId)}/events`,
     );
     source.onopen = () => this.handleOpen();
     source.onmessage = (event) => this.handleFrame(event.data);

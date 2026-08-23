@@ -11,7 +11,7 @@ import {
   signal,
   viewChildren,
 } from '@angular/core';
-import { HINT_REMOTE_AUTH } from '../../api/workspaces-dto';
+import { HINT_REMOTE_AUTH } from '../../api/technical-process-dto';
 import { ProcessLog, type ProcessOutcome, type ProcessSegment } from './process-log';
 
 /**

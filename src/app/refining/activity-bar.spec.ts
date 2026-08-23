@@ -1,5 +1,6 @@
 import { TestBed } from '@angular/core/testing';
-import type { AgentActivityState, WorkspaceDto } from '../api/workspaces-dto';
+import type { RefinementDto } from '../api/refinements-api';
+import type { AgentActivityState } from '../api/technical-process-dto';
 import { ActivityBar } from './activity-bar';
 import { AgentActivityMemory } from './agent-activity-memory';
 
@@ -7,26 +8,26 @@ const workspace = (
   id: number,
   label: string,
   agentActivity: AgentActivityState | null,
-): WorkspaceDto => ({
+): RefinementDto => ({
   id,
-  workspaceId: label,
-  parent: 'main',
+  epicId: 'e' + id,
+  projectId: 'p1',
+  repositoryId: 'qits-qits',
   branch: label,
-  ahead: 0,
-  behind: 0,
-  conflictsWithParent: false,
-  status: 'ACTIVE',
+  parent: 'main',
+  label,
+  preamble: null,
   runtimeStatus: 'RUNNING',
   runtimeError: null,
   clean: true,
+  ahead: 0,
+  behind: 0,
+  conflictsWithParent: false,
   agentActivity,
-  preamble: null,
-  result: null,
-  resolvedAt: null,
   daemonConnectedAt: null,
   daemonVersion: null,
-  daemonBuildTime: null,
   daemonOutdated: null,
+  createdAt: null,
 });
 
 /**
@@ -45,7 +46,7 @@ const workspace = (
 describe('ActivityBar', () => {
   let memory: AgentActivityMemory;
 
-  const render = async (workspaces: readonly WorkspaceDto[], currentId = 1) => {
+  const render = async (workspaces: readonly RefinementDto[], currentId = 1) => {
     const fixture = TestBed.createComponent(ActivityBar);
     fixture.componentRef.setInput('workspaces', workspaces);
     fixture.componentRef.setInput('currentId', currentId);

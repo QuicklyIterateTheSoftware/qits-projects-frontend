@@ -7,7 +7,7 @@ import { WorkspaceDaemonApi } from './workspace-daemon-api';
  * The transport every daemon-backed panel will be written against: the path it builds, and the one
  * inference it draws from a failure.
  *
- * **The proxy rewrites nothing.** `/files` on the daemon is `/workspaces/container/{id}/files` from
+ * **The proxy rewrites nothing.** `/files` on the daemon is `/projects/refinement-container/{id}/files` from
  * the browser, and a client that helpfully normalised a path would be describing a different route.
  *
  * **Only "nothing answered" means the daemon is gone.** The reverse tunnel made the daemon's control
@@ -33,7 +33,7 @@ describe('WorkspaceDaemonApi', () => {
 
   it('appends the daemon path to the container proxy verbatim', async () => {
     const answer = api.get<{ paths: string[] }>(7, '/files');
-    const request = http.expectOne('/workspaces/container/7/files');
+    const request = http.expectOne('/projects/refinement-container/7/files');
     request.flush({ paths: [] });
 
     expect((await answer).paths).toEqual([]);
@@ -44,7 +44,7 @@ describe('WorkspaceDaemonApi', () => {
     const answer = api.get<unknown>(7, '/files/content', { path: 'src/main.ts' });
     const request = http.expectOne(
       (candidate) =>
-        candidate.url === '/workspaces/container/7/files/content' &&
+        candidate.url === '/projects/refinement-container/7/files/content' &&
         candidate.params.get('path') === 'src/main.ts',
     );
     request.flush({});
@@ -58,7 +58,7 @@ describe('WorkspaceDaemonApi', () => {
   it('reads any answer at all as a daemon that is there — including its own 404', async () => {
     const answer = api.get(7, '/files/content').catch(() => null);
     http
-      .expectOne('/workspaces/container/7/files/content')
+      .expectOne('/projects/refinement-container/7/files/content')
       .flush({ message: 'no such file' }, { status: 404, statusText: 'Not Found' });
     await answer;
 
@@ -68,7 +68,7 @@ describe('WorkspaceDaemonApi', () => {
   it('reads the proxy failing to reach anything as a daemon that is gone', async () => {
     const answer = api.get(7, '/files').catch(() => null);
     http
-      .expectOne('/workspaces/container/7/files')
+      .expectOne('/projects/refinement-container/7/files')
       .flush({ message: 'No workspace here.' }, { status: 502, statusText: 'Bad Gateway' });
     await answer;
 
@@ -78,12 +78,12 @@ describe('WorkspaceDaemonApi', () => {
   it('says the daemon is back on the next answer, without being told to', async () => {
     const failing = api.get(7, '/files').catch(() => null);
     http
-      .expectOne('/workspaces/container/7/files')
+      .expectOne('/projects/refinement-container/7/files')
       .flush({}, { status: 502, statusText: 'Bad Gateway' });
     await failing;
 
     const succeeding = api.get(7, '/files');
-    http.expectOne('/workspaces/container/7/files').flush({ paths: [] });
+    http.expectOne('/projects/refinement-container/7/files').flush({ paths: [] });
     await succeeding;
 
     expect(api.reachability()).toBe('reachable');
@@ -91,7 +91,7 @@ describe('WorkspaceDaemonApi', () => {
 
   it('forgets what it observed when the shell moves to another workspace', async () => {
     const answer = api.get(7, '/files').catch(() => null);
-    http.expectOne('/workspaces/container/7/files').flush({}, { status: 0, statusText: 'Unknown' });
+    http.expectOne('/projects/refinement-container/7/files').flush({}, { status: 0, statusText: 'Unknown' });
     await answer;
     expect(api.reachability()).toBe('unreachable');
 
@@ -102,7 +102,7 @@ describe('WorkspaceDaemonApi', () => {
 
   it('builds an absolute socket URL, because WebSocket takes no relative one', () => {
     expect(api.socketUrl(7, '/terminal/commands/c-1')).toMatch(
-      /^wss?:\/\/[^/]+\/workspaces\/container\/7\/terminal\/commands\/c-1$/,
+      /^wss?:\/\/[^/]+\/projects\/refinement-container\/7\/terminal\/commands\/c-1$/,
     );
   });
 });

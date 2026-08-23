@@ -14,8 +14,7 @@ import { QitsButton } from '@qits/ui-components';
 import { WorkspaceDaemonApi } from '../api/workspace-daemon-api';
 import { WorkspaceEvents, anyOf } from '../api/workspace-events';
 import { ProjectsApi } from '../api/projects-api';
-import { WorkspacesApi } from '../api/workspaces-api';
-import type { WorkspaceDto } from '../api/workspaces-dto';
+import { RefinementsApi, type RefinementDto } from '../api/refinements-api';
 import { EpicActions } from '../project/epic-actions';
 import {
   actionKey,
@@ -68,13 +67,9 @@ export const LINGER_MS = 5000;
  */
 const PANEL_NOTES: Readonly<Record<string, string>> = {};
 
-/** What the page had to resolve before it could show anything: the wrapper, and the epic. */
+/** What the page had to resolve before it could show anything: the epic. */
 interface Subject {
-  /** The project's wrapper repository — where the refining branch lives. */
-  readonly repositoryId: string;
-  /** The wrapper's default branch, which is what decides the door home. */
-  readonly mainBranch: string;
-  /** The epic, so the header can name it and a create can build the preamble from it. */
+  /** The epic, so the header can name it and the refining route can address its refinement. */
   readonly node: EpicNode;
 }
 
@@ -159,7 +154,7 @@ interface Subject {
 })
 export class RefiningPage {
   private readonly refining = inject(RefiningService);
-  private readonly workspacesApi = inject(WorkspacesApi);
+  private readonly refinementsApi = inject(RefinementsApi);
   private readonly daemon = inject(WorkspaceDaemonApi);
   private readonly events = inject(WorkspaceEvents);
   private readonly memory = inject(AgentActivityMemory);
@@ -181,7 +176,7 @@ export class RefiningPage {
   protected readonly branch = computed(() => refiningBranch(this.epicSlug()));
 
   protected readonly subject = signal<Loadable<Subject>>(LOADING);
-  protected readonly workspaces = signal<Loadable<readonly WorkspaceDto[]>>(IDLE);
+  protected readonly workspaces = signal<Loadable<readonly RefinementDto[]>>(IDLE);
 
   /** The create offer's own state, so a failure to start one is reported where it was asked for. */
   protected readonly starting = signal(false);
@@ -247,9 +242,12 @@ export class RefiningPage {
     });
 
     effect(() => {
-      const repositoryId = this.repositoryId();
+      const projectId = this.projectId();
+      // An epic hop re-reads the listing too: the page's own row comes out of it, and a reused
+      // component would otherwise keep matching against the previous epic's read.
+      this.epicSlug();
       this.workspaceHints();
-      untracked(() => void this.loadWorkspaces(repositoryId));
+      untracked(() => void this.loadRefinements(projectId));
     });
 
     effect(() => {
@@ -330,8 +328,9 @@ export class RefiningPage {
     return state.kind === 'ready' ? state.value : null;
   });
 
-  protected readonly repositoryId = computed(() => this.resolved()?.repositoryId ?? '');
-  protected readonly mainBranch = computed(() => this.resolved()?.mainBranch ?? '');
+  /** Both live on the refinement row now — the wrapper is the server's business. */
+  protected readonly repositoryId = computed(() => this.workspace()?.repositoryId ?? '');
+  protected readonly mainBranch = computed(() => this.workspace()?.parent ?? '');
   protected readonly title = computed(() => this.resolved()?.node.epic.title ?? this.epicSlug());
   protected readonly description = computed(() => this.resolved()?.node.epic.description ?? '');
 
@@ -341,7 +340,7 @@ export class RefiningPage {
    * The listing answers ACTIVE workspaces only, so a match is a live workspace and there is nothing to
    * filter on status.
    */
-  protected readonly workspace = computed<WorkspaceDto | null>(() => {
+  protected readonly workspace = computed<RefinementDto | null>(() => {
     const state = this.workspaces();
     if (state.kind !== 'ready') {
       return null;
@@ -364,7 +363,7 @@ export class RefiningPage {
    * The filter costs nothing: the listing is already in hand for the branch match above, and the bar
    * drops workspaces without agent activity itself.
    */
-  protected readonly refiningPeers = computed<readonly WorkspaceDto[]>(() => {
+  protected readonly refiningPeers = computed<readonly RefinementDto[]>(() => {
     const state = this.workspaces();
     if (state.kind !== 'ready') {
       return [];
@@ -441,26 +440,34 @@ export class RefiningPage {
     this.subject.set(LOADING);
     this.workspaces.set(IDLE);
     try {
-      // In parallel: they are independent reads of two services, and the page needs both.
-      const [wrapper, node] = await Promise.all([
-        this.refining.wrapper(projectId),
-        this.refining.node(projectId, epicSlug),
-      ]);
-      this.subject.set(ready({ ...wrapper, node }));
+      this.subject.set(ready({ node: await this.refining.node(projectId, epicSlug) }));
     } catch (error) {
       this.subject.set(failed(error));
     }
   }
 
-  protected async loadWorkspaces(repositoryId: string): Promise<void> {
-    if (!repositoryId) {
+  protected async loadRefinements(projectId: string): Promise<void> {
+    if (!projectId) {
       return;
     }
     try {
-      const workspaces = await this.workspacesApi.workspaces(repositoryId);
+      const rows = await this.refinementsApi.list(projectId);
+      // The listing is the light projection — live halves, no git drift. This page's own row is
+      // upgraded to the full read (drift included), because the strip renders it; the peers stay
+      // light, because the bar reads only branch and activity.
+      const match = rows.find((entry) => entry.branch === this.branch());
+      let value: readonly RefinementDto[] = rows;
+      if (match) {
+        try {
+          const full = await this.refinementsApi.get(match.id);
+          value = rows.map((entry) => (entry.id === match.id ? full : entry));
+        } catch {
+          // The light row still draws the page; the drift arrives with the next hint.
+        }
+      }
       // Before the signal, so the bar's order is settled by the time anything renders it.
-      this.memory.observe(workspaces);
-      this.workspaces.set(ready(workspaces));
+      this.memory.observe(value);
+      this.workspaces.set(ready(value));
     } catch (error) {
       this.workspaces.set(failed(error));
     }
@@ -478,7 +485,7 @@ export class RefiningPage {
       return;
     }
     try {
-      const processId = await this.workspacesApi.activeProcess(workspaceId);
+      const processId = await this.refinementsApi.activeProcess(workspaceId);
       if (processId) {
         this.clearLinger();
         if (processId !== this.shownProcessId()) {
@@ -496,12 +503,12 @@ export class RefiningPage {
   private async startContainerOnEntry(workspaceId: number): Promise<void> {
     this.autoStartFailure.set(null);
     try {
-      const answer = await this.workspacesApi.ensureContainer(workspaceId);
+      const answer = await this.refinementsApi.ensureContainer(workspaceId);
       if (answer.technicalProcessId) this.onStarted(answer.technicalProcessId);
     } catch (error) {
       this.autoStartFailure.set(describeError(error));
     } finally {
-      await this.loadWorkspaces(this.repositoryId());
+      await this.loadRefinements(this.projectId());
     }
   }
 
@@ -521,8 +528,8 @@ export class RefiningPage {
     this.starting.set(true);
     this.startFailure.set(null);
     try {
-      await this.refining.open(this.projectId(), subject.node);
-      await this.loadWorkspaces(subject.repositoryId);
+      await this.refining.open(subject.node);
+      await this.loadRefinements(this.projectId());
     } catch (error) {
       this.startFailure.set(describeError(error));
     } finally {
@@ -614,7 +621,7 @@ export class RefiningPage {
   }
 
   protected onChanged(): void {
-    void this.loadWorkspaces(this.repositoryId());
+    void this.loadRefinements(this.projectId());
   }
 
   /**
@@ -635,7 +642,7 @@ export class RefiningPage {
     this.resolutionFailure.set(null);
     try {
       if (action.target === 'ABANDONED') {
-        await this.workspacesApi.discard(workspace.id, 'Epic abandoned during refinement.');
+        await this.refinementsApi.discard(workspace.id);
       }
       await this.projects.transitionEpic(current.node.epic.id, action.target);
       await this.router.navigate([this.projectId()], { fragment: `epic-${current.node.epic.id}` });
