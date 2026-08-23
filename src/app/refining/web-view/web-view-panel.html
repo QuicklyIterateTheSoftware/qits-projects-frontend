@@ -1,29 +1,12 @@
-@if (containerGone()) {
-  <p class="gone" role="status">
-    The container is not answering, so this tab cannot know what to frame — the application and the
-    service list that declares it both live inside it. Start the container from the status strip
-    above, then retry.
-  </p>
-  <p class="again">
-    <qits-button variant="ghost" size="sm" (pressed)="reload()">Retry</qits-button>
-  </p>
-} @else if (services().kind !== 'ready') {
+@if (navigation().kind !== 'ready') {
   <app-async
-    [state]="services()"
-    loadingLabel="Loading the services"
-    errorLabel="Could not load the services"
+    [state]="navigation()"
+    loadingLabel="Loading the environment's navigation"
+    errorLabel="Could not load the environment's navigation"
     (retry)="reload()"
   />
 } @else if (framable().length === 0) {
-  @if (stopped().length > 0) {
-    <app-empty
-      message="No web-viewable service is running — start one from the Services tab and it appears here."
-    />
-  } @else {
-    <app-empty
-      message="This checkout declares no web-viewable service, so there is nothing to frame."
-    />
-  }
+  <app-empty message="This environment publishes no navigable UI yet." />
 } @else {
   <div class="toolbar">
     @if (barOpen()) {
@@ -43,15 +26,15 @@
     } @else {
       @if (framable().length > 1) {
         <label class="picker">
-          <span class="sr">Which service to frame</span>
+          <span class="sr">Which UI to frame</span>
           <select [value]="chosen() ?? ''" (change)="choose($any($event.target).value)">
-            @for (service of framable(); track idOf(service)) {
-              <option [value]="idOf(service)">{{ label(service) }}</option>
+            @for (link of framable(); track link.href) {
+              <option [value]="link.href">{{ link.label }}</option>
             }
           </select>
         </label>
       } @else {
-        <span class="only">{{ label(framable()[0]) }}</span>
+        <span class="only">{{ framable()[0].label }}</span>
       }
 
       <button
@@ -98,14 +81,14 @@
   <iframe
     #frame
     class="frame"
-    title="The workspace's application"
+    title="The deployed environment"
     [src]="frameSrc()"
     (load)="onFrameLoad()"
   ></iframe>
 
   <p class="note">
-    The frame is served through this platform, so it shares an origin with this page. It is loaded
-    once: switching tabs hides it and never reloads the application you are using.
+    The frame is the environment this page is served from, so it shares an origin with this page. It
+    is loaded once: switching tabs hides it and never reloads the application you are using.
   </p>
 
   @if (picking()) {

@@ -2,10 +2,9 @@ import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { ChangeDetectionStrategy, Component, signal } from '@angular/core';
 import { TestBed, type ComponentFixture } from '@angular/core/testing';
-import { EVENT_SOURCE_FACTORY, type EventSourceLike } from '../../api/event-source';
-import { PickedContext } from '../chat/picked-context';
-import type { ServiceDto, ServiceState } from '../../api/services-api';
+import type { QitsNavLink } from '@qits/ui-components';
 import { provideRouter } from '@angular/router';
+import { PickedContext } from '../chat/picked-context';
 import { WebViewPanel } from './web-view-panel';
 
 const settle = async () => {
@@ -13,28 +12,6 @@ const settle = async () => {
     await Promise.resolve();
   }
 };
-
-class FakeStream implements EventSourceLike {
-  onopen: ((event: Event) => void) | null = null;
-  onmessage: ((event: MessageEvent<string>) => void) | null = null;
-  onerror: ((event: Event) => void) | null = null;
-  readyState = 1;
-  close(): void {
-    this.readyState = 2;
-  }
-}
-
-const service = (
-  name: string,
-  state: ServiceState,
-  over: Partial<ServiceDto> = {},
-): ServiceDto => ({
-  name,
-  state,
-  restartCount: 0,
-  webViewable: false,
-  ...over,
-});
 
 @Component({
   selector: 'app-panel-host',
@@ -49,12 +26,12 @@ class PanelHost {
 /**
  * The Web view tab.
  *
- * The two things worth asserting are the two that are easy to get subtly wrong. **The frame's URL is
- * built from the checkout's declaration and this platform's own shape** — `basePath` and `entryPath`
- * are the app's, the proxy prefix is ours, and getting the slashes wrong lands the frame on a 404
- * that looks like a broken service. And **a web-viewable service that is not running is a different
- * empty state from a checkout that declares none**: one of them is fixed by pressing Start on
- * another tab, and saying so is the difference between a dead end and an instruction.
+ * The two things worth asserting are the two that are easy to get subtly wrong. **The frame's URL
+ * is the environment's own relative `href`, verbatim** — the edge built it for the environment this
+ * page is served from, and rebuilding or absolutising it here would be this panel deciding an
+ * origin, which is exactly what keeps the live-path readout and the picker alive. And **a failed
+ * read is not an empty environment**: the edge answers `503` while its projection warms up, and
+ * that must land in the retryable strip, never in the "publishes no navigable UI" sentence.
  */
 describe('WebViewPanel', () => {
   let http: HttpTestingController;
@@ -65,7 +42,6 @@ describe('WebViewPanel', () => {
       providers: [
         provideHttpClient(),
         provideHttpClientTesting(),
-        { provide: EVENT_SOURCE_FACTORY, useValue: () => new FakeStream() },
         // A picked element's source files deep-link into the Files tab, which is a URL write.
         provideRouter([]),
       ],
@@ -79,88 +55,74 @@ describe('WebViewPanel', () => {
   const text = () => element().textContent ?? '';
   const frame = () => element().querySelector<HTMLIFrameElement>('iframe');
 
-  async function open(services: readonly ServiceDto[]): Promise<void> {
+  async function open(links: readonly QitsNavLink[]): Promise<void> {
     fixture = TestBed.createComponent(PanelHost);
     fixture.detectChanges();
     await settle();
-    http.expectOne('/workspaces/container/7/services').flush({ services });
+    http.expectOne('/main-navigation').flush({ links });
     await settle();
     fixture.detectChanges();
   }
 
-  it('reads one surface, the shared services entry, and nothing else', async () => {
+  it('reads the environment navigation once, relative, and nothing else', async () => {
     await open([]);
     http.expectNone(() => true);
   });
 
-  it('frames the running service at the path the checkout declares', async () => {
+  it('frames the selected link at its own relative href', async () => {
     await open([
-      service('dev', 'READY', {
-        id: 'dev-server',
-        webViewable: true,
-        webView: { port: 4200, basePath: '/app/', entryPath: 'home' },
-      }),
+      { label: 'Home', href: '/' },
+      { label: 'Projects', href: '/projects/' },
     ]);
-    expect(frame()?.getAttribute('src')).toBe('/workspaces/service/7/dev-server/app/home');
+    expect(frame()?.getAttribute('src')).toBe('/');
+
+    element().querySelector<HTMLSelectElement>('select')!.value = '/projects/';
+    element().querySelector<HTMLSelectElement>('select')!.dispatchEvent(new Event('change'));
+    fixture.detectChanges();
+    expect(frame()?.getAttribute('src')).toBe('/projects/');
   });
 
-  it('falls back to the service name when the declaration carries no id', async () => {
-    await open([service('dev', 'READY', { webViewable: true, webView: { port: 4200 } })]);
-    expect(frame()?.getAttribute('src')).toBe('/workspaces/service/7/dev/');
-  });
-
-  it('names the one service, and offers a selector only when there are several', async () => {
-    await open([service('dev', 'READY', { webViewable: true, webView: {} })]);
+  it('names the one destination, and offers a selector only when there are several', async () => {
+    await open([{ label: 'Home', href: '/' }]);
     expect(element().querySelector('select')).toBeNull();
-    expect(text()).toContain('dev');
+    expect(text()).toContain('Home');
   });
 
-  it('offers a selector across several live web views', async () => {
+  it('refuses an href that names another origin, however it got into the answer', async () => {
     await open([
-      service('dev', 'READY', { webViewable: true, webView: {} }),
-      service('docs', 'READY', { webViewable: true, webView: {} }),
+      { label: 'Elsewhere', href: 'https://example.test/' },
+      { label: 'Sneaky', href: '//example.test/' },
+      { label: 'Projects', href: '/projects/' },
     ]);
-    const selector = element().querySelector<HTMLSelectElement>('select');
-    expect(selector?.options.length).toBe(2);
+    const options = element().querySelectorAll('option');
+    expect(options).toHaveLength(0);
+    expect(frame()?.getAttribute('src')).toBe('/projects/');
   });
 
-  it('says a web-viewable service is stopped rather than framing a 502', async () => {
-    await open([service('dev', 'STOPPED', { webViewable: true, webView: {} })]);
+  it('says the environment publishes no navigable UI, which is not a failure', async () => {
+    await open([]);
     expect(frame()).toBeNull();
-    expect(text()).toContain('start one from the Services tab');
+    expect(text()).toContain('publishes no navigable UI');
   });
 
-  it('says a checkout declares no web view at all, which is a different sentence', async () => {
-    await open([service('worker', 'READY')]);
-    expect(frame()).toBeNull();
-    expect(text()).toContain('declares no web-viewable service');
-  });
-
-  describe('when the services could not be read', () => {
+  describe('when the navigation could not be read', () => {
     /** Open the panel and answer its one read with a failure instead of a list. */
-    async function fail(status: number, body: object = { message: 'the daemon is gone' }) {
+    async function fail(status: number, body: object = {}) {
       fixture = TestBed.createComponent(PanelHost);
       fixture.detectChanges();
       await settle();
-      http
-        .expectOne('/workspaces/container/7/services')
-        .flush(body, { status, statusText: 'nope' });
+      http.expectOne('/main-navigation').flush(body, { status, statusText: 'nope' });
       await settle();
       fixture.detectChanges();
     }
 
-    it('never claims the checkout declares nothing, because it never read the checkout', async () => {
-      await fail(502);
-      expect(text()).not.toContain('declares no web-viewable service');
+    it('never claims the environment publishes nothing, because it never got an answer', async () => {
+      await fail(503);
+      expect(text()).not.toContain('publishes no navigable UI');
       expect(frame()).toBeNull();
     });
 
-    it('names the container for the unreachable family rather than showing a status code', async () => {
-      await fail(502);
-      expect(text()).toContain('The container is not answering');
-    });
-
-    it('offers a way back, which this tab has no start verb of its own to be', async () => {
+    it('retries the warm-up 503 through the shared strip', async () => {
       await fail(503);
       const retry = [...element().querySelectorAll<HTMLElement>('button')].find((button) =>
         button.textContent?.includes('Retry'),
@@ -169,31 +131,22 @@ describe('WebViewPanel', () => {
 
       retry!.click();
       await settle();
-      http.expectOne('/workspaces/container/7/services').flush({
-        services: [service('dev', 'READY', { webViewable: true, webView: {} })],
-      });
+      http.expectOne('/main-navigation').flush({ links: [{ label: 'Home', href: '/' }] });
       await settle();
       fixture.detectChanges();
       expect(frame()).not.toBeNull();
     });
-
-    it('leaves an ordinary failure to the shared strip, which carries the status', async () => {
-      await fail(500, { message: 'the daemon fell over' });
-      expect(text()).not.toContain('The container is not answering');
-      expect(text()).toContain('Could not load the services');
-      expect(text()).toContain('500');
-    });
   });
 
   it('opens a URL bar seeded from the frame, and refuses another address', async () => {
-    await open([service('dev', 'READY', { webViewable: true, webView: { entryPath: 'home' } })]);
+    await open([{ label: 'Projects', href: '/projects/' }]);
     element().querySelector<HTMLButtonElement>('.globe')!.click();
     fixture.detectChanges();
 
     const input = element().querySelector<HTMLInputElement>('.bar input')!;
-    // jsdom never loads the frame, so the seed falls back to the opened path — which is the same
-    // rule: the bar says where the frame is, and only the frame can say otherwise.
-    expect(input.value).toBe('home');
+    // jsdom never loads the frame, so the seed falls back to empty — which is the same rule: the
+    // bar says where the frame is, and only the frame can say otherwise.
+    expect(input.value).toBe('');
 
     input.value = 'https://example.test/';
     input.dispatchEvent(new Event('input'));
@@ -210,7 +163,7 @@ describe('WebViewPanel', () => {
   });
 
   it('discards an edit when the bar is closed rather than keeping it as a claim', async () => {
-    await open([service('dev', 'READY', { webViewable: true, webView: { entryPath: 'home' } })]);
+    await open([{ label: 'Projects', href: '/projects/' }]);
     element().querySelector<HTMLButtonElement>('.globe')!.click();
     fixture.detectChanges();
     const input = element().querySelector<HTMLInputElement>('.bar input')!;
@@ -226,7 +179,7 @@ describe('WebViewPanel', () => {
         }
       });
     fixture.detectChanges();
-    expect(frame()?.getAttribute('src')).toBe('/workspaces/service/7/dev/home');
+    expect(frame()?.getAttribute('src')).toBe('/projects/');
   });
 
   describe('the element picker', () => {
@@ -247,7 +200,7 @@ describe('WebViewPanel', () => {
     }
 
     async function armed(): Promise<HTMLElement> {
-      await open([service('dev', 'READY', { webViewable: true, webView: { entryPath: 'home' } })]);
+      await open([{ label: 'Projects', href: '/projects/' }]);
       const button = framedButton();
       pickButton().click();
       fixture.detectChanges();

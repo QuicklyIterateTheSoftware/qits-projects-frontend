@@ -39,7 +39,7 @@ export interface TabDef {
 export const STARTING_SLUG = 'starting';
 
 /**
- * The eight durable tabs, in their default order.
+ * The seven durable tabs, in their default order.
  *
  * Epic leads because refining produces the epic document. Chat is deliberately dormant on a bare
  * URL: it mounts only when called for, then remains alive under the usual tab-host contract.

@@ -1,3 +1,4 @@
+import { HttpClient } from '@angular/common/http';
 import {
   ChangeDetectionStrategy,
   Component,
@@ -11,64 +12,48 @@ import {
   viewChild,
 } from '@angular/core';
 import { DomSanitizer, type SafeResourceUrl } from '@angular/platform-browser';
-import { QitsButton } from '@qits/ui-components';
-import { QITS_API_BASE } from '../../api/api-base';
+import { QitsButton, type QitsNavLink, type QitsNavigation } from '@qits/ui-components';
 import { ComponentMapApi, type ComponentMapDto } from '../../api/component-map-api';
-import type { ServiceDto } from '../../api/services-api';
-import { WorkspaceServices } from '../../api/workspace-services';
+import { LOADING, failed, ready, type Loadable } from '../../ui/loadable';
 import { Async } from '../../ui/async';
 import { Empty } from '../../ui/empty';
 import { PickedContext } from '../chat/picked-context';
 import { ElementPicker, type FramePick } from './element-picker';
 
-/** The states in which a declared service is worth framing. Anything else has nothing listening. */
-const LIVE: readonly ServiceDto['state'][] = ['STARTING', 'READY', 'RESTARTING'];
-
-/** The statuses that mean the container is not answering, as opposed to answering "no". */
-const UNREACHABLE: readonly number[] = [0, 502, 503, 504];
-
 /**
- * The Web view tab: the workspace's own application, framed.
+ * The Web view tab: the deployed environment, framed.
  *
- * Copied from qits-spa-workspaces' detail shell, which is this codebase's sanctioned way to share a
- * screen. The proxy it frames through belongs to qits-workspaces either way, so the path below is the
- * same one whichever SPA builds it.
+ * A refinement looks at what is actually running and imagines how it should be — so this tab frames
+ * the *environment this page is served from*, not a locally running process. That is the domain
+ * line between this route and the workspaces detail screen: a workspace runs code and frames its
+ * own dev server through the workspace proxy; a refinement runs nothing, and the only application
+ * worth looking at is the deployed one.
  *
  * ## Same origin, on purpose
  *
- * The frame is served through `/workspaces/service/{workspaceRowId}/{serviceId}/`, which is
- * qits-workspaces' own proxy — so the framed app and this page share an origin. That is not a
+ * The list comes from `GET /main-navigation`, fetched **relative**: the edge answers it from its
+ * deployment projection and derives the environment from the request's Host header, so the answer
+ * is exactly the environment this page came from. The frame's `src` is the selected link's
+ * **relative** `href`, which makes the framed UI same-origin by construction — and that is not a
  * convenience: it is what lets the toolbar read the framed window's **live** location as the user
- * navigates inside the app, and it is what the element picker needs to exist at all. A frame on
- * another origin is still a usable frame; it is just opaque, and the toolbar says so instead of
- * showing a path that stopped being true three clicks ago.
+ * navigates, and it is what the element picker needs to exist at all.
  *
- * The path is built here rather than by the daemon, and the daemon says why: it is a shape over ids
- * the daemon is not the authority on. `webView` is the checkout's declaration and nothing more —
- * `basePath` is what the app was built to be served under and `entryPath` is where to land.
+ * There is deliberately no environment picker. Nothing on the platform can answer "what is the base
+ * URL of environment X", and a foreign origin would go dark for the toolbar and the picker anyway.
+ * You refine against the environment you are standing in.
  *
  * ## What it loads
  *
- * **On first selection this panel reads `1`, and only when nothing has asked yet**: the shared
- * services entry, which also colours the Services tab's dot and fills its panel. The frame itself is
- * a document load rather than an API read, and it happens once — the panel latches on first
- * selection and then only hides, so switching tabs never reloads the app you were using.
+ * **One `GET /main-navigation` when the panel first renders.** The edge answers `503` with
+ * `Retry-After: 1` while its projection is warming up after a restart; that lands in the shared
+ * async strip, whose Retry re-issues the read. The frame itself is a document load rather than an
+ * API read, and it happens once — the panel latches on first selection and then only hides, so
+ * switching tabs never reloads the app you were using.
  *
- * **The picker adds `1` per activation**, `GET /component-map`, and that is the whole of its cost.
+ * **The picker adds one `GET /component-map` per activation**, and that is the whole of its cost.
  * It is fetched on arming rather than on load, because a tab nobody picks in should not pay for a
- * scan of the tree, and it is not fetched per *pick*, because a map that misses a component created
- * since the last activation simply skips attribution.
- *
- * ## A failed read is not an empty checkout
- *
- * `framable()` is empty for four different reasons — nothing asked yet, the read is in flight, the
- * read failed, and the checkout really declares nothing — and this panel used to render the last
- * sentence for all four. "This checkout declares no web-viewable service" against a 502 is a
- * confident statement about a file the panel never got to read, and it sends the reader to look at
- * `.qits-config.yml` for a fault that is in the container. The states are separated the way every
- * sibling panel separates them: the shared strip for waiting and for an ordinary failure, and the
- * one failure this panel can explain better than a status code — the container not answering — in
- * words, with a retry, since this tab has no start verb of its own.
+ * scan of the tree, and it is not fetched per *pick*. Attribution is an enrichment: an environment
+ * whose UI the map does not describe simply answers picks without source files.
  */
 @Component({
   selector: 'app-web-view-panel',
@@ -78,8 +63,7 @@ const UNREACHABLE: readonly number[] = [0, 502, 503, 504];
   styleUrl: './web-view-panel.css',
 })
 export class WebViewPanel {
-  private readonly entry = inject(WorkspaceServices);
-  private readonly apiBase = inject(QITS_API_BASE);
+  private readonly http = inject(HttpClient);
   private readonly sanitizer = inject(DomSanitizer);
   private readonly maps = inject(ComponentMapApi);
   private readonly picked = inject(PickedContext);
@@ -88,7 +72,7 @@ export class WebViewPanel {
 
   protected readonly frame = viewChild<ElementRef<HTMLIFrameElement>>('frame');
 
-  /** Which service is framed. A free level: it dies with the panel, so it is a local signal. */
+  /** Which destination is framed, by href. A free level: it dies with the panel. */
   protected readonly chosen = signal<string | null>(null);
 
   /** Whether the URL bar is open. Opening it swaps the rest of the toolbar for the input. */
@@ -113,6 +97,9 @@ export class WebViewPanel {
   /** How many elements are picked, from the store rather than from a count kept here. */
   protected readonly pickedCount = computed(() => this.picked.elements().length);
 
+  /** The environment's navigation, as the edge answered it. */
+  protected readonly navigation = signal<Loadable<readonly QitsNavLink[]>>(LOADING);
+
   private readonly picker = new ElementPicker({
     route: () => `/${this.livePath() ?? ''}`,
     map: () => this.map(),
@@ -120,10 +107,7 @@ export class WebViewPanel {
   });
 
   constructor() {
-    effect(() => {
-      const workspaceRowId = this.workspaceRowId();
-      this.entry.use(workspaceRowId);
-    });
+    void this.load();
 
     // The marks in the frame follow the store, in both directions: a chip removed on the prompt
     // panel has to take its outline with it, or the frame becomes a second, wrong answer.
@@ -134,84 +118,60 @@ export class WebViewPanel {
 
     inject(DestroyRef).onDestroy(() => this.picker.detach());
 
-    // A service that goes away takes the selection with it; a first live one takes it up.
+    // A link that goes away takes the selection with it; the first one takes it up.
     effect(() => {
       const framable = this.framable();
       const chosen = this.chosen();
       if (framable.length === 0) {
         return;
       }
-      if (!chosen || !framable.some((service) => idOf(service) === chosen)) {
-        this.chosen.set(idOf(framable[0]));
+      if (!chosen || !framable.some((link) => link.href === chosen)) {
+        this.chosen.set(framable[0].href);
       }
     });
   }
 
   // ---- what is on screen -------------------------------------------------------------------
 
-  protected readonly services = this.entry.services;
-
-  /** Declared web-viewable **and** live. Both halves matter: a stopped service frames a 502. */
-  protected readonly framable = computed<readonly ServiceDto[]>(() => {
-    const state = this.services();
-    if (state.kind !== 'ready') {
-      return [];
-    }
-    return state.value.filter((service) => service.webViewable && LIVE.includes(service.state));
-  });
-
-  /** Web-viewable but not running — the difference between "nothing to show" and "start it". */
-  protected readonly stopped = computed<readonly ServiceDto[]>(() => {
-    const state = this.services();
-    if (state.kind !== 'ready') {
-      return [];
-    }
-    return state.value.filter((service) => service.webViewable && !LIVE.includes(service.state));
-  });
-
   /**
-   * Whether the read failed because nothing is listening for this container.
+   * The links worth framing: every one the environment publishes, kept to **relative** hrefs.
    *
-   * The same rule the services panel applies, and it is why this branch is prose rather than the
-   * shared strip: "502" beside a tab whose whole content is a frame into that container says less
-   * than one sentence naming the container. Everything else — a 404, a 500, a parse failure — is an
-   * ordinary failure and gets the ordinary strip.
+   * The edge only ever answers path-shaped hrefs; the filter is what lets {@link frameSrc} trust
+   * the URL it builds — nothing carrying a scheme or a `//` authority can reach the frame, however
+   * the answer was produced.
    */
-  protected readonly containerGone = computed(() => {
-    const state = this.services();
-    return state.kind === 'error' && UNREACHABLE.includes(state.status);
+  protected readonly framable = computed<readonly QitsNavLink[]>(() => {
+    const state = this.navigation();
+    if (state.kind !== 'ready') {
+      return [];
+    }
+    return state.value.filter((link) => link.href.startsWith('/') && !link.href.startsWith('//'));
   });
 
-  protected readonly service = computed<ServiceDto | null>(() => {
+  protected readonly link = computed<QitsNavLink | null>(() => {
     const chosen = this.chosen();
-    return this.framable().find((service) => idOf(service) === chosen) ?? null;
+    return this.framable().find((candidate) => candidate.href === chosen) ?? null;
   });
 
-  /** The proxy prefix this workspace's service is served under, with its trailing slash. */
-  protected readonly proxyBase = computed(() => {
-    const service = this.service();
-    if (!service) {
+  /** The prefix the framed app lives under, with its trailing slash — the live path's base. */
+  protected readonly base = computed(() => {
+    const link = this.link();
+    if (!link) {
       return '';
     }
-    return `${this.apiBase}/workspaces/service/${this.workspaceRowId()}/${encodeURIComponent(idOf(service))}/`;
+    return link.href.endsWith('/') ? link.href : `${link.href}/`;
   });
 
-  /** Where the frame lands: the proxy prefix, then the declaration's base and entry paths. */
-  protected readonly frameUrl = computed(() => {
-    const service = this.service();
-    if (!service) {
-      return null;
-    }
-    return this.proxyBase() + appPath(service.webView?.basePath, service.webView?.entryPath);
-  });
+  /** Where the frame lands: the link's own relative href. */
+  protected readonly frameUrl = computed(() => this.link()?.href ?? null);
 
   /**
    * The same URL, trusted.
    *
-   * Angular sanitizes an `iframe`'s `src` as a resource URL and refuses a plain string. Trusting this
-   * one is not a shortcut: **it is a path this component built**, from the API base, this page's own
-   * workspace row id and an encoded service id — there is no user-supplied origin anywhere in it, and
-   * a typed path goes through {@link navigate}, which refuses anything carrying a scheme.
+   * Angular sanitizes an `iframe`'s `src` as a resource URL and refuses a plain string. Trusting
+   * this one is not a shortcut: {@link framable} admits only path-shaped hrefs, so the frame can
+   * only ever land inside this page's own origin — and a typed path goes through {@link navigate},
+   * which refuses anything carrying a scheme.
    */
   protected readonly frameSrc = computed<SafeResourceUrl | null>(() => {
     const url = this.frameUrl();
@@ -219,7 +179,7 @@ export class WebViewPanel {
   });
 
   /**
-   * The route the framed app is on **right now**, with the proxy prefix stripped.
+   * The route the framed app is on **right now**, with the link's base prefix stripped.
    *
    * Read from the framed window rather than remembered from the source, so it tracks navigation
    * inside the app. A foreign-origin frame throws on the read and answers null, which the toolbar
@@ -237,7 +197,7 @@ export class WebViewPanel {
         return null;
       }
       const here = `${location.pathname}${location.search}${location.hash}`;
-      const base = this.proxyBase();
+      const base = this.base();
       return here.startsWith(base) ? here.slice(base.length) : here;
     } catch {
       // Cross-origin. The frame still works; this page simply cannot see where it is.
@@ -259,24 +219,31 @@ export class WebViewPanel {
     }
   });
 
-  protected label(service: ServiceDto): string {
-    return service.description ? `${service.name} — ${service.description}` : service.name;
-  }
-
-  protected idOf(service: ServiceDto): string {
-    return idOf(service);
-  }
-
   // ---- what the panel does -----------------------------------------------------------------
 
-  protected choose(serviceId: string): void {
-    this.chosen.set(serviceId);
+  protected choose(href: string): void {
+    this.chosen.set(href);
     this.barOpen.set(false);
   }
 
-  /** Re-read the shared services entry. Every reader of it sees the result, which is the point. */
+  /** Re-read the navigation — the strip's Retry, and the edge's warm-up `503` lands here too. */
   protected reload(): void {
-    void this.entry.refresh();
+    this.navigation.set(LOADING);
+    void this.load();
+  }
+
+  private async load(): Promise<void> {
+    try {
+      const answer = await new Promise<QitsNavigation>((resolve, reject) =>
+        this.http.get<QitsNavigation>('/main-navigation').subscribe({
+          next: resolve,
+          error: reject,
+        }),
+      );
+      this.navigation.set(ready(answer?.links ?? []));
+    } catch (error) {
+      this.navigation.set(failed(error));
+    }
   }
 
   protected onFrameLoad(): void {
@@ -340,8 +307,9 @@ export class WebViewPanel {
    * The map, once per activation.
    *
    * A failure is swallowed: attribution is an enrichment, and a pick with a selector and a route is
-   * still a useful pick. The tree the scanner does not recognise answers an empty list rather than
-   * an error, and that lands here as the same "no attribution" screen.
+   * still a useful pick. A checkout whose tree the scanner does not recognise — the ordinary case
+   * for a refinement, whose checkout is the project wrapper and not the framed UI's source — answers
+   * an empty list, and that lands here as the same "no attribution" screen.
    */
   private async loadMap(): Promise<void> {
     try {
@@ -363,7 +331,7 @@ export class WebViewPanel {
     this.barOpen.set(open);
     this.barProblem.set(null);
     if (open) {
-      this.openedWith = this.livePath() ?? appPathOf(this.service());
+      this.openedWith = this.livePath() ?? '';
       this.barValue.set(this.openedWith);
     }
   }
@@ -376,8 +344,8 @@ export class WebViewPanel {
   /**
    * Navigate the frame.
    *
-   * An **in-frame location change**, not a new `src`: the app keeps whatever it holds that survives a
-   * route change, and the load hook fires exactly as it would for a link inside the app — which is
+   * An **in-frame location change**, not a new `src`: the app keeps whatever it holds that survives
+   * a route change, and the load hook fires exactly as it would for a link inside the app — which is
    * what makes the picker re-attach through one code path rather than two.
    */
   protected navigate(): void {
@@ -390,7 +358,7 @@ export class WebViewPanel {
     if (!element) {
       return;
     }
-    const target = this.proxyBase() + typed.replace(/^\/+/, '');
+    const target = this.base() + typed.replace(/^\/+/, '');
     this.barProblem.set(null);
     try {
       const window = element.contentWindow;
@@ -415,23 +383,4 @@ function frameDocument(frame: HTMLIFrameElement | null): Document | null {
   } catch {
     return null;
   }
-}
-
-/** The segment the proxy path is built from: the declared id, falling back to the name. */
-function idOf(service: ServiceDto): string {
-  return service.id ?? service.name;
-}
-
-/** `basePath` and `entryPath` joined into one relative path, with the slashes sorted out once. */
-function appPath(basePath: string | undefined, entryPath: string | undefined): string {
-  const base = (basePath ?? '').replace(/^\/+|\/+$/g, '');
-  const entry = (entryPath ?? '').replace(/^\/+/, '');
-  if (!base) {
-    return entry;
-  }
-  return entry ? `${base}/${entry}` : `${base}/`;
-}
-
-function appPathOf(service: ServiceDto | null): string {
-  return service ? appPath(service.webView?.basePath, service.webView?.entryPath) : '';
 }
