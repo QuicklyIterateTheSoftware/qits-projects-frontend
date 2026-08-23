@@ -5,6 +5,7 @@ import { TestBed, type ComponentFixture } from '@angular/core/testing';
 import type { QitsNavLink } from '@qits/ui-components';
 import { provideRouter } from '@angular/router';
 import { PickedContext } from '../chat/picked-context';
+import type { WebViewFreeze } from '../design/freeze';
 import { WebViewPanel } from './web-view-panel';
 
 const settle = async () => {
@@ -17,10 +18,11 @@ const settle = async () => {
   selector: 'app-panel-host',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [WebViewPanel],
-  template: `<app-web-view-panel [workspaceRowId]="id()" />`,
+  template: `<app-web-view-panel [workspaceRowId]="id()" (frozen)="frozen.push($event)" />`,
 })
 class PanelHost {
   readonly id = signal(7);
+  readonly frozen: WebViewFreeze[] = [];
 }
 
 /**
@@ -180,6 +182,63 @@ describe('WebViewPanel', () => {
       });
     fixture.detectChanges();
     expect(frame()?.getAttribute('src')).toBe('/projects/');
+  });
+
+  describe('freezing', () => {
+    const freezeButton = () =>
+      [...element().querySelectorAll<HTMLButtonElement>('button')].find(
+        (button) => button.textContent?.trim() === 'Freeze',
+      )!;
+
+    /** jsdom never loads the frame's `src`, so the framed page is written here instead. */
+    function framedPage(): void {
+      const framed = frame()!.contentDocument!;
+      framed.open();
+      framed.write('<title>Epics</title><body><p id="here">hello</p></body>');
+      framed.close();
+    }
+
+    it('hands the captured page up, with the head that keeps its assets resolving', async () => {
+      await open([{ label: 'Projects', href: '/projects/' }]);
+      framedPage();
+
+      freezeButton().click();
+      fixture.detectChanges();
+
+      expect(fixture.componentInstance.frozen).toHaveLength(1);
+      const captured = fixture.componentInstance.frozen[0];
+      expect(captured.html).toContain('<base href=');
+      expect(captured.html).toContain('hello');
+      expect(captured.title).toBe('Epics');
+    });
+
+    it('says so on the problem line when the frame cannot be read, and emits nothing', async () => {
+      await open([{ label: 'Projects', href: '/projects/' }]);
+      // The button is already drawn, so this is the cross-origin frame the capture meets, not one
+      // the toolbar refused up front.
+      vi.spyOn(HTMLIFrameElement.prototype, 'contentDocument', 'get').mockImplementation(() => {
+        throw new DOMException('cross-origin', 'SecurityError');
+      });
+
+      freezeButton().click();
+      fixture.detectChanges();
+
+      expect(fixture.componentInstance.frozen).toHaveLength(0);
+      expect(text()).toContain('Could not freeze the framed page.');
+      vi.restoreAllMocks();
+    });
+
+    it('offers no Freeze at all on a frame this page cannot see into', async () => {
+      vi.spyOn(HTMLIFrameElement.prototype, 'contentDocument', 'get').mockImplementation(() => {
+        throw new DOMException('cross-origin', 'SecurityError');
+      });
+
+      await open([{ label: 'Projects', href: '/projects/' }]);
+
+      expect(freezeButton()).toBeUndefined();
+      expect(text()).toContain('Picker unavailable on external pages.');
+      vi.restoreAllMocks();
+    });
   });
 
   describe('the element picker', () => {
