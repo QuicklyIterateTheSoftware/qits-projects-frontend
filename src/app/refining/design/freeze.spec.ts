@@ -104,7 +104,15 @@ describe('freezeWebView', () => {
       fakeFreeze,
     );
 
-    expect(frozen?.title).toBe('epics');
+    expect(frozen?.title).toBe('/epics');
+  });
+
+  it('names a title-less root page "/" rather than nothing', () => {
+    const framed = framedDocument('');
+
+    const frozen = freezeWebView(fakeFrame(framed, 'https://qits.test/'), '/', fakeFreeze);
+
+    expect(frozen?.title).toBe('/');
   });
 
   it('carries the freeze’s own truncation flag', () => {

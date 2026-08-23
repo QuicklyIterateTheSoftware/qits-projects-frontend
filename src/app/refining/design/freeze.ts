@@ -15,7 +15,7 @@ export interface WebViewFreeze {
   readonly html: string;
   /** The application route it came from, with the framed app's own prefix stripped. */
   readonly route: string;
-  /** What to call it — the framed document's title, or the route when it has none. */
+  /** What to call it — the framed document's title, else `/<route>`; never blank. */
   readonly title: string;
   /** Whether the freeze hit its byte budget and dropped subtrees. */
   readonly truncated: boolean;
@@ -69,7 +69,8 @@ export function freezeWebView(
   }
   const here = `${location.pathname}${location.search}${location.hash}`;
   const route = here.startsWith(proxyBase) ? here.slice(proxyBase.length) : here;
-  const title = framed.title || route;
+  // The server refuses a blank title, and a page at the root has neither a title nor a route.
+  const title = framed.title.trim() || `/${route}`;
   const head =
     `<!doctype html><html><head><meta charset="utf-8">` +
     `<base href="${escapeHtml(location.href)}"><title>${escapeHtml(title)}</title></head>`;
