@@ -778,14 +778,14 @@ describe('RefiningPage', () => {
       expect(element().querySelector('app-sketch-panel')).not.toBeNull();
     });
 
-    it('builds the web view panel on its tab, off the same shared services entry', async () => {
+    it('builds the web view panel on its tab, reading the environment navigation', async () => {
       await open();
 
       tabs()
         .find((tab) => tab.textContent?.trim() === 'Web view')!
         .click();
       await settle();
-      http.expectOne('/workspaces/container/7/services').flush({ services: [] });
+      http.expectOne('/main-navigation').flush({ links: [] });
       await settle();
 
       expect(element().querySelector('app-web-view-panel')).not.toBeNull();
