@@ -7,7 +7,7 @@ import { By } from '@angular/platform-browser';
 import { Router, provideRouter } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
 import { EVENT_SOURCE_FACTORY, type EventSourceLike } from '../api/event-source';
-import type { WorkspaceDto } from '../api/workspaces-dto';
+import type { RefinementDto } from '../api/refinements-api';
 import { routes } from '../app.routes';
 import { LINGER_MS, RefiningPage } from './refining-page';
 
@@ -37,43 +37,32 @@ const EPIC = {
   updatedAt: AT,
 };
 
-const WRAPPER = {
-  id: 'qits-qits',
-  name: 'qits-qits',
-  backupUrl: null,
-  mainBranch: 'main',
-  archetype: 'PROJECT',
-  projectId: 'p1',
-  lastBackup: null,
-};
-
-const workspace = (over: Partial<WorkspaceDto> = {}): WorkspaceDto => ({
+const workspace = (over: Partial<RefinementDto> = {}): RefinementDto => ({
   id: 7,
-  workspaceId: 'refining-epic-refining-workspace',
-  parent: 'main',
+  epicId: 'e1',
+  projectId: 'p1',
+  repositoryId: 'qits-qits',
   branch: 'refining/epic-refining-workspace',
-  ahead: 1,
-  behind: 0,
-  conflictsWithParent: false,
-  status: 'ACTIVE',
+  parent: 'main',
+  label: 'refining-epic-refining-workspace',
+  preamble: null,
   runtimeStatus: 'RUNNING',
   runtimeError: null,
   clean: true,
+  ahead: 1,
+  behind: 0,
+  conflictsWithParent: false,
   agentActivity: null,
-  preamble: null,
-  result: null,
-  resolvedAt: null,
   daemonConnectedAt: AT,
   daemonVersion: '1.4.0',
-  daemonBuildTime: null,
   daemonOutdated: null,
+  createdAt: AT,
   ...over,
 });
 
 const URL_BASE = '/p1/epics/epic-refining-workspace/refining';
-const COMPONENTS_URL = '/projects/api/projects/p1/repositories';
 const EPICS_URL = '/projects/api/projects/p1/epics';
-const WORKSPACES_URL = '/workspaces/api/workspaces?repositoryId=qits-qits';
+const REFINEMENTS_URL = '/projects/api/projects/p1/refinements';
 
 /**
  * The shell, and the one thing about it that is not the workspace detail page it was copied from:
@@ -151,12 +140,8 @@ describe('RefiningPage', () => {
     return found as HTMLButtonElement;
   }
 
-  /** The wrapper read and the epic fan-out — the two halves of the page's subject. */
-  async function flushSubject(wrapper: unknown = WRAPPER): Promise<void> {
-    http.expectOne(COMPONENTS_URL).flush({
-      entries: wrapper ? [{ repository: wrapper }] : [],
-      wrapper: wrapper ? { repositoryId: 'qits-qits', branch: 'main', entries: [] } : null,
-    });
+  /** The epic fan-out — the page's whole subject now the wrapper is the server's business. */
+  async function flushSubject(): Promise<void> {
     http.expectOne(EPICS_URL).flush({ entries: [{ epic: EPIC }] });
     await settle();
     http.expectOne('/projects/api/epics/e1/features').flush({ entries: [] });
@@ -164,20 +149,31 @@ describe('RefiningPage', () => {
   }
 
   /**
-   * Open the page and answer everything it asks for: the subject, the wrapper's workspaces, and — when
-   * one matched — the transient tab's process lookup and the selected tab's own budget.
+   * The refinements listing, plus — when one matched this page's branch — the full-row upgrade the
+   * page issues for its own subject.
+   */
+  async function flushRefinements(rows: readonly RefinementDto[]): Promise<void> {
+    http.expectOne(REFINEMENTS_URL).flush({ refinements: rows });
+    await settle();
+    const match = rows.find((row) => row.branch === 'refining/epic-refining-workspace');
+    if (match) {
+      http.expectOne(`/projects/api/refinements/${match.id}`).flush({ refinement: match });
+      await settle();
+    }
+  }
+
+  /**
+   * Open the page and answer everything it asks for: the subject, the project's refinements, and —
+   * when one matched — the transient tab's process lookup and the selected tab's own budget.
    */
   async function open(
     url = URL_BASE,
-    workspaces: readonly WorkspaceDto[] = [workspace()],
+    workspaces: readonly RefinementDto[] = [workspace()],
     processId: string | null = null,
   ): Promise<void> {
     await harness.navigateByUrl(url);
     await flushSubject();
-    http
-      .expectOne(WORKSPACES_URL)
-      .flush({ entries: workspaces.map((entry) => ({ workspace: entry })) });
-    await settle();
+    await flushRefinements(workspaces);
     for (const request of http.match((candidate) => candidate.url.endsWith('/active-process'))) {
       request.flush({ technicalProcessId: processId });
     }
@@ -220,10 +216,10 @@ describe('RefiningPage', () => {
    */
   function answerFilesPanel(workspaceRowId = 7): void {
     http
-      .expectOne(`/workspaces/container/${workspaceRowId}/files`)
+      .expectOne(`/projects/refinement-container/${workspaceRowId}/files`)
       .flush({ paths: [], lazyDirs: [], generation: 'gen-1' });
     http
-      .expectOne(`/workspaces/container/${workspaceRowId}/detection`)
+      .expectOne(`/projects/refinement-container/${workspaceRowId}/detection`)
       .flush({ projects: [], frameworks: [], links: [], generation: 'gen-1' });
   }
 
@@ -240,7 +236,7 @@ describe('RefiningPage', () => {
    * on a test about mounting a panel.
    */
   async function answerAgentsPanel(workspaceRowId = 7): Promise<void> {
-    const base = `/workspaces/container/${workspaceRowId}`;
+    const base = `/projects/refinement-container/${workspaceRowId}`;
     http.expectOne(`${base}/commands`).flush({ entries: [] });
     http
       .expectOne(`${base}/agent-sessions`)
@@ -257,38 +253,32 @@ describe('RefiningPage', () => {
   }
 
   describe('resolution', () => {
-    it('resolves the wrapper, the epic and the branch’s workspace, and opens one stream', async () => {
+    it('resolves the epic and the refinement in parallel, and opens one stream', async () => {
       await harness.navigateByUrl(URL_BASE);
 
-      // The wrapper and the epic are read in parallel: two services, neither waiting on the other,
-      // and nothing else is asked for before either has answered.
+      // The epic and the refinements listing are read in parallel: both are keyed off the URL
+      // alone, and neither waits on the other.
       const first = http.match(() => true);
       expect(first.map((request) => request.request.url).sort()).toEqual(
-        [COMPONENTS_URL, EPICS_URL].sort(),
+        [EPICS_URL, REFINEMENTS_URL].sort(),
       );
       for (const request of first) {
-        if (request.request.url === COMPONENTS_URL) {
-          request.flush({
-            entries: [{ repository: WRAPPER }],
-            wrapper: { repositoryId: 'qits-qits', branch: 'main', entries: [] },
-          });
+        if (request.request.url === REFINEMENTS_URL) {
+          request.flush({ refinements: [workspace()] });
         } else {
           request.flush({ entries: [{ epic: EPIC }] });
         }
       }
       await settle();
       http.expectOne('/projects/api/epics/e1/features').flush({ entries: [] });
+      http.expectOne('/projects/api/refinements/7').flush({ refinement: workspace() });
       await settle();
-
-      // Only now is there a repository to scope the workspace listing by.
-      http.expectOne(WORKSPACES_URL).flush({ entries: [{ workspace: workspace() }] });
-      await settle();
-      http.expectOne('/workspaces/api/workspaces/7/active-process').flush({
+      http.expectOne('/projects/api/refinements/7/active-process').flush({
         technicalProcessId: null,
       });
       await settle();
 
-      expect(streams.map((stream) => stream.url)).toEqual(['/workspaces/api/workspaces/7/events']);
+      expect(streams.map((stream) => stream.url)).toEqual(['/projects/api/refinements/7/events']);
     });
 
     it('names the epic and the branch it is refined on', async () => {
@@ -330,7 +320,7 @@ describe('RefiningPage', () => {
       await settle();
 
       expect(navigate).toHaveBeenCalledWith(['p1'], { fragment: 'epic-e1' });
-      http.expectNone('/workspaces/api/workspaces/7/discard');
+      http.expectNone('/projects/api/refinements/7/discard');
     });
 
     it('confirms abandonment, deletes the refinement workspace first, then abandons the epic', async () => {
@@ -339,13 +329,12 @@ describe('RefiningPage', () => {
 
       buttonNamed('Abandon').click();
       await settle();
-      http.expectNone('/workspaces/api/workspaces/7/discard');
+      http.expectNone('/projects/api/refinements/7/discard');
       http.expectNone('/projects/api/epics/e1/transition');
 
       buttonNamed('Confirm abandon?').click();
       await settle();
-      const discard = http.expectOne('/workspaces/api/workspaces/7/discard');
-      expect(discard.request.body).toEqual({ result: 'Epic abandoned during refinement.' });
+      const discard = http.expectOne('/projects/api/refinements/7/discard');
       discard.flush({ success: true });
       await settle();
 
@@ -365,15 +354,18 @@ describe('RefiningPage', () => {
         workspace({ id: 9 }),
       ]);
 
-      expect(streams.map((stream) => stream.url)).toEqual(['/workspaces/api/workspaces/9/events']);
+      expect(streams.map((stream) => stream.url)).toEqual(['/projects/api/refinements/9/events']);
     });
 
-    it('reports a project with no wrapper as the page failure it is', async () => {
+    it('reports a subject that could not be resolved as the page failure it is', async () => {
       await harness.navigateByUrl(URL_BASE);
-      await flushSubject(null);
+      http
+        .expectOne(EPICS_URL)
+        .flush({ message: 'projects is down' }, { status: 503, statusText: 'Down' });
+      http.expectOne(REFINEMENTS_URL).flush({ refinements: [] });
+      await settle();
 
       expect(text()).toContain('Could not open this refining workspace');
-      expect(text()).toContain('no wrapper repository');
       expect(element().querySelector('app-tab-host')).toBeNull();
     });
   });
@@ -394,32 +386,19 @@ describe('RefiningPage', () => {
       buttonNamed('Start refining').click();
       await settle();
 
-      // The flow re-resolves the wrapper and re-checks the listing before creating anything, which is
-      // what makes a workspace started in another tab meanwhile a find rather than a failure.
-      http.expectOne(COMPONENTS_URL).flush({
-        entries: [{ repository: WRAPPER }],
-        wrapper: { repositoryId: 'qits-qits', branch: 'main', entries: [] },
-      });
-      await settle();
-      http.expectOne(WORKSPACES_URL).flush({ entries: [] });
-      await settle();
-
+      // One idempotent POST keyed by the epic — the find, the branch cut and the adopt-existing
+      // dance are the server's business now, which is what makes a refinement started in another
+      // tab meanwhile a find rather than a failure.
       const create = http.expectOne(
         (candidate) =>
-          candidate.method === 'POST' && candidate.url === '/workspaces/api/workspaces',
+          candidate.method === 'POST' && candidate.url === '/projects/api/refinements',
       );
-      expect(create.request.body).toMatchObject({
-        repositoryId: 'qits-qits',
-        branch: 'refining/epic-refining-workspace',
-        parent: '',
-        adoptExisting: false,
-      });
-      create.flush({ workspace: workspace() });
+      expect(create.request.body).toEqual({ epicId: 'e1' });
+      create.flush({ refinement: workspace() });
       await settle();
 
-      http.expectOne(WORKSPACES_URL).flush({ entries: [{ workspace: workspace() }] });
-      await settle();
-      http.expectOne('/workspaces/api/workspaces/7/active-process').flush({
+      await flushRefinements([workspace()]);
+      http.expectOne('/projects/api/refinements/7/active-process').flush({
         technicalProcessId: null,
       });
       await settle();
@@ -435,7 +414,7 @@ describe('RefiningPage', () => {
       buttonNamed('Start refining').click();
       await settle();
       http
-        .expectOne(COMPONENTS_URL)
+        .expectOne('/projects/api/refinements')
         .flush({ message: 'projects is down' }, { status: 503, statusText: 'Down' });
       await settle();
 
@@ -450,9 +429,8 @@ describe('RefiningPage', () => {
 
       expect(text()).not.toContain('No refining workspace is open');
 
-      http.expectOne(WORKSPACES_URL).flush({ entries: [{ workspace: workspace() }] });
-      await settle();
-      http.expectOne('/workspaces/api/workspaces/7/active-process').flush({
+      await flushRefinements([workspace()]);
+      http.expectOne('/projects/api/refinements/7/active-process').flush({
         technicalProcessId: null,
       });
       await settle();
@@ -504,17 +482,12 @@ describe('RefiningPage', () => {
 
       await harness.navigateByUrl('/p1/epics/another-epic/refining?tab=files');
       await settle();
-      http.expectOne(COMPONENTS_URL).flush({
-        entries: [{ repository: WRAPPER }],
-        wrapper: { repositoryId: 'qits-qits', branch: 'main', entries: [] },
-      });
       http
         .expectOne(EPICS_URL)
         .flush({ entries: [{ epic: { ...EPIC, id: 'e2', slug: 'another-epic' } }] });
       await settle();
       http.expectOne('/projects/api/epics/e2/features').flush({ entries: [] });
-      await settle();
-      http.expectOne(WORKSPACES_URL).flush({ entries: [] });
+      http.expectOne(REFINEMENTS_URL).flush({ refinements: [] });
       await settle();
 
       expect(refining.remounts()).toBe(1);
@@ -551,7 +524,7 @@ describe('RefiningPage', () => {
       // The transient tab is deliberately not in the URL: it unmounts, and a link to it lands nowhere.
       expect(TestBed.inject(Location).path()).toBe(URL_BASE);
       expect(streams.map((stream) => stream.url)).toContain(
-        '/workspaces/api/technical-processes/proc-1/events',
+        '/projects/api/technical-processes/proc-1/events',
       );
     });
 
@@ -578,8 +551,8 @@ describe('RefiningPage', () => {
           }),
         );
         await settle();
-        http.expectOne(WORKSPACES_URL).flush({ entries: [{ workspace: workspace() }] });
-        http.expectOne('/workspaces/api/workspaces/7/active-process').flush({
+        await flushRefinements([workspace()]);
+        http.expectOne('/projects/api/refinements/7/active-process').flush({
           technicalProcessId: null,
         });
         await settle();
@@ -605,25 +578,28 @@ describe('RefiningPage', () => {
     it('starts a stopped container once on route entry and exposes its process', async () => {
       await harness.navigateByUrl(URL_BASE);
       await flushSubject();
-      http
-        .expectOne(WORKSPACES_URL)
-        .flush({ entries: [{ workspace: workspace({ runtimeStatus: 'STOPPED' }) }] });
+      const stopped = workspace({ runtimeStatus: 'STOPPED' });
+      http.expectOne(REFINEMENTS_URL).flush({ refinements: [stopped] });
+      await settle();
+      http.expectOne('/projects/api/refinements/7').flush({ refinement: stopped });
       await settle();
 
-      http.expectOne('/workspaces/api/workspaces/7/active-process').flush({
+      http.expectOne('/projects/api/refinements/7/active-process').flush({
         technicalProcessId: null,
       });
-      const ensure = http.expectOne('/workspaces/api/workspaces/7/ensure-container');
+      const ensure = http.expectOne('/projects/api/refinements/7/ensure-container');
       expect(ensure.request.method).toBe('POST');
-      ensure.flush({ workspace: workspace({ runtimeStatus: 'PROVISIONING' }), technicalProcessId: 'p1' });
+      ensure.flush({
+        refinement: workspace({ runtimeStatus: 'PROVISIONING' }),
+        technicalProcessId: 'p1',
+      });
       await settle();
 
-      http.expectOne(WORKSPACES_URL).flush({ entries: [{ workspace: workspace() }] });
-      await settle();
+      await flushRefinements([workspace()]);
 
       expect(element().querySelector('.tab.active')?.textContent?.trim()).toBe('Starting');
       expect(tabs().map((tab) => tab.textContent?.trim())).toContain('Container');
-      http.expectNone('/workspaces/api/workspaces/7/ensure-container');
+      http.expectNone('/projects/api/refinements/7/ensure-container');
     });
   });
 
@@ -662,7 +638,7 @@ describe('RefiningPage', () => {
       await settle();
       element().querySelector<HTMLButtonElement>('[aria-label="Insert a saved image"]')!.click();
       await settle();
-      http.expectOne('/workspaces/api/workspaces/7/prompt-attachments').flush({
+      http.expectOne('/projects/api/refinements/7/prompt-attachments').flush({
         attachments: [
           {
             id: 'image-1',
@@ -684,7 +660,7 @@ describe('RefiningPage', () => {
       const update = http.expectOne('/projects/api/epics/e1');
       expect(update.request.method).toBe('PUT');
       expect(update.request.body.description).toBe(
-        '![Sketch 1](/workspaces/api/workspaces/7/prompt-attachments/image-1/content)\n\na third action on a **draft**',
+        '![Sketch 1](/projects/api/refinements/7/prompt-attachments/image-1/content)\n\na third action on a **draft**',
       );
       update.flush({
         epic: {
@@ -772,7 +748,7 @@ describe('RefiningPage', () => {
         .find((tab) => tab.textContent?.trim() === 'Sketch')!
         .click();
       await settle();
-      http.expectOne('/workspaces/api/workspaces/7/prompt-attachments').flush({ attachments: [] });
+      http.expectOne('/projects/api/refinements/7/prompt-attachments').flush({ attachments: [] });
       await settle();
 
       expect(element().querySelector('app-sketch-panel')).not.toBeNull();

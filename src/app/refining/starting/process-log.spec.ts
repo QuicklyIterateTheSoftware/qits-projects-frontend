@@ -1,5 +1,5 @@
 import { TestBed } from '@angular/core/testing';
-import type { TechnicalProcessFrame } from '../../api/workspaces-dto';
+import type { TechnicalProcessFrame } from '../../api/technical-process-dto';
 import { EVENT_SOURCE_FACTORY, type EventSourceLike } from '../../api/event-source';
 import { ProcessLog } from './process-log';
 
@@ -79,7 +79,7 @@ describe('ProcessLog', () => {
   it('attaches to the payload-bearing stream, not to the hint channel', () => {
     log.attach('proc-1', () => undefined);
 
-    expect(opened[0].url).toBe('/workspaces/api/technical-processes/proc-1/events');
+    expect(opened[0].url).toBe('/projects/api/technical-processes/proc-1/events');
   });
 
   it('builds the segment stack from the frames, in the order they opened', () => {

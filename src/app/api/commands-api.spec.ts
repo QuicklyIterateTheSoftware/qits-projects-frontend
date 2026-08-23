@@ -19,7 +19,7 @@ const COMMAND: CommandDto = {
 /**
  * The daemon's command and agent surface, and the two things about it that are easy to get wrong.
  *
- * The proxy **rewrites nothing** — `/commands` on the daemon is `/workspaces/container/{id}/commands`
+ * The proxy **rewrites nothing** — `/commands` on the daemon is `/projects/refinement-container/{id}/commands`
  * from the browser — and a coding agent **is** a command, so `POST /agents` answers the same
  * `{command: …}` envelope `POST /commands` does.
  */
@@ -41,7 +41,7 @@ describe('CommandsApi', () => {
     // Unfiltered on purpose: one entry is shared by Chat, the run history, the session tree and the
     // embedded session, and a narrower read here would be a second cache of the same thing.
     const answer = api.commands(7);
-    const request = http.expectOne('/workspaces/container/7/commands');
+    const request = http.expectOne('/projects/refinement-container/7/commands');
     request.flush({ entries: [{ command: COMMAND }] });
 
     expect(request.request.method).toBe('GET');
@@ -50,7 +50,7 @@ describe('CommandsApi', () => {
 
   it('reads an absent entries array as an empty list rather than throwing', async () => {
     const answer = api.commands(7);
-    http.expectOne('/workspaces/container/7/commands').flush({});
+    http.expectOne('/projects/refinement-container/7/commands').flush({});
     expect(await answer).toEqual([]);
   });
 
@@ -63,7 +63,7 @@ describe('CommandsApi', () => {
       initialContext: 'add a health check',
       deliverTaskPrompt: false,
     });
-    const request = http.expectOne('/workspaces/container/7/agents');
+    const request = http.expectOne('/projects/refinement-container/7/agents');
     request.flush({ command: COMMAND });
 
     expect(request.request.body).toEqual({
@@ -77,7 +77,7 @@ describe('CommandsApi', () => {
 
   it('terminates by id and answers the command in its post-terminate state', async () => {
     const answer = api.terminate(7, 'cmd-1');
-    const request = http.expectOne('/workspaces/container/7/commands/cmd-1/terminate');
+    const request = http.expectOne('/projects/refinement-container/7/commands/cmd-1/terminate');
     request.flush({ command: { ...COMMAND, status: 'TERMINATED' } });
 
     expect(request.request.method).toBe('POST');
@@ -88,7 +88,7 @@ describe('CommandsApi', () => {
     // The preamble is host-side workspace metadata with no source inside the container, so the
     // caller has to carry it.
     const answer = api.refinePrompt(7, 'uh make the thing faster', 'Speed up the export');
-    const request = http.expectOne('/workspaces/container/7/prompt-refinements');
+    const request = http.expectOne('/projects/refinement-container/7/prompt-refinements');
     request.flush({ prompt: 'Make the export faster.' });
 
     expect(request.request.body).toEqual({
@@ -100,7 +100,7 @@ describe('CommandsApi', () => {
 
   it('omits the preamble entirely when the workspace has none', async () => {
     const answer = api.refinePrompt(7, 'transcript', null);
-    const request = http.expectOne('/workspaces/container/7/prompt-refinements');
+    const request = http.expectOne('/projects/refinement-container/7/prompt-refinements');
     request.flush({ prompt: 'refined' });
 
     expect(request.request.body).toEqual({ transcript: 'transcript' });

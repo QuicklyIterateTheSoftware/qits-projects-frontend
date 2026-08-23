@@ -1,5 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, inject, input, output } from '@angular/core';
-import type { AgentActivityState, WorkspaceDto } from '../api/workspaces-dto';
+import type { RefinementDto } from '../api/refinements-api';
+import type { AgentActivityState } from '../api/technical-process-dto';
 import { AgentActivityMemory } from './agent-activity-memory';
 
 /** How each activity state is said and drawn. */
@@ -149,7 +150,7 @@ interface ActivityButton {
 })
 export class ActivityBar {
   /** Every workspace in this repository. The bar picks the ones with activity out of it. */
-  readonly workspaces = input.required<readonly WorkspaceDto[]>();
+  readonly workspaces = input.required<readonly RefinementDto[]>();
 
   /** The workspace this page is showing, highlighted in the row. */
   readonly currentId = input.required<number>();
@@ -167,7 +168,7 @@ export class ActivityBar {
         const state = STATES[workspace.agentActivity!];
         return {
           id: workspace.id,
-          name: workspace.branch ?? workspace.workspaceId,
+          name: workspace.branch ?? workspace.label,
           label: state.label,
           tone: state.tone,
           current: workspace.id === current,

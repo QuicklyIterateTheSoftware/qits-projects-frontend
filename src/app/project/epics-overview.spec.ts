@@ -554,40 +554,15 @@ describe('EpicsOverview', () => {
       buttonNamed('Refine').click();
       await settle();
 
-      // The wrapper comes from the repositories listing, which already carries it beside the rows.
-      http.expectOne('/projects/api/projects/p1/repositories').flush({
-        entries: [
-          {
-            repository: {
-              id: 'qits-qits',
-              name: 'qits-qits',
-              backupUrl: null,
-              mainBranch: 'main',
-              archetype: 'PROJECT',
-              projectId: 'p1',
-              lastBackup: null,
-            },
-          },
-        ],
-        wrapper: { repositoryId: 'qits-qits', branch: 'main', entries: [] },
-      });
-      await settle();
-
-      http
-        .expectOne((request) => request.url === '/workspaces/api/workspaces')
-        .flush({ entries: [] });
-      await settle();
-
+      // One idempotent POST keyed by the epic — the branch cut, the wrapper resolution and the
+      // adopt-existing dance are qits-projects' business now.
       const create = http.expectOne(
-        (request) => request.method === 'POST' && request.url === '/workspaces/api/workspaces',
+        (request) => request.method === 'POST' && request.url === '/projects/api/refinements',
       );
-      expect(create.request.body).toMatchObject({
-        repositoryId: 'qits-qits',
-        branch: 'refining/draft',
-        parent: '',
-        adoptExisting: false,
+      expect(create.request.body).toEqual({ epicId: 'e1' });
+      create.flush({
+        refinement: { id: 7, epicId: 'e1', branch: 'refining/draft', label: 'refining-draft' },
       });
-      create.flush({ workspace: { id: 7, workspaceId: 'refining-draft', status: 'ACTIVE' } });
       await settle();
 
       expect(went).toEqual(['p1/epics/draft/refining']);
@@ -613,12 +588,15 @@ describe('EpicsOverview', () => {
       buttonNamed('Refine').click();
       await settle();
       http
-        .expectOne('/projects/api/projects/p1/repositories')
-        .flush({ entries: [], wrapper: null });
+        .expectOne('/projects/api/refinements')
+        .flush(
+          { message: 'Project p1 has no wrapper repository (demo-demo), so there is nothing to refine against.' },
+          { status: 409, statusText: 'Conflict' },
+        );
       await settle();
 
       expect(element().querySelector('#epic-e1')?.textContent).toContain(
-        'this project has no wrapper repository',
+        'no wrapper repository',
       );
       expect(element().querySelector('app-epic-draft-card')).not.toBeNull();
     });

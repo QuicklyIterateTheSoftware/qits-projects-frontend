@@ -123,7 +123,7 @@ class PanelHost {
  * catch-up read on return, not as a fetch nobody is looking at.
  */
 describe('SketchPanel', () => {
-  const URL = '/workspaces/api/workspaces/7/prompt-attachments';
+  const URL = '/projects/api/refinements/7/prompt-attachments';
 
   let http: HttpTestingController;
   let fixture: ComponentFixture<PanelHost>;

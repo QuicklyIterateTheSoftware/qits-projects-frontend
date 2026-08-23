@@ -9,8 +9,7 @@ import {
 } from '@angular/core';
 import { QitsBadge, QitsButton, type QitsBadgeTone } from '@qits/ui-components';
 import type { WorkspaceDaemonReachability } from '../api/workspace-daemon-api';
-import { WorkspacesApi } from '../api/workspaces-api';
-import type { WorkspaceDto } from '../api/workspaces-dto';
+import { RefinementsApi, type RefinementDto } from '../api/refinements-api';
 import { driftLabel, relativeSince } from '../ui/format';
 import { describeError } from '../ui/loadable';
 
@@ -59,8 +58,8 @@ const RUNTIME_TONES: Readonly<Record<string, QitsBadgeTone>> = {
   styleUrl: './status-strip.css',
 })
 export class StatusStrip {
-  /** The workspace, as the repository's listing last reported it. */
-  readonly workspace = input.required<WorkspaceDto>();
+  /** The refinement row, as qits-projects last reported it. */
+  readonly workspace = input.required<RefinementDto>();
 
   /** The repository's default branch — what decides the door. */
   readonly mainBranch = input.required<string>();
@@ -77,7 +76,7 @@ export class StatusStrip {
   /** A container verb answered with a process id — the Starting tab attaches to it at once. */
   readonly started = output<string>();
 
-  private readonly api = inject(WorkspacesApi);
+  private readonly api = inject(RefinementsApi);
 
   protected readonly pending = signal<Pending>(null);
   protected readonly failure = signal<string | null>(null);

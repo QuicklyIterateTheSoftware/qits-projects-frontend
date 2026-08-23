@@ -79,7 +79,7 @@ describe('WorkspaceEvents', () => {
     events.open(7);
 
     expect(opened).toHaveLength(1);
-    expect(opened[0].url).toBe('/workspaces/api/workspaces/7/events');
+    expect(opened[0].url).toBe('/projects/api/refinements/7/events');
   });
 
   it('bumps every counter on connect', () => {
@@ -130,7 +130,7 @@ describe('WorkspaceEvents', () => {
 
     expect(opened).toHaveLength(2);
     expect(opened[0].closed).toBe(true);
-    expect(opened[1].url).toBe('/workspaces/api/workspaces/8/events');
+    expect(opened[1].url).toBe('/projects/api/refinements/8/events');
   });
 
   it('schedules nothing — the channel replaces polling rather than joining it', () => {

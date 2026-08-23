@@ -381,7 +381,7 @@ export class EpicsOverview {
    * share only the busy state and the failure.
    */
   private async refine(node: EpicNode): Promise<void> {
-    await this.refining.open(this.projectId(), node);
+    await this.refining.open(node);
     await this.router.navigate([this.projectId(), 'epics', node.epic.slug, 'refining']);
   }
 

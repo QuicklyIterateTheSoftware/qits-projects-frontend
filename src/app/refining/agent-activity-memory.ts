@@ -1,5 +1,11 @@
 import { Injectable } from '@angular/core';
-import type { AgentActivityState, WorkspaceDto } from '../api/workspaces-dto';
+import type { AgentActivityState } from '../api/technical-process-dto';
+
+/** The two fields the memory reads off a listing row. */
+interface ActivityRow {
+  readonly id: number;
+  readonly agentActivity: AgentActivityState | null;
+}
 
 /**
  * When each workspace's agent activity last changed — client-side memory, because the server keeps
@@ -29,7 +35,7 @@ export class AgentActivityMemory {
    * Record what a fresh listing says. Called on every workspace-list read; only an actual change of
    * value moves a workspace's mark.
    */
-  observe(workspaces: readonly WorkspaceDto[]): void {
+  observe(workspaces: readonly ActivityRow[]): void {
     const at = ++this.step;
     for (const workspace of workspaces) {
       const previous = this.seen.get(workspace.id);

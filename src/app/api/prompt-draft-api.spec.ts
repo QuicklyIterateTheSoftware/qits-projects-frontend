@@ -27,7 +27,7 @@ describe('PromptDraftApi', () => {
     // Host-owned deliberately: a recreate throws the daemon's world away and the half-written prompt
     // has to still be there afterwards.
     const answer = api.draft(7);
-    const request = http.expectOne('/workspaces/api/workspaces/7/prompt-draft');
+    const request = http.expectOne('/projects/api/refinements/7/prompt-draft');
     request.flush({ draft: { content: '{"text":"hi"}', updatedAt: '2026-08-01T09:00:00Z' } });
 
     expect(request.request.method).toBe('GET');
@@ -37,7 +37,7 @@ describe('PromptDraftApi', () => {
   it('answers null for a 404 rather than throwing', async () => {
     const answer = api.draft(7);
     http
-      .expectOne('/workspaces/api/workspaces/7/prompt-draft')
+      .expectOne('/projects/api/refinements/7/prompt-draft')
       .flush({ message: 'no draft' }, { status: 404, statusText: 'Not Found' });
 
     expect(await answer).toBeNull();
@@ -46,7 +46,7 @@ describe('PromptDraftApi', () => {
   it('lets every other failure through, because a 503 is not "no draft"', async () => {
     const answer = api.draft(7);
     http
-      .expectOne('/workspaces/api/workspaces/7/prompt-draft')
+      .expectOne('/projects/api/refinements/7/prompt-draft')
       .flush({ message: 'down' }, { status: 503, statusText: 'Service Unavailable' });
 
     await expect(answer).rejects.toBeDefined();
@@ -56,7 +56,7 @@ describe('PromptDraftApi', () => {
     // The answer is used rather than discarded: its `updatedAt` is byte-identical to the one a later
     // read gives, which is what lets the client recognise its own SSE echo.
     const answer = api.save(7, '{"text":"hi"}', 'hi');
-    const request = http.expectOne('/workspaces/api/workspaces/7/prompt-draft');
+    const request = http.expectOne('/projects/api/refinements/7/prompt-draft');
     request.flush({ draft: { content: '{"text":"hi"}', updatedAt: '2026-08-01T09:01:00Z' } });
 
     expect(request.request.method).toBe('PUT');
@@ -66,7 +66,7 @@ describe('PromptDraftApi', () => {
 
   it('discards with a DELETE that answers no content', async () => {
     const answer = api.discard(7);
-    const request = http.expectOne('/workspaces/api/workspaces/7/prompt-draft');
+    const request = http.expectOne('/projects/api/refinements/7/prompt-draft');
     request.flush(null, { status: 204, statusText: 'No Content' });
 
     expect(request.request.method).toBe('DELETE');

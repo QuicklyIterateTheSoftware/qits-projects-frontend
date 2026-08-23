@@ -59,7 +59,7 @@ export function promptAttachmentContentUrl(
   attachmentId: string,
   base = '',
 ): string {
-  return `${base}/workspaces/api/workspaces/${encodeURIComponent(workspaceRowId)}/prompt-attachments/${encodeURIComponent(attachmentId)}/content`;
+  return `${base}/projects/api/refinements/${encodeURIComponent(workspaceRowId)}/prompt-attachments/${encodeURIComponent(attachmentId)}/content`;
 }
 
 @Injectable({ providedIn: 'root' })
@@ -134,6 +134,6 @@ export class PromptAttachmentsApi {
   }
 
   private url(workspaceRowId: number): string {
-    return `${this.base}/workspaces/api/workspaces/${encodeURIComponent(workspaceRowId)}/prompt-attachments`;
+    return `${this.base}/projects/api/refinements/${encodeURIComponent(workspaceRowId)}/prompt-attachments`;
   }
 }

@@ -134,7 +134,7 @@ describe('ChatPanel', () => {
     fixture.detectChanges();
   };
 
-  const commands = () => http.expectOne('/workspaces/container/7/commands');
+  const commands = () => http.expectOne('/projects/refinement-container/7/commands');
 
   const listing = async (entries: CommandDto[]) => {
     fixture.detectChanges();
@@ -149,7 +149,7 @@ describe('ChatPanel', () => {
   it('reads the command list and nothing else of its own', async () => {
     await listing([]);
     // The prompt panel's draft read is the only other request, and it is that panel's budget.
-    const draft = http.expectOne('/workspaces/api/workspaces/7/prompt-draft');
+    const draft = http.expectOne('/projects/api/refinements/7/prompt-draft');
     draft.flush({ message: 'none' }, { status: 404, statusText: 'Not Found' });
     await settle();
     http.verify();
@@ -158,7 +158,7 @@ describe('ChatPanel', () => {
   it('shows the prompt panel when nothing is running', async () => {
     await listing([chat('old', 'EXITED')]);
     http
-      .expectOne('/workspaces/api/workspaces/7/prompt-draft')
+      .expectOne('/projects/api/refinements/7/prompt-draft')
       .flush({ message: 'none' }, { status: 404, statusText: 'Not Found' });
     await settle();
 
@@ -169,7 +169,7 @@ describe('ChatPanel', () => {
   it('always carries the sentence that makes keep-mounted legible', async () => {
     await listing([]);
     http
-      .expectOne('/workspaces/api/workspaces/7/prompt-draft')
+      .expectOne('/projects/api/refinements/7/prompt-draft')
       .flush({ message: 'none' }, { status: 404, statusText: 'Not Found' });
     await settle();
 
@@ -180,7 +180,7 @@ describe('ChatPanel', () => {
     await listing([chat('cmd-1', 'RUNNING')]);
 
     expect(sockets).toHaveLength(1);
-    expect(latest().url).toContain('/workspaces/container/7/chat/commands/cmd-1');
+    expect(latest().url).toContain('/projects/refinement-container/7/chat/commands/cmd-1');
     expect(fixture.nativeElement.querySelector('app-prompt-panel')).toBeNull();
 
     latest().connect();
@@ -315,7 +315,7 @@ describe('ChatPanel', () => {
     // Without the bridge the panel blinks back to its empty state for a beat after every launch.
     await listing([]);
     http
-      .expectOne('/workspaces/api/workspaces/7/prompt-draft')
+      .expectOne('/projects/api/refinements/7/prompt-draft')
       .flush({ message: 'none' }, { status: 404, statusText: 'Not Found' });
     await settle();
 
@@ -326,11 +326,11 @@ describe('ChatPanel', () => {
     press('Start the conversation');
     await settle();
 
-    const save = http.expectOne('/workspaces/api/workspaces/7/prompt-draft');
+    const save = http.expectOne('/projects/api/refinements/7/prompt-draft');
     save.flush({ draft: { content: save.request.body.content, updatedAt: 'T1' } });
     await settle();
 
-    http.expectOne('/workspaces/container/7/agents').flush({ command: chat('cmd-new', 'RUNNING') });
+    http.expectOne('/projects/refinement-container/7/agents').flush({ command: chat('cmd-new', 'RUNNING') });
     await settle();
 
     // The registry has not answered yet, and the conversation is already on screen.
@@ -353,7 +353,7 @@ describe('ChatPanel', () => {
     await settle();
 
     http
-      .expectOne('/workspaces/container/7/commands/cmd-1/terminate')
+      .expectOne('/projects/refinement-container/7/commands/cmd-1/terminate')
       .flush({ message: 'gone' }, { status: 404, statusText: 'Not Found' });
     await settle();
 

@@ -26,7 +26,7 @@ describe('AgentsApi', () => {
 
   it('reads the session lineage as a tree, keeping the nesting', async () => {
     const reading = api.sessions(7);
-    http.expectOne('/workspaces/container/7/agent-sessions').flush({
+    http.expectOne('/projects/refinement-container/7/agent-sessions').flush({
       sessions: [
         {
           sessionId: 'root',
@@ -43,21 +43,21 @@ describe('AgentsApi', () => {
 
   it('answers an empty lineage rather than throwing on a container with none', async () => {
     const reading = api.sessions(7);
-    http.expectOne('/workspaces/container/7/agent-sessions').flush({});
+    http.expectOne('/projects/refinement-container/7/agent-sessions').flush({});
     expect(await reading).toEqual([]);
   });
 
   it('reads the harnesses and the resolved default', async () => {
     const reading = api.available(7);
     http
-      .expectOne('/workspaces/container/7/agents/available')
+      .expectOne('/projects/refinement-container/7/agents/available')
       .flush({ agents: ['CLAUDE', 'KIMI'], defaultAgent: 'CLAUDE' });
     expect((await reading).defaultAgent).toBe('CLAUDE');
   });
 
   it('installs by the bare id, whichever form the caller had', async () => {
     const installing = api.install(7, 'jdtls-lsp@claude-plugins-official');
-    const request = http.expectOne('/workspaces/container/7/agent-plugins/jdtls-lsp/install');
+    const request = http.expectOne('/projects/refinement-container/7/agent-plugins/jdtls-lsp/install');
     expect(request.request.method).toBe('POST');
     request.flush({
       installed: [{ pluginId: 'jdtls-lsp@claude-plugins-official', enabled: true }],

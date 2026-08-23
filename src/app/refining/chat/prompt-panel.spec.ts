@@ -41,13 +41,13 @@ class PanelHost {
   readonly launched = signal<string | null>(null);
 }
 
-const DRAFT_URL = '/workspaces/api/workspaces/7/prompt-draft';
+const DRAFT_URL = '/projects/api/refinements/7/prompt-draft';
 
 /**
  * The composition panel: what it reads, what it saves, and the one rule that must survive every
  * later simplification.
  *
- * **On load this panel reads 1** — `GET /workspaces/api/workspaces/{id}/prompt-draft` — and a 404 is
+ * **On load this panel reads 1** — `GET /projects/api/refinements/{id}/prompt-draft` — and a 404 is
  * a state rather than a failure.
  */
 describe('PromptPanel', () => {
@@ -304,7 +304,7 @@ describe('PromptPanel', () => {
     press('Refine into prompt');
     await settle();
 
-    const refine = http.expectOne('/workspaces/container/7/prompt-refinements');
+    const refine = http.expectOne('/projects/refinement-container/7/prompt-refinements');
     expect(refine.request.body).toEqual({
       transcript: 'uh make the export thing go faster i guess',
       preamble: 'Speed up the export',
@@ -331,7 +331,7 @@ describe('PromptPanel', () => {
     press('Use transcript as-is');
     await settle();
 
-    http.expectNone('/workspaces/container/7/prompt-refinements');
+    http.expectNone('/projects/refinement-container/7/prompt-refinements');
     expect(text().value).toBe('say it exactly like this');
     expect(transcript().value).toBe('');
 
@@ -372,7 +372,7 @@ describe('PromptPanel', () => {
     await settle();
 
     http
-      .expectOne('/workspaces/container/7/prompt-refinements')
+      .expectOne('/projects/refinement-container/7/prompt-refinements')
       .flush({ message: 'no harness' }, { status: 503, statusText: 'Service Unavailable' });
     await settle();
 
@@ -389,7 +389,7 @@ describe('PromptPanel', () => {
     press('Start the conversation');
     await settle();
 
-    http.expectNone('/workspaces/container/7/agents');
+    http.expectNone('/projects/refinement-container/7/agents');
   });
 
   it('flushes the draft before it launches', async () => {
@@ -407,7 +407,7 @@ describe('PromptPanel', () => {
     save.flush({ draft: { content: save.request.body.content, updatedAt: 'T1' } });
     await settle();
 
-    const launch = http.expectOne('/workspaces/container/7/agents');
+    const launch = http.expectOne('/projects/refinement-container/7/agents');
     expect(launch.request.body).toEqual({
       scope: 'REPOSITORY',
       mode: 'CHAT',
@@ -436,7 +436,7 @@ describe('PromptPanel', () => {
       .flush({ message: 'nope' }, { status: 500, statusText: 'Server Error' });
     await settle();
 
-    http.expectNone('/workspaces/container/7/agents');
+    http.expectNone('/projects/refinement-container/7/agents');
     expect(fixture.nativeElement.textContent).toContain('nothing was launched');
     expect(host.launched()).toBeNull();
   });
@@ -486,7 +486,7 @@ describe('PromptPanel', () => {
 
     press('Start the conversation');
     await settle();
-    http.expectNone('/workspaces/container/7/agents');
+    http.expectNone('/projects/refinement-container/7/agents');
   });
 
   function press(label: string): void {
