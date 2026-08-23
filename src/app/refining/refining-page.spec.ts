@@ -390,8 +390,7 @@ describe('RefiningPage', () => {
       // dance are the server's business now, which is what makes a refinement started in another
       // tab meanwhile a find rather than a failure.
       const create = http.expectOne(
-        (candidate) =>
-          candidate.method === 'POST' && candidate.url === '/projects/api/refinements',
+        (candidate) => candidate.method === 'POST' && candidate.url === '/projects/api/refinements',
       );
       expect(create.request.body).toEqual({ epicId: 'e1' });
       create.flush({ refinement: workspace() });
@@ -506,6 +505,7 @@ describe('RefiningPage', () => {
         'Epic',
         'Files',
         'Sketch',
+        'Design',
         'Web view',
         'Agents',
         'Container',
@@ -752,6 +752,101 @@ describe('RefiningPage', () => {
       await settle();
 
       expect(element().querySelector('app-sketch-panel')).not.toBeNull();
+    });
+
+    it('builds the design panel on its tab, pointed at the resolved refinement', async () => {
+      await open();
+      expect(element().querySelector('app-design-panel')).toBeNull();
+
+      tabs()
+        .find((tab) => tab.textContent?.trim() === 'Design')!
+        .click();
+      await settle();
+      http.expectOne('/projects/api/refinements/7/designs').flush({ designs: [] });
+      await settle();
+
+      expect(element().querySelector('app-design-panel')).not.toBeNull();
+      expect(text()).toContain('Freeze a page from the Web view tab to start.');
+    });
+
+    /**
+     * A freeze is a create and a jump, and the jump is the point: a capture that filed itself away
+     * silently would leave the reader pressing Freeze twice to see whether it worked.
+     */
+    it('stores a frozen page as a design and opens it', async () => {
+      await open();
+
+      void page()['freezeIntoDesign']({
+        html: '<!doctype html><html></html>',
+        route: 'epics/e1',
+        title: 'Epics',
+        truncated: false,
+      });
+      await settle();
+
+      const create = http.expectOne('/projects/api/refinements/7/designs');
+      expect(create.request.method).toBe('POST');
+      expect(create.request.body).toEqual({
+        title: 'Epics',
+        html: '<!doctype html><html></html>',
+        sourceRoute: 'epics/e1',
+        truncated: false,
+      });
+      create.flush(
+        {
+          id: 'd1',
+          title: 'Epics',
+          status: 'ACTIVE',
+          basedOnDesignId: null,
+          note: null,
+          sourceRoute: 'epics/e1',
+          htmlBytes: 26,
+          truncated: false,
+          createdBy: 'kim',
+          createdAt: AT,
+          updatedAt: AT,
+        },
+        { status: 201, statusText: 'Created' },
+      );
+      await settle();
+
+      expect(TestBed.inject(Location).path()).toContain('tab=design');
+      // The panel mounts on the jump and reads its own listing, which is where the new row appears.
+      http.expectOne('/projects/api/refinements/7/designs').flush({
+        designs: [
+          {
+            id: 'd1',
+            title: 'Epics',
+            status: 'ACTIVE',
+            basedOnDesignId: null,
+            note: null,
+            sourceRoute: 'epics/e1',
+            htmlBytes: 26,
+            truncated: false,
+            createdBy: 'kim',
+            createdAt: AT,
+            updatedAt: AT,
+          },
+        ],
+      });
+      await settle();
+      http.expectOne('/projects/api/refinements/7/designs/d1').flush({
+        id: 'd1',
+        title: 'Epics',
+        status: 'ACTIVE',
+        basedOnDesignId: null,
+        note: null,
+        sourceRoute: 'epics/e1',
+        htmlBytes: 26,
+        truncated: false,
+        createdBy: 'kim',
+        createdAt: AT,
+        updatedAt: AT,
+        html: '<!doctype html><html></html>',
+      });
+      await settle();
+
+      expect(element().querySelector('.tile.on')?.textContent).toContain('Epics');
     });
 
     it('builds the web view panel on its tab, reading the environment navigation', async () => {
