@@ -11,6 +11,7 @@ import {
 import { toSignal } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, Router, convertToParamMap } from '@angular/router';
 import { QitsButton } from '@qits/ui-components';
+import { DesignsApi } from '../api/designs-api';
 import { WorkspaceDaemonApi } from '../api/workspace-daemon-api';
 import { WorkspaceEvents, anyOf } from '../api/workspace-events';
 import { ProjectsApi } from '../api/projects-api';
@@ -25,12 +26,23 @@ import {
   type EpicNode,
 } from '../project/epics-model';
 import { Async } from '../ui/async';
-import { IDLE, LOADING, describeError, failed, ready, type Loadable } from '../ui/loadable';
+import {
+  IDLE,
+  LOADING,
+  describeError,
+  failed,
+  ready,
+  statusOf,
+  type Loadable,
+} from '../ui/loadable';
 import { ActivityBar } from './activity-bar';
 import { AgentActivityMemory } from './agent-activity-memory';
 import { AgentsPanel } from './agents/agents-panel';
 import { ChatPanel } from './chat/chat-panel';
 import { PickedContext } from './chat/picked-context';
+import { DesignPanel } from './design/design-panel';
+import { DesignSelection } from './design/design-selection';
+import type { WebViewFreeze } from './design/freeze';
 import {
   EpicDocument,
   insertImageAt,
@@ -137,6 +149,7 @@ interface Subject {
     AgentsPanel,
     Async,
     ChatPanel,
+    DesignPanel,
     EpicActions,
     EpicDocument,
     FilesPanel,
@@ -161,6 +174,8 @@ export class RefiningPage {
   private readonly router = inject(Router);
   private readonly picked = inject(PickedContext);
   private readonly projects = inject(ProjectsApi);
+  private readonly designs = inject(DesignsApi);
+  private readonly designSelection = inject(DesignSelection);
   private readonly sketchSelection = inject(SketchSelection);
   private readonly route = inject(ActivatedRoute);
 
@@ -181,6 +196,9 @@ export class RefiningPage {
   /** The create offer's own state, so a failure to start one is reported where it was asked for. */
   protected readonly starting = signal(false);
   protected readonly startFailure = signal<string | null>(null);
+
+  /** Why the last Freeze did not become a design. Shown on the Web view tab, where it was pressed. */
+  protected readonly freezeFailure = signal<string | null>(null);
   protected readonly autoStartFailure = signal<string | null>(null);
   private autoContainerRoute: string | null = null;
   private autoContainerWorkspaceId = 0;
@@ -280,7 +298,8 @@ export class RefiningPage {
       const workspace = belongsToRoute ? this.workspace() : null;
       if (!workspace || this.autoContainerWorkspaceId === workspace.id) return;
       this.autoContainerWorkspaceId = workspace.id;
-      if (workspace.runtimeStatus === 'RUNNING' || workspace.runtimeStatus === 'PROVISIONING') return;
+      if (workspace.runtimeStatus === 'RUNNING' || workspace.runtimeStatus === 'PROVISIONING')
+        return;
       untracked(() => void this.startContainerOnEntry(workspace.id));
     });
 
@@ -596,6 +615,39 @@ export class RefiningPage {
       description,
     );
     this.subject.set(ready({ ...current, node: { ...current.node, epic } }));
+  }
+
+  /**
+   * A page frozen on the Web view tab becomes a design, and the reader is taken to it.
+   *
+   * The jump is the point: a capture that quietly filed itself away would leave the reader pressing
+   * Freeze twice to check it worked. The selection is requested rather than passed, because the
+   * Design panel may not be mounted yet — it picks the row up when its listing arrives.
+   *
+   * The 413 is named: it is the one failure the reader can act on, by freezing a smaller page.
+   */
+  protected async freezeIntoDesign(frozen: WebViewFreeze): Promise<void> {
+    const workspaceRowId = this.workspaceRowId();
+    if (workspaceRowId <= 0) {
+      return;
+    }
+    this.freezeFailure.set(null);
+    try {
+      const created = await this.designs.create(workspaceRowId, {
+        title: frozen.title,
+        html: frozen.html,
+        sourceRoute: frozen.route,
+        truncated: frozen.truncated,
+      });
+      this.designSelection.open(created.id);
+      this.chooseTab('design');
+    } catch (error) {
+      this.freezeFailure.set(
+        statusOf(error) === 413
+          ? 'That page is over the size limit, so it was not saved.'
+          : `That page was not saved — ${describeError(error)}.`,
+      );
+    }
   }
 
   protected editSketch(attachmentId: string): void {

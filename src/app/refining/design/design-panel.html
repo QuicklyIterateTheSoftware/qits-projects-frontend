@@ -1,0 +1,158 @@
+<section class="board" aria-label="Design">
+  <p class="note">
+    A design is one page of this application, frozen with its styles so it keeps looking the way it
+    did. An agent answers a design with a proposal and changes nothing until you say so.
+  </p>
+
+  <app-async
+    [state]="designs()"
+    loadingLabel="Loading designs"
+    errorLabel="Could not load designs"
+    (retry)="reload()"
+  />
+
+  @if (designs().kind === 'ready' && rows().length === 0) {
+    <app-empty message="Freeze a page from the Web view tab to start." />
+  }
+
+  <!-- One tile per design. Picking a tile opens that page in the frame below. -->
+  <ul class="gallery" aria-label="Designs on this refinement">
+    @for (design of rows(); track design.id) {
+      <li class="cell">
+        <button
+          type="button"
+          class="tile"
+          [class.on]="isSelected(design)"
+          [attr.aria-pressed]="isSelected(design)"
+          (click)="select(design)"
+        >
+          <span class="head">
+            <span class="name">{{ design.title }}</span>
+            @if (design.status === 'PROPOSED') {
+              <span class="badge">Proposal</span>
+            }
+          </span>
+          @if (design.sourceRoute; as route) {
+            <span class="route">{{ route }}</span>
+          }
+          <span class="meta">
+            <span>{{ sizeLabel(design) }}</span>
+            @if (design.truncated) {
+              <span class="cut" title="The freeze hit its size budget and dropped some of the page"
+                >truncated</span
+              >
+            }
+            <span>{{ whenLabel(design) }}</span>
+          </span>
+        </button>
+      </li>
+    }
+  </ul>
+
+  @if (selectedRow(); as design) {
+    <div class="opened">
+      @if (isProposal()) {
+        @if (design.note; as note) {
+          <p class="agent-note">{{ note }}</p>
+        }
+        @if (baseRow(); as base) {
+          <div class="group" role="group" aria-label="Which page to show">
+            <button
+              type="button"
+              class="chip"
+              [class.on]="viewing() === 'current'"
+              [attr.aria-pressed]="viewing() === 'current'"
+              (click)="show('current')"
+            >
+              Current
+            </button>
+            <button
+              type="button"
+              class="chip"
+              [class.on]="viewing() === 'proposed'"
+              [attr.aria-pressed]="viewing() === 'proposed'"
+              (click)="show('proposed')"
+            >
+              Proposed
+            </button>
+          </div>
+          <qits-button
+            variant="primary"
+            [attr.title]="'Put this page onto ' + base.title"
+            [busy]="busy() === 'replace'"
+            [disabled]="busy() !== null"
+            (pressed)="replaceOriginal()"
+            >Replace original</qits-button
+          >
+        }
+        <qits-button
+          variant="secondary"
+          [busy]="busy() === 'keep'"
+          [disabled]="busy() !== null"
+          (pressed)="keepAsNew()"
+          >Keep as new</qits-button
+        >
+        <qits-button
+          variant="ghost"
+          [busy]="busy() === 'remove'"
+          [disabled]="busy() !== null"
+          (pressed)="remove()"
+          >Discard</qits-button
+        >
+      } @else if (renaming()) {
+        <label class="rename">
+          <span class="sr">A name for this design</span>
+          <input
+            type="text"
+            [value]="renameValue()"
+            (input)="renameValue.set($any($event.target).value)"
+            (keydown.enter)="saveRename()"
+          />
+        </label>
+        <qits-button
+          variant="primary"
+          [busy]="busy() === 'rename'"
+          [disabled]="busy() !== null"
+          (pressed)="saveRename()"
+          >Save</qits-button
+        >
+        <qits-button variant="ghost" [disabled]="busy() !== null" (pressed)="cancelRename()"
+          >Cancel</qits-button
+        >
+      } @else {
+        <span class="title">{{ design.title }}</span>
+        <qits-button variant="ghost" [disabled]="busy() !== null" (pressed)="startRename()"
+          >Rename</qits-button
+        >
+        <qits-button
+          variant="ghost"
+          [busy]="busy() === 'remove'"
+          [disabled]="busy() !== null"
+          (pressed)="remove()"
+          >Delete</qits-button
+        >
+      }
+    </div>
+
+    @if (failure(); as message) {
+      <p class="fault" role="alert">{{ message }}</p>
+    }
+
+    <app-async
+      [state]="page()"
+      loadingLabel="Loading the frozen page"
+      errorLabel="Could not load the frozen page"
+      (retry)="rereadPage()"
+    />
+
+    <!--
+      `sandbox` without `allow-scripts`, always: this markup was written by an agent and is drawn on
+      this page's own origin. `allow-same-origin` is granted alone, so the frozen page's proxied
+      images load with the session.
+    -->
+    @if (srcdoc(); as html) {
+      <iframe class="frame" sandbox="allow-same-origin" [srcdoc]="html" [title]="frameTitle()">
+      </iframe>
+    }
+  }
+</section>

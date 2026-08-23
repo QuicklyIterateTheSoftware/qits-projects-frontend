@@ -39,19 +39,20 @@ export interface TabDef {
 export const STARTING_SLUG = 'starting';
 
 /**
- * The seven durable tabs, in their default order.
+ * The eight durable tabs, in their default order.
  *
  * Epic leads because refining produces the epic document. Chat is deliberately dormant on a bare
  * URL: it mounts only when called for, then remains alive under the usual tab-host contract.
  *
  * The order is what a fresh page opens with; dragging rewrites it for the session and nothing else.
- * Per-browser persistence was dropped deliberately: it buys per-device ergonomics on a row of seven
- * and costs a stored-order migration every time a tab is added or renamed.
+ * Per-browser persistence was dropped deliberately: it buys per-device ergonomics on a row this
+ * short and costs a stored-order migration every time a tab is added or renamed.
  */
 export const DURABLE_TABS: readonly TabDef[] = [
   { slug: 'epic', label: 'Epic', inUrl: true, pinFront: true },
   { slug: 'files', label: 'Files', inUrl: true },
   { slug: 'sketch', label: 'Sketch', inUrl: true },
+  { slug: 'design', label: 'Design', inUrl: true },
   { slug: 'web-view', label: 'Web view', inUrl: true },
   { slug: 'agents', label: 'Agents', inUrl: true },
   { slug: 'container', label: 'Container', inUrl: true },

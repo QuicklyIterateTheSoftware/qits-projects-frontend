@@ -8,6 +8,7 @@ import {
   effect,
   inject,
   input,
+  output,
   signal,
   viewChild,
 } from '@angular/core';
@@ -18,6 +19,7 @@ import { LOADING, failed, ready, type Loadable } from '../../ui/loadable';
 import { Async } from '../../ui/async';
 import { Empty } from '../../ui/empty';
 import { PickedContext } from '../chat/picked-context';
+import { freezeWebView, type WebViewFreeze } from '../design/freeze';
 import { ElementPicker, type FramePick } from './element-picker';
 
 /**
@@ -50,6 +52,13 @@ import { ElementPicker, type FramePick } from './element-picker';
  * API read, and it happens once — the panel latches on first selection and then only hides, so
  * switching tabs never reloads the app you were using.
  *
+ * ## Freezing
+ *
+ * **Freeze** captures the framed page as it stands and hands it up as {@link frozen}; the page turns
+ * that into a design row. It costs no request of its own — the capture is read out of the framed
+ * document — and it is offered only on a same-origin frame, for the same reason the picker is: on a
+ * foreign page every read of the document throws.
+ *
  * **The picker adds one `GET /component-map` per activation**, and that is the whole of its cost.
  * It is fetched on arming rather than on load, because a tab nobody picks in should not pay for a
  * scan of the tree, and it is not fetched per *pick*. Attribution is an enrichment: an environment
@@ -69,6 +78,9 @@ export class WebViewPanel {
   private readonly picked = inject(PickedContext);
 
   readonly workspaceRowId = input.required<number>();
+
+  /** A page captured off the frame. The refining page stores it as a design. */
+  readonly frozen = output<WebViewFreeze>();
 
   protected readonly frame = viewChild<ElementRef<HTMLIFrameElement>>('frame');
 
@@ -278,6 +290,23 @@ export class WebViewPanel {
 
   protected clearPicks(): void {
     this.picked.clear();
+  }
+
+  /**
+   * Capture the framed page.
+   *
+   * The route is stripped against the same {@link base} the live-path readout uses, so a design
+   * records where it came from in the app's own terms. A capture that could not be made says so on
+   * the toolbar's problem line rather than raising: nothing about the frame changed.
+   */
+  protected freeze(): void {
+    const captured = freezeWebView(this.frame()?.nativeElement ?? null, this.base());
+    if (!captured) {
+      this.barProblem.set('Could not freeze the framed page.');
+      return;
+    }
+    this.barProblem.set(null);
+    this.frozen.emit(captured);
   }
 
   /** A pick: into the store, and disarmed unless shift said to keep going. */

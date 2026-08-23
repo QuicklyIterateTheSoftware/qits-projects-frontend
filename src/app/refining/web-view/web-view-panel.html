@@ -57,6 +57,7 @@
         >
           {{ picking() ? 'Picking — click an element' : 'Pick an element' }}
         </button>
+        <qits-button variant="ghost" size="sm" (pressed)="freeze()">Freeze</qits-button>
       } @else {
         <span class="note">Picker unavailable on external pages.</span>
       }
