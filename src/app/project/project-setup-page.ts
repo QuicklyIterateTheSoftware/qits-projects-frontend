@@ -6,18 +6,16 @@ import {
   inject,
   signal,
 } from '@angular/core';
-import { toSignal } from '@angular/core/rxjs-interop';
-import { ActivatedRoute, RouterLink, convertToParamMap } from '@angular/router';
+import { RouterLink } from '@angular/router';
 import {
   COMPONENT_TYPES,
   normalizeArchetype,
   type PlaceableArchetype,
-  type ProjectDto,
   type RepositoryDto,
   type WrapperDto,
 } from '../api/dto';
 import { ProjectsApi, type ProjectComponents } from '../api/projects-api';
-import { ProjectsStore } from '../api/projects-store';
+import { ProjectParam } from '../nav/project-param';
 import { Async } from '../ui/async';
 import { LOADING, failed, ready, type Loadable } from '../ui/loadable';
 import { BackupPanel } from './backup-panel';
@@ -92,10 +90,10 @@ export function groupComponents(repositories: readonly RepositoryDto[]): readonl
  * reader arrives at most often the page they need least, and left nowhere to put what a project is
  * mostly *for*.
  *
- * <p>The id comes from the route rather than from a selection held anywhere, so this page is a
- * bookmark and a back button as much as it is a click. The fetch is keyed on it: choosing another
- * project in the sub-navigation re-uses this component instance with a new parameter, which is why
- * the read lives in an effect rather than in the constructor.
+ * <p>The project comes from the address rather than from a selection held anywhere, so this page
+ * is a bookmark and a back button as much as it is a click. The fetch is keyed on it: choosing
+ * another project in the picker re-uses this component instance with a new first segment, which is
+ * why the read lives in an effect rather than in the constructor.
  */
 @Component({
   selector: 'app-project-setup-page',
@@ -106,27 +104,20 @@ export function groupComponents(repositories: readonly RepositoryDto[]): readonl
 })
 export class ProjectSetupPage {
   private readonly api = inject(ProjectsApi);
-  private readonly store = inject(ProjectsStore);
-  private readonly route = inject(ActivatedRoute);
+  private readonly param = inject(ProjectParam);
 
-  private readonly params = toSignal(this.route.paramMap, { initialValue: convertToParamMap({}) });
-
-  protected readonly projectId = computed(() => this.params().get('projectId') ?? '');
-
-  private readonly projects = signal<readonly ProjectDto[]>([]);
+  /** The id every request takes. Empty until the project list has resolved the address. */
+  protected readonly projectId = this.param.projectId;
 
   /**
-   * The project's slug — what the clone urls on this page are spelled with.
+   * The project's slug — what the clone urls on this page are spelled with, and what every link
+   * out of it names.
    *
-   * It comes from the shared project list rather than from the components read, which answers
-   * repositories and knows nothing about the project. The list is read once per application
-   * instance and the sub-navigation has usually already asked for it, so this costs no request of
-   * its own; until it answers, and if it never does, the cards fall back to the project id, which
-   * the same route resolves.
+   * It is the address's own first segment once the shared project list has answered, so it costs
+   * no request of its own; until then it is the raw segment, which is a correct url either way —
+   * qits-projects resolves that path by id as well as by slug.
    */
-  protected readonly projectSlug = computed(
-    () => this.projects().find((project) => project.id === this.projectId())?.slug ?? '',
-  );
+  protected readonly projectSlug = this.param.projectSlug;
 
   protected readonly components = signal<Loadable<ProjectComponents>>(LOADING);
 
@@ -146,22 +137,12 @@ export class ProjectSetupPage {
   protected readonly loaded = computed(() => this.components().kind === 'ready');
 
   constructor() {
-    void this.loadProjects();
     effect(() => {
       const projectId = this.projectId();
       if (projectId) {
         void this.load(projectId);
       }
     });
-  }
-
-  /** The shared list, for the slug alone. A failure is silent: the cards fall back to the id. */
-  private async loadProjects(): Promise<void> {
-    try {
-      this.projects.set(await this.store.projects());
-    } catch {
-      // Nothing to say. Every address on this page still works, spelled with the project id.
-    }
   }
 
   /** Read the components, blanking what is on screen first — arrival, a project hop, a retry. */

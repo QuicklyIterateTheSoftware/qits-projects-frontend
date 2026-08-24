@@ -1,31 +1,22 @@
 import { ChangeDetectionStrategy, Component } from '@angular/core';
 import { RouterOutlet } from '@angular/router';
-import { QitsNavSubmenu } from '@qits/ui-components';
-import { ProjectsNav } from './nav/projects-nav';
 
 /**
- * The shell: an outlet, and the project picker offered to the chrome as a sub-menu.
+ * The shell: an outlet, and nothing else.
  *
- * The chrome this app is seen through — the sidebar, the top bar, the links out to the platform's
- * other SPAs — is `QitsMainLayout` behind the `''` route (see app.routes.ts), so it survives
- * navigation rather than being rebuilt here.
+ * The chrome this app is seen through — the sidebar with its project node, its category groups and
+ * the links out to the platform's other SPAs — is `QitsMainLayout` behind the `''` route (see
+ * app.routes.ts), so it survives navigation rather than being rebuilt here.
  *
- * <p><b>The sub-menu is declared here and rendered somewhere else, and that is the only arrangement
- * available.</b> `QitsMainLayout` is a route component — the pages are inside *its* outlet and this
- * shell is outside it — so nothing can be projected upwards into the sidebar. The template is
- * handed over instead, and the layout renders it under this application's navigation entry.
- *
- * <p>The shell rather than a page, and that part is a correctness one: `RouterOutlet` destroys the
- * outgoing component after creating the incoming one, so a declaration inside a page would be torn
- * down and rebuilt on every hop — and the picker would flicker on a menu that did not itself change.
+ * <p><b>It used to hand the layout a sub-menu template</b> holding this application's own two
+ * links, Overview and Project setup. The chrome renders the Project node and its "Project setup"
+ * child itself now — from the navigation the edge serves and the project list it already reads —
+ * so the template would be a second, private copy of what every SPA on the platform draws.
  */
 @Component({
   selector: 'app-root',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [RouterOutlet, QitsNavSubmenu, ProjectsNav],
-  template: `
-    <ng-template qitsNavSubmenu><app-projects-nav /></ng-template>
-    <router-outlet />
-  `,
+  imports: [RouterOutlet],
+  template: `<router-outlet />`,
 })
 export class App {}

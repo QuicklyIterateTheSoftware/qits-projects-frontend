@@ -7,7 +7,7 @@ import { Empty } from '../ui/empty';
 import { LOADING, failed, ready, type Loadable } from '../ui/loadable';
 
 /**
- * `/projects/` itself: which project, when the URL does not say.
+ * `/` itself: which project, when the URL does not say.
  *
  * <p><b>Auto-select lives here, not in the sub-navigation.</b> One project is the shape of this
  * platform today, and a picker that is the only thing on screen is a question with one possible
@@ -16,7 +16,10 @@ import { LOADING, failed, ready, type Loadable } from '../ui/loadable';
  * can only fire where it is meant to: on the one URL that has not chosen yet.
  *
  * <p>It replaces the history entry rather than adding one. Without `replaceUrl` the back button
- * lands on `/projects/`, which immediately redirects forward again — a page the reader cannot leave.
+ * lands on `/`, which immediately redirects forward again — a page the reader cannot leave.
+ *
+ * <p>Every address it writes is spelled with the project's **slug**, which is what the platform's
+ * URL grammar names a project by on every host — see `nav/project-param.ts`.
  */
 @Component({
   selector: 'app-landing-page',
@@ -44,7 +47,7 @@ import { LOADING, failed, ready, type Loadable } from '../ui/loadable';
         <ul class="projects">
           @for (project of projects; track project.id) {
             <li>
-              <a [routerLink]="['/', project.id]">{{ project.name }}</a>
+              <a [routerLink]="['/', project.slug]">{{ project.name }}</a>
               @if (project.description) {
                 <span class="note">{{ project.description }}</span>
               }
@@ -103,7 +106,7 @@ export class LandingPage {
       const projects = await this.store.projects();
       this.projects.set(ready(projects));
       if (projects.length === 1) {
-        await this.router.navigate(['/', projects[0].id], { replaceUrl: true });
+        await this.router.navigate(['/', projects[0].slug], { replaceUrl: true });
       }
     } catch (error) {
       this.projects.set(failed(error));

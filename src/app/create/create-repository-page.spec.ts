@@ -42,8 +42,17 @@ describe('CreateRepositoryPage', () => {
     router = TestBed.inject(Router);
   });
 
+  /**
+   * Open the form, and answer the shared project list — which is what turns the address's first
+   * segment into the project **id** the create request is keyed on. The slug is `p1` here, so the
+   * address needs no correcting and every URL in this spec stays the one that was asked for.
+   */
   async function open(url = '/p1/repositories/new'): Promise<void> {
     harness = await RouterTestingHarness.create(url);
+    await settle();
+    http.expectOne('/projects/api/projects').flush({
+      entries: [{ project: { id: 'p1', name: 'Qits', slug: 'p1', description: null, dns: null } }],
+    });
     await settle();
   }
 
@@ -139,9 +148,9 @@ describe('CreateRepositoryPage', () => {
     await settle();
 
     expect(router.url).toBe('/p1');
-    // The project page took over. It reads the shared project list to name itself, its epics, and
-    // the wrapper behind its ad-hoc workspace link — the component rows live behind project-setup.
-    http.expectOne('/projects/api/projects').flush({ entries: [] });
+    // The project page took over. The project list is already read — one flight per application
+    // instance — so what it costs is its epics and the wrapper behind its ad-hoc workspace link;
+    // the component rows live behind project-setup.
     http.expectOne('/projects/api/projects/p1/epics').flush({ entries: [] });
     http.expectOne('/projects/api/projects/p1/repositories').flush({ entries: [], wrapper: null });
     await settle();
@@ -178,7 +187,7 @@ describe('CreateRepositoryPage', () => {
     await settle();
 
     expect(router.url).toBe('/p1');
-    http.expectOne('/projects/api/projects').flush({ entries: [] });
+    // The project list is already read — one flight per application instance.
     http.expectOne('/projects/api/projects/p1/epics').flush({ entries: [] });
     http.expectOne('/projects/api/projects/p1/repositories').flush({ entries: [], wrapper: null });
     await settle();

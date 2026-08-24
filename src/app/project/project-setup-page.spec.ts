@@ -119,7 +119,7 @@ describe('ProjectSetupPage', () => {
     http = TestBed.inject(HttpTestingController);
   });
 
-  async function open(url = '/p1/project-setup'): Promise<void> {
+  async function open(url = '/qits/project-setup'): Promise<void> {
     harness = await RouterTestingHarness.create(url);
   }
 
@@ -163,9 +163,9 @@ describe('ProjectSetupPage', () => {
   }
 
   /**
-   * The shared project list. This page reads it for one field — the slug its clone urls are spelled
-   * with — so the slug here is deliberately not the route's `p1`: an assertion that could not tell
-   * the two apart would pass on the id the change removed.
+   * The shared project list, which is what turns the address's slug into the **id** every read on
+   * this page is keyed on. The two are deliberately different strings — `qits` in the URL, `p1` in
+   * every request — so an assertion that could not tell them apart would pass on the wrong one.
    */
   function flushProjects(slug = 'qits'): void {
     http.expectOne('/projects/api/projects').flush({
@@ -179,6 +179,8 @@ describe('ProjectSetupPage', () => {
     wrapper: WrapperDto | null = WRAPPER,
   ): Promise<void> {
     flushProjects();
+    // Nothing else can be asked for until the list has answered: the id is not in the address.
+    await settle();
     flushComponents(repositories, wrapper);
     await settle();
     if (wrapper) {
@@ -211,7 +213,7 @@ describe('ProjectSetupPage', () => {
     const daemon = Array.from(page().querySelectorAll<HTMLAnchorElement>('a.add')).find((link) =>
       (link.textContent ?? '').includes('New daemon'),
     );
-    expect(daemon?.getAttribute('href')).toBe('/p1/repositories/new?type=DAEMON');
+    expect(daemon?.getAttribute('href')).toBe('/qits/repositories/new?type=DAEMON');
   });
 
   it('says a group is empty rather than leaving blank space', async () => {
@@ -257,20 +259,18 @@ describe('ProjectSetupPage', () => {
    * segment the same route resolves — a working address, just an unreadable one — and it is
    * replaced the moment the list answers rather than being left standing.
    */
-  it('spells the clone with the project id until the slug arrives', async () => {
+  /**
+   * The clone url is spelled with the **slug**, which is what the address already carries — so it
+   * is right on the first paint rather than settling a request later. `p1` is this project's id
+   * and appears in every request on this page, which is what makes the assertion worth making.
+   */
+  it('spells the clone with the project slug and never with its id', async () => {
     await open();
-    flushComponents([repository('qits-ci', 'SERVICE')]);
-    await settle();
-    flushSync();
-    await settle();
+    await load([repository('qits-ci', 'SERVICE')]);
 
-    const card = () => page().querySelector('app-component-card');
-    expect(card()?.textContent).toContain(`${location.origin}/git/p1/qits-ci.git`);
-
-    flushProjects();
-    await settle();
-
-    expect(card()?.textContent).toContain(`${location.origin}/git/qits/qits-ci.git`);
+    const card = page().querySelector('app-component-card');
+    expect(card?.textContent).toContain(`${location.origin}/git/qits/qits-ci.git`);
+    expect(card?.textContent).not.toContain('/git/p1/');
     http.verify();
   });
 
@@ -489,6 +489,8 @@ describe('ProjectSetupPage', () => {
 
   it('reports a sync probe that failed as unmeasured, not as behind', async () => {
     await open();
+    flushProjects();
+    await settle();
     flushComponents([repository('qits-ci', 'SERVICE')]);
     await settle();
     http
@@ -502,6 +504,8 @@ describe('ProjectSetupPage', () => {
 
   it('offers a retry when the components could not be read', async () => {
     await open();
+    flushProjects();
+    await settle();
     http
       .expectOne('/projects/api/projects/p1/repositories')
       .flush(null, { status: 503, statusText: 'Down' });
@@ -518,12 +522,26 @@ describe('ProjectSetupPage', () => {
     expect(text()).toContain('qits-ci');
   });
 
-  /** The instance is re-used across a project hop, so the read has to follow the parameter. */
-  it('re-reads when the route moves to another project', async () => {
+  /**
+   * The instance is re-used across a project hop, so the read has to follow the address — and the
+   * address names slugs, so the second project's list entry has to be there for the hop to resolve
+   * to an id at all.
+   */
+  it('re-reads when the address moves to another project', async () => {
     await open();
-    await load([repository('qits-ci', 'SERVICE')]);
+    http.expectOne('/projects/api/projects').flush({
+      entries: [
+        { project: { id: 'p1', name: 'Qits', slug: 'qits', description: null, dns: null } },
+        { project: { id: 'p2', name: 'Other', slug: 'other', description: null, dns: null } },
+      ],
+    });
+    await settle();
+    flushComponents([repository('qits-ci', 'SERVICE')]);
+    await settle();
+    flushSync();
+    await settle();
 
-    await TestBed.inject(Router).navigate(['/', 'p2', 'project-setup']);
+    await TestBed.inject(Router).navigate(['/', 'other', 'project-setup']);
     await settle();
 
     http.expectOne('/projects/api/projects/p2/repositories').flush({ entries: [], wrapper: null });
@@ -531,7 +549,7 @@ describe('ProjectSetupPage', () => {
 
     expect(text()).not.toContain('qits-ci');
     // The heading is the page's own now, so what proves the hop is the read above and the way
-    // back: both have to name the project the route moved to.
-    expect(page().querySelector('.back a')?.getAttribute('href')).toBe('/p2');
+    // back: both have to name the project the address moved to.
+    expect(page().querySelector('.back a')?.getAttribute('href')).toBe('/other');
   });
 });

@@ -16,6 +16,7 @@ import { WorkspaceDaemonApi } from '../api/workspace-daemon-api';
 import { WorkspaceEvents, anyOf } from '../api/workspace-events';
 import { ProjectsApi } from '../api/projects-api';
 import { RefinementsApi, type RefinementDto } from '../api/refinements-api';
+import { ProjectParam } from '../nav/project-param';
 import { EpicActions } from '../project/epic-actions';
 import {
   actionKey,
@@ -97,7 +98,7 @@ interface Subject {
  *
  * ## Resolution, and why the URL is what it is
  *
- * `:projectId/epics/:epicSlug/refining` names the *epic*, and the workspace is looked up from it. That
+ * `:project/epics/:epicSlug/refining` names the *epic*, and the workspace is looked up from it. That
  * is the same rule the epic card's Refine button follows and it is deliberate: the association between
  * an epic and its refining workspace is not stored anywhere, so the only honest address is the one that
  * can be re-resolved. A URL carrying a workspace row id would be a link that rots the moment the
@@ -178,13 +179,20 @@ export class RefiningPage {
   private readonly designSelection = inject(DesignSelection);
   private readonly sketchSelection = inject(SketchSelection);
   private readonly route = inject(ActivatedRoute);
+  private readonly param = inject(ProjectParam);
 
   private readonly params = toSignal(this.route.paramMap, { initialValue: convertToParamMap({}) });
   private readonly query = toSignal(this.route.queryParamMap, {
     initialValue: convertToParamMap({}),
   });
 
-  protected readonly projectId = computed(() => this.params().get('projectId') ?? '');
+  /**
+   * The project, from the address's first segment: the id for every request, the slug for every
+   * link. Both come from {@link ProjectParam}, which is also what corrects an old address spelling
+   * the id.
+   */
+  protected readonly projectId = this.param.projectId;
+  protected readonly projectSlug = this.param.projectSlug;
   protected readonly epicSlug = computed(() => this.params().get('epicSlug') ?? '');
 
   /** The branch this page is about, composed from the URL and never read off a field. */
@@ -569,7 +577,7 @@ export class RefiningPage {
       this.refiningPeers().find((entry) => entry.id === workspaceRowId)?.branch ?? null;
     const slug = refiningEpicSlug(branch);
     if (slug) {
-      void this.router.navigate([this.projectId(), 'epics', slug, 'refining'], {
+      void this.router.navigate([this.projectSlug(), 'epics', slug, 'refining'], {
         queryParams: { tab: 'chat' },
       });
     }
@@ -697,7 +705,9 @@ export class RefiningPage {
         await this.refinementsApi.discard(workspace.id);
       }
       await this.projects.transitionEpic(current.node.epic.id, action.target);
-      await this.router.navigate([this.projectId()], { fragment: `epic-${current.node.epic.id}` });
+      await this.router.navigate([this.projectSlug()], {
+        fragment: `epic-${current.node.epic.id}`,
+      });
     } catch (error) {
       this.resolutionFailure.set(describeError(error));
     } finally {
@@ -711,7 +721,7 @@ export class RefiningPage {
 
   /** Back to the epic this workspace refines. */
   protected backToEpics(): void {
-    void this.router.navigate([this.projectId()], { fragment: `epic-${this.epicId()}` });
+    void this.router.navigate([this.projectSlug()], { fragment: `epic-${this.epicId()}` });
   }
 
   protected epicId(): string {

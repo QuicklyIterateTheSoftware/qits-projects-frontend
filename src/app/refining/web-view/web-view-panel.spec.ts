@@ -2,7 +2,7 @@ import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { ChangeDetectionStrategy, Component, signal } from '@angular/core';
 import { TestBed, type ComponentFixture } from '@angular/core/testing';
-import type { QitsNavLink } from '@qits/ui-components';
+import type { QitsNavLink, QitsNavigation } from '@qits/ui-components';
 import { provideRouter } from '@angular/router';
 import { PickedContext } from '../chat/picked-context';
 import type { WebViewFreeze } from '../design/freeze';
@@ -28,12 +28,13 @@ class PanelHost {
 /**
  * The Web view tab.
  *
- * The two things worth asserting are the two that are easy to get subtly wrong. **The frame's URL
- * is the environment's own relative `href`, verbatim** — the edge built it for the environment this
- * page is served from, and rebuilding or absolutising it here would be this panel deciding an
- * origin, which is exactly what keeps the live-path readout and the picker alive. And **a failed
- * read is not an empty environment**: the edge answers `503` while its projection warms up, and
- * that must land in the retryable strip, never in the "publishes no navigable UI" sentence.
+ * The things worth asserting are the ones that are easy to get subtly wrong. **The frame's URL is
+ * the environment's own `href`, verbatim** — the edge built it for the environment this page is
+ * served from, and rebuilding it here would be this panel deciding an origin. **Same site, not
+ * same origin**: every application is a host of its own now, so `ci.<env>.<domain>` is admitted
+ * and any other site is refused however it got into the answer. And **a failed read is not an
+ * empty environment**: the edge answers `503` while its projection warms up, and that must land in
+ * the retryable strip, never in the "publishes no navigable UI" sentence.
  */
 describe('WebViewPanel', () => {
   let http: HttpTestingController;
@@ -57,13 +58,30 @@ describe('WebViewPanel', () => {
   const text = () => element().textContent ?? '';
   const frame = () => element().querySelector<HTMLIFrameElement>('iframe');
 
-  async function open(links: readonly QitsNavLink[]): Promise<void> {
+  async function openWith(navigation: QitsNavigation): Promise<void> {
     fixture = TestBed.createComponent(PanelHost);
     fixture.detectChanges();
     await settle();
-    http.expectOne('/main-navigation').flush({ links });
+    http.expectOne('/main-navigation').flush(navigation);
     await settle();
     fixture.detectChanges();
+  }
+
+  /** The flat shape a pre-hosts edge answers, which the panel still has to draw for one release. */
+  async function open(links: readonly QitsNavLink[]): Promise<void> {
+    await openWith({ links });
+  }
+
+  /** One entry of the slotted shape, on a host of its own under the environment authority. */
+  function hosted(app: string, label: string, host: string) {
+    return {
+      app,
+      label,
+      host,
+      origin: `https://${host}.dev.example.test`,
+      path: `/${host}`,
+      position: 1,
+    };
   }
 
   it('reads the environment navigation once, relative, and nothing else', async () => {
@@ -99,6 +117,83 @@ describe('WebViewPanel', () => {
     const options = element().querySelectorAll('option');
     expect(options).toHaveLength(0);
     expect(frame()?.getAttribute('src')).toBe('/projects/');
+  });
+
+  /**
+   * The slotted shape: one destination per application, on its own host, deduplicated.
+   *
+   * qits-ci sits in all six category slots, and the sidebar wants that repetition — a picker does
+   * not, so the same href appears once.
+   */
+  it('frames a sibling host from the slotted answer, once per application', async () => {
+    await openWith({
+      environment: 'dev',
+      origin: 'https://dev.example.test',
+      slots: {
+        'services.details': [hosted('qits-ci', 'CI', 'ci'), hosted('qits-docs', 'Docs', 'docs')],
+        'libs.details': [hosted('qits-ci', 'CI', 'ci')],
+      },
+    });
+
+    const options = Array.from(element().querySelectorAll('option')).map((option) => option.value);
+    expect(options).toEqual(['https://ci.dev.example.test/', 'https://docs.dev.example.test/']);
+    expect(frame()?.getAttribute('src')).toBe('https://ci.dev.example.test/');
+  });
+
+  /** An application with no host of its own is still served at its segment under the environment. */
+  it('frames an unhosted application at its segment under the environment origin', async () => {
+    await openWith({
+      origin: 'https://dev.example.test',
+      slots: {
+        system: [
+          {
+            app: 'qits-observability',
+            label: 'Observability',
+            host: null,
+            origin: 'https://dev.example.test',
+            path: '/observability',
+            position: 1,
+          },
+        ],
+      },
+    });
+
+    expect(frame()?.getAttribute('src')).toBe('https://dev.example.test/observability/');
+  });
+
+  /**
+   * Same site, on a `.` boundary — `evil-dev.example.test` ends with the authority as a string and
+   * is a different site, which is exactly the case a suffix test would let through.
+   */
+  it('refuses an absolute href that is not on this environment, however it got into the answer', async () => {
+    await openWith({
+      origin: 'https://dev.example.test',
+      slots: {
+        system: [
+          hosted('qits-ci', 'CI', 'ci'),
+          {
+            app: 'qits-evil',
+            label: 'Elsewhere',
+            host: 'evil',
+            origin: 'https://evil-dev.example.test',
+            path: '/evil',
+            position: 2,
+          },
+          {
+            app: 'qits-other',
+            label: 'Other',
+            host: 'other',
+            origin: 'https://example.invalid',
+            path: '/other',
+            position: 3,
+          },
+        ],
+      },
+    });
+
+    const options = Array.from(element().querySelectorAll('option'));
+    expect(options).toHaveLength(0);
+    expect(frame()?.getAttribute('src')).toBe('https://ci.dev.example.test/');
   });
 
   it('says the environment publishes no navigable UI, which is not a failure', async () => {
