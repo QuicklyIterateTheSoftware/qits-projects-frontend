@@ -23,8 +23,10 @@ const NAV: readonly QitsNavLink[] = [
 ];
 
 /**
- * The shell owns two things — the outlet, and the sub-menu it hands to the chrome — so those are
- * what is asserted here, plus the route table actually reaching the shared layout.
+ * The shell owns one thing — the outlet — so that is what is asserted here, plus the route table
+ * actually reaching the shared layout. The sub-menu it used to hand the chrome is gone: the layout
+ * renders the Project node and its "Project setup" child itself, from the navigation the edge
+ * serves and the project list it already reads.
  */
 describe('App', () => {
   let http: HttpTestingController;
@@ -50,15 +52,14 @@ describe('App', () => {
     });
   }
 
-  it('is an outlet and a sub-menu, and nothing else', async () => {
+  it('is an outlet and nothing else', async () => {
     const fixture = TestBed.createComponent(App);
     await fixture.whenStable();
 
     const shell = fixture.nativeElement as HTMLElement;
     expect(shell.querySelector('router-outlet')).not.toBeNull();
-    // The sub-menu is a *template*: the shell renders none of it, and nothing inside it is even
-    // built until a layout instantiates it — which is why the picker has asked for nothing here.
-    expect(shell.querySelector('app-projects-nav')).toBeNull();
+    // The chrome is a route component, not something the shell templates, so it is not here — and
+    // the shell asks for nothing at all.
     expect(shell.querySelector('qits-main-layout')).toBeNull();
     http.verify();
   });
@@ -76,7 +77,7 @@ describe('App', () => {
     expect(layout.querySelector('.qits-layout-content router-outlet')).not.toBeNull();
   });
 
-  /** A URL under `/projects/` with a shape no route claims is a 404 drawn inside the chrome. */
+  /** A URL on this host with a shape no route claims is a 404 drawn inside the chrome. */
   it('draws an unknown URL as a page, not as a hand-off', async () => {
     const harness = await RouterTestingHarness.create('/p1/repositories/new/extra');
     await harness.fixture.whenStable();

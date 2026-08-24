@@ -260,6 +260,15 @@ export class EpicsOverview {
 
   readonly projectId = input.required<string>();
 
+  /**
+   * The project's slug — what a link out of this overview is spelled with, since the URL grammar
+   * names projects by slug and only the API resolves ids.
+   *
+   * Optional, falling back to the id, so a caller that has not resolved the slug yet still
+   * produces a working address: this application redirects an id in the first segment to the slug.
+   */
+  readonly projectSlug = input<string>('');
+
   protected readonly epics = signal<Loadable<readonly EpicNode[]>>(LOADING);
 
   protected readonly inFlight = signal<InFlight | null>(null);
@@ -382,7 +391,12 @@ export class EpicsOverview {
    */
   private async refine(node: EpicNode): Promise<void> {
     await this.refining.open(node);
-    await this.router.navigate([this.projectId(), 'epics', node.epic.slug, 'refining']);
+    await this.router.navigate([
+      this.projectSlug() || this.projectId(),
+      'epics',
+      node.epic.slug,
+      'refining',
+    ]);
   }
 
   /**

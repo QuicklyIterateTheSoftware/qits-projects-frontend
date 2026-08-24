@@ -4,6 +4,7 @@ import { provideLocationMocks } from '@angular/common/testing';
 import { TestBed } from '@angular/core/testing';
 import { Router, provideRouter } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
+import { provideQitsNavigationTree } from '@qits/ui-components';
 import { routes } from '../app.routes';
 import { EVENT_SOURCE_FACTORY, type EventSourceFactory } from '../api/event-source';
 
@@ -28,9 +29,13 @@ const SILENT: EventSourceFactory = () => ({
  * silent until it is asked for.
  *
  * Two reads it does make. The epics are the page's own subject and the overview owns that request.
- * The components read is what the ad-hoc workspace link costs: qits-workspaces addresses a create
- * by repository id, so the wrapper's id is the link, and its absence is why a project without a
- * wrapper shows no link at all.
+ * The components read is what the ad-hoc workspace link costs: a project with no wrapper has
+ * nothing to branch, which is why it shows no link at all.
+ *
+ * <p>Both are keyed on the project **id**, which the address does not carry — it names the slug —
+ * so nothing is asked for until the shared project list has resolved the first segment. That is
+ * why every test here flushes the list and settles before answering anything else, and it is what
+ * the two failure cases at the bottom pin: an unresolved address costs no request at all.
  */
 describe('ProjectPage', () => {
   let http: HttpTestingController;
@@ -44,6 +49,25 @@ describe('ProjectPage', () => {
         provideHttpClient(),
         provideHttpClientTesting(),
         { provide: EVENT_SOURCE_FACTORY, useValue: SILENT },
+        // The workspaces link is composed from the platform's own navigation now, so a spec that
+        // asserts it has to say what the platform serves. One entry, in the slot qits-workspaces
+        // really occupies.
+        provideQitsNavigationTree({
+          environment: 'dev',
+          origin: 'https://dev.example.test',
+          slots: {
+            'project.detail': [
+              {
+                app: 'qits-workspaces',
+                label: 'Workspaces',
+                host: 'workspaces',
+                origin: 'https://workspaces.dev.example.test',
+                path: '/workspaces',
+                position: 1,
+              },
+            ],
+          },
+        }),
       ],
     });
     http = TestBed.inject(HttpTestingController);
@@ -53,6 +77,21 @@ describe('ProjectPage', () => {
     harness = await RouterTestingHarness.create(url);
   }
 
+  /**
+   * Open the page and answer the project list, which is what turns the address's slug into the id
+   * every other read is keyed on. Nothing else can be flushed before this has settled.
+   */
+  async function openResolved(
+    projects: readonly { id: string; name: string; slug?: string; description?: string }[] = [
+      { id: 'p1', name: 'qits' },
+    ],
+    url = '/p1',
+  ): Promise<void> {
+    await open(url);
+    flushProjects(projects);
+    await settle();
+  }
+
   async function settle(): Promise<void> {
     for (let round = 0; round < 4; round += 1) {
       await Promise.resolve();
@@ -60,13 +99,15 @@ describe('ProjectPage', () => {
     }
   }
 
-  function flushProjects(projects: readonly { id: string; name: string; description?: string }[]) {
+  function flushProjects(
+    projects: readonly { id: string; name: string; slug?: string; description?: string }[],
+  ) {
     http.expectOne('/projects/api/projects').flush({
       entries: projects.map((project) => ({
         project: {
           id: project.id,
           name: project.name,
-          slug: project.id,
+          slug: project.slug ?? project.id,
           description: project.description ?? null,
           dns: null,
         },
@@ -94,8 +135,7 @@ describe('ProjectPage', () => {
   }
 
   it('names the project and reads its epics and its wrapper, and nothing else', async () => {
-    await open();
-    flushProjects([{ id: 'p1', name: 'qits', description: 'the platform' }]);
+    await openResolved([{ id: 'p1', name: 'qits', description: 'the platform' }]);
     flushEpics();
     flushComponents();
     await settle();
@@ -111,8 +151,7 @@ describe('ProjectPage', () => {
    * than as an unexpected request in an unrelated test.
    */
   it('offers the refinement agent closed, having asked nothing about it', async () => {
-    await open();
-    flushProjects([{ id: 'p1', name: 'qits' }]);
+    await openResolved();
     flushEpics();
     flushComponents();
     await settle();
@@ -125,8 +164,7 @@ describe('ProjectPage', () => {
   });
 
   it('says the project has no epics rather than leaving the section blank', async () => {
-    await open();
-    flushProjects([{ id: 'p1', name: 'qits' }]);
+    await openResolved();
     flushEpics();
     flushComponents();
     await settle();
@@ -136,8 +174,7 @@ describe('ProjectPage', () => {
   });
 
   it('offers project setup as a link under the project’s own address', async () => {
-    await open();
-    flushProjects([{ id: 'p1', name: 'qits' }]);
+    await openResolved();
     flushEpics();
     flushComponents();
     await settle();
@@ -149,8 +186,7 @@ describe('ProjectPage', () => {
   });
 
   it('navigates to the setup page when the action is followed', async () => {
-    await open();
-    flushProjects([{ id: 'p1', name: 'qits' }]);
+    await openResolved();
     flushEpics();
     flushComponents();
     await settle();
@@ -167,26 +203,25 @@ describe('ProjectPage', () => {
   /**
    * The ad-hoc workspace: a disposable checkout of the wrapper and every submodule under it.
    *
-   * A plain `href` and not a `routerLink` — `/workspaces/` is another application behind the same
-   * gateway, so this is a page load and the router knows nothing about the address.
+   * A plain `href` and not a `routerLink` — qits-workspaces is another Angular application on a
+   * host of its own, so this is a page load and the router knows nothing about the address.
    */
   it('links to the workspaces app with the project’s wrapper preselected', async () => {
-    await open();
-    flushProjects([{ id: 'p1', name: 'qits' }]);
+    await openResolved();
     flushEpics();
     flushComponents('qits-qits');
     await settle();
 
     const adhoc = page().querySelector<HTMLAnchorElement>('a.adhoc');
     expect(adhoc?.textContent).toContain('Ad-hoc workspace');
-    expect(adhoc?.getAttribute('href')).toBe('/workspaces/?repository=qits-qits');
+    // The workspaces host, scoped to this project — not a query parameter naming a repository id.
+    expect(adhoc?.getAttribute('href')).toBe('https://workspaces.dev.example.test/p1/');
   });
 
   /** No wrapper, nothing to branch: a link that named no repository would offer a create nobody
    * could complete. */
   it('offers no ad-hoc workspace for a project with no wrapper', async () => {
-    await open();
-    flushProjects([{ id: 'p1', name: 'qits' }]);
+    await openResolved();
     flushEpics();
     flushComponents(null);
     await settle();
@@ -196,26 +231,41 @@ describe('ProjectPage', () => {
     expect(page().querySelector('a.setup')).not.toBeNull();
   });
 
-  /** The name is a courtesy; a project list that never answered must not cost the page its action. */
-  it('falls back to the id when the project list could not be read', async () => {
+  /**
+   * A list that never answered leaves the page with an address and no id, so it asks for nothing —
+   * and still draws its name from the segment and its one action. The reads are keyed on the id
+   * and there is no id, which is why `http.verify()` is the assertion that matters here.
+   */
+  it('falls back to the address when the project list could not be read', async () => {
     await open();
     http.expectOne('/projects/api/projects').flush(null, { status: 503, statusText: 'Down' });
-    flushEpics();
-    flushComponents();
     await settle();
 
     expect(page().querySelector('h1')?.textContent).toContain('p1');
     expect(page().querySelector('a.setup')).not.toBeNull();
+    http.verify();
   });
 
-  it('shows nothing but the name for a project id the list does not contain', async () => {
-    await open('/nope');
-    flushProjects([{ id: 'p1', name: 'qits' }]);
-    flushEpics('nope');
-    flushComponents('nope-nope', 'nope');
-    await settle();
+  it('asks for nothing at all for a slug the list does not contain', async () => {
+    await openResolved([{ id: 'p1', name: 'qits' }], '/nope');
 
     expect(page().querySelector('h1')?.textContent).toContain('nope');
     expect(page().querySelector('a.setup')?.getAttribute('href')).toBe('/nope/project-setup');
+    http.verify();
+  });
+
+  /**
+   * An address spelling the project **id** is corrected in place rather than served: every URL this
+   * application wrote before the slug convention carries one, and a 404 would break links that are
+   * only old.
+   */
+  it('redirects an id in the first segment to the slug, keeping the rest of the path', async () => {
+    await openResolved([{ id: 'p1', name: 'qits', slug: 'qits' }], '/p1');
+    flushEpics();
+    flushComponents();
+    await settle();
+
+    expect(TestBed.inject(Router).url).toBe('/qits');
+    expect(page().querySelector('a.setup')?.getAttribute('href')).toBe('/qits/project-setup');
   });
 });

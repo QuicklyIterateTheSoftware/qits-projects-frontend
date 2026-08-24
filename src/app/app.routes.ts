@@ -1,24 +1,40 @@
-import type { Routes } from '@angular/router';
-import { QitsMainLayout } from '@qits/ui-components';
+import type { CanMatchFn, Routes } from '@angular/router';
+import { QITS_CATEGORIES, QitsMainLayout, type QitsCategory } from '@qits/ui-components';
 import { CreateRepositoryPage } from './create/create-repository-page';
 import { LandingPage } from './landing/landing-page';
 import { NotFound } from './not-found/not-found';
 import { ProjectPage } from './project/project-page';
 import { ProjectSetupPage } from './project/project-setup-page';
+import { RepositoryPage } from './project/repository-page';
 import { RefiningPage } from './refining/refining-page';
 
 /**
- * Six routes, all of them inside the platform chrome.
+ * Whether the second segment of `/<project>/<category>/<repository>` names one of the six
+ * categories.
+ *
+ * <p>Without it every three-segment address in the application would be a repository:
+ * `/qits/epics/planning` would resolve to the repository page and draw a repository nobody has.
+ * The category vocabulary is closed and shared platform-wide, so the guard is a set membership and
+ * not a lookup — no request, no async, and the same answer in a spec as in the browser.
+ *
+ * <p>`segments` is what is left *below* this route, so segment 0 is the project and segment 1 the
+ * category.
+ */
+export const categoryIsKnown: CanMatchFn = (_route, segments) =>
+  QITS_CATEGORIES.includes(segments[1]?.path as QitsCategory);
+
+/**
+ * Seven routes, all of them inside the platform chrome.
  *
  * `QitsMainLayout` is the root *route* component rather than something the shell templates, so the
  * bar, the navigation and the project picker hanging under it mount once and survive every
  * navigation beneath them; only the outlet's content changes.
  *
- * <p><b>The project id is the first segment, with no collection segment above it.</b>
- * `/projects/<projectId>`, not `/projects/projects/<projectId>`: the gateway already spent a
- * segment saying which application this is, and spending a second one repeating it would put the
- * word twice in every URL a person is asked to read. It also makes the id trivially recoverable
- * from `router.url` for the sub-navigation, which lives above every `ActivatedRoute` there is.
+ * <p><b>The project SLUG is the first segment, with no collection segment above it.</b>
+ * `/qits`, not `/projects/projects/<id>`: this service has a host of its own now
+ * (`projects.<env>.<domain>`), so the SPA is served at `/` and there is no application segment to
+ * spend. The slug and not the id, because that is the platform's URL convention on every host —
+ * see `nav/project-param.ts` for how an old address spelling an id is corrected in place.
  *
  * <p>`?type=` on the create page is a **prefill, not an address**: it seeds the archetype picker,
  * the picker is free to disagree with it, and a create page reached from a group's "New service"
@@ -28,14 +44,17 @@ import { RefiningPage } from './refining/refining-page';
  * <p><b>`project-setup` is a segment because setting a project up is rare.</b> The project's own
  * address used to carry the component groups and the reconcile, which made the page a reader
  * arrives at most often the page they need least. Splitting them puts configuration one deliberate
- * click away and leaves `:projectId` free for what a project is mostly for. It is a path segment
+ * click away and leaves `:project` free for what a project is mostly for. It is a path segment
  * rather than a query parameter because it is a different *place*, not a view of the same one.
  *
- * <p>Repository **detail is deliberately absent**. Every card on the setup page is therefore inert
- * rather than linking somewhere unbuilt — a dead link is worse than no link.
+ * <p><b>`:project/:category/:repository` is the repository detail</b>, the address every other SPA
+ * on the platform also serves — so the sidebar's per-repository entries and this page's cards are
+ * the same URL with a different host in front. It is guarded on the category, which is what keeps
+ * it from swallowing every three-segment address; the literal routes above it win regardless,
+ * because Angular matches in order.
  *
  * <p><b>The refining route names an epic and never a workspace.</b>
- * `:projectId/epics/:epicSlug/refining` is where an epic is worked out, and the workspace behind it is
+ * `:project/epics/:epicSlug/refining` is where an epic is worked out, and the workspace behind it is
  * *looked up* — the ACTIVE workspace on `refining/<epicSlug>` in the project's wrapper repository.
  * Nothing stores that association, so an address carrying a workspace row id would be a link that rots
  * the moment the workspace is discarded and a new one started: it would point at a resolved workspace
@@ -49,13 +68,11 @@ import { RefiningPage } from './refining/refining-page';
  * epic's workspace. Keeping the tab in the query string leaves the path meaning "which epic", makes a
  * bare URL mean "no tab pinned" by simple absence, and keeps every tab a shareable link.
  *
- * <p>All six load eagerly. There are six of them, they share every component below them, and a lazy
- * chunk boundary here would be ceremony that costs a round trip.
+ * <p>All seven load eagerly. There are seven of them, they share every component below them, and a
+ * lazy chunk boundary here would be ceremony that costs a round trip.
  *
- * <p>The `**` route sits *inside* the layout, unlike spa-home's. spa-home is mounted at the gateway
- * root, where an unrecognised first segment belongs to another application and has to be handed
- * back; `/projects/` is a segment this application owns outright, so an unknown URL under it is an
- * ordinary 404 and is drawn with the chrome around it.
+ * <p>The `**` route sits *inside* the layout: this application is served at the root of its own
+ * host, so an unknown URL here is an ordinary 404 and is drawn with the chrome around it.
  */
 export const routes: Routes = [
   {
@@ -63,10 +80,15 @@ export const routes: Routes = [
     component: QitsMainLayout,
     children: [
       { path: '', component: LandingPage },
-      { path: ':projectId', component: ProjectPage },
-      { path: ':projectId/project-setup', component: ProjectSetupPage },
-      { path: ':projectId/epics/:epicSlug/refining', component: RefiningPage },
-      { path: ':projectId/repositories/new', component: CreateRepositoryPage },
+      { path: ':project', component: ProjectPage },
+      { path: ':project/project-setup', component: ProjectSetupPage },
+      { path: ':project/epics/:epicSlug/refining', component: RefiningPage },
+      { path: ':project/repositories/new', component: CreateRepositoryPage },
+      {
+        path: ':project/:category/:repository',
+        canMatch: [categoryIsKnown],
+        component: RepositoryPage,
+      },
       { path: '**', component: NotFound },
     ],
   },

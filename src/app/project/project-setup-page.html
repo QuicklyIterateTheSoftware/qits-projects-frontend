@@ -1,8 +1,8 @@
-<p class="back"><a [routerLink]="['/', projectId()]">← Back to the project</a></p>
+<p class="back"><a [routerLink]="['/', projectSlug()]">← Back to the project</a></p>
 
 <header class="head">
   <h1>Project setup</h1>
-  <a class="new" [routerLink]="['/', projectId(), 'repositories', 'new']">New repository</a>
+  <a class="new" [routerLink]="['/', projectSlug(), 'repositories', 'new']">New repository</a>
 </header>
 
 <app-async
@@ -34,7 +34,7 @@
         @if (group.archetype; as archetype) {
           <a
             class="add"
-            [routerLink]="['/', projectId(), 'repositories', 'new']"
+            [routerLink]="['/', projectSlug(), 'repositories', 'new']"
             [queryParams]="{ type: archetype }"
             >New {{ group.singular }}</a
           >

@@ -8,6 +8,7 @@ import {
 } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, Router, RouterLink, convertToParamMap } from '@angular/router';
+import { ProjectParam } from '../nav/project-param';
 import { QitsButton, QitsPicker, type QitsPickerOption } from '@qits/ui-components';
 import {
   COMPONENT_TYPES,
@@ -45,7 +46,7 @@ export type CreateMode = 'blank' | 'attach';
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [QitsButton, QitsPicker, RouterLink],
   template: `
-    <p class="back"><a [routerLink]="['/', projectId()]">← Back to the project</a></p>
+    <p class="back"><a [routerLink]="['/', projectSlug()]">← Back to the project</a></p>
     <h1>New repository</h1>
 
     <div class="modes" role="group" aria-label="How the repository is added">
@@ -146,7 +147,7 @@ export type CreateMode = 'blank' | 'attach';
       >
         Add it to the project
       </qits-button>
-      <a class="cancel" [routerLink]="['/', projectId()]">Cancel</a>
+      <a class="cancel" [routerLink]="['/', projectSlug()]">Cancel</a>
     </div>
 
     @if (submit().kind === 'error') {
@@ -243,10 +244,10 @@ export type CreateMode = 'blank' | 'attach';
 })
 export class CreateRepositoryPage {
   private readonly api = inject(ProjectsApi);
+  private readonly param = inject(ProjectParam);
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
 
-  private readonly params = toSignal(this.route.paramMap, { initialValue: convertToParamMap({}) });
   private readonly query = toSignal(this.route.queryParamMap, {
     initialValue: convertToParamMap({}),
   });
@@ -255,7 +256,9 @@ export class CreateRepositoryPage {
     (type) => ({ value: type.archetype, label: `${type.singular} (${type.directory}/)` }),
   );
 
-  protected readonly projectId = computed(() => this.params().get('projectId') ?? '');
+  /** The id the create request takes, and the slug the two links back are spelled with. */
+  protected readonly projectId = this.param.projectId;
+  protected readonly projectSlug = this.param.projectSlug;
 
   protected readonly mode = signal<CreateMode>('blank');
   protected readonly archetype = signal<PlaceableArchetype | undefined>(undefined);
@@ -328,7 +331,7 @@ export class CreateRepositoryPage {
     this.submit.set(LOADING);
     try {
       this.submit.set(ready(await this.api.createRepository(this.projectId(), request)));
-      await this.router.navigate(['/', this.projectId()]);
+      await this.router.navigate(['/', this.projectSlug()]);
     } catch (error) {
       this.submit.set(failed(error));
     }

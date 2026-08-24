@@ -2,18 +2,17 @@ import { ChangeDetectionStrategy, Component } from '@angular/core';
 import { RouterLink } from '@angular/router';
 
 /**
- * A URL under `/projects/` that this app does not recognise.
+ * A URL on this host that this app does not recognise.
  *
- * It renders a small page and stops there. It deliberately does **not** copy spa-home's exit
- * behaviour of handing the URL back to the gateway: that is the landing page's job, and it is
- * correct only because spa-home is mounted at the root, where an unknown first segment is another
- * micro frontend rather than a typo. Here the segment is already ours — the gateway routed
- * `/projects/…` to qits-projects on purpose — so there is nobody to hand it to, and bouncing it
- * back would be a loop.
+ * It renders a small page and stops there, and it deliberately does **not** hand the URL back to
+ * the edge. This application is served at the root of `projects.<env>.<domain>` — the whole host is
+ * ours — so there is nobody to hand it to, and bouncing it back would be a loop.
  *
- * A URL whose first segment *looks* like a project id never reaches here: it matches
- * `:projectId`, and the project page is what says the project does not exist. This is for the
- * shapes below that — a third segment nothing serves.
+ * A URL whose first segment *looks* like a project never reaches here: it matches `:project`, and
+ * the project page is what says the project does not exist. This is for the shapes below that — a
+ * third segment naming no category, a fourth segment nothing serves. The repository page renders it
+ * inline for the other half of the same question: a well-formed repository address naming a
+ * repository the project does not hold.
  */
 @Component({
   selector: 'app-not-found',

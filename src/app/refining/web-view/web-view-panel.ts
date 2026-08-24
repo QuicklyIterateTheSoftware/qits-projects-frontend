@@ -13,7 +13,13 @@ import {
   viewChild,
 } from '@angular/core';
 import { DomSanitizer, type SafeResourceUrl } from '@angular/platform-browser';
-import { QitsButton, type QitsNavLink, type QitsNavigation } from '@qits/ui-components';
+import {
+  QitsAppLinks,
+  QitsButton,
+  toNavTree,
+  type QitsNavTree,
+  type QitsNavigation,
+} from '@qits/ui-components';
 import { ComponentMapApi, type ComponentMapDto } from '../../api/component-map-api';
 import { LOADING, failed, ready, type Loadable } from '../../ui/loadable';
 import { Async } from '../../ui/async';
@@ -31,18 +37,27 @@ import { ElementPicker, type FramePick } from './element-picker';
  * own dev server through the workspace proxy; a refinement runs nothing, and the only application
  * worth looking at is the deployed one.
  *
- * ## Same origin, on purpose
+ * ## Same site, on purpose
  *
  * The list comes from `GET /main-navigation`, fetched **relative**: the edge answers it from its
  * deployment projection and derives the environment from the request's Host header, so the answer
- * is exactly the environment this page came from. The frame's `src` is the selected link's
- * **relative** `href`, which makes the framed UI same-origin by construction — and that is not a
- * convenience: it is what lets the toolbar read the framed window's **live** location as the user
- * navigates, and it is what the element picker needs to exist at all.
+ * is exactly the environment this page came from.
+ *
+ * <p>**Every application is a host of its own now** — `ci.<env>.<domain>`, `docs.<env>.<domain>` —
+ * so the answer carries absolute origins and the frame's `src` is one of them. What is enforced is
+ * *same site* rather than same origin: an href passes when its host is the environment's authority
+ * or one label under it, and a relative href passes as it always did. Anything else is refused
+ * however it got into the answer.
+ *
+ * <p>That is a real loss and it is worth naming: the toolbar's live-path readout, the URL bar and
+ * the element picker all read *inside* the frame, and a cross-origin frame refuses every one of
+ * those reads. So they work on this application's own pages and go quiet on a sibling host's,
+ * which the toolbar already says out loud — the frame itself keeps working, because the session
+ * cookie is set on the parent domain and travels to every host under it.
  *
  * There is deliberately no environment picker. Nothing on the platform can answer "what is the base
- * URL of environment X", and a foreign origin would go dark for the toolbar and the picker anyway.
- * You refine against the environment you are standing in.
+ * URL of environment X", and a foreign environment would carry no session anyway. You refine
+ * against the environment you are standing in.
  *
  * ## What it loads
  *
@@ -76,6 +91,7 @@ export class WebViewPanel {
   private readonly sanitizer = inject(DomSanitizer);
   private readonly maps = inject(ComponentMapApi);
   private readonly picked = inject(PickedContext);
+  private readonly appLinks = inject(QitsAppLinks);
 
   readonly workspaceRowId = input.required<number>();
 
@@ -109,8 +125,8 @@ export class WebViewPanel {
   /** How many elements are picked, from the store rather than from a count kept here. */
   protected readonly pickedCount = computed(() => this.picked.elements().length);
 
-  /** The environment's navigation, as the edge answered it. */
-  protected readonly navigation = signal<Loadable<readonly QitsNavLink[]>>(LOADING);
+  /** The environment's navigation, as the edge answered it — normalised by the library. */
+  protected readonly navigation = signal<Loadable<QitsNavTree>>(LOADING);
 
   private readonly picker = new ElementPicker({
     route: () => `/${this.livePath() ?? ''}`,
@@ -146,44 +162,98 @@ export class WebViewPanel {
   // ---- what is on screen -------------------------------------------------------------------
 
   /**
-   * The links worth framing: every one the environment publishes, kept to **relative** hrefs.
+   * Where the environment itself is served — the authority every framable href is measured
+   * against.
    *
-   * The edge only ever answers path-shaped hrefs; the filter is what lets {@link frameSrc} trust
-   * the URL it builds — nothing carrying a scheme or a `//` authority can reach the frame, however
-   * the answer was produced.
+   * The application's own navigation is asked first, because that is the platform's live statement
+   * and it is what every other cross-application link in this SPA is built from. The panel's own
+   * answer is the fallback, for a panel rendered without the chrome around it. Neither: no absolute
+   * href is framable, which is the safe answer rather than a guess.
    */
-  protected readonly framable = computed<readonly QitsNavLink[]>(() => {
+  private readonly environmentOrigin = computed(() => {
+    const state = this.navigation();
+    const own = state.kind === 'ready' ? state.value.environmentOrigin : undefined;
+    return this.appLinks.environmentOrigin() ?? own;
+  });
+
+  /**
+   * The destinations worth framing: every one the environment publishes, kept to **this site**.
+   *
+   * <p>Two shapes arrive here. A pre-hosts edge answers a flat list of path-shaped hrefs, which is
+   * what {@code legacy} carries and what this admitted before hosts existed. A current one answers
+   * slots whose entries name a host — so an href is `https://ci.<env>.<domain>/` — plus the
+   * environment origin for an application still served at a segment under it.
+   *
+   * <p>The filter is what lets {@link frameSrc} trust the URL it builds: a relative path, or an
+   * absolute one whose host is the environment authority or exactly one label under it. An href
+   * naming any other site is refused however it got into the answer.
+   *
+   * <p>One application can sit in several slots — qits-ci is under all six categories — so the list
+   * is deduplicated by href; the sidebar wants the repetition and a picker does not.
+   */
+  protected readonly framable = computed<readonly FramableLink[]>(() => {
     const state = this.navigation();
     if (state.kind !== 'ready') {
       return [];
     }
-    return state.value.filter((link) => link.href.startsWith('/') && !link.href.startsWith('//'));
+    const authority = hostOf(this.environmentOrigin());
+    const candidates = state.value.legacy
+      ? state.value.legacy.map((link) => ({ label: link.label, href: link.href }))
+      : state.value.entries.map((entry) => ({
+          label: entry.label,
+          href: entry.host
+            ? `${trimEnd(entry.origin)}/`
+            : `${trimEnd(state.value.environmentOrigin ?? '')}${entry.path}/`,
+        }));
+    const seen = new Set<string>();
+    return candidates.filter((link) => {
+      if (!isSameSite(link.href, authority) || seen.has(link.href)) {
+        return false;
+      }
+      seen.add(link.href);
+      return true;
+    });
   });
 
-  protected readonly link = computed<QitsNavLink | null>(() => {
+  protected readonly link = computed<FramableLink | null>(() => {
     const chosen = this.chosen();
     return this.framable().find((candidate) => candidate.href === chosen) ?? null;
   });
 
-  /** The prefix the framed app lives under, with its trailing slash — the live path's base. */
+  /**
+   * The prefix the framed app lives under, with its trailing slash — the live path's base.
+   *
+   * The **path** of it, never the origin: it is compared against `location.pathname` inside the
+   * frame, which carries no origin of its own. A hosted application's base is therefore `/`.
+   */
   protected readonly base = computed(() => {
-    const link = this.link();
-    if (!link) {
+    const href = this.link()?.href;
+    if (!href) {
       return '';
     }
-    return link.href.endsWith('/') ? link.href : `${link.href}/`;
+    const path = pathOf(href);
+    return path.endsWith('/') ? path : `${path}/`;
   });
 
-  /** Where the frame lands: the link's own relative href. */
+  /** The same prefix as the frame will resolve it — absolute for a hosted application. */
+  private readonly frameBase = computed(() => {
+    const href = this.link()?.href;
+    if (!href) {
+      return '';
+    }
+    return href.endsWith('/') ? href : `${href}/`;
+  });
+
+  /** Where the frame lands: the link's own href. */
   protected readonly frameUrl = computed(() => this.link()?.href ?? null);
 
   /**
    * The same URL, trusted.
    *
    * Angular sanitizes an `iframe`'s `src` as a resource URL and refuses a plain string. Trusting
-   * this one is not a shortcut: {@link framable} admits only path-shaped hrefs, so the frame can
-   * only ever land inside this page's own origin — and a typed path goes through {@link navigate},
-   * which refuses anything carrying a scheme.
+   * this one is not a shortcut: {@link framable} admits only a relative path or an absolute address
+   * on this site — and a typed path goes through {@link navigate}, which refuses anything carrying
+   * a scheme.
    */
   protected readonly frameSrc = computed<SafeResourceUrl | null>(() => {
     const url = this.frameUrl();
@@ -252,7 +322,7 @@ export class WebViewPanel {
           error: reject,
         }),
       );
-      this.navigation.set(ready(answer?.links ?? []));
+      this.navigation.set(ready(toNavTree(answer)));
     } catch (error) {
       this.navigation.set(failed(error));
     }
@@ -387,7 +457,7 @@ export class WebViewPanel {
     if (!element) {
       return;
     }
-    const target = this.base() + typed.replace(/^\/+/, '');
+    const target = this.frameBase() + typed.replace(/^\/+/, '');
     this.barProblem.set(null);
     try {
       const window = element.contentWindow;
@@ -400,6 +470,62 @@ export class WebViewPanel {
     }
     element.src = target;
   }
+}
+
+/** One destination the panel can offer: what it is called, and the address it frames. */
+export interface FramableLink {
+  readonly label: string;
+  readonly href: string;
+}
+
+/** The host of an origin, port included — or `undefined` for anything that is not one. */
+function hostOf(origin: string | undefined): string | undefined {
+  if (!origin) {
+    return undefined;
+  }
+  try {
+    return new URL(origin).host;
+  } catch {
+    return undefined;
+  }
+}
+
+/** The path part of an href, which is the whole of it when it is already relative. */
+function pathOf(href: string): string {
+  if (href.startsWith('/') && !href.startsWith('//')) {
+    return href;
+  }
+  try {
+    return new URL(href).pathname;
+  } catch {
+    return '/';
+  }
+}
+
+function trimEnd(origin: string): string {
+  return origin.replace(/\/+$/, '');
+}
+
+/**
+ * Whether an href may reach the frame: a relative path, or an absolute one on this environment.
+ *
+ * "On this environment" is the authority itself or exactly one label under it — `dev.example.com`
+ * and `ci.dev.example.com`, and never `evil-dev.example.com`, which is why the test is on a `.`
+ * boundary rather than a suffix. A protocol-relative `//host` href is refused outright: it names
+ * another site while looking like a path.
+ */
+function isSameSite(href: string, authority: string | undefined): boolean {
+  if (href.startsWith('//')) {
+    return false;
+  }
+  if (href.startsWith('/')) {
+    return true;
+  }
+  const host = hostOf(href);
+  if (!host || !authority) {
+    return false;
+  }
+  return host === authority || host.endsWith(`.${authority}`);
 }
 
 /** The framed document, or null when the frame is missing or on another origin. */

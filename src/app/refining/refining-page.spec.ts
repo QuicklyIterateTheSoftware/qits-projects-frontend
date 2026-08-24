@@ -140,8 +140,27 @@ describe('RefiningPage', () => {
     return found as HTMLButtonElement;
   }
 
+  /**
+   * The shared project list, which the address's first segment is resolved against.
+   *
+   * Every read on this page is keyed on the project **id** and the URL names the slug, so nothing
+   * else can be asked for until this has answered. Matched rather than expected: one flight per
+   * application instance, so a test that opens the page twice sees it once.
+   */
+  async function flushProjectList(): Promise<void> {
+    for (const request of http.match('/projects/api/projects')) {
+      request.flush({
+        entries: [
+          { project: { id: 'p1', name: 'Qits', slug: 'p1', description: null, dns: null } },
+        ],
+      });
+    }
+    await settle();
+  }
+
   /** The epic fan-out — the page's whole subject now the wrapper is the server's business. */
   async function flushSubject(): Promise<void> {
+    await flushProjectList();
     http.expectOne(EPICS_URL).flush({ entries: [{ epic: EPIC }] });
     await settle();
     http.expectOne('/projects/api/epics/e1/features').flush({ entries: [] });
@@ -255,9 +274,12 @@ describe('RefiningPage', () => {
   describe('resolution', () => {
     it('resolves the epic and the refinement in parallel, and opens one stream', async () => {
       await harness.navigateByUrl(URL_BASE);
+      // The project list first, on its own: the URL names a slug and every read below is keyed on
+      // the id, so nothing can be in flight beside it.
+      await flushProjectList();
 
-      // The epic and the refinements listing are read in parallel: both are keyed off the URL
-      // alone, and neither waits on the other.
+      // The epic and the refinements listing are then read in parallel: both are keyed off the
+      // resolved project alone, and neither waits on the other.
       const first = http.match(() => true);
       expect(first.map((request) => request.request.url).sort()).toEqual(
         [EPICS_URL, REFINEMENTS_URL].sort(),
@@ -359,6 +381,7 @@ describe('RefiningPage', () => {
 
     it('reports a subject that could not be resolved as the page failure it is', async () => {
       await harness.navigateByUrl(URL_BASE);
+      await flushProjectList();
       http
         .expectOne(EPICS_URL)
         .flush({ message: 'projects is down' }, { status: 503, statusText: 'Down' });

@@ -6,11 +6,10 @@ import {
   inject,
   signal,
 } from '@angular/core';
-import { toSignal } from '@angular/core/rxjs-interop';
-import { ActivatedRoute, RouterLink, convertToParamMap } from '@angular/router';
-import type { ProjectDto } from '../api/dto';
+import { RouterLink } from '@angular/router';
+import { QitsAppLinks } from '@qits/ui-components';
 import { ProjectsApi } from '../api/projects-api';
-import { ProjectsStore } from '../api/projects-store';
+import { ProjectParam } from '../nav/project-param';
 import { RefinementPanel } from './agent/refinement-panel';
 import { EpicsOverview } from './epics-overview';
 
@@ -23,9 +22,9 @@ import { EpicsOverview } from './epics-overview';
  * project is mostly *for*. That work moved to `project-setup`, and the epics are what fills the
  * space it left: the plan a project is being changed by is the thing worth arriving at.
  *
- * <p>The name itself still **costs nothing** — it comes from the shared project list the
- * sub-navigation has already read. The epics are this page's own read; the overview owns it, along
- * with its loading, empty and failed states.
+ * <p>The name itself still **costs nothing** — it comes from the shared project list `ProjectParam`
+ * has already read to resolve the address's slug. The epics are this page's own read; the overview
+ * owns it, along with its loading, empty and failed states.
  *
  * <p>The refinement agent sits between the two, and it sits there **dormant**: the panel is one
  * collapsed row until somebody asks for it, so arriving here still costs exactly the epics read.
@@ -34,10 +33,15 @@ import { EpicsOverview } from './epics-overview';
  *
  * <p><b>The ad-hoc workspace link is the page's own second read.</b> It offers a disposable
  * checkout of the project's wrapper and every submodule under it — the local development loop, in a
- * workspace — and qits-workspaces addresses that by repository id, so the components read is what
- * this page has to make to know the id and to know there is a wrapper at all. A project without one
- * has nothing to branch, and shows no link rather than a link that answers nothing. It is a plain
- * `href` and not a `routerLink`: `/workspaces/` is another application behind the same gateway.
+ * workspace — and this page has to know there IS a wrapper before offering it, which is what the
+ * components read is for. A project without one shows no link rather than a link that answers
+ * nothing.
+ *
+ * <p>It is a plain `href` and not a `routerLink`, because qits-workspaces is another Angular
+ * application on a host of its own: `workspaces.<env>.<domain>/<slug>/`, which the library composes
+ * from the navigation the edge answers. The old `/workspaces/?repository=<id>` is the fallback for
+ * an edge that does not name the application yet — the project scope is what the destination reads
+ * once it does.
  */
 @Component({
   selector: 'app-project-page',
@@ -51,14 +55,14 @@ import { EpicsOverview } from './epics-overview';
 
     <p class="actions">
       <a class="setup" routerLink="project-setup">Project setup</a>
-      @if (adhocWorkspaceUrl(); as url) {
+      @if (workspacesUrl(); as url) {
         <a class="adhoc" [href]="url">Ad-hoc workspace</a>
       }
     </p>
 
     <app-refinement-panel [projectId]="projectId()" />
 
-    <app-epics-overview [projectId]="projectId()" />
+    <app-epics-overview [projectId]="projectId()" [projectSlug]="projectSlug()" />
   `,
   styles: `
     :host {
@@ -102,37 +106,44 @@ import { EpicsOverview } from './epics-overview';
   `,
 })
 export class ProjectPage {
-  private readonly store = inject(ProjectsStore);
   private readonly api = inject(ProjectsApi);
-  private readonly route = inject(ActivatedRoute);
+  private readonly param = inject(ProjectParam);
+  private readonly appLinks = inject(QitsAppLinks);
 
-  private readonly params = toSignal(this.route.paramMap, { initialValue: convertToParamMap({}) });
-
-  protected readonly projectId = computed(() => this.params().get('projectId') ?? '');
-
-  private readonly projects = signal<readonly ProjectDto[]>([]);
+  /** The id every request takes, and the slug every link is spelled with. */
+  protected readonly projectId = this.param.projectId;
+  protected readonly projectSlug = this.param.projectSlug;
 
   private readonly project = computed(() => {
-    const id = this.projectId();
-    return this.projects().find((project) => project.id === id);
+    const state = this.param.currentProject()();
+    return state.kind === 'ready' ? state.value : undefined;
   });
 
-  /** The project's display name, once the shared list has answered. The id until then. */
-  protected readonly heading = computed(() => this.project()?.name ?? this.projectId());
+  /** The project's display name, once the shared list has answered. The address until then. */
+  protected readonly heading = computed(() => this.project()?.name ?? this.param.segment());
 
   protected readonly description = computed(() => this.project()?.description ?? '');
 
   private readonly wrapperRepositoryId = signal<string | null>(null);
 
-  /** The workspaces app's create form, preselected on this project's wrapper. Null without one. */
-  protected readonly adhocWorkspaceUrl = computed(() => {
+  /**
+   * The workspaces application, scoped to this project — where its wrapper's ad-hoc workspace is.
+   *
+   * Null until the components read says the project has a wrapper at all: an application with
+   * nothing to branch is offered no link. The legacy fallback is the pre-host address, which
+   * preselected the wrapper by id because there was no scope to carry.
+   */
+  protected readonly workspacesUrl = computed(() => {
     const wrapper = this.wrapperRepositoryId();
-    return wrapper ? `/workspaces/?repository=${encodeURIComponent(wrapper)}` : null;
+    if (!wrapper) return null;
+    return (
+      this.appLinks.href('qits-workspaces', '', { project: this.projectSlug() }, '/workspaces/') ??
+      null
+    );
   });
 
   constructor() {
-    void this.loadProjects();
-    // Keyed on the route, because the sub-navigation re-uses this instance for another project.
+    // Keyed on the project, because the picker re-uses this instance for another one.
     effect(() => {
       const projectId = this.projectId();
       this.wrapperRepositoryId.set(null);
@@ -140,15 +151,6 @@ export class ProjectPage {
         void this.loadWrapper(projectId);
       }
     });
-  }
-
-  private async loadProjects(): Promise<void> {
-    try {
-      this.projects.set(await this.store.projects());
-    } catch {
-      // The heading falls back to the id. A page that could not name its project is still a page,
-      // and the one action on it works either way.
-    }
   }
 
   private async loadWrapper(projectId: string): Promise<void> {
