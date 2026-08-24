@@ -4,7 +4,11 @@ import { provideLocationMocks } from '@angular/common/testing';
 import { TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
-import { provideQitsNavigationTree, provideQitsScope } from '@qits/ui-components';
+import {
+  provideQitsNavigationTree,
+  provideQitsScope,
+  type QitsNavigation,
+} from '@qits/ui-components';
 import { routes } from '../app.routes';
 import type { RepositoryDto } from '../api/dto';
 
@@ -21,21 +25,71 @@ function repository(over: Partial<RepositoryDto> = {}): RepositoryDto {
   };
 }
 
+/** The platform as the edge states it — with a git host of its own, or naming none at all. */
+function navigation(githost: boolean): QitsNavigation {
+  return {
+    environment: 'dev',
+    origin: 'https://dev.example.test',
+    slots: {
+      'services.details': [
+        {
+          app: 'qits-ci',
+          label: 'CI',
+          host: 'ci',
+          origin: 'https://ci.dev.example.test',
+          path: '/ci',
+          position: 2,
+        },
+        {
+          app: 'qits-docs',
+          label: 'Docs',
+          host: 'docs',
+          origin: 'https://docs.dev.example.test',
+          path: '/docs',
+          position: 1,
+        },
+      ],
+      'libs.details': [
+        {
+          app: 'qits-docs',
+          label: 'Docs',
+          host: 'docs',
+          origin: 'https://docs.dev.example.test',
+          path: '/docs',
+          position: 1,
+        },
+      ],
+      system: githost
+        ? [
+            {
+              app: 'qits-githost',
+              label: 'Githost',
+              host: 'githost',
+              origin: 'https://githost.dev.example.test',
+              path: '/githost',
+              position: 5,
+            },
+          ]
+        : [],
+    },
+  };
+}
+
 /**
  * One repository, at the address the whole platform shares.
  *
  * <p>The three things worth pinning are the three that are composed rather than read. The **clone
- * url** is spelled with the environment origin and the project's slug, never with this host or with
- * the project id. The **cards** are the `<category>.details` slot of the navigation the edge serves,
- * with this page's own scope path appended — so they are the same address on another host, which is
- * the whole contract. And a repository the project does not hold is the ordinary 404, not an empty
- * page pretending the read is still coming.
+ * url** is spelled with the GIT HOST's own origin and the project's slug, never with this host or
+ * with the project id. The **cards** are the `<category>.details` slot of the navigation the edge
+ * serves, with this page's own scope path appended — so they are the same address on another host,
+ * which is the whole contract. And a repository the project does not hold is the ordinary 404, not
+ * an empty page pretending the read is still coming.
  */
 describe('RepositoryPage', () => {
   let http: HttpTestingController;
   let harness: RouterTestingHarness;
 
-  beforeEach(() => {
+  function configure(tree: QitsNavigation): void {
     TestBed.configureTestingModule({
       providers: [
         provideRouter(routes),
@@ -44,44 +98,13 @@ describe('RepositoryPage', () => {
         provideHttpClientTesting(),
         // The page reads the scope, never the route parameters — the platform's rule for every SPA.
         provideQitsScope('repository'),
-        provideQitsNavigationTree({
-          environment: 'dev',
-          origin: 'https://dev.example.test',
-          slots: {
-            'services.details': [
-              {
-                app: 'qits-ci',
-                label: 'CI',
-                host: 'ci',
-                origin: 'https://ci.dev.example.test',
-                path: '/ci',
-                position: 2,
-              },
-              {
-                app: 'qits-docs',
-                label: 'Docs',
-                host: 'docs',
-                origin: 'https://docs.dev.example.test',
-                path: '/docs',
-                position: 1,
-              },
-            ],
-            'libs.details': [
-              {
-                app: 'qits-docs',
-                label: 'Docs',
-                host: 'docs',
-                origin: 'https://docs.dev.example.test',
-                path: '/docs',
-                position: 1,
-              },
-            ],
-          },
-        }),
+        provideQitsNavigationTree(tree),
       ],
     });
     http = TestBed.inject(HttpTestingController);
-  });
+  }
+
+  beforeEach(() => configure(navigation(true)));
 
   async function settle(): Promise<void> {
     for (let round = 0; round < 4; round += 1) {
@@ -147,17 +170,25 @@ describe('RepositoryPage', () => {
   });
 
   /**
-   * The clone url is the environment's own, spelled with the slug.
+   * The clone url names the git host, spelled with the slug.
    *
    * Not this application's host, even though `/git` is path-routed there too: the address a person
-   * is asked to paste is the one every recipe and every wrapper's relative submodule url already
-   * resolves against.
+   * is asked to paste should name the authority that serves it.
    */
-  it('spells the clone url with the environment origin and the project slug', async () => {
+  it('spells the clone url with the git host origin and the project slug', async () => {
+    await open();
+
+    expect(text()).toContain('https://githost.dev.example.test/git/qits/qits-ci.git');
+    expect(text()).not.toContain('/git/p1/');
+  });
+
+  /** A platform naming no git host still gives an address that clones: `/git` answers on every host. */
+  it('falls back to the environment origin when the platform names no git host', async () => {
+    TestBed.resetTestingModule();
+    configure(navigation(false));
     await open();
 
     expect(text()).toContain('https://dev.example.test/git/qits/qits-ci.git');
-    expect(text()).not.toContain('/git/p1/');
   });
 
   /**

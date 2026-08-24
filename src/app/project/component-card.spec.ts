@@ -1,5 +1,7 @@
+import { TestBed } from '@angular/core/testing';
+import { provideQitsNavigationTree, type QitsNavigation } from '@qits/ui-components';
 import type { BackupOutcome, RepositoryDto } from '../api/dto';
-import { backupBadge } from './component-card';
+import { ComponentCard, backupBadge } from './component-card';
 
 /** A row with a backup remote and one attempt against it. */
 function repository(
@@ -74,5 +76,66 @@ describe('backupBadge', () => {
 
   it('still gives a success its instant on hover, with no detail to add', () => {
     expect(backupBadge(repository(attempt('SUCCEEDED')), NOW)?.title).toBe('7 Aug 2026 12:00:00Z');
+  });
+});
+
+/** The platform as the edge states it — with a git host of its own, or naming none at all. */
+function navigation(githost: boolean): QitsNavigation {
+  return {
+    environment: 'dev',
+    origin: 'https://dev.example.test',
+    slots: {
+      system: githost
+        ? [
+            {
+              app: 'qits-githost',
+              label: 'Githost',
+              host: 'githost',
+              origin: 'https://githost.dev.example.test',
+              path: '/githost',
+              position: 5,
+            },
+          ]
+        : [],
+    },
+  };
+}
+
+/**
+ * The clone url, which is the one fact on the card that is composed rather than read off the row.
+ *
+ * It names the git host, because that is the authority serving `/git` now that every service has a
+ * host of its own — and the environment origin only where the platform names no git host at all.
+ */
+describe('ComponentCard clone url', () => {
+  function card(githost: boolean, projectSlug = 'qits'): string {
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({ providers: [provideQitsNavigationTree(navigation(githost))] });
+    const fixture = TestBed.createComponent(ComponentCard);
+    fixture.componentRef.setInput('repository', {
+      id: 'r1',
+      name: 'qits-ci',
+      backupUrl: null,
+      mainBranch: 'main',
+      archetype: 'SERVICE',
+      projectId: 'p1',
+      lastBackup: null,
+    } satisfies RepositoryDto);
+    fixture.componentRef.setInput('projectSlug', projectSlug);
+    fixture.detectChanges();
+    return (fixture.nativeElement as HTMLElement).textContent ?? '';
+  }
+
+  it('spells the clone url with the git host origin and the project slug', () => {
+    expect(card(true)).toContain('https://githost.dev.example.test/git/qits/qits-ci.git');
+  });
+
+  /** A card drawn before the project list answers still has to show an address that works. */
+  it('falls back to the project id for a card drawn without a slug', () => {
+    expect(card(true, '')).toContain('https://githost.dev.example.test/git/p1/qits-ci.git');
+  });
+
+  it('falls back to the environment origin when the platform names no git host', () => {
+    expect(card(false)).toContain('https://dev.example.test/git/qits/qits-ci.git');
   });
 });

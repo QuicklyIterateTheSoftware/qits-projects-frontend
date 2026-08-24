@@ -39,9 +39,9 @@ import { EpicsOverview } from './epics-overview';
  *
  * <p>It is a plain `href` and not a `routerLink`, because qits-workspaces is another Angular
  * application on a host of its own: `workspaces.<env>.<domain>/<slug>/`, which the library composes
- * from the navigation the edge answers. The old `/workspaces/?repository=<id>` is the fallback for
- * an edge that does not name the application yet — the project scope is what the destination reads
- * once it does.
+ * from the navigation the edge answers. An edge that names no workspaces application gives no
+ * address, and the page then draws no link — there is nothing left to guess with, now that every
+ * service has a host of its own.
  */
 @Component({
   selector: 'app-project-page',
@@ -129,17 +129,14 @@ export class ProjectPage {
   /**
    * The workspaces application, scoped to this project — where its wrapper's ad-hoc workspace is.
    *
-   * Null until the components read says the project has a wrapper at all: an application with
-   * nothing to branch is offered no link. The legacy fallback is the pre-host address, which
-   * preselected the wrapper by id because there was no scope to carry.
+   * Null twice over: until the components read says the project has a wrapper at all, because an
+   * application with nothing to branch is offered no link; and where the platform names no
+   * workspaces application, because there is then no address to write.
    */
   protected readonly workspacesUrl = computed(() => {
     const wrapper = this.wrapperRepositoryId();
     if (!wrapper) return null;
-    return (
-      this.appLinks.href('qits-workspaces', '', { project: this.projectSlug() }, '/workspaces/') ??
-      null
-    );
+    return this.appLinks.href('qits-workspaces', '', { project: this.projectSlug() }) ?? null;
   });
 
   constructor() {

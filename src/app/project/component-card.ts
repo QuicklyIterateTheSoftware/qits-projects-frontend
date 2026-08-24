@@ -1,6 +1,6 @@
 import { DOCUMENT } from '@angular/common';
 import { ChangeDetectionStrategy, Component, computed, inject, input } from '@angular/core';
-import { QitsBadge, QitsCard } from '@qits/ui-components';
+import { QitsAppLinks, QitsBadge, QitsCard } from '@qits/ui-components';
 import { normalizeArchetype, type RepositoryDto } from '../api/dto';
 import type { QitsBadgeTone } from '@qits/ui-components';
 import { NONE, cloneUrl, formatInstant, formatRelativeTime, repositoryLabel } from '../ui/format';
@@ -144,6 +144,7 @@ export function backupBadge(
 })
 export class ComponentCard {
   private readonly document = inject(DOCUMENT);
+  private readonly appLinks = inject(QitsAppLinks);
 
   readonly repository = input.required<RepositoryDto>();
 
@@ -163,11 +164,23 @@ export class ComponentCard {
 
   protected readonly archetype = computed(() => normalizeArchetype(this.repository().archetype));
 
-  /** The git host's name-addressed route, built from the browser's own origin. */
+  /**
+   * The git host's name-addressed route, spelled with the git host's own origin.
+   *
+   * The navigation names the authority that serves `/git`, so the address a reader copies is
+   * `githost.<env>.<domain>/git/<slug>/<name>.git`. The environment origin is the fallback for a
+   * platform naming no git host yet, and the browser's own for an app served without the platform
+   * in front of it.
+   */
   protected readonly clone = computed(() => {
     const repository = this.repository();
+    const origin =
+      this.appLinks.origin('qits-githost') ??
+      this.appLinks.environmentOrigin() ??
+      this.document.location?.origin ??
+      '';
     return cloneUrl(
-      this.document.location?.origin ?? '',
+      origin,
       this.projectSlug() || repository.projectId,
       repository.name || repository.id,
     );

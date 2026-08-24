@@ -208,17 +208,21 @@ export class RepositoryPage {
   });
 
   /**
-   * The git host's name-addressed route, spelled with the ENVIRONMENT origin.
+   * The git host's name-addressed route, spelled with the GIT HOST's own origin.
    *
-   * Not this host's: `/git` is path-routed on every vhost, so `projects.<env>…/git/…` would clone
-   * — but the address a person is given to paste should be the environment's own, which is the one
-   * every recipe and every wrapper's relative submodule url already resolves against. The
-   * browser's origin is the fallback for an app served without the platform in front of it.
+   * Not this host's, even though `/git` is path-routed on every vhost: the address a person is
+   * given to paste should name the authority that serves it, which is `githost.<env>.<domain>`.
+   * The environment origin is the fallback for a platform whose navigation names no git host yet,
+   * and the browser's own for an app served without the platform in front of it.
    */
   protected readonly clone = computed(() => {
     const repository = this.repository();
     if (!repository) return '';
-    const origin = this.appLinks.environmentOrigin() ?? this.document.location?.origin ?? '';
+    const origin =
+      this.appLinks.origin('qits-githost') ??
+      this.appLinks.environmentOrigin() ??
+      this.document.location?.origin ??
+      '';
     return cloneUrl(origin, this.param.projectSlug(), repository.name || repository.id);
   });
 
