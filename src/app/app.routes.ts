@@ -5,6 +5,7 @@ import { LandingPage } from './landing/landing-page';
 import { NotFound } from './not-found/not-found';
 import { ProjectPage } from './project/project-page';
 import { ProjectSetupPage } from './project/project-setup-page';
+import { RepositoryApiDocsPage } from './project/repository-api-docs-page';
 import { RepositoryPage } from './project/repository-page';
 import { RefiningPage } from './refining/refining-page';
 
@@ -24,7 +25,7 @@ export const categoryIsKnown: CanMatchFn = (_route, segments) =>
   QITS_CATEGORIES.includes(segments[1]?.path as QitsCategory);
 
 /**
- * Seven routes, all of them inside the platform chrome.
+ * Eight routes, all of them inside the platform chrome.
  *
  * `QitsMainLayout` is the root *route* component rather than something the shell templates, so the
  * bar, the navigation and the project picker hanging under it mount once and survive every
@@ -53,6 +54,11 @@ export const categoryIsKnown: CanMatchFn = (_route, segments) =>
  * it from swallowing every three-segment address; the literal routes above it win regardless,
  * because Angular matches in order.
  *
+ * <p><b>`:project/:category/:repository/api-docs` is a view of that repository</b> — the address
+ * this application's own `services.details.Api Docs:6=api-docs` navigation entry composes. Same
+ * guard, for the same reason: the fourth segment does not make `/qits/epics/planning/api-docs` a
+ * repository.
+ *
  * <p><b>The refining route names an epic and never a workspace.</b>
  * `:project/epics/:epicSlug/refining` is where an epic is worked out, and the workspace behind it is
  * *looked up* — the ACTIVE workspace on `refining/<epicSlug>` in the project's wrapper repository.
@@ -68,7 +74,7 @@ export const categoryIsKnown: CanMatchFn = (_route, segments) =>
  * epic's workspace. Keeping the tab in the query string leaves the path meaning "which epic", makes a
  * bare URL mean "no tab pinned" by simple absence, and keeps every tab a shareable link.
  *
- * <p>All seven load eagerly. There are seven of them, they share every component below them, and a
+ * <p>All eight load eagerly. There are eight of them, they share every component below them, and a
  * lazy chunk boundary here would be ceremony that costs a round trip.
  *
  * <p>The `**` route sits *inside* the layout: this application is served at the root of its own
@@ -88,6 +94,11 @@ export const routes: Routes = [
         path: ':project/:category/:repository',
         canMatch: [categoryIsKnown],
         component: RepositoryPage,
+      },
+      {
+        path: ':project/:category/:repository/api-docs',
+        canMatch: [categoryIsKnown],
+        component: RepositoryApiDocsPage,
       },
       { path: '**', component: NotFound },
     ],

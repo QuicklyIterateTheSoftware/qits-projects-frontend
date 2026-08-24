@@ -240,7 +240,9 @@ export class RepositoryPage {
       const slot: QitsNavSlot = `${scope.category}.details`;
       return this.appLinks
         .entries(slot)
-        .map((entry) => ({ entry, href: this.appLinks.href(entry.app, '', scope) }))
+        // The entry's subpath is the view it opens — '' is the application's root, so the cards
+        // and the sidebar's rows stay the same URL.
+        .map((entry) => ({ entry, href: this.appLinks.href(entry.app, entry.subpath, scope) }))
         .filter((card): card is { entry: QitsNavEntry; href: string } => card.href !== undefined);
     },
   );
