@@ -4,7 +4,7 @@ import { provideLocationMocks } from '@angular/common/testing';
 import { TestBed } from '@angular/core/testing';
 import { Router, provideRouter } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
-import { provideQitsNavigationTree } from '@qits/ui-components';
+import { provideQitsNavigationTree, type QitsNavigation } from '@qits/ui-components';
 import { routes } from '../app.routes';
 import { EVENT_SOURCE_FACTORY, type EventSourceFactory } from '../api/event-source';
 
@@ -41,22 +41,18 @@ describe('ProjectPage', () => {
   let http: HttpTestingController;
   let harness: RouterTestingHarness;
 
-  beforeEach(() => {
-    TestBed.configureTestingModule({
-      providers: [
-        provideRouter(routes),
-        provideLocationMocks(),
-        provideHttpClient(),
-        provideHttpClientTesting(),
-        { provide: EVENT_SOURCE_FACTORY, useValue: SILENT },
-        // The workspaces link is composed from the platform's own navigation now, so a spec that
-        // asserts it has to say what the platform serves. One entry, in the slot qits-workspaces
-        // really occupies.
-        provideQitsNavigationTree({
-          environment: 'dev',
-          origin: 'https://dev.example.test',
-          slots: {
-            'project.detail': [
+  /**
+   * The platform as the edge states it. The workspaces link is composed from this now, so a spec
+   * that asserts it has to say what the platform serves — one entry, in the slot qits-workspaces
+   * really occupies, or no entry at all.
+   */
+  function navigation(workspaces: boolean): QitsNavigation {
+    return {
+      environment: 'dev',
+      origin: 'https://dev.example.test',
+      slots: {
+        'project.detail': workspaces
+          ? [
               {
                 app: 'qits-workspaces',
                 label: 'Workspaces',
@@ -65,13 +61,27 @@ describe('ProjectPage', () => {
                 path: '/workspaces',
                 position: 1,
               },
-            ],
-          },
-        }),
+            ]
+          : [],
+      },
+    };
+  }
+
+  function configure(tree: QitsNavigation): void {
+    TestBed.configureTestingModule({
+      providers: [
+        provideRouter(routes),
+        provideLocationMocks(),
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        { provide: EVENT_SOURCE_FACTORY, useValue: SILENT },
+        provideQitsNavigationTree(tree),
       ],
     });
     http = TestBed.inject(HttpTestingController);
-  });
+  }
+
+  beforeEach(() => configure(navigation(true)));
 
   async function open(url = '/p1'): Promise<void> {
     harness = await RouterTestingHarness.create(url);
@@ -228,6 +238,24 @@ describe('ProjectPage', () => {
 
     expect(page().querySelector('a.adhoc')).toBeNull();
     // The other action is untouched by it.
+    expect(page().querySelector('a.setup')).not.toBeNull();
+  });
+
+  /**
+   * A platform naming no workspaces application gives no address, and the page draws no link.
+   *
+   * There is nothing left to guess with: every service is on a host of its own, so the old
+   * `/workspaces/` segment under the environment origin is not an address any more.
+   */
+  it('offers no ad-hoc workspace when the platform names no workspaces application', async () => {
+    TestBed.resetTestingModule();
+    configure(navigation(false));
+    await openResolved();
+    flushEpics();
+    flushComponents('qits-qits');
+    await settle();
+
+    expect(page().querySelector('a.adhoc')).toBeNull();
     expect(page().querySelector('a.setup')).not.toBeNull();
   });
 

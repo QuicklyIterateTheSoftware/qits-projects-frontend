@@ -103,9 +103,11 @@ export function repositoryLabel(
  *
  * It was `/artifacts/git/…` until the byte-plane split moved the git host out of qits-artifacts
  * into a service of its own: a repository is not an artifact, it only shared the storage layout.
- * The gateway routes `/git/*` to it verbatim, so this is the address a reader can paste.
  *
- * `origin` is the browser's own, so the address is the one the reader is already talking to.
+ * @param origin the git host's **own** origin, so the address reads
+ *   `githost.<domain>/git/<slug>/<name>.git`. Every service has a host of its own now, so the
+ *   apex spelling is no longer the platform's address for anything — the caller asks the
+ *   navigation for `qits-githost` and passes what it answers.
  *
  * @param project the project segment, which is the project's **slug**: `/git/qits/qits-ci` is what
  *   a person is given to clone. qits-projects resolves the segment by id first and then by slug, so
