@@ -81,13 +81,13 @@ describe('RepositoryApiDocsPage', () => {
     await open();
 
     const frame = page().querySelector<HTMLIFrameElement>('iframe.docs');
-    // The environment origin on purpose: /<seg>/q/… is served there before, during and after a
-    // host flip — never this application's own host.
-    expect(frame?.getAttribute('src')).toBe('https://dev.example.test/ci/q/swagger-ui');
+    // The service's own origin: the path is one of its routes, and the environment door serves
+    // no path at all.
+    expect(frame?.getAttribute('src')).toBe('https://ci.dev.example.test/ci/q/swagger-ui');
     expect(frame?.getAttribute('title')).toContain('qits-ci');
     // The escape hatch is the same URL, outside the frame.
     const escape = page().querySelector<HTMLAnchorElement>('a.open');
-    expect(escape?.getAttribute('href')).toBe('https://dev.example.test/ci/q/swagger-ui');
+    expect(escape?.getAttribute('href')).toBe('https://ci.dev.example.test/ci/q/swagger-ui');
     expect(escape?.getAttribute('target')).toBe('_blank');
   });
 
