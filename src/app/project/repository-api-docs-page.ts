@@ -8,10 +8,9 @@ import { QITS_NAVIGATION, QITS_SCOPE, QitsAppLinks } from '@qits/ui-components';
  *
  * <p><b>The repository name IS the application name</b> (the repository `qits-ci` deploys the
  * application `qits-ci`), so the lookup is one read of the navigation's per-application metadata:
- * `apiDocsUrl(scope().repository)`. The URL it answers is the environment origin plus the path the
- * service declared (`api-docs:` in its deployments.yml) — the environment vhost serves every
- * application's routes and `/<seg>/q/…` never moves off it, so the address holds before, during
- * and after a host flip.
+ * `apiDocsUrl(scope().repository)`. The URL it answers is the service's own origin plus the path
+ * the service declared (`api-docs:` in its deployments.yml) — one of its own routes, served by its
+ * own host. The environment door serves no path.
  *
  * <p>The document is an `<iframe>` because swagger-ui is a whole page of its own — its styles, its
  * try-it-out forms, its deep links — and it knows nothing about platform scope; this page is the
@@ -112,7 +111,7 @@ export class RepositoryApiDocsPage {
    * `bypassSecurityTrustResourceUrl` returns a new object every call, an unequal `[src]` reloads
    * the frame, so the wrapper must only run when the string actually changes.
    *
-   * <p>The bypass is safe here: the URL is the environment origin the platform itself served in
+   * <p>The bypass is safe here: the URL is an origin the platform itself served in
    * `/main-navigation`, plus a path the deployment pipeline validated against the service's own
    * published routes.
    */
