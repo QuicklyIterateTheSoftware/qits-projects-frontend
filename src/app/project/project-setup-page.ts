@@ -17,13 +17,16 @@ import {
 import { ProjectsApi, type ProjectComponents } from '../api/projects-api';
 import { ProjectParam } from '../nav/project-param';
 import { Async } from '../ui/async';
-import { LOADING, failed, ready, type Loadable } from '../ui/loadable';
+import { LOADING, describeError, failed, ready, type Loadable } from '../ui/loadable';
 import { BackupPanel } from './backup-panel';
 import { ComponentCard } from './component-card';
 import { ProjectRepositoryStatus } from './project-repository-status';
 
 /** The bucket for anything the six groups do not name — visible, and never a "New" affordance. */
 export const OTHER_GROUP = 'OTHER';
+
+/** What "no row is undeclared" is, before the first answer arrives. */
+const EMPTY: ReadonlySet<string> = new Set<string>();
 
 /** One heading on the setup page and the repositories under it. */
 export interface ComponentGroup {
@@ -126,6 +129,18 @@ export class ProjectSetupPage {
     return state.kind === 'ready' ? state.value.repositories : [];
   });
 
+  /**
+   * The ids of the rows no wrapper entry names — the server's own verdict, carried as it came.
+   *
+   * The page does not recompute it from {@link wrapper}. The panel above does compare the two, but
+   * that comparison drives a summary sentence; this drives a delete button, and a button that
+   * deleted a repository on a rule this client guessed at is a different class of mistake.
+   */
+  protected readonly undeclared = computed<ReadonlySet<string>>(() => {
+    const state = this.components();
+    return state.kind === 'ready' ? state.value.undeclared : EMPTY;
+  });
+
   protected readonly wrapper = computed<WrapperDto | null>(() => {
     const state = this.components();
     return state.kind === 'ready' ? state.value.wrapper : null;
@@ -135,6 +150,12 @@ export class ProjectSetupPage {
 
   /** True once there is an answer, so the groups are only drawn over real data. */
   protected readonly loaded = computed(() => this.components().kind === 'ready');
+
+  /** Which repository's delete is in flight, or null. One at a time; it is a rare, heavy move. */
+  protected readonly deleting = signal<string | null>(null);
+
+  /** The last delete failure, and which card it belongs on. */
+  protected readonly deleteFailure = signal<{ id: string; message: string } | null>(null);
 
   constructor() {
     effect(() => {
@@ -148,6 +169,8 @@ export class ProjectSetupPage {
   /** Read the components, blanking what is on screen first — arrival, a project hop, a retry. */
   protected async load(projectId = this.projectId()): Promise<void> {
     this.components.set(LOADING);
+    // A failure belongs to the list it was reported against, so a hop or a retry retires it.
+    this.deleteFailure.set(null);
     await this.read(projectId);
   }
 
@@ -161,6 +184,32 @@ export class ProjectSetupPage {
    */
   protected refresh(): Promise<void> {
     return this.read(this.projectId());
+  }
+
+  /** Why this card's delete failed, or null — so a failure sits on the row it is about. */
+  protected deleteMessage(repositoryId: string): string | null {
+    const failure = this.deleteFailure();
+    return failure && failure.id === repositoryId ? failure.message : null;
+  }
+
+  /**
+   * Delete one repository, then read the list again.
+   *
+   * The re-read is the whole point of doing this here rather than in the card: the row is gone on
+   * the server and the groups, the drift sentence and the backup summary are all drawn from the
+   * same answer. Splicing it out locally would leave four things agreeing with a guess.
+   */
+  protected async remove(repositoryId: string): Promise<void> {
+    this.deleting.set(repositoryId);
+    this.deleteFailure.set(null);
+    try {
+      await this.api.deleteRepository(repositoryId);
+      await this.refresh();
+    } catch (error) {
+      this.deleteFailure.set({ id: repositoryId, message: describeError(error) });
+    } finally {
+      this.deleting.set(null);
+    }
   }
 
   private async read(projectId: string): Promise<void> {

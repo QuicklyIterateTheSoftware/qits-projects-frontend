@@ -24,9 +24,16 @@ import type {
   WrapperReconcileResponse,
 } from './dto';
 
-/** One project's components, and the wrapper they are supposed to agree with, from one read. */
+/**
+ * One project's components, and the wrapper they are supposed to agree with, from one read.
+ *
+ * `undeclared` holds the ids of the rows no wrapper entry names — the server's own answer, kept as
+ * a set beside the rows rather than folded into them, so `RepositoryDto` stays what the service
+ * sends and every reader that does not care about membership is untouched.
+ */
 export interface ProjectComponents {
   readonly repositories: readonly RepositoryDto[];
+  readonly undeclared: ReadonlySet<string>;
   readonly wrapper: WrapperDto | null;
 }
 
@@ -72,6 +79,9 @@ export class ProjectsApi {
     );
     return {
       repositories: response.entries.map((entry) => entry.repository),
+      undeclared: new Set(
+        response.entries.filter((entry) => !entry.declared).map((entry) => entry.repository.id),
+      ),
       wrapper: response.wrapper ?? null,
     };
   }
@@ -96,7 +106,7 @@ export class ProjectsApi {
   }
 
   /**
-   * Make the rows match the wrapper: adopt, clone, re-classify, deregister.
+   * Make the rows match the wrapper: adopt, clone, re-classify, report the undeclared.
    *
    * Distinct from {@link reconcileDomain} and deliberately a different path — one reconciles the
    * project's components against its own configuration, the other re-asserts a dns record.
@@ -204,6 +214,25 @@ export class ProjectsApi {
       ),
     );
     return response.entries.map((entry) => entry.task);
+  }
+
+  /**
+   * Delete a repository: the row **and** the repository on the git host, both gone.
+   *
+   * <p>This is the way out of the one state the reconcile now only reports — a row no wrapper entry
+   * names. It is the reader's decision because the two cures are opposite: put the entry back in
+   * the wrapper, or delete the repository. Only somebody who knows why the entry left can choose.
+   *
+   * <p>The answer's body says `success`, which adds nothing a 200 has not already said, so it is
+   * dropped. The caller re-reads the list instead of splicing the row out, for the same reason
+   * creation does: the server's list is the truth about membership and this client's is a copy.
+   */
+  async deleteRepository(repositoryId: string): Promise<void> {
+    await firstValueFrom(
+      this.http.delete<unknown>(
+        `${this.base}/projects/api/repositories/${encodeURIComponent(repositoryId)}`,
+      ),
+    );
   }
 
   /** One repository's main branch against its remote, measured without fetching objects. */

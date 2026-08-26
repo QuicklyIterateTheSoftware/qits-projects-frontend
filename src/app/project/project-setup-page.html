@@ -46,7 +46,14 @@
       } @else {
         <div class="cards">
           @for (repository of group.repositories; track repository.id) {
-            <app-component-card [repository]="repository" [projectSlug]="projectSlug()" />
+            <app-component-card
+              [repository]="repository"
+              [projectSlug]="projectSlug()"
+              [declared]="!undeclared().has(repository.id)"
+              [deleting]="deleting() === repository.id"
+              [error]="deleteMessage(repository.id)"
+              (deleteRequested)="remove(repository.id)"
+            />
           }
         </div>
       }

@@ -149,13 +149,22 @@ describe('ProjectSetupPage', () => {
     await settle();
   }
 
+  /**
+   * The components read. `undeclared` names the rows the server says no wrapper entry resolves to —
+   * a per-entry flag on the wire, and the only thing that puts a delete button on a card.
+   */
   function flushComponents(
     repositories: readonly RepositoryDto[],
     wrapper: WrapperDto | null = WRAPPER,
+    undeclared: readonly string[] = [],
   ): void {
-    http
-      .expectOne('/projects/api/projects/p1/repositories')
-      .flush({ entries: repositories.map((entry) => ({ repository: entry })), wrapper });
+    http.expectOne('/projects/api/projects/p1/repositories').flush({
+      entries: repositories.map((row) => ({
+        repository: row,
+        declared: !undeclared.includes(row.id),
+      })),
+      wrapper,
+    });
   }
 
   function flushSync(status: SyncStatusDto = IN_SYNC): void {
@@ -177,11 +186,12 @@ describe('ProjectSetupPage', () => {
   async function load(
     repositories: readonly RepositoryDto[],
     wrapper: WrapperDto | null = WRAPPER,
+    undeclared: readonly string[] = [],
   ): Promise<void> {
     flushProjects();
     // Nothing else can be asked for until the list has answered: the id is not in the address.
     await settle();
-    flushComponents(repositories, wrapper);
+    flushComponents(repositories, wrapper, undeclared);
     await settle();
     if (wrapper) {
       flushSync();
@@ -403,8 +413,8 @@ describe('ProjectSetupPage', () => {
     expect(line?.querySelector('.warning')?.textContent).toContain('component directories');
   });
 
-  /** No entry named it, which is why its row went — so there is no path to report it under. */
-  it('reports a deregistration by its alias, because it has no wrapper path', async () => {
+  /** No entry names it, which is what the line reports — so there is no path to report it under. */
+  it('reports an undeclared row by its alias, because it has no wrapper path', async () => {
     await open();
     await load([repository('qits-ci', 'SERVICE')]);
 
@@ -418,18 +428,89 @@ describe('ProjectSetupPage', () => {
           path: null,
           name: 'testing-repo',
           repositoryId: 'r9',
-          outcome: 'DEREGISTERED',
+          outcome: 'UNDECLARED',
+          warning:
+            'No wrapper entry names this repository, so it is not part of the project. Delete it' +
+            ' from the project setup page, or add the entry back to the wrapper.',
         }),
       ],
     });
     await settle();
-    flushComponents([]);
+    // The row is still there: the reconcile reports it and deletes nothing.
+    flushComponents([repository('testing-repo', 'SERVICE')], WRAPPER, ['testing-repo']);
     await settle();
 
     const line = page().querySelector('.outcomes li');
     expect(line?.textContent).toContain('testing-repo');
-    expect(line?.textContent).toContain('DEREGISTERED');
+    expect(line?.textContent).toContain('UNDECLARED');
     expect(line?.textContent).not.toContain('null');
+    expect(line?.querySelector('.warning')?.textContent).toContain('add the entry back');
+  });
+
+  /**
+   * The one row a reader has to decide about, and the two facts the card owes them: that the
+   * project's configuration does not name it, and what the move out of that state is.
+   */
+  it('badges an undeclared row and offers to delete it, and neither on a declared one', async () => {
+    await open();
+    await load([repository('qits-ci', 'SERVICE'), repository('testing-repo', 'SERVICE')], WRAPPER, [
+      'testing-repo',
+    ]);
+
+    const cards = Array.from(page().querySelectorAll('app-component-card'));
+    const stray = cards.find((card) => (card.textContent ?? '').includes('testing-repo'));
+    expect(stray?.textContent).toContain('not in wrapper');
+    expect(stray?.querySelector('button')?.textContent).toContain('Delete');
+
+    const member = cards.find((card) => (card.textContent ?? '').includes('qits-ci'));
+    expect(member?.textContent).not.toContain('not in wrapper');
+    expect(member?.querySelector('button')).toBeNull();
+  });
+
+  /**
+   * A delete takes the repository off the git host too, so it is asked twice — and the first press
+   * is the question alone. The row goes because the list was read again, not because the card
+   * removed itself.
+   */
+  it('asks a second time, then deletes the repository and re-reads the list', async () => {
+    await open();
+    await load([repository('testing-repo', 'SERVICE')], WRAPPER, ['testing-repo']);
+
+    await click('Delete');
+    expect(text()).toContain('Confirm delete?');
+    http.verify();
+
+    await click('Confirm delete?');
+    const request = http.expectOne('/projects/api/repositories/testing-repo');
+    expect(request.request.method).toBe('DELETE');
+    request.flush({ success: true });
+    await settle();
+
+    flushComponents([]);
+    await settle();
+
+    expect(text()).not.toContain('testing-repo');
+    http.verify();
+  });
+
+  /** A delete that failed leaves the row standing and says why, on the card it is about. */
+  it('reports a failed delete on the card and keeps the row', async () => {
+    await open();
+    await load([repository('testing-repo', 'SERVICE')], WRAPPER, ['testing-repo']);
+
+    await click('Delete');
+    await click('Confirm delete?');
+    http
+      .expectOne('/projects/api/repositories/testing-repo')
+      .flush({ message: 'the git host refused' }, { status: 409, statusText: 'Conflict' });
+    await settle();
+
+    const card = page().querySelector('app-component-card');
+    expect(card?.textContent).toContain(
+      'Could not delete this repository — 409 the git host refused',
+    );
+    expect(card?.textContent).toContain('testing-repo');
+    http.verify();
   });
 
   /** An empty .gitmodules is answered with one line about nothing, and it must still read. */

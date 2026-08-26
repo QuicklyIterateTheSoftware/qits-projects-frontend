@@ -1,6 +1,14 @@
 import { DOCUMENT } from '@angular/common';
-import { ChangeDetectionStrategy, Component, computed, inject, input } from '@angular/core';
-import { QitsAppLinks, QitsBadge, QitsCard } from '@qits/ui-components';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  computed,
+  inject,
+  input,
+  output,
+  signal,
+} from '@angular/core';
+import { QitsAppLinks, QitsBadge, QitsButton, QitsCard } from '@qits/ui-components';
 import { normalizeArchetype, type RepositoryDto } from '../api/dto';
 import type { QitsBadgeTone } from '@qits/ui-components';
 import { NONE, cloneUrl, formatInstant, formatRelativeTime, repositoryLabel } from '../ui/format';
@@ -74,22 +82,43 @@ export function backupBadge(
  * card that looked clickable would be a promise this build cannot keep — and a dead link is worse
  * than no link. The urls are text for the same reason: a git address is not something a browser tab
  * can usefully open.
+ *
+ * <p><b>One action, and only on a card the project's configuration does not name.</b> A repository
+ * the wrapper declares is a member, and there is nothing to decide about it here. A row nothing
+ * declares is the reader's decision — put the entry back, or delete the repository — so that card
+ * carries the badge that states the problem and the button that is one of the two ways out.
+ *
+ * <p>The button asks twice and requests nothing. **Twice**, because a delete takes the repository
+ * off the git host as well as the row, and once is a stray click; the second press is asked for in
+ * the label rather than in a dialog, which is how every destructive move in this app asks. And
+ * **nothing**, because the page owns the read this delete invalidates: it makes the request, holds
+ * the busy state and the failure, and reads the list again.
  */
 @Component({
   selector: 'app-component-card',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [QitsBadge, QitsCard],
+  imports: [QitsBadge, QitsButton, QitsCard],
   template: `
     <qits-card>
       <div class="head">
         <span class="name">{{ label() }}</span>
         <span class="badges">
+          @if (!declared()) {
+            <span title="No wrapper entry names this repository, so it is not part of the project."
+              ><qits-badge label="not in wrapper" tone="warning"
+            /></span>
+          }
           @if (backupState(); as backup) {
             <span [title]="backup.title"
               ><qits-badge [label]="backup.label" [tone]="backup.tone"
             /></span>
           }
           <qits-badge [label]="archetype()" tone="neutral" />
+          @if (!declared()) {
+            <qits-button variant="ghost" size="sm" [busy]="deleting()" (pressed)="press()">
+              {{ pending() ? 'Confirm delete?' : 'Delete' }}
+            </qits-button>
+          }
         </span>
       </div>
       <dl class="facts">
@@ -100,6 +129,9 @@ export function backupBadge(
         <dt>Main branch</dt>
         <dd>{{ repository().mainBranch || none }}</dd>
       </dl>
+      @if (error(); as message) {
+        <p class="failed" role="alert">Could not delete this repository — {{ message }}.</p>
+      }
     </qits-card>
   `,
   styles: `
@@ -140,6 +172,11 @@ export function backupBadge(
     .url {
       font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
     }
+    .failed {
+      margin: 0.5rem 0 0;
+      color: #b91c1c;
+      font-size: 0.85rem;
+    }
   `,
 })
 export class ComponentCard {
@@ -158,7 +195,25 @@ export class ComponentCard {
    */
   readonly projectSlug = input<string>('');
 
+  /**
+   * Whether a wrapper entry names this repository. **True by default**, because that is what every
+   * ordinary card is and a card told nothing should accuse nobody.
+   */
+  readonly declared = input(true);
+
+  /** True while the page's delete for this repository is in flight. */
+  readonly deleting = input(false);
+
+  /** Why the last delete failed — the server's own sentence, on the card it is about. */
+  readonly error = input<string | null>(null);
+
+  /** A delete the reader has now asked for twice. The page makes the request. */
+  readonly deleteRequested = output<void>();
+
   protected readonly none = NONE;
+
+  /** True once Delete has been pressed once, so the next press is the confirmed one. */
+  protected readonly pending = signal(false);
 
   protected readonly label = computed(() => repositoryLabel(this.repository()));
 
@@ -191,4 +246,13 @@ export class ComponentCard {
 
   /** How the last backup went, or null for a repository nobody asked to back up. */
   protected readonly backupState = computed(() => backupBadge(this.repository()));
+
+  protected press(): void {
+    if (!this.pending()) {
+      this.pending.set(true);
+      return;
+    }
+    this.pending.set(false);
+    this.deleteRequested.emit();
+  }
 }
