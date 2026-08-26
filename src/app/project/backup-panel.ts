@@ -32,8 +32,9 @@ export const BACKUP_REFRESH_DELAY_MS = 3000;
  * credential store the platform pushes with is shared, so the failure these controls exist for —
  * `AUTH_REQUIRED` — is never one repository's problem: it is the whole project's, and one sign-in
  * clears all of it. A per-row sync button would be a second way to do the same thing on a smaller
- * scale, and it would put an action on `ComponentCard`, which is presentational and has no reason
- * to hold a request. The per-repository endpoint exists on the server; nothing here needs it yet.
+ * scale, and `ComponentCard` carries exactly one action — the delete a repository nothing declares
+ * needs, which has no project-wide form. The per-repository sync endpoint exists on the server;
+ * nothing here needs it yet.
  *
  * <p>The sign-in runs against the **project repository**, because that is the one repository every
  * project has. What it authenticates is the host, not the repository — so any of them would do.

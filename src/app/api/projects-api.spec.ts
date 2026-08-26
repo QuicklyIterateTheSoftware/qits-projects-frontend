@@ -48,6 +48,7 @@ describe('ProjectsApi', () => {
             archetype: 'SERVICE',
             projectId: 'p1',
           },
+          declared: true,
         },
       ],
       wrapper: {
@@ -63,11 +64,44 @@ describe('ProjectsApi', () => {
     });
   });
 
+  /**
+   * Membership is per entry on the wire and a set of ids here, so the page can ask about one row
+   * without walking the wrapper — and it is the server's verdict, kept rather than recomputed.
+   */
+  it('collects the undeclared rows by id', async () => {
+    const components = api.components('p1');
+    http.expectOne('/projects/api/projects/p1/repositories').flush({
+      entries: [
+        { repository: { id: 'r1', name: 'qits-ci' }, declared: true },
+        { repository: { id: 'r9', name: 'testing-repo' }, declared: false },
+      ],
+      wrapper: null,
+    });
+
+    await expect(components.then((answer) => [...answer.undeclared])).resolves.toEqual(['r9']);
+  });
+
   /** A project with no wrapper is a project that cannot be reconciled, so the null survives. */
   it('keeps a missing wrapper as null rather than an empty one', async () => {
     const components = api.components('p1');
     http.expectOne('/projects/api/projects/p1/repositories').flush({ entries: [], wrapper: null });
-    await expect(components).resolves.toEqual({ repositories: [], wrapper: null });
+    await expect(components).resolves.toEqual({
+      repositories: [],
+      undeclared: new Set(),
+      wrapper: null,
+    });
+  });
+
+  /**
+   * The delete takes the row and the repository on the git host. The body says `success`, which a
+   * 200 already said, so the client resolves with nothing rather than passing an echo upwards.
+   */
+  it('deletes a repository by id', async () => {
+    const deleted = api.deleteRepository('r9');
+    const request = http.expectOne('/projects/api/repositories/r9');
+    expect(request.request.method).toBe('DELETE');
+    request.flush({ success: true });
+    await expect(deleted).resolves.toBeUndefined();
   });
 
   it('replaces a refining epic description', async () => {
@@ -177,8 +211,8 @@ describe('ProjectsApi', () => {
     });
   });
 
-  /** A deregistration is a line about a row, not about a path, so it carries no path at all. */
-  it('keeps a deregistration’s null path rather than inventing one', async () => {
+  /** An undeclared row is a line about a row, not about a path, so it carries no path at all. */
+  it('keeps an undeclared line’s null path rather than inventing one', async () => {
     const reconciled = api.reconcileRepositories('p1');
     http.expectOne('/projects/api/projects/p1/repositories/reconcile').flush({
       projectId: 'p1',
@@ -190,14 +224,14 @@ describe('ProjectsApi', () => {
           name: 'testing-repo',
           repositoryId: 'r9',
           archetype: 'SERVICE',
-          outcome: 'DEREGISTERED',
+          outcome: 'UNDECLARED',
           warning: null,
         },
       ],
     });
 
     await expect(reconciled).resolves.toMatchObject({
-      entries: [{ path: null, name: 'testing-repo', outcome: 'DEREGISTERED' }],
+      entries: [{ path: null, name: 'testing-repo', outcome: 'UNDECLARED' }],
     });
   });
 

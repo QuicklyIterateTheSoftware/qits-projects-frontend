@@ -246,9 +246,21 @@ export interface ProjectEntriesResponse {
   readonly entries: readonly { readonly project: ProjectDto }[];
 }
 
-/** The same envelope one level down, plus the wrapper the rows are supposed to agree with. */
+/**
+ * The same envelope one level down, plus the wrapper the rows are supposed to agree with.
+ *
+ * <p>`declared` is false for exactly one state: a **component row no wrapper entry names**. That is
+ * the row the reader has to decide about — the row says it belongs to the project and the project's
+ * configuration does not. Everything else is true, including the wrapper itself, an archetype no
+ * component directory takes, and every row in a project whose wrapper is missing or empty, because
+ * none of those is a disagreement anybody can act on.
+ *
+ * <p>The flag is the server's answer, not a hint: it resolves an entry to a row by id and then by
+ * name, the same order the reconcile does. A client recomputing it from `wrapper` would be a second
+ * implementation of that rule, free to disagree with the one that matters.
+ */
 export interface RepositoryEntriesResponse {
-  readonly entries: readonly { readonly repository: RepositoryDto }[];
+  readonly entries: readonly { readonly repository: RepositoryDto; readonly declared: boolean }[];
   readonly wrapper: WrapperDto | null;
 }
 
@@ -299,6 +311,11 @@ export interface CreateRepositoryResponse {
  * platform pushes its backup to. It is a sibling of `ARCHETYPE_UPDATED` — both are "kept, but one
  * field of it is now right" — and it is the outcome that heals rows whose backup url was never
  * recorded.
+ *
+ * `UNDECLARED` is a **report, and nothing more**. The reconcile used to delete such a row; it does
+ * not, because only a reader can tell a repository dropped from the wrapper by mistake from one
+ * that should go, and the reconcile guessed wrong in the direction that loses work. Deleting it is
+ * a button on its own card now.
  */
 export type ReconcileOutcome =
   | 'CREATED'
@@ -306,7 +323,7 @@ export type ReconcileOutcome =
   | 'KEPT'
   | 'ARCHETYPE_UPDATED'
   | 'SYNC_TARGET_UPDATED'
-  | 'DEREGISTERED'
+  | 'UNDECLARED'
   | 'SKIPPED';
 
 /**
@@ -316,11 +333,11 @@ export type ReconcileOutcome =
  * path would print `null` on two of them:
  *
  * - a wrapper entry: `path` is `<directory>/<name>`, `name` is what `../<name>.git` resolves to;
- * - a **deregistration**: no entry named it, so there is no path — `name` is the row's alias and
- *   `repositoryId` the row that is now gone (its repository on the git host is not);
+ * - an **undeclared row**: no entry named it, so there is no path — `name` is the row's alias and
+ *   `repositoryId` the row that is still there, reported rather than removed;
  * - the **empty-manifest** answer: a wrapper declaring no submodules is answered with a single
- *   `SKIPPED` line carrying neither path nor name, because deregistering every component on the
- *   strength of a file that is not there would delete the project's contents.
+ *   `SKIPPED` line carrying neither path nor name, because calling every component undeclared on
+ *   the strength of a file that is not there would report the whole project as drift.
  *
  * `warning` is why an outcome is what it is, when the outcome does not say it — and it rides
  * **per entry**. There is no list of warnings beside the entries: a warning belongs to the line it

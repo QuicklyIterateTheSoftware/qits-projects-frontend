@@ -86,11 +86,15 @@ export function wrapperDrift(
  * which of the two states the project is in, and the button is the way out of the second.
  *
  * <p>Two reconciles, deliberately kept apart and drawn at different weights. "Reconcile from
- * project repository" rewrites rows — it can create, adopt, re-classify and **deregister** — so it
- * is the primary action and it reports every path it touched. "Re-assert DNS" pushes one record
- * through the domain-registrar port and changes nothing here, so it is a small secondary action;
- * folding the two into one button would make a routine dns nudge also delete rows. (Nothing
+ * project repository" rewrites rows — it can create, adopt and re-classify — so it is the primary
+ * action and it reports every path it touched. "Re-assert DNS" pushes one record through the
+ * domain-registrar port and changes nothing here, so it is a small secondary action. (Nothing
  * implements that port since qits-platform-dns left the platform, so it reports FAILED today.)
+ *
+ * <p><b>Neither of them deletes anything.</b> A row the wrapper does not name comes back
+ * `UNDECLARED` — reported and left standing — and the delete is a button on that row's own card,
+ * because only the reader can say whether the missing wrapper entry or the repository is the
+ * mistake. That is also why the drift list names the strays: they are the cards to go and look at.
  */
 @Component({
   selector: 'app-project-repository-status',
@@ -130,6 +134,9 @@ export function wrapperDrift(
               @for (stray of drift.strays; track stray.id) {
                 <code>{{ stray.name || stray.id }}</code>
               }
+              <span class="hint"
+                >Add each to <code>.gitmodules</code>, or delete it from its card below.</span
+              >
             </p>
           }
         }
@@ -226,6 +233,13 @@ export function wrapperDrift(
     }
     .drift code {
       margin-right: 0.4rem;
+    }
+    .hint {
+      display: block;
+      color: #6b7280;
+    }
+    .hint code {
+      margin: 0;
     }
     .actions {
       display: flex;
@@ -328,8 +342,8 @@ export class ProjectRepositoryStatus {
   /**
    * What one line of the report is about, given that a line need not be about a path.
    *
-   * A deregistration has no wrapper path — no entry named it, which is the whole reason its row
-   * went — so it is reported by the alias it was registered under. The empty-manifest answer has
+   * An undeclared row has no wrapper path — no entry named it, which is the whole reason it is
+   * reported — so it is named by the alias it was registered under. The empty-manifest answer has
    * neither, and naming the wrapper is the only true thing left to say about it.
    */
   protected entryLabel(entry: ReconcileEntryDto): string {
