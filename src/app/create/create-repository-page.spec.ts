@@ -94,6 +94,17 @@ describe('CreateRepositoryPage', () => {
     await settle();
   }
 
+  /** The component field, which sits below the name or url and is optional in both modes. */
+  async function typeComponent(value: string): Promise<void> {
+    const input = page().querySelector<HTMLInputElement>('input.component');
+    expect(input).toBeTruthy();
+    if (input) {
+      input.value = value;
+      input.dispatchEvent(new Event('input'));
+    }
+    await settle();
+  }
+
   async function press(label: string): Promise<void> {
     const target = Array.from(page().querySelectorAll('button')).find((button) =>
       (button.textContent ?? '').includes(label),
@@ -191,6 +202,65 @@ describe('CreateRepositoryPage', () => {
     http.expectOne('/projects/api/projects/p1/epics').flush({ entries: [] });
     http.expectOne('/projects/api/projects/p1/repositories').flush({ entries: [], wrapper: null });
     await settle();
+    http.verify();
+  });
+
+  /**
+   * A stated component decides the destination outright, whatever the type says — which is what
+   * makes this field the way a project in the archetype layout starts its flip.
+   */
+  it('previews the component layout as soon as a component is named', async () => {
+    await open('/p1/repositories/new?type=SERVICE');
+    await type('qits-widgets-service');
+    expect(text()).toContain('services/qits-widgets-service');
+
+    await typeComponent('qits-widgets');
+    expect(text()).toContain('components/qits-widgets/qits-widgets-service');
+  });
+
+  it('puts the component on the body only when one is named', async () => {
+    await open('/p1/repositories/new?type=SERVICE');
+    await type('qits-widgets-service');
+    await typeComponent('qits-widgets');
+
+    await press('Add it to the project');
+    const request = http.expectOne('/projects/api/projects/p1/repositories');
+    expect(request.request.body).toEqual({
+      name: 'qits-widgets-service',
+      archetype: 'SERVICE',
+      component: 'qits-widgets',
+    });
+
+    request.flush({
+      repository: {
+        id: 'r4',
+        name: 'qits-widgets-service',
+        backupUrl: null,
+        mainBranch: 'main',
+        archetype: 'SERVICE',
+        component: 'qits-widgets',
+        projectId: 'p1',
+      },
+      projectId: 'p1',
+      wrapperPath: 'components/qits-widgets/qits-widgets-service',
+    });
+    await settle();
+
+    expect(router.url).toBe('/p1');
+    http.expectOne('/projects/api/projects/p1/epics').flush({ entries: [] });
+    http.expectOne('/projects/api/projects/p1/repositories').flush({ entries: [], wrapper: null });
+    await settle();
+    http.verify();
+  });
+
+  /** A component is a wrapper directory, so it is held to the same rule the name is. */
+  it('says so before asking when the component cannot be a wrapper directory', async () => {
+    await open('/p1/repositories/new?type=SERVICE');
+    await type('qits-widgets-service');
+    await typeComponent('components');
+
+    expect(text()).toContain('That component cannot be a wrapper directory.');
+    expect(submitButton()?.disabled).toBe(true);
     http.verify();
   });
 

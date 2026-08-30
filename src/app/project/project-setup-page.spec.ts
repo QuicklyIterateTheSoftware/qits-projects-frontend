@@ -26,6 +26,7 @@ function repository(
     backupUrl: `https://github.com/QuicklyIterate/${id}.git`,
     mainBranch: 'main',
     archetype,
+    component: null,
     projectId: 'p1',
     lastBackup: null,
     ...over,
@@ -43,6 +44,7 @@ function entry(over: Partial<ReconcileEntryDto> = {}): ReconcileEntryDto {
     name: 'qits-ci',
     repositoryId: 'qits-ci',
     archetype: 'SERVICE',
+    component: null,
     outcome: 'KEPT',
     warning: null,
     ...over,
@@ -83,6 +85,34 @@ describe('groupComponents', () => {
     expect(other?.repositories.map((entry) => entry.id)).toEqual(['qits-backend', 'mystery']);
     // No "New other" link — the bucket is a report, not an affordance.
     expect(other?.archetype).toBeNull();
+  });
+
+  /**
+   * The sidebar groups by component; this page groups by archetype, and the two are different
+   * questions. A moved repository keeps the kind it always had, so it keeps the group it was in —
+   * setting a project up is still "what does it deploy, what does it share".
+   */
+  it('groups a repository the wrapper has moved by its archetype, not its component', () => {
+    const groups = groupComponents([
+      repository('qits-ci-service', 'SERVICE', { component: 'qits-ci' }),
+    ]);
+
+    const services = groups.find((group) => group.key === 'SERVICE');
+    expect(services?.repositories.map((entry) => entry.id)).toEqual(['qits-ci-service']);
+    expect(groups.find((group) => group.key === 'OTHER')).toBeUndefined();
+  });
+
+  /**
+   * A row with no archetype is ordinary under the component layout, where no directory states a
+   * kind. It has no group to be in and it must not vanish, so the other bucket is where it goes.
+   */
+  it('puts a row with no archetype in the other bucket rather than dropping it', () => {
+    const groups = groupComponents([
+      repository('qits-widgets', 'SERVICE', { archetype: null, component: 'qits-widgets' }),
+    ]);
+
+    const other = groups.find((group) => group.key === 'OTHER');
+    expect(other?.repositories.map((entry) => entry.id)).toEqual(['qits-widgets']);
   });
 });
 
@@ -318,6 +348,31 @@ describe('ProjectSetupPage', () => {
     expect(page().querySelector('app-project-repository-status')?.textContent).toContain('in sync');
   });
 
+  /**
+   * Nor a row with no archetype, which is the same line the server draws: it never offers such a
+   * row the delete that destroys the repository on the git host, so calling it drift would point at
+   * a cure this page does not have.
+   */
+  it('does not call a row with no archetype a stray', async () => {
+    await open();
+    await load([
+      repository('qits-ci', 'SERVICE'),
+      repository('qits-widgets', 'SERVICE', { archetype: null }),
+    ]);
+
+    expect(page().querySelector('app-project-repository-status')?.textContent).toContain('in sync');
+  });
+
+  /** The component is on the card, because after the flip it is what says where a repository sits. */
+  it('draws the component on a card the wrapper has moved', async () => {
+    await open();
+    await load([repository('qits-ci-service', 'SERVICE', { component: 'qits-ci' })]);
+
+    const card = page().querySelector('app-component-card');
+    expect(card?.textContent).toContain('qits-ci');
+    expect(card?.textContent).toContain('SERVICE');
+  });
+
   it('reconciles from the project repository, reports every line, and re-reads the list', async () => {
     await open();
     await load([repository('qits-ci', 'SERVICE')]);
@@ -381,6 +436,39 @@ describe('ProjectSetupPage', () => {
     expect(page().querySelector('app-component-card')?.textContent).toContain(
       'https://github.com/QuicklyIterate/qits-ci.git',
     );
+  });
+
+  /**
+   * The wrapper flip, as the reconcile reports it: the submodule moved, so the row gained a
+   * component and kept everything else. Its own outcome is what keeps a whole flip from reading as
+   * a reconcile that did nothing, and the component is on the line so the report says what moved
+   * where.
+   */
+  it('reports a moved entry as its own outcome, with the component it moved under', async () => {
+    await open();
+    await load([repository('qits-ci', 'SERVICE')]);
+
+    await click('Reconcile from project repository');
+    http.expectOne('/projects/api/projects/p1/repositories/reconcile').flush({
+      projectId: 'p1',
+      wrapperRepositoryId: 'qits-qits',
+      branch: 'main',
+      entries: [
+        entry({
+          path: 'components/qits-ci/qits-ci',
+          component: 'qits-ci',
+          outcome: 'COMPONENT_UPDATED',
+        }),
+      ],
+    });
+    await settle();
+    flushComponents([repository('qits-ci', 'SERVICE', { component: 'qits-ci' })]);
+    await settle();
+
+    const line = page().querySelector('.outcomes li');
+    expect(line?.textContent).toContain('components/qits-ci/qits-ci');
+    expect(line?.textContent).toContain('COMPONENT_UPDATED');
+    expect(line?.textContent).toContain('qits-ci');
   });
 
   /** The warning belongs to the line it explains, so it is drawn on that line and nowhere else. */

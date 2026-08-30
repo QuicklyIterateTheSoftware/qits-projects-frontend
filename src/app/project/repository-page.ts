@@ -6,8 +6,10 @@ import {
   inject,
   signal,
 } from '@angular/core';
+import { toSignal } from '@angular/core/rxjs-interop';
+import { ActivatedRoute, convertToParamMap } from '@angular/router';
 import { QITS_SCOPE, QitsAppLinks, QitsBadge, QitsCard } from '@qits/ui-components';
-import type { QitsNavEntry, QitsNavSlot } from '@qits/ui-components';
+import type { QitsNavEntry, QitsNavSlot, QitsScope } from '@qits/ui-components';
 import { DOCUMENT } from '@angular/common';
 import { COMPONENT_TYPES, type RepositoryDto } from '../api/dto';
 import { ProjectsApi } from '../api/projects-api';
@@ -60,7 +62,12 @@ import { backupBadge } from './component-card';
                 ><qits-badge [label]="badge.label" [tone]="badge.tone"
               /></span>
             }
-            <qits-badge [label]="categoryLabel()" tone="neutral" />
+            @if (repository.component; as component) {
+              <qits-badge [label]="component" tone="neutral" />
+            }
+            @if (categoryLabel(); as category) {
+              <qits-badge [label]="category" tone="neutral" />
+            }
           </span>
         </header>
 
@@ -171,6 +178,34 @@ export class RepositoryPage {
   /** What the address says is on screen — never the route parameters, which is the platform rule. */
   private readonly scope = inject(QITS_SCOPE).scope;
 
+  private readonly params = toSignal(inject(ActivatedRoute).paramMap, {
+    initialValue: convertToParamMap({}),
+  });
+
+  /**
+   * The address, with this route's own segments standing in until the scope settles.
+   *
+   * <p>The scope is still the source and everything below reads this one computed, so the rule is
+   * kept in one place. The fallback exists because the middle segment is a **component** now: an
+   * open name only proves itself once the chrome's repository list answers, and until then
+   * `parseScope` honestly says "a project" and names no repository. This route only ever matches
+   * three segments that are a project, a group and a repository, so spelling them from the route is
+   * true for exactly that window — and without it the page would draw its not-found for a
+   * repository that is there.
+   */
+  private readonly addressed = computed<QitsScope>(() => {
+    const scope = this.scope();
+    if (scope.repository) {
+      return scope;
+    }
+    const params = this.params();
+    return {
+      project: params.get('project') ?? scope.project,
+      group: params.get('group') ?? undefined,
+      repository: params.get('repository') ?? undefined,
+    };
+  });
+
   protected readonly none = NONE;
 
   protected readonly components = signal<Loadable<readonly RepositoryDto[]>>(LOADING);
@@ -181,7 +216,7 @@ export class RepositoryPage {
   /** The repository the address names, or nothing — a name this project does not hold. */
   protected readonly repository = computed(() => {
     const state = this.components();
-    const name = this.scope().repository;
+    const name = this.addressed().repository;
     if (state.kind !== 'ready' || !name) return undefined;
     return state.value.find((repository) => repository.name === name);
   });
@@ -195,7 +230,8 @@ export class RepositoryPage {
    * The group heading this repository's archetype draws under — "Services", not `SERVICE`.
    *
    * The archetype is the fallback rather than the answer, so a value this build has never heard of
-   * is still shown as itself instead of as an empty badge.
+   * is still shown as itself instead of as an empty badge. A row with **no** archetype says
+   * nothing, and the badge is not drawn: under the component layout that is an ordinary state.
    */
   protected readonly categoryLabel = computed(() => {
     const archetype = this.repository()?.archetype;
@@ -227,23 +263,35 @@ export class RepositoryPage {
   });
 
   /**
-   * One card per application the platform files under this repository's category.
+   * One card per application the platform files under this repository's **archetype**.
    *
-   * The slot is `<category>.details`, which is exactly what the sidebar draws under the repository
-   * in scope — so the cards and the sub-menu can never offer two different sets. An entry whose
-   * address this library cannot spell is dropped rather than drawn as a link to nowhere.
+   * <p>The slot is `<category>.details`, and the category comes from the row rather than from the
+   * address. That is the chrome's own rule and it is not pedantry: the slots say which *kinds* of
+   * repository an application has something to say about — qits-configuration hangs under services
+   * and daemons, qits-artifacts skips frontends — which is a different question from which
+   * component the repository is part of. Once the address spells a component there is no category
+   * in it to read, and the archetype is the only place the answer was ever really kept. The sidebar
+   * draws the same slot for the same row, so the cards and the sub-menu still cannot differ.
+   *
+   * <p>A row with no archetype gets no cards, which is honest: nothing knows what kind it is.
+   * An entry whose address this library cannot spell is dropped rather than drawn as a link to
+   * nowhere.
    */
   protected readonly applications = computed<readonly { entry: QitsNavEntry; href: string }[]>(
     () => {
-      const scope = this.scope();
-      if (!scope.category) return [];
-      const slot: QitsNavSlot = `${scope.category}.details`;
-      return this.appLinks
-        .entries(slot)
-        // The entry's subpath is the view it opens — '' is the application's root, so the cards
-        // and the sidebar's rows stay the same URL.
-        .map((entry) => ({ entry, href: this.appLinks.href(entry.app, entry.subpath, scope) }))
-        .filter((card): card is { entry: QitsNavEntry; href: string } => card.href !== undefined);
+      const archetype = this.repository()?.archetype;
+      const category = COMPONENT_TYPES.find((type) => type.archetype === archetype)?.directory;
+      if (!category) return [];
+      const slot: QitsNavSlot = `${category}.details`;
+      const scope = this.addressed();
+      return (
+        this.appLinks
+          .entries(slot)
+          // The entry's subpath is the view it opens — '' is the application's root, so the cards
+          // and the sidebar's rows stay the same URL.
+          .map((entry) => ({ entry, href: this.appLinks.href(entry.app, entry.subpath, scope) }))
+          .filter((card): card is { entry: QitsNavEntry; href: string } => card.href !== undefined)
+      );
     },
   );
 

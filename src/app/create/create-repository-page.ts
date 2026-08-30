@@ -12,6 +12,8 @@ import { ProjectParam } from '../nav/project-param';
 import { QitsButton, QitsPicker, type QitsPickerOption } from '@qits/ui-components';
 import {
   COMPONENT_TYPES,
+  COMPONENTS_DIRECTORY,
+  componentDirectory,
   type CreateRepositoryRequest,
   type CreateRepositoryResponse,
   type PlaceableArchetype,
@@ -138,6 +140,31 @@ export type CreateMode = 'blank' | 'attach';
       </p>
     }
 
+    <label class="field">
+      <span class="label" id="component-label">Component</span>
+      <input
+        type="text"
+        class="text component"
+        autocomplete="off"
+        spellcheck="false"
+        placeholder="qits-widgets"
+        aria-labelledby="component-label"
+        aria-describedby="component-hint"
+        [value]="component()"
+        (input)="onComponent($event)"
+      />
+    </label>
+    <p class="hint" id="component-hint">
+      Optional. The technical unit this repository is part of — the one a service, its frontend and
+      its daemon share. Naming one mounts it at
+      <code>components/&lt;component&gt;/&lt;name&gt;</code>, whatever layout the project is in.
+      Leave it empty and the project decides: the type's own directory, or
+      <code>components/&lt;name&gt;/</code> where the project has already moved.
+    </p>
+    @if (component() && !componentOk()) {
+      <p class="invalid" role="alert">That component cannot be a wrapper directory.</p>
+    }
+
     <div class="actions">
       <qits-button
         variant="primary"
@@ -252,8 +279,15 @@ export class CreateRepositoryPage {
     initialValue: convertToParamMap({}),
   });
 
+  /**
+   * The six types, named and nothing more.
+   *
+   * The label used to carry the archetype's directory — "service (services/)" — and that is only
+   * half true now: a repository with a component is mounted under `components/` whatever type it
+   * is. The destination is the preview's job, which is right under both layouts.
+   */
   protected readonly types: readonly QitsPickerOption<PlaceableArchetype>[] = COMPONENT_TYPES.map(
-    (type) => ({ value: type.archetype, label: `${type.singular} (${type.directory}/)` }),
+    (type) => ({ value: type.archetype, label: type.singular }),
   );
 
   /** The id the create request takes, and the slug the two links back are spelled with. */
@@ -264,20 +298,44 @@ export class CreateRepositoryPage {
   protected readonly archetype = signal<PlaceableArchetype | undefined>(undefined);
   protected readonly name = signal('');
   protected readonly url = signal('');
+  protected readonly component = signal('');
   protected readonly submit = signal<Loadable<CreateRepositoryResponse>>(IDLE);
 
   protected readonly nameOk = computed(() => isGitSafeName(this.name().trim()));
 
-  /** Where the submodule will land, spelled the way `.gitmodules` will spell it. */
+  /**
+   * A component is a directory in the wrapper, so it is held to the same rule a name is — and to
+   * one more: `components` itself is the layout's own first segment, never a component.
+   */
+  protected readonly componentOk = computed(() => {
+    const component = this.component().trim();
+    return isGitSafeName(component) && component !== COMPONENTS_DIRECTORY;
+  });
+
+  /**
+   * Where the submodule will land, spelled the way `.gitmodules` will spell it.
+   *
+   * A stated component decides it outright. With none, this shows the archetype's directory — the
+   * honest answer for a project still in that layout, and the one place this page cannot be exact,
+   * because a project whose wrapper has already moved places a componentless create at
+   * `components/<name>/<name>` instead. The field's hint says so; the server has the last word
+   * either way.
+   */
   protected readonly preview = computed(() => {
-    const directory =
-      COMPONENT_TYPES.find((type) => type.archetype === this.archetype())?.directory ?? '<type>';
+    const component = this.component().trim();
+    const directory = component
+      ? componentDirectory(component)
+      : (COMPONENT_TYPES.find((type) => type.archetype === this.archetype())?.directory ??
+        '<type>');
     const name = this.mode() === 'blank' ? this.name().trim() : basename(this.url().trim());
     return `${directory}/${name || '<name>'}`;
   });
 
   protected readonly submittable = computed(() => {
     if (this.archetype() === undefined || this.submit().kind === 'loading') {
+      return false;
+    }
+    if (this.component().trim() && !this.componentOk()) {
       return false;
     }
     return this.mode() === 'blank' ? this.nameOk() : this.url().trim().length > 0;
@@ -317,16 +375,26 @@ export class CreateRepositoryPage {
     this.url.set((event.target as HTMLInputElement).value);
   }
 
-  /** One of `name` and `url` is on the body, and the other is not on it at all. */
+  protected onComponent(event: Event): void {
+    this.component.set((event.target as HTMLInputElement).value);
+  }
+
+  /**
+   * One of `name` and `url` is on the body, and the other is not on it at all. `component` is on it
+   * only when one was stated — an empty one is *absent*, which is what tells the server to let the
+   * wrapper's own layout decide.
+   */
   protected async create(): Promise<void> {
     const archetype = this.archetype();
     if (!archetype || !this.submittable()) {
       return;
     }
-    const request: CreateRepositoryRequest =
-      this.mode() === 'blank'
-        ? { name: this.name().trim(), archetype }
-        : { url: this.url().trim(), archetype };
+    const component = this.component().trim();
+    const request: CreateRepositoryRequest = {
+      ...(this.mode() === 'blank' ? { name: this.name().trim() } : { url: this.url().trim() }),
+      archetype,
+      ...(component ? { component } : {}),
+    };
 
     this.submit.set(LOADING);
     try {

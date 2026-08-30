@@ -42,7 +42,9 @@ export interface WrapperDrift {
  * reconcile resolves in: `repositoryId` is the answer the server already computed, and the name
  * alias is what a wrapper entry actually spells. Only placeable rows can be strays — the wrapper
  * itself, a fork and a template are deliberately not members and would otherwise be reported as
- * drift on every project, forever.
+ * drift on every project, forever. A row with **no** archetype is not a stray either, which is the
+ * same line the server draws: it never offers such a row the delete that destroys the repository on
+ * the git host, so reporting it as drift would point at a cure this page does not have.
  */
 export function wrapperDrift(
   wrapper: WrapperDto,
@@ -64,7 +66,7 @@ export function wrapperDrift(
 
   const strays = repositories.filter(
     (repository) =>
-      PLACEABLE.has(normalizeArchetype(repository.archetype)) &&
+      PLACEABLE.has(normalizeArchetype(repository.archetype) ?? '') &&
       !claimed.has(repository.id) &&
       !claimed.has(repository.name),
   );
@@ -174,6 +176,9 @@ export function wrapperDrift(
                 @for (entry of result.entries; track $index) {
                   <li>
                     <code>{{ entryLabel(entry) }}</code> — {{ entry.outcome }}
+                    @if (entry.component) {
+                      <span class="detail">{{ entry.component }}</span>
+                    }
                     @if (entry.archetype) {
                       <span class="detail">{{ entry.archetype }}</span>
                     }

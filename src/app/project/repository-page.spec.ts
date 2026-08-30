@@ -19,6 +19,7 @@ function repository(over: Partial<RepositoryDto> = {}): RepositoryDto {
     backupUrl: 'https://github.com/QuicklyIterate/qits-ci.git',
     mainBranch: 'main',
     archetype: 'SERVICE',
+    component: null,
     projectId: 'p1',
     lastBackup: null,
     ...over,
@@ -205,8 +206,8 @@ describe('RepositoryPage', () => {
     ]);
   });
 
-  /** A different category draws that category's slot, and nothing from another one. */
-  it('draws the slot of the category in the address', async () => {
+  /** A different archetype draws that category's slot, and nothing from another one. */
+  it('draws the slot of the repository’s own archetype', async () => {
     await open('/qits/libs/qits-db-core', [
       repository({ id: 'r2', name: 'qits-db-core', archetype: 'LIBRARY' }),
     ]);
@@ -216,6 +217,44 @@ describe('RepositoryPage', () => {
     expect(cards[0].getAttribute('href')).toBe(
       'https://docs.dev.example.test/qits/libs/qits-db-core/',
     );
+  });
+
+  /**
+   * The component form of the address, which is what the chrome links to once the wrapper has
+   * moved — and the reason the slot is taken off the **row** rather than off the URL.
+   *
+   * There is no category in `/qits/qits-ci/qits-ci-service` to read, but the repository is still a
+   * service, so it still has the services applications; and the addresses those cards spell keep
+   * the component, because the card is this same address on another host.
+   */
+  it('serves the component form, and keeps taking its slot from the archetype', async () => {
+    await open('/qits/qits-ci/qits-ci-service', [
+      repository({ id: 'r3', name: 'qits-ci-service', component: 'qits-ci' }),
+    ]);
+
+    expect(page().querySelector('h1')?.textContent).toContain('qits-ci-service');
+    // Both facts are on the row and both are drawn: the component it is part of, and its kind.
+    expect(text()).toContain('qits-ci');
+    expect(text()).toContain('Services');
+
+    const cards = Array.from(page().querySelectorAll<HTMLAnchorElement>('a.app'));
+    expect(cards.map((card) => card.getAttribute('href'))).toEqual([
+      'https://docs.dev.example.test/qits/qits-ci/qits-ci-service/',
+      'https://ci.dev.example.test/qits/qits-ci/qits-ci-service/',
+    ]);
+  });
+
+  /**
+   * A row the component layout never told a kind: no archetype, so no category slot, so no cards.
+   * Nothing knows what applications it has, and inventing a kind would offer the wrong ones.
+   */
+  it('offers no applications for a repository with no archetype', async () => {
+    await open('/qits/qits-ci/qits-widgets', [
+      repository({ id: 'r4', name: 'qits-widgets', archetype: null, component: 'qits-ci' }),
+    ]);
+
+    expect(page().querySelector('h1')?.textContent).toContain('qits-widgets');
+    expect(page().querySelector('a.app')).toBeNull();
   });
 
   /** A well-formed address naming a repository the project does not hold is an ordinary 404. */

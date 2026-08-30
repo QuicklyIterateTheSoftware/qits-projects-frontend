@@ -118,6 +118,7 @@ describe('ComponentCard clone url', () => {
       backupUrl: null,
       mainBranch: 'main',
       archetype: 'SERVICE',
+      component: null,
       projectId: 'p1',
       lastBackup: null,
     } satisfies RepositoryDto);

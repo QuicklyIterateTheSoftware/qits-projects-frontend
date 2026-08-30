@@ -11,7 +11,7 @@
  * qits-spa-workspaces, with the refining page that reads them.
  */
 
-import type { RepositoryDto, WrapperEntryDto } from '../api/dto';
+import { COMPONENTS_DIRECTORY, type RepositoryDto, type WrapperEntryDto } from '../api/dto';
 
 /** What is drawn where there is nothing to draw — one em dash, everywhere. */
 export const NONE = '—';
@@ -135,14 +135,59 @@ export function basename(url: string | null | undefined): string {
 }
 
 /**
+ * One `.gitmodules` path, read under either wrapper layout — the client's copy of the server's
+ * `WrapperPath`, and deliberately the same reading:
+ *
+ * - **archetype layout**, `<directory>/<name>`: the directory is what an archetype is derived from,
+ *   and there is no component to state;
+ * - **component layout**, `components/<component>/<name>`: the second segment is the component, and
+ *   the directory states no archetype at all.
+ *
+ * Anything else — one segment, `components/<x>` with nothing under it, a deeper tree — is read as
+ * the archetype layout and comes back with a directory no archetype claims, which is what the
+ * server does with it too. Guessing what `components/a/b/c` means would be inventing taxonomy.
+ */
+export interface WrapperPlacement {
+  /** The directory the entry is mounted under, or empty under the component layout. */
+  readonly directory: string;
+  /** The component, or empty under the archetype layout. */
+  readonly component: string;
+  /** The last segment — what `../<name>.git` resolves to. Empty for a path with no directory. */
+  readonly name: string;
+}
+
+/** See {@link WrapperPlacement}. */
+export function wrapperPlacement(entry: Pick<WrapperEntryDto, 'path'>): WrapperPlacement {
+  const parts = entry.path
+    .trim()
+    .split('/')
+    .filter((part) => part.length > 0);
+  if (parts.length < 2) {
+    return { directory: '', component: '', name: '' };
+  }
+  if (parts.length === 3 && parts[0] === COMPONENTS_DIRECTORY) {
+    return { directory: '', component: parts[1], name: parts[2] };
+  }
+  return {
+    directory: parts.slice(0, -1).join('/'),
+    component: '',
+    name: parts[parts.length - 1],
+  };
+}
+
+/**
  * The directory half of a wrapper path — `services/qits-ci` is in `services`.
  *
- * The wrapper's directory is what the server derives an archetype from, so this is the same split,
- * made on the client only to say which group an unmatched entry was meant for.
+ * Empty under the component layout, where the directory names no group: use
+ * {@link wrapperComponent} for the fact that layout does state.
  */
 export function wrapperDirectory(entry: Pick<WrapperEntryDto, 'path'>): string {
-  const parts = entry.path.split('/').filter((part) => part.length > 0);
-  return parts.length > 1 ? parts[0] : '';
+  return wrapperPlacement(entry).directory;
+}
+
+/** The component a wrapper path mounts an entry under, or empty under the archetype layout. */
+export function wrapperComponent(entry: Pick<WrapperEntryDto, 'path'>): string {
+  return wrapperPlacement(entry).component;
 }
 
 /**
