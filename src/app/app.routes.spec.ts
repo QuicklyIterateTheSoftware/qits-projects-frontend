@@ -6,7 +6,7 @@ import type { Type } from '@angular/core';
 import { Router, provideRouter } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
 import { provideQitsScope } from '@qits/ui-components';
-import { routes } from './app.routes';
+import { OWN_PROJECT_SEGMENTS, routes } from './app.routes';
 import { EVENT_SOURCE_FACTORY, type EventSourceFactory } from './api/event-source';
 import { CreateRepositoryPage } from './create/create-repository-page';
 import { LandingPage } from './landing/landing-page';
@@ -27,9 +27,14 @@ const SILENT: EventSourceFactory = () => ({
  * The address grammar, asserted as addresses rather than as a route table.
  *
  * <p>Two things here are easy to break and impossible to see: the **order** of the routes, and the
- * **category guard**. Without the order, `/qits/repositories/new` is a repository called `new` in a
- * category called `repositories`; without the guard, every three-segment address in the application
- * is a repository page drawing a repository nobody has.
+ * **group guard**. Without the order, `/qits/repositories/new` is a repository called `new` in a
+ * group called `repositories`; without the guard, this application's own words below a project are
+ * repository pages drawing repositories nobody has.
+ *
+ * <p>The guard is an inversion now, because the middle segment is a repository's **component** and
+ * component names are an open set: a segment is a group unless it is one of this app's own. So an
+ * address naming no component at all resolves to the repository page, which draws the ordinary
+ * not-found itself — the same page, reached the other way round.
  *
  * <p>Nothing is flushed: what is under test is which component the router builds, and the reads a
  * page makes are its own spec's business. The project list is answered where a page needs it to get
@@ -99,13 +104,46 @@ describe('routes', () => {
     expect(await at('/qits/images/qits-oci')).toBe(RepositoryPage);
   });
 
-  it('refuses a second segment that names no category', async () => {
+  /**
+   * The component form of the same address, which no compiled-in set could ever prove: component
+   * names are the platform's, so the guard has to let an unclaimed word through.
+   */
+  it('serves the repository page for a component, which is an open name', async () => {
+    expect(await at('/qits/qits-ci/qits-ci-service')).toBe(RepositoryPage);
+    expect(await at('/qits/qits-ui-components/qits-ui-components-jslib')).toBe(RepositoryPage);
+  });
+
+  /**
+   * This application's own words below a project are never a group — the one thing the guard still
+   * refuses outright, and the reason it reads them off the route table rather than a second list.
+   */
+  it('refuses a second segment this application has claimed for itself', async () => {
     expect(await at('/qits/epics/planning')).toBe(NotFound);
-    expect(await at('/qits/Services/qits-ci')).toBe(NotFound);
+    expect(await at('/qits/repositories/qits-ci')).toBe(NotFound);
+    expect(await at('/qits/project-setup/qits-ci')).toBe(NotFound);
   });
 
   it('answers anything deeper with the 404 it is', async () => {
     expect(await at('/qits/services/qits-ci/runs')).toBe(NotFound);
     expect(await at('/qits/project-setup/extra')).toBe(NotFound);
+  });
+});
+
+/**
+ * The own-word list the guard inverts, asserted against the table it is derived from.
+ *
+ * A hand-written copy is exactly the thing that stops matching the routes it is about, and the
+ * symptom would be an address quietly resolving to the wrong page — so the derivation is what is
+ * under test here, not the three words.
+ */
+describe('OWN_PROJECT_SEGMENTS', () => {
+  it('names every literal this application routes below a project, and nothing else', () => {
+    expect([...OWN_PROJECT_SEGMENTS].sort()).toEqual(['epics', 'project-setup', 'repositories']);
+  });
+
+  it('takes no route parameter for a word of its own', () => {
+    for (const segment of OWN_PROJECT_SEGMENTS) {
+      expect(segment.startsWith(':')).toBe(false);
+    }
   });
 });

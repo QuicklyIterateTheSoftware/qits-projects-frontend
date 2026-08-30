@@ -113,7 +113,14 @@ export function backupBadge(
               ><qits-badge [label]="backup.label" [tone]="backup.tone"
             /></span>
           }
-          <qits-badge [label]="archetype()" tone="neutral" />
+          @if (component(); as component) {
+            <span title="The technical component this repository is part of."
+              ><qits-badge [label]="component" tone="neutral"
+            /></span>
+          }
+          @if (archetype(); as archetype) {
+            <qits-badge [label]="archetype" tone="neutral" />
+          }
           @if (!declared()) {
             <qits-button variant="ghost" size="sm" [busy]="deleting()" (pressed)="press()">
               {{ pending() ? 'Confirm delete?' : 'Delete' }}
@@ -217,7 +224,18 @@ export class ComponentCard {
 
   protected readonly label = computed(() => repositoryLabel(this.repository()));
 
+  /**
+   * What kind of repository this is, or nothing.
+   *
+   * Nothing is a state under the component layout: no directory there says a kind, so a row the
+   * reconcile minted from a name that declares none carries no archetype at all. An invented one
+   * would be worse than a missing badge — it selects which applications the platform files under
+   * the repository.
+   */
   protected readonly archetype = computed(() => normalizeArchetype(this.repository().archetype));
+
+  /** The technical component this repository is part of, or nothing before the wrapper moves it. */
+  protected readonly component = computed(() => this.repository().component);
 
   /**
    * The git host's name-addressed route, spelled with the git host's own origin.

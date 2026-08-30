@@ -11,13 +11,18 @@
  * total surface is a handful of endpoints.
  */
 
+import type { QitsCategory } from '@qits/ui-components';
+
 /**
  * What a repository is for.
  *
- * The six **placeable** archetypes each name a directory in the wrapper's `.gitmodules`, and that
- * directory is what makes them placeable: a component repository lives at `<directory>/<name>` or
- * it is not part of the project. `PROJECT` is the wrapper itself, `SERVICE_TEMPLATE` and `FORK` are
- * rows that deliberately sit outside any wrapper.
+ * The six **placeable** archetypes each name a directory in the wrapper's `.gitmodules` — the
+ * archetype layout, `<directory>/<name>` — and a repository the wrapper does not mount somewhere is
+ * not part of the project. `PROJECT` is the wrapper itself, `SERVICE_TEMPLATE` and `FORK` are rows
+ * that deliberately sit outside any wrapper.
+ *
+ * <p>Under the **component layout** the directory states no archetype at all, so the two facts come
+ * apart: see {@link RepositoryDto.component}.
  */
 export type PlaceableArchetype = 'SERVICE' | 'DAEMON' | 'LIBRARY' | 'FRONTEND' | 'CLI' | 'IMAGE';
 
@@ -27,8 +32,16 @@ export type RepositoryArchetype = PlaceableArchetype | 'PROJECT' | 'SERVICE_TEMP
 /** One group on the project page: an archetype, the wrapper directory it lands in, and its words. */
 export interface ComponentType {
   readonly archetype: PlaceableArchetype;
-  /** The directory under the wrapper root — the derivation the server's reconcile also makes. */
-  readonly directory: string;
+  /**
+   * The directory under the wrapper root in the **archetype layout** — the derivation the server's
+   * reconcile also makes there. A component entry is mounted under {@link componentDirectory}
+   * instead, and its directory names no archetype.
+   *
+   * <p>Typed as the chrome's `QitsCategory` because it is the same word: the archetype directory
+   * is what the sidebar's legacy groups are called and what a `<category>.details` slot is keyed
+   * on. Saying so here is what lets a slot be composed from an archetype without a second table.
+   */
+  readonly directory: QitsCategory;
   /** The group heading. */
   readonly label: string;
   /** One of them, for “New <singular>”. */
@@ -52,13 +65,35 @@ export const COMPONENT_TYPES: readonly ComponentType[] = [
 ];
 
 /**
+ * The first segment that marks a wrapper path as the **component layout's**:
+ * `components/<component>/<name>`.
+ *
+ * The server reserves it as a project slug for the same reason the six category words are reserved
+ * — it is what the middle segment of a repository address becomes.
+ */
+export const COMPONENTS_DIRECTORY = 'components';
+
+/** The directory a component entry is mounted under: `components/<component>`. */
+export function componentDirectory(component: string): string {
+  return `${COMPONENTS_DIRECTORY}/${component}`;
+}
+
+/**
  * The archetype as the current taxonomy names it.
  *
  * Release B retired the last legacy values, so every archetype the service answers with is already
  * current and this maps nothing. Anything unrecognised passes through untouched — inventing a group
- * for it would hide it.
+ * for it would hide it, and so is a **null**, which is the honest answer for a row the wrapper's
+ * component layout never told a kind.
  */
-export function normalizeArchetype(archetype: RepositoryArchetype): RepositoryArchetype {
+export function normalizeArchetype(archetype: null): null;
+export function normalizeArchetype(archetype: RepositoryArchetype): RepositoryArchetype;
+export function normalizeArchetype(
+  archetype: RepositoryArchetype | null,
+): RepositoryArchetype | null;
+export function normalizeArchetype(
+  archetype: RepositoryArchetype | null,
+): RepositoryArchetype | null {
   return archetype;
 }
 
@@ -101,7 +136,24 @@ export interface RepositoryDto {
   readonly name: string;
   readonly backupUrl: string | null;
   readonly mainBranch: string;
-  readonly archetype: RepositoryArchetype;
+  /**
+   * What kind of component this is — the closed taxonomy the archetype-keyed child applications are
+   * still selected by.
+   *
+   * <p><b>Null is a state now.</b> Under the component layout no directory states a kind, so a row
+   * the reconcile mints there takes its archetype from the name's role suffix and keeps a null when
+   * the name declares none. A null is deliberately not defaulted to anything here: the server does
+   * not either, and a guessed kind would pick the wrong child applications.
+   */
+  readonly archetype: RepositoryArchetype | null;
+  /**
+   * The technical component this repository is part of — `qits-ci`, the unit a service, its
+   * frontend and its daemon share — read from the wrapper path `components/<component>/<name>`.
+   *
+   * <p>An **open set**, so nothing here validates it. Null for an entry still mounted under an
+   * archetype directory, which in a half-flipped project is some rows and not others.
+   */
+  readonly component: string | null;
   readonly projectId: string;
   readonly lastBackup: BackupAttemptDto | null;
 }
@@ -295,6 +347,16 @@ export interface CreateRepositoryRequest {
   readonly url?: string;
   readonly name?: string;
   readonly archetype: PlaceableArchetype;
+  /**
+   * The component to mount the entry under, or absent to let the wrapper's own layout decide.
+   *
+   * <p>Stating one places the submodule at `components/<component>/<name>`, whatever layout the
+   * wrapper is in — so it is also how a project starts its flip. Stating none lands under the
+   * archetype's directory, unless the wrapper already mounts anything under `components/`, and
+   * then the server places it at `components/<name>/<name>`. **The wrapper has the last word**, and
+   * the row's component is read back off the path the commit used.
+   */
+  readonly component?: string;
 }
 
 /** What creation came to: the row, its project, and where it landed in the wrapper. */
@@ -310,7 +372,9 @@ export interface CreateRepositoryResponse {
  * `SYNC_TARGET_UPDATED` is release C's: the row matched and stayed, and what changed is where the
  * platform pushes its backup to. It is a sibling of `ARCHETYPE_UPDATED` — both are "kept, but one
  * field of it is now right" — and it is the outcome that heals rows whose backup url was never
- * recorded.
+ * recorded. `COMPONENT_UPDATED` is the third of that family and the one the wrapper flip produces:
+ * the submodule moved to `components/<component>/<name>`, so the row gained a component and kept
+ * everything else. Without it a whole flip would read as a reconcile that did nothing.
  *
  * `UNDECLARED` is a **report, and nothing more**. The reconcile used to delete such a row; it does
  * not, because only a reader can tell a repository dropped from the wrapper by mistake from one
@@ -322,6 +386,7 @@ export type ReconcileOutcome =
   | 'ADOPTED'
   | 'KEPT'
   | 'ARCHETYPE_UPDATED'
+  | 'COMPONENT_UPDATED'
   | 'SYNC_TARGET_UPDATED'
   | 'UNDECLARED'
   | 'SKIPPED';
@@ -332,7 +397,8 @@ export type ReconcileOutcome =
  * The nulls are the shape of the three things a line can be about, so a renderer that assumed a
  * path would print `null` on two of them:
  *
- * - a wrapper entry: `path` is `<directory>/<name>`, `name` is what `../<name>.git` resolves to;
+ * - a wrapper entry: `path` is `<directory>/<name>` or `components/<component>/<name>`, `name` is
+ *   what `../<name>.git` resolves to;
  * - an **undeclared row**: no entry named it, so there is no path — `name` is the row's alias and
  *   `repositoryId` the row that is still there, reported rather than removed;
  * - the **empty-manifest** answer: a wrapper declaring no submodules is answered with a single
@@ -348,6 +414,8 @@ export interface ReconcileEntryDto {
   readonly name: string | null;
   readonly repositoryId: string | null;
   readonly archetype: RepositoryArchetype | null;
+  /** The component the path mounted the entry under, or null under the archetype layout. */
+  readonly component: string | null;
   readonly outcome: ReconcileOutcome;
   readonly warning: string | null;
 }

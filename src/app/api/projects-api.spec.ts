@@ -65,6 +65,63 @@ describe('ProjectsApi', () => {
   });
 
   /**
+   * A half-flipped project, which is the ordinary state while the wrapper moves: one row already
+   * mounted under `components/`, one still under its archetype directory. Both facts ride the same
+   * row, and a moved row keeps the archetype it had — nothing under the component layout states a
+   * kind, so re-deriving one would re-type a submodule that only moved.
+   */
+  it('carries a row’s component beside its archetype, and the absence of one', async () => {
+    const components = api.components('p1');
+    http.expectOne('/projects/api/projects/p1/repositories').flush({
+      entries: [
+        {
+          repository: {
+            id: 'r1',
+            name: 'qits-ci-service',
+            backupUrl: null,
+            mainBranch: 'main',
+            archetype: 'SERVICE',
+            component: 'qits-ci',
+            projectId: 'p1',
+          },
+          declared: true,
+        },
+        {
+          repository: {
+            id: 'r2',
+            name: 'qits-stt',
+            backupUrl: null,
+            mainBranch: 'main',
+            archetype: 'SERVICE',
+            component: null,
+            projectId: 'p1',
+          },
+          declared: true,
+        },
+      ],
+      wrapper: {
+        repositoryId: 'w1',
+        branch: 'main',
+        entries: [
+          {
+            path: 'components/qits-ci/qits-ci-service',
+            name: 'qits-ci-service',
+            repositoryId: 'r1',
+          },
+          { path: 'services/qits-stt', name: 'qits-stt', repositoryId: 'r2' },
+        ],
+      },
+    });
+
+    await expect(components).resolves.toMatchObject({
+      repositories: [
+        { name: 'qits-ci-service', archetype: 'SERVICE', component: 'qits-ci' },
+        { name: 'qits-stt', archetype: 'SERVICE', component: null },
+      ],
+    });
+  });
+
+  /**
    * Membership is per entry on the wire and a set of ids here, so the page can ask about one row
    * without walking the wrapper — and it is the server's verdict, kept rather than recomputed.
    */
@@ -145,6 +202,44 @@ describe('ProjectsApi', () => {
     await expect(created).resolves.toMatchObject({ wrapperPath: 'services/qits-widgets' });
   });
 
+  /**
+   * A stated component is what places the entry under `components/`, whatever layout the wrapper is
+   * in — so this is also how a project starts its flip. The row's component comes back off the path
+   * the wrapper commit used, not off the request.
+   */
+  it('sends the component that places the entry under the component layout', async () => {
+    const created = api.createRepository('p1', {
+      name: 'qits-widgets-service',
+      archetype: 'SERVICE',
+      component: 'qits-widgets',
+    });
+    const request = http.expectOne('/projects/api/projects/p1/repositories');
+
+    expect(request.request.body).toEqual({
+      name: 'qits-widgets-service',
+      archetype: 'SERVICE',
+      component: 'qits-widgets',
+    });
+
+    request.flush({
+      repository: {
+        id: 'r4',
+        name: 'qits-widgets-service',
+        backupUrl: null,
+        mainBranch: 'main',
+        archetype: 'SERVICE',
+        component: 'qits-widgets',
+        projectId: 'p1',
+      },
+      projectId: 'p1',
+      wrapperPath: 'components/qits-widgets/qits-widgets-service',
+    });
+    await expect(created).resolves.toMatchObject({
+      wrapperPath: 'components/qits-widgets/qits-widgets-service',
+      repository: { component: 'qits-widgets' },
+    });
+  });
+
   it('sends a url and no name for an existing repository', async () => {
     const created = api.createRepository('p1', {
       url: 'https://github.com/QuicklyIterate/qits-widgets.git',
@@ -208,6 +303,35 @@ describe('ProjectsApi', () => {
       wrapperRepositoryId: 'qits-qits',
       branch: 'main',
       entries: [{ outcome: 'KEPT' }, { outcome: 'SKIPPED', warning: expect.any(String) }],
+    });
+  });
+
+  /**
+   * What a wrapper flip reads as: the submodule moved, so the row gained a component and kept
+   * everything else. Without its own outcome a whole flip would report as a reconcile that did
+   * nothing.
+   */
+  it('reads a moved entry as COMPONENT_UPDATED, with the component it moved under', async () => {
+    const reconciled = api.reconcileRepositories('p1');
+    http.expectOne('/projects/api/projects/p1/repositories/reconcile').flush({
+      projectId: 'p1',
+      wrapperRepositoryId: 'qits-qits',
+      branch: 'main',
+      entries: [
+        {
+          path: 'components/qits-ci/qits-ci-service',
+          name: 'qits-ci-service',
+          repositoryId: 'r1',
+          archetype: 'SERVICE',
+          component: 'qits-ci',
+          outcome: 'COMPONENT_UPDATED',
+          warning: null,
+        },
+      ],
+    });
+
+    await expect(reconciled).resolves.toMatchObject({
+      entries: [{ outcome: 'COMPONENT_UPDATED', component: 'qits-ci', archetype: 'SERVICE' }],
     });
   });
 

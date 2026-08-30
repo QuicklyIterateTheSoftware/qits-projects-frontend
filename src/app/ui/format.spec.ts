@@ -10,7 +10,9 @@ import {
   renderTerminalText,
   repositoryLabel,
   shortSha,
+  wrapperComponent,
   wrapperDirectory,
+  wrapperPlacement,
 } from './format';
 
 describe('repositoryLabel', () => {
@@ -84,13 +86,77 @@ describe('basename', () => {
   });
 });
 
+/**
+ * Both wrapper layouts, read the way the server reads them.
+ *
+ * This is the split that decides which fact a path states, so the two layouts are asserted against
+ * each other rather than one at a time: the archetype form states a directory and no component, the
+ * component form states a component and no directory, and a shape that is neither states a
+ * directory no archetype claims — which is what makes the server skip it with a warning instead of
+ * guessing a taxonomy for it.
+ */
+describe('wrapperPlacement', () => {
+  it('reads the archetype layout as a directory and a name', () => {
+    expect(wrapperPlacement({ path: 'services/qits-ci' })).toEqual({
+      directory: 'services',
+      component: '',
+      name: 'qits-ci',
+    });
+  });
+
+  it('reads the component layout as a component and a name', () => {
+    expect(wrapperPlacement({ path: 'components/qits-ci/qits-ci-service' })).toEqual({
+      directory: '',
+      component: 'qits-ci',
+      name: 'qits-ci-service',
+    });
+  });
+
+  /** Only `components/<component>/<name>` is the component layout — three segments, no more. */
+  it('reads a deeper tree as the archetype layout, so nothing invents a component', () => {
+    expect(wrapperPlacement({ path: 'components/a/b/c' })).toEqual({
+      directory: 'components/a/b',
+      component: '',
+      name: 'c',
+    });
+    expect(wrapperPlacement({ path: 'vendor/qits-ci' })).toEqual({
+      directory: 'vendor',
+      component: '',
+      name: 'qits-ci',
+    });
+  });
+
+  it('says nothing at all about a path with no directory', () => {
+    expect(wrapperPlacement({ path: 'qits-ci' })).toEqual({
+      directory: '',
+      component: '',
+      name: '',
+    });
+  });
+});
+
 describe('wrapperDirectory', () => {
-  it('is the first segment of the path', () => {
+  it('is the directory the entry is mounted under', () => {
     expect(wrapperDirectory({ path: 'services/qits-ci' })).toBe('services');
   });
 
   it('is empty for a path with no directory, which is a path no archetype names', () => {
     expect(wrapperDirectory({ path: 'qits-ci' })).toBe('');
+  });
+
+  /** A component entry's directory names no archetype, so there is no group to report. */
+  it('is empty under the component layout', () => {
+    expect(wrapperDirectory({ path: 'components/qits-ci/qits-ci-service' })).toBe('');
+  });
+});
+
+describe('wrapperComponent', () => {
+  it('is the middle segment under the component layout', () => {
+    expect(wrapperComponent({ path: 'components/qits-ci/qits-ci-service' })).toBe('qits-ci');
+  });
+
+  it('is empty under the archetype layout, which states no component', () => {
+    expect(wrapperComponent({ path: 'services/qits-ci' })).toBe('');
   });
 });
 

@@ -51,8 +51,10 @@ export interface ComponentGroup {
  * - **`PROJECT` is excluded.** The wrapper is not a component of itself; it is drawn above, as the
  *   project's configuration.
  * - **Anything else lands in a visible other bucket** — a fork, a template, an archetype this build
- *   has never heard of. Dropping them would be a page that quietly under-reports what the project
- *   holds; the bucket says "these exist and they are in no group", which is true.
+ *   has never heard of, and a row with **no** archetype at all. That last one is ordinary under the
+ *   component layout, where no directory states a kind: the row is real, it is in no archetype
+ *   group, and the bucket says exactly that. Dropping them would be a page that quietly
+ *   under-reports what the project holds.
  */
 export function groupComponents(repositories: readonly RepositoryDto[]): readonly ComponentGroup[] {
   const normalised = repositories.map((repository) => ({
@@ -72,7 +74,7 @@ export function groupComponents(repositories: readonly RepositoryDto[]): readonl
 
   const placeable = new Set<string>(COMPONENT_TYPES.map((type) => type.archetype));
   const other = normalised
-    .filter((entry) => entry.archetype !== 'PROJECT' && !placeable.has(entry.archetype))
+    .filter((entry) => entry.archetype !== 'PROJECT' && !placeable.has(entry.archetype ?? ''))
     .map((entry) => entry.repository);
 
   return other.length === 0
