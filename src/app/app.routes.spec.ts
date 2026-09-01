@@ -11,12 +11,13 @@ import { EVENT_SOURCE_FACTORY, type EventSourceFactory } from './api/event-sourc
 import { CreateRepositoryPage } from './create/create-repository-page';
 import { LandingPage } from './landing/landing-page';
 import { NotFound } from './not-found/not-found';
+import { EpicsPage } from './project/epics-page';
 import { ProjectPage } from './project/project-page';
 import { ProjectSetupPage } from './project/project-setup-page';
 import { RepositoryPage } from './project/repository-page';
 import { RepositoryReleaseRequestsPage } from './project/repository-release-requests-page';
 
-/** jsdom has no `EventSource`, and the epics overview opens one on the project page. */
+/** jsdom has no `EventSource`, and the epics overview opens one on the epics page. */
 const SILENT: EventSourceFactory = () => ({
   onopen: null,
   onmessage: null,
@@ -91,6 +92,15 @@ describe('routes', () => {
     expect(await at('/qits')).toBe(ProjectPage);
     expect(await at('/qits/project-setup')).toBe(ProjectSetupPage);
     expect(await at('/qits/repositories/new')).toBe(CreateRepositoryPage);
+  });
+
+  /**
+   * The board has an address of its own. It used to be whatever `/qits` rendered, which is why the
+   * project node could not name it in the chrome — a sub-element needs a segment to be a row.
+   */
+  it('serves the epics board one segment below the project, which is the hub', async () => {
+    expect(await at('/qits/epics')).toBe(EpicsPage);
+    expect(await at('/qits')).toBe(ProjectPage);
   });
 
   /**

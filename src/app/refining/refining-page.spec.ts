@@ -341,7 +341,7 @@ describe('RefiningPage', () => {
       request.flush({ epic: { ...EPIC, status: 'IMPLEMENTATION' }, successor: null });
       await settle();
 
-      expect(navigate).toHaveBeenCalledWith(['p1'], { fragment: 'epic-e1' });
+      expect(navigate).toHaveBeenCalledWith(['p1', 'epics'], { fragment: 'epic-e1' });
       http.expectNone('/projects/api/refinements/7/discard');
     });
 
@@ -365,7 +365,7 @@ describe('RefiningPage', () => {
       transition.flush({ epic: { ...EPIC, status: 'ABANDONED' }, successor: null });
       await settle();
 
-      expect(navigate).toHaveBeenCalledWith(['p1'], { fragment: 'epic-e1' });
+      expect(navigate).toHaveBeenCalledWith(['p1', 'epics'], { fragment: 'epic-e1' });
     });
 
     /** Loose matching would open another epic's workspace, which is the worst thing this page can do. */

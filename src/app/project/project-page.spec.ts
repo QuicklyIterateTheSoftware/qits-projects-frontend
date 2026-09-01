@@ -9,8 +9,8 @@ import { routes } from '../app.routes';
 import { EVENT_SOURCE_FACTORY, type EventSourceFactory } from '../api/event-source';
 
 /**
- * A stream that never says anything. jsdom has no `EventSource` at all, and the epics overview
- * opens one — a spec about anything else only needs the channel to exist.
+ * A stream that never says anything. jsdom has no `EventSource` at all, and the epics page opens
+ * one — a spec that navigates there only needs the channel to exist.
  */
 const SILENT: EventSourceFactory = () => ({
   onopen: null,
@@ -21,48 +21,64 @@ const SILENT: EventSourceFactory = () => ({
 });
 
 /**
- * The project's own address: its name, the way in to setting it up, the refinement agent, and its
- * epics.
+ * The project's own address: a hub node, and nothing else.
  *
- * The reads worth pinning are the ones it does **not** make. The refinement agent is the rule with
- * the largest bill: a container is an image pull and a repository clone, so the panel is closed and
- * silent until it is asked for.
+ * <p>The assertion that carries the most is `http.verify()`: this page reads **nothing**. The name
+ * and the description come from the shared project list the address's slug was resolved against, and
+ * the cards are composed from the navigation the chrome already asked the edge for — so a hub that
+ * grew a request of its own would fail here rather than by feeling slow in front of somebody.
  *
- * Two reads it does make. The epics are the page's own subject and the overview owns that request.
- * The components read is what the ad-hoc workspace link costs: a project with no wrapper has
- * nothing to branch, which is why it shows no link at all.
- *
- * <p>Both are keyed on the project **id**, which the address does not carry — it names the slug —
- * so nothing is asked for until the shared project list has resolved the first segment. That is
- * why every test here flushes the list and settles before answering anything else, and it is what
- * the two failure cases at the bottom pin: an unresolved address costs no request at all.
+ * <p>The rest is the link set. Two cards are this application's own routes and are asserted as
+ * relative addresses; the others are other applications on hosts of their own, so they are whole
+ * URLs, and an entry this application itself declares is dropped rather than drawn beside the
+ * router hop that already leads there.
  */
 describe('ProjectPage', () => {
   let http: HttpTestingController;
   let harness: RouterTestingHarness;
 
   /**
-   * The platform as the edge states it. The workspaces link is composed from this now, so a spec
-   * that asserts it has to say what the platform serves — one entry, in the slot qits-workspaces
-   * really occupies, or no entry at all.
+   * The platform as the edge states it. The project's sub-elements are composed from this, so a
+   * spec that asserts them has to say what the platform serves — including this application's own
+   * placement, which is how the Epics row reaches the sidebar and which this page must not draw
+   * twice.
    */
-  function navigation(workspaces: boolean): QitsNavigation {
+  function navigation(entries: 'full' | 'none' = 'full'): QitsNavigation {
     return {
       environment: 'dev',
       origin: 'https://dev.example.test',
       slots: {
-        'project.detail': workspaces
-          ? [
-              {
-                app: 'qits-workspaces',
-                label: 'Workspaces',
-                host: 'workspaces',
-                origin: 'https://workspaces.dev.example.test',
-                path: '/workspaces',
-                position: 1,
-              },
-            ]
-          : [],
+        'project.detail':
+          entries === 'none'
+            ? []
+            : [
+                {
+                  app: 'qits-projects',
+                  label: 'Epics',
+                  host: 'projects',
+                  origin: 'https://projects.dev.example.test',
+                  path: '/projects',
+                  position: 1,
+                  subpath: 'epics',
+                },
+                {
+                  app: 'qits-workspaces',
+                  label: 'Workspaces',
+                  host: 'workspaces',
+                  origin: 'https://workspaces.dev.example.test',
+                  path: '/workspaces',
+                  position: 1,
+                },
+                {
+                  app: 'qits-workspaces',
+                  label: 'Editor',
+                  host: 'workspaces',
+                  origin: 'https://workspaces.dev.example.test',
+                  path: '/workspaces',
+                  position: 2,
+                  subpath: 'editor',
+                },
+              ],
       },
     };
   }
@@ -81,15 +97,15 @@ describe('ProjectPage', () => {
     http = TestBed.inject(HttpTestingController);
   }
 
-  beforeEach(() => configure(navigation(true)));
+  beforeEach(() => configure(navigation()));
 
   async function open(url = '/p1'): Promise<void> {
     harness = await RouterTestingHarness.create(url);
   }
 
   /**
-   * Open the page and answer the project list, which is what turns the address's slug into the id
-   * every other read is keyed on. Nothing else can be flushed before this has settled.
+   * Open the page and answer the project list, which is what turns the address's slug into the name
+   * and the description this page draws — and the only request it takes part in.
    */
   async function openResolved(
     projects: readonly { id: string; name: string; slug?: string; description?: string }[] = [
@@ -125,144 +141,80 @@ describe('ProjectPage', () => {
     });
   }
 
-  /** The epics are the page's own read; every test has to answer it. */
-  function flushEpics(projectId = 'p1') {
-    http.expectOne(`/projects/api/projects/${projectId}/epics`).flush({ entries: [] });
-  }
-
-  /** The components read behind the ad-hoc workspace link. `wrapper` null is a project without one. */
-  function flushComponents(wrapperRepositoryId: string | null = 'qits-qits', projectId = 'p1') {
-    http.expectOne(`/projects/api/projects/${projectId}/repositories`).flush({
-      entries: [],
-      wrapper: wrapperRepositoryId
-        ? { repositoryId: wrapperRepositoryId, branch: 'main', entries: [] }
-        : null,
-    });
-  }
-
   function page(): HTMLElement {
     return harness.fixture.nativeElement as HTMLElement;
   }
 
-  it('names the project and reads its epics and its wrapper, and nothing else', async () => {
+  /** Every card on the page, in the order it is drawn: its label and where it leads. */
+  function cards(): readonly { label: string; href: string | null }[] {
+    return Array.from(page().querySelectorAll<HTMLAnchorElement>('a.app')).map((anchor) => ({
+      label: anchor.querySelector('.app-label')?.textContent?.trim() ?? '',
+      href: anchor.getAttribute('href'),
+    }));
+  }
+
+  it('names the project, says what it is, and asks for nothing of its own', async () => {
     await openResolved([{ id: 'p1', name: 'qits', description: 'the platform' }]);
-    flushEpics();
-    flushComponents();
-    await settle();
 
     expect(page().querySelector('h1')?.textContent).toContain('qits');
-    expect(page().textContent).toContain('the platform');
+    expect(page().querySelector('.description')?.textContent).toContain('the platform');
     http.verify();
   });
 
-  /**
-   * The panel is on the page and has cost nothing. `http.verify()` above already proves the second
-   * half; this states the first, so that a panel accidentally made eager fails here by name rather
-   * than as an unexpected request in an unrelated test.
-   */
-  it('offers the refinement agent closed, having asked nothing about it', async () => {
-    await openResolved();
-    flushEpics();
-    flushComponents();
-    await settle();
+  /** No description is not an empty paragraph: the hub then holds the links and nothing else. */
+  it('draws no description for a project that has none', async () => {
+    await openResolved([{ id: 'p1', name: 'qits' }]);
 
-    const toggle = page().querySelector<HTMLButtonElement>('button.toggle');
-    expect(toggle?.textContent).toContain('Refinement agent');
-    expect(toggle?.getAttribute('aria-expanded')).toBe('false');
-    expect(page().textContent).toContain('Not started');
-    http.verify();
-  });
-
-  it('says the project has no epics rather than leaving the section blank', async () => {
-    await openResolved();
-    flushEpics();
-    flushComponents();
-    await settle();
-
-    expect(page().textContent).toContain('Epics');
-    expect(page().textContent).toContain('This project has no epics yet.');
-  });
-
-  it('offers project setup as a link under the project’s own address', async () => {
-    await openResolved();
-    flushEpics();
-    flushComponents();
-    await settle();
-
-    const setup = page().querySelector<HTMLAnchorElement>('a.setup');
-    expect(setup?.textContent).toContain('Project setup');
-    // Relative to the project route, so it never has to spell the id twice.
-    expect(setup?.getAttribute('href')).toBe('/p1/project-setup');
-  });
-
-  it('navigates to the setup page when the action is followed', async () => {
-    await openResolved();
-    flushEpics();
-    flushComponents();
-    await settle();
-
-    page().querySelector<HTMLAnchorElement>('a.setup')?.click();
-    await settle();
-
-    expect(TestBed.inject(Router).url).toBe('/p1/project-setup');
-    // The setup page reads the components for itself — the rows, which this page never asked for.
-    http.expectOne('/projects/api/projects/p1/repositories').flush({ entries: [], wrapper: null });
-    await settle();
+    expect(page().querySelector('.description')).toBeNull();
+    expect(cards().length).toBeGreaterThan(0);
   });
 
   /**
-   * The ad-hoc workspace: a disposable checkout of the wrapper and every submodule under it.
+   * The sub-elements, in the order a reader needs them: this application's own two first — the plan,
+   * then the configuration — and the platform's after them, in the order the edge sorted them.
    *
-   * A plain `href` and not a `routerLink` — qits-workspaces is another Angular application on a
-   * host of its own, so this is a page load and the router knows nothing about the address.
+   * The `qits-projects` entry in the same slot is this application's own Epics row in the sidebar.
+   * Drawing it here as well would put one destination on the page twice, once as a router hop and
+   * once as a page load, so it is dropped in favour of the hop.
    */
-  it('links to the workspaces app with the project’s wrapper preselected', async () => {
+  it('links to every sub-element once, its own with the router and the rest by host', async () => {
     await openResolved();
-    flushEpics();
-    flushComponents('qits-qits');
-    await settle();
 
-    const adhoc = page().querySelector<HTMLAnchorElement>('a.adhoc');
-    expect(adhoc?.textContent).toContain('Ad-hoc workspace');
-    // The workspaces host, scoped to this project — not a query parameter naming a repository id.
-    expect(adhoc?.getAttribute('href')).toBe('https://workspaces.dev.example.test/p1/');
+    expect(cards()).toEqual([
+      { label: 'Epics', href: '/p1/epics' },
+      { label: 'Project setup', href: '/p1/project-setup' },
+      { label: 'Workspaces', href: 'https://workspaces.dev.example.test/p1/' },
+      { label: 'Editor', href: 'https://workspaces.dev.example.test/p1/editor' },
+    ]);
   });
 
-  /** No wrapper, nothing to branch: a link that named no repository would offer a create nobody
-   * could complete. */
-  it('offers no ad-hoc workspace for a project with no wrapper', async () => {
-    await openResolved();
-    flushEpics();
-    flushComponents(null);
-    await settle();
-
-    expect(page().querySelector('a.adhoc')).toBeNull();
-    // The other action is untouched by it.
-    expect(page().querySelector('a.setup')).not.toBeNull();
-  });
-
-  /**
-   * A platform naming no workspaces application gives no address, and the page draws no link.
-   *
-   * There is nothing left to guess with: every service is on a host of its own, so the old
-   * `/workspaces/` segment under the environment origin is not an address any more.
-   */
-  it('offers no ad-hoc workspace when the platform names no workspaces application', async () => {
+  /** A platform that names no project-scoped application still has the two this SPA serves itself. */
+  it('keeps its own links when the platform names no other application', async () => {
     TestBed.resetTestingModule();
-    configure(navigation(false));
+    configure(navigation('none'));
     await openResolved();
-    flushEpics();
-    flushComponents('qits-qits');
+
+    expect(cards()).toEqual([
+      { label: 'Epics', href: '/p1/epics' },
+      { label: 'Project setup', href: '/p1/project-setup' },
+    ]);
+  });
+
+  it('goes to the epics board when its card is followed', async () => {
+    await openResolved();
+
+    page().querySelector<HTMLAnchorElement>('a.app')?.click();
     await settle();
 
-    expect(page().querySelector('a.adhoc')).toBeNull();
-    expect(page().querySelector('a.setup')).not.toBeNull();
+    expect(TestBed.inject(Router).url).toBe('/p1/epics');
+    // The board reads the epics for itself, which is the read this page does not do.
+    http.expectOne('/projects/api/projects/p1/epics').flush({ entries: [] });
+    await settle();
   });
 
   /**
-   * A list that never answered leaves the page with an address and no id, so it asks for nothing —
-   * and still draws its name from the segment and its one action. The reads are keyed on the id
-   * and there is no id, which is why `http.verify()` is the assertion that matters here.
+   * A list that never answered leaves the page with an address and no project, so it names the
+   * address and still offers every way in — the links are spelled from the segment.
    */
   it('falls back to the address when the project list could not be read', async () => {
     await open();
@@ -270,7 +222,7 @@ describe('ProjectPage', () => {
     await settle();
 
     expect(page().querySelector('h1')?.textContent).toContain('p1');
-    expect(page().querySelector('a.setup')).not.toBeNull();
+    expect(cards()[0]).toEqual({ label: 'Epics', href: '/p1/epics' });
     http.verify();
   });
 
@@ -278,7 +230,7 @@ describe('ProjectPage', () => {
     await openResolved([{ id: 'p1', name: 'qits' }], '/nope');
 
     expect(page().querySelector('h1')?.textContent).toContain('nope');
-    expect(page().querySelector('a.setup')?.getAttribute('href')).toBe('/nope/project-setup');
+    expect(cards()[1]).toEqual({ label: 'Project setup', href: '/nope/project-setup' });
     http.verify();
   });
 
@@ -289,11 +241,8 @@ describe('ProjectPage', () => {
    */
   it('redirects an id in the first segment to the slug, keeping the rest of the path', async () => {
     await openResolved([{ id: 'p1', name: 'qits', slug: 'qits' }], '/p1');
-    flushEpics();
-    flushComponents();
-    await settle();
 
     expect(TestBed.inject(Router).url).toBe('/qits');
-    expect(page().querySelector('a.setup')?.getAttribute('href')).toBe('/qits/project-setup');
+    expect(cards()[0]).toEqual({ label: 'Epics', href: '/qits/epics' });
   });
 });

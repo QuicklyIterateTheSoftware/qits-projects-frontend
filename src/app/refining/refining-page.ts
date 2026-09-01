@@ -705,7 +705,7 @@ export class RefiningPage {
         await this.refinementsApi.discard(workspace.id);
       }
       await this.projects.transitionEpic(current.node.epic.id, action.target);
-      await this.router.navigate([this.projectSlug()], {
+      await this.router.navigate([this.projectSlug(), 'epics'], {
         fragment: `epic-${current.node.epic.id}`,
       });
     } catch (error) {
@@ -719,9 +719,14 @@ export class RefiningPage {
     void this.loadSubject();
   }
 
-  /** Back to the epic this workspace refines. */
+  /**
+   * Back to the epic this workspace refines — the board, which is `<project>/epics` and not the
+   * project's own address: the project node is a hub now, and it carries no epic to anchor on.
+   */
   protected backToEpics(): void {
-    void this.router.navigate([this.projectSlug()], { fragment: `epic-${this.epicId()}` });
+    void this.router.navigate([this.projectSlug(), 'epics'], {
+      fragment: `epic-${this.epicId()}`,
+    });
   }
 
   protected epicId(): string {

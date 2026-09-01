@@ -1,68 +1,89 @@
-import {
-  ChangeDetectionStrategy,
-  Component,
-  computed,
-  effect,
-  inject,
-  signal,
-} from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
 import { RouterLink } from '@angular/router';
-import { QitsAppLinks } from '@qits/ui-components';
-import { ProjectsApi } from '../api/projects-api';
+import { QitsAppLinks, QitsCard } from '@qits/ui-components';
 import { ProjectParam } from '../nav/project-param';
-import { RefinementPanel } from './agent/refinement-panel';
-import { EpicsOverview } from './epics-overview';
+
+/** The application this SPA is, so its own placements are not drawn twice — see {@link ProjectPage}. */
+const PROJECTS_APP = 'qits-projects';
+
+/** One way into the project: what it is called, and who answers it. */
+interface HubLink {
+  readonly key: string;
+  readonly label: string;
+  /** Which application serves it — the same note the repository page's cards carry. */
+  readonly note: string;
+}
+
+/** A sub-element of this application: reached with the router, so its address is a command array. */
+interface OwnLink extends HubLink {
+  readonly route: readonly string[];
+}
+
+/** A sub-element of another application: its own host, so its address is a whole URL. */
+interface ElsewhereLink extends HubLink {
+  readonly href: string;
+}
 
 /**
- * A project: its name, the way in to setting it up, and the epics it is being changed by.
+ * A project: what it is, and the ways into it.
  *
- * <p>This address used to carry everything — the project repository's state, the six component
- * groups, the reconcile — and all of that is configuration, which is touched rarely. So the page a
- * reader arrives at most often was the page they needed least, and there was nowhere to put what a
- * project is mostly *for*. That work moved to `project-setup`, and the epics are what fills the
- * space it left: the plan a project is being changed by is the thing worth arriving at.
+ * <p><b>This address is a hub node now, and holds no work of its own.</b> It used to be the epics
+ * board, which made the plan a thing a reader could only find by knowing that the bare project
+ * address renders it — there was no row in the chrome saying so. The board moved to `epics`, one
+ * segment down, where it is a sub-element beside `project-setup` and the workspaces application's
+ * own two, and this page became what the repository page already is one level down: a name, and a
+ * card per place the project is worked on.
  *
- * <p>The name itself still **costs nothing** — it comes from the shared project list `ProjectParam`
- * has already read to resolve the address's slug. The epics are this page's own read; the overview
- * owns it, along with its loading, empty and failed states.
+ * <p><b>It costs nothing.</b> The name and the description come from the shared project list {@link
+ * ProjectParam} has already read to resolve the address's slug, and the cards are composed from the
+ * navigation the chrome asked the edge for. A hub that fetched would be a page that makes a reader
+ * wait to be told where to go.
  *
- * <p>The refinement agent sits between the two, and it sits there **dormant**: the panel is one
- * collapsed row until somebody asks for it, so arriving here still costs exactly the epics read.
- * Its place is deliberate — the agent is what changes the plan below it, so it reads as the way in
- * to that plan rather than as a tool parked at the bottom of the page.
+ * <p><b>The description is the only "general information" here, and only when there is one.</b> A
+ * project without one draws the links and nothing else, rather than an empty paragraph or a
+ * placeholder sentence saying that nothing was written.
  *
- * <p><b>The ad-hoc workspace link is the page's own second read.</b> It offers a disposable
- * checkout of the project's wrapper and every submodule under it — the local development loop, in a
- * workspace — and this page has to know there IS a wrapper before offering it, which is what the
- * components read is for. A project without one shows no link rather than a link that answers
- * nothing.
+ * <p><b>Two of the cards are this application's own routes and the rest are the platform's.</b> The
+ * first two are `routerLink`s — they stay inside this SPA, so a full page load would be a
+ * self-inflicted round trip — and the others are plain `href`s to other Angular applications on
+ * hosts of their own, composed from the `project.detail` slot exactly as the sidebar composes the
+ * same rows. That is what keeps a card and its sidebar row one URL by construction, and what keeps
+ * an application the platform does not run from appearing here as a dead link.
  *
- * <p>It is a plain `href` and not a `routerLink`, because qits-workspaces is another Angular
- * application on a host of its own: `workspaces.<env>.<domain>/<slug>/`, which the library composes
- * from the navigation the edge answers. An edge that names no workspaces application gives no
- * address, and the page then draws no link — there is nothing left to guess with, now that every
- * service has a host of its own.
+ * <p>This application's <b>own</b> entries in that slot are dropped: `project.detail.Epics` is how
+ * the Epics row reaches the sidebar, and drawing it from the registry as well would put the same
+ * destination on the page twice — once as a router hop and once as a page load. The internal
+ * declaration wins because it is the cheaper of the two and because it is there before any edge has
+ * answered.
  */
 @Component({
   selector: 'app-project-page',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [EpicsOverview, RefinementPanel, RouterLink],
+  imports: [QitsCard, RouterLink],
   template: `
     <h1>{{ heading() }}</h1>
     @if (description(); as description) {
       <p class="description">{{ description }}</p>
     }
 
-    <p class="actions">
-      <a class="setup" routerLink="project-setup">Project setup</a>
-      @if (workspacesUrl(); as url) {
-        <a class="adhoc" [href]="url">Ad-hoc workspace</a>
+    <div class="cards">
+      @for (link of own(); track link.key) {
+        <a class="app" [routerLink]="link.route">
+          <qits-card>
+            <span class="app-label">{{ link.label }}</span>
+            <span class="app-note">{{ link.note }}</span>
+          </qits-card>
+        </a>
       }
-    </p>
-
-    <app-refinement-panel [projectId]="projectId()" />
-
-    <app-epics-overview [projectId]="projectId()" [projectSlug]="projectSlug()" />
+      @for (link of elsewhere(); track link.key) {
+        <a class="app" [href]="link.href">
+          <qits-card>
+            <span class="app-label">{{ link.label }}</span>
+            <span class="app-note">{{ link.note }}</span>
+          </qits-card>
+        </a>
+      }
+    </div>
   `,
   styles: `
     :host {
@@ -78,40 +99,33 @@ import { EpicsOverview } from './epics-overview';
       margin: 0 0 1rem;
       color: #374151;
     }
-    .actions {
-      display: flex;
-      gap: 0.5rem;
-      margin: 1rem 0 0;
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 0.6rem;
+      margin-top: 1rem;
     }
-    /* Anchors rather than qits-buttons: these are navigations, and a button that navigates loses
-       the middle click, the context menu and the status bar a link gives for free. */
-    .actions a {
-      display: inline-block;
-      padding: 0.4rem 0.9rem;
-      font-weight: 600;
-      color: #111827;
-      background: #fff;
-      border: 1px solid #6b7280;
-      border-radius: 999px;
+    .app {
       text-decoration: none;
+      color: inherit;
     }
-    .actions a:hover {
-      background: #f3f4f6;
+    .app-label {
+      display: block;
+      font-weight: 600;
     }
-    /* Quieter than setup: it leaves this application, and it is the rarer of the two errands. */
-    .adhoc {
-      color: #374151;
-      border-color: #d1d5db;
+    .app-note {
+      display: block;
+      margin-top: 0.15rem;
+      font-size: 0.8rem;
+      color: #6b7280;
     }
   `,
 })
 export class ProjectPage {
-  private readonly api = inject(ProjectsApi);
   private readonly param = inject(ProjectParam);
   private readonly appLinks = inject(QitsAppLinks);
 
-  /** The id every request takes, and the slug every link is spelled with. */
-  protected readonly projectId = this.param.projectId;
+  /** The slug every link is spelled with. */
   protected readonly projectSlug = this.param.projectSlug;
 
   private readonly project = computed(() => {
@@ -124,43 +138,46 @@ export class ProjectPage {
 
   protected readonly description = computed(() => this.project()?.description ?? '');
 
-  private readonly wrapperRepositoryId = signal<string | null>(null);
-
   /**
-   * The workspaces application, scoped to this project — where its wrapper's ad-hoc workspace is.
+   * The sub-elements this application serves itself, in the order a reader needs them: the plan
+   * first, because it is what a project is mostly for, and its configuration second, because setting
+   * a project up is rare.
    *
-   * Null twice over: until the components read says the project has a wrapper at all, because an
-   * application with nothing to branch is offered no link; and where the platform names no
-   * workspaces application, because there is then no address to write.
+   * <p>The addresses are relative to the root and spelled with the slug, which is the same address
+   * the sidebar's own rows carry — this page just reaches them with the router.
    */
-  protected readonly workspacesUrl = computed(() => {
-    const wrapper = this.wrapperRepositoryId();
-    if (!wrapper) return null;
-    return this.appLinks.href('qits-workspaces', '', { project: this.projectSlug() }) ?? null;
+  protected readonly own = computed<readonly OwnLink[]>(() => {
+    const project = this.projectSlug();
+    return [
+      { key: 'epics', label: 'Epics', note: PROJECTS_APP, route: ['/', project, 'epics'] },
+      {
+        key: 'project-setup',
+        label: 'Project setup',
+        note: PROJECTS_APP,
+        route: ['/', project, 'project-setup'],
+      },
+    ];
   });
 
-  constructor() {
-    // Keyed on the project, because the picker re-uses this instance for another one.
-    effect(() => {
-      const projectId = this.projectId();
-      this.wrapperRepositoryId.set(null);
-      if (projectId) {
-        void this.loadWrapper(projectId);
-      }
-    });
-  }
-
-  private async loadWrapper(projectId: string): Promise<void> {
-    try {
-      const components = await this.api.components(projectId);
-      // Only set it if the answer is still about the project on screen.
-      if (this.projectId() === projectId) {
-        this.wrapperRepositoryId.set(components.wrapper?.repositoryId ?? null);
-      }
-    } catch {
-      // No link. A read that failed says nothing about whether the project has a wrapper, and a
-      // link to a create that cannot be preselected is worse than the errand staying in the
-      // workspaces app's own picker.
-    }
-  }
+  /**
+   * One card per application the platform files under the project — the `project.detail` slot, which
+   * is the same list the chrome draws under the Project row.
+   *
+   * <p>An entry whose address this library cannot spell is dropped rather than drawn as a link to
+   * nowhere, and this application's own entries are left to {@link own} above.
+   */
+  protected readonly elsewhere = computed<readonly ElsewhereLink[]>(() => {
+    const scope = { project: this.projectSlug() };
+    return this.appLinks
+      .entries('project.detail')
+      .filter((entry) => entry.app !== PROJECTS_APP)
+      .map((entry) => ({
+        key: `${entry.app}:${entry.label}`,
+        label: entry.label,
+        note: entry.app,
+        // The entry's subpath is the view it opens — '' is the application's root under this scope.
+        href: this.appLinks.href(entry.app, entry.subpath, scope) ?? '',
+      }))
+      .filter((link) => link.href.length > 0);
+  });
 }

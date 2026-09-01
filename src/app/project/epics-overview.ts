@@ -93,12 +93,9 @@ interface Failure {
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [Async, Empty, EpicActions, EpicCard, EpicDraftCard, EpicSummaryRow],
   template: `
-    <header>
-      <h2>Epics</h2>
-      @if (behind()) {
-        <p class="behind" role="status">Live updates are reconnecting — briefly behind.</p>
-      }
-    </header>
+    @if (behind()) {
+      <p class="behind" role="status">Live updates are reconnecting — briefly behind.</p>
+    }
 
     <app-async
       [state]="epics()"
@@ -204,23 +201,11 @@ interface Failure {
       display: block;
       margin: 1.5rem 0 0;
     }
-    /* The marker shares the heading's line, so it appears and disappears without moving anything
-       below it — a channel that flaps must not make the plan jump under the reader's eye. */
-    header {
-      display: flex;
-      align-items: baseline;
-      gap: 0.6rem;
-      flex-wrap: wrap;
-      margin: 0 0 0.5rem;
-    }
-    h2 {
-      margin: 0;
-      font-size: 1rem;
-      font-weight: 600;
-      color: #111827;
-    }
+    /* The channel marker is the panel's own line, above every group: it is about the whole tree
+       rather than about one of the sections. There is no heading of its own to hang it on any more
+       — the epics page names this panel, and a second "Epics" here would only repeat it. */
     .behind {
-      margin: 0;
+      margin: 0 0 0.5rem;
       color: #6b7280;
       font-size: 0.8rem;
       font-style: italic;
