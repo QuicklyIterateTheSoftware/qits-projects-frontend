@@ -458,3 +458,57 @@ export interface SyncStatusDto {
   readonly ahead: number | null;
   readonly behind: number | null;
 }
+
+/**
+ * Where a release request has got to — the service's stored word, **as a plain string**.
+ *
+ * <p>The six below are what it stores today, and its own DTO says the vocabulary may grow. That is
+ * why this is not a union: a closed one would make a platform that added a seventh state fail to
+ * type against a build of this SPA that is otherwise perfectly able to draw it. Every reader here
+ * therefore decides what an unknown word means for itself, the way {@link RepositoryDto}'s
+ * archetype is handled — and each of those decisions is stated where it is made.
+ *
+ * - `PENDING` — created, waiting on the gates for its sha.
+ * - `READY` — the gates passed; the worker is about to call the release door.
+ * - `RELEASED` — landed, and `version` is the calver it landed as.
+ * - `REJECTED` — a gating build went red. The refusal stands until a push re-arms the request.
+ * - `FAILED` — the release itself did not go through; `retryable` says whether the sweep keeps
+ *   trying it or the refusal stands.
+ * - `WITHDRAWN` — the ask is moot. Terminal, and it frees the branch for a fresh request.
+ */
+export type ReleaseRequestState = string;
+
+/**
+ * One release request — the asynchronous ask that replaced calling the release door blind.
+ *
+ * <p>`commitSha` is what the request is *about*: gates evaluate that commit and what lands is
+ * pinned to it, so a new head on the branch re-arms this same row rather than opening a second.
+ * That is why the sha is drawn beside the branch and not instead of it.
+ *
+ * <p>`detail` is the sentence explaining a request that is not simply pending or released, and it
+ * is null for the two that are. `version` is null until the door answers with one.
+ */
+export interface ReleaseRequestDto {
+  readonly id: string;
+  readonly repoId: string;
+  readonly branch: string;
+  readonly commitSha: string;
+  readonly state: ReleaseRequestState;
+  readonly summary: string;
+  readonly requester: string | null;
+  readonly detail: string | null;
+  readonly version: string | null;
+  readonly retryable: boolean;
+  readonly createdAt: string;
+  readonly updatedAt: string;
+}
+
+/** One repository's release requests, newest first — the service sorts, this SPA does not re-sort. */
+export interface ReleaseRequestsResponse {
+  readonly requests: readonly ReleaseRequestDto[];
+}
+
+/** The single-request envelope, which the create, the read and the withdraw all answer with. */
+export interface ReleaseRequestResponse {
+  readonly request: ReleaseRequestDto;
+}
