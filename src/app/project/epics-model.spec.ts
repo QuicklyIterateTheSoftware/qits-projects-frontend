@@ -190,6 +190,11 @@ describe('epicBadge', () => {
       label: 'abandoned',
       tone: 'danger',
     });
+    // Declared done: the badge is the status, features or none.
+    expect(epicBadge(node([], { status: 'IMPLEMENTED' }))).toEqual({
+      label: 'implemented',
+      tone: 'success',
+    });
   });
 
   /** In implementation the question is how far along, so the features keep answering it. */
@@ -227,6 +232,11 @@ describe('isDone', () => {
     expect(isDone(node([]))).toBe(false);
   });
 
+  /** The declared spelling: `IMPLEMENTED` is done outright, features or none. */
+  it('is done for a declared IMPLEMENTED epic even with no features', () => {
+    expect(isDone(node([], { status: 'IMPLEMENTED' }))).toBe(true);
+  });
+
   /** Only implementation can be done; a draft with nothing in it must not read as finished. */
   it('is not done in any other phase', () => {
     expect(isDone(finished({ status: 'REFINING' }))).toBe(false);
@@ -240,14 +250,15 @@ describe('groupEpics', () => {
     const draft = node([], { id: 'e1', status: 'REFINING' });
     const running = node([{ feature: feature(), tasks: [] }], { id: 'e2' });
     const done = finished({ id: 'e3' });
+    const declared = node([], { id: 'e6', status: 'IMPLEMENTED' });
     const old = node([], { id: 'e4', status: 'SUPERSEDED', supersededByEpicId: 'e1' });
     const dropped = node([], { id: 'e5', status: 'ABANDONED' });
 
-    const groups = groupEpics([draft, running, done, old, dropped]);
+    const groups = groupEpics([draft, running, done, declared, old, dropped]);
 
     expect(groups.refining).toEqual([draft]);
     expect(groups.implementation).toEqual([running]);
-    expect(groups.done).toEqual([done]);
+    expect(groups.done).toEqual([done, declared]);
     expect(groups.superseded).toEqual([old]);
     expect(groups.abandoned).toEqual([dropped]);
   });
@@ -317,20 +328,29 @@ describe('actionsFor', () => {
     expect(transitions.every((action) => action.kind === 'transition')).toBe(true);
   });
 
-  it('offers implementation the supersede and the drop, and no refine', () => {
+  it('offers implementation the declaration, the supersede and the drop, and no refine', () => {
     expect(actionsFor('IMPLEMENTATION').map((action) => actionKey(action))).toEqual([
+      'IMPLEMENTED',
       'SUPERSEDED',
       'ABANDONED',
     ]);
   });
 
-  /** Both destructive moves ask twice. Refining and freezing take nothing away. */
-  it('asks for a confirmation on everything that throws a plan away, and nothing else', () => {
+  /** A shipped epic can still be revisited — superseding is its one remaining move. */
+  it('offers an implemented epic only the supersede', () => {
+    expect(actionsFor('IMPLEMENTED').map((action) => actionKey(action))).toEqual(['SUPERSEDED']);
+  });
+
+  /**
+   * Both destructive moves ask twice, and so does the declaration — it is one-way and stamps every
+   * still-open feature. Refining and freezing take nothing away.
+   */
+  it('asks for a confirmation on everything one-way or destructive, and nothing else', () => {
     const asked = [...actionsFor('REFINING'), ...actionsFor('IMPLEMENTATION')]
       .filter((action) => action.confirmLabel !== null)
       .map((action) => actionKey(action));
 
-    expect(asked).toEqual(['ABANDONED', 'SUPERSEDED', 'ABANDONED']);
+    expect(asked).toEqual(['ABANDONED', 'IMPLEMENTED', 'SUPERSEDED', 'ABANDONED']);
   });
 
   it('offers nothing on a terminal epic', () => {
