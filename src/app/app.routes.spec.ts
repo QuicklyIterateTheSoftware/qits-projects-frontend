@@ -14,6 +14,7 @@ import { NotFound } from './not-found/not-found';
 import { ProjectPage } from './project/project-page';
 import { ProjectSetupPage } from './project/project-setup-page';
 import { RepositoryPage } from './project/repository-page';
+import { RepositoryReleaseRequestsPage } from './project/repository-release-requests-page';
 
 /** jsdom has no `EventSource`, and the epics overview opens one on the project page. */
 const SILENT: EventSourceFactory = () => ({
@@ -121,6 +122,22 @@ describe('routes', () => {
     expect(await at('/qits/epics/planning')).toBe(NotFound);
     expect(await at('/qits/repositories/qits-ci')).toBe(NotFound);
     expect(await at('/qits/project-setup/qits-ci')).toBe(NotFound);
+  });
+
+  /**
+   * A view of a repository is its three segments plus a fourth, which is what the application's
+   * own `<category>.details.*` navigation entries compose — so the sidebar's row and the page the
+   * router builds are one URL by construction. The api-docs sibling is asserted in its own spec,
+   * which provides the navigation it frames a document from; this is the address grammar.
+   */
+  it('serves a repository view below the repository itself', async () => {
+    expect(await at('/qits/services/qits-ci/release-requests')).toBe(RepositoryReleaseRequestsPage);
+    expect(await at('/qits/qits-ci/qits-ci-service/release-requests')).toBe(
+      RepositoryReleaseRequestsPage,
+    );
+    // The guard still applies to the middle segment, so this app's own words are not repositories
+    // with a view hanging off them.
+    expect(await at('/qits/epics/planning/release-requests')).toBe(NotFound);
   });
 
   it('answers anything deeper with the 404 it is', async () => {

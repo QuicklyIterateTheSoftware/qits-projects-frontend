@@ -7,6 +7,7 @@ import { ProjectPage } from './project/project-page';
 import { ProjectSetupPage } from './project/project-setup-page';
 import { RepositoryApiDocsPage } from './project/repository-api-docs-page';
 import { RepositoryPage } from './project/repository-page';
+import { RepositoryReleaseRequestsPage } from './project/repository-release-requests-page';
 import { RefiningPage } from './refining/refining-page';
 
 /**
@@ -42,7 +43,7 @@ export const repositoryGroupIsKnown: CanMatchFn = (_route, segments) => {
 };
 
 /**
- * Eight routes, all of them inside the platform chrome.
+ * Nine routes, all of them inside the platform chrome.
  *
  * `QitsMainLayout` is the root *route* component rather than something the shell templates, so the
  * bar, the navigation and the project picker hanging under it mount once and survive every
@@ -78,6 +79,12 @@ export const repositoryGroupIsKnown: CanMatchFn = (_route, segments) => {
  * guard, for the same reason: the fourth segment does not make `/qits/epics/planning/api-docs` a
  * repository.
  *
+ * <p><b>`:project/:group/:repository/release-requests` is the second such view</b>, and the one
+ * this application currently *has* a sidebar row for: `<category>.details.Release Requests:3=release-requests`
+ * in this repository's `deployments.yml`, declared on all six archetype slots so every kind of
+ * repository carries the row. The address is the same three segments with a fourth, so the entry
+ * the chrome composes and the page the router builds are one URL by construction.
+ *
  * <p><b>The refining route names an epic and never a workspace.</b>
  * `:project/epics/:epicSlug/refining` is where an epic is worked out, and the workspace behind it is
  * *looked up* — the ACTIVE workspace on `refining/<epicSlug>` in the project's wrapper repository.
@@ -93,7 +100,7 @@ export const repositoryGroupIsKnown: CanMatchFn = (_route, segments) => {
  * epic's workspace. Keeping the tab in the query string leaves the path meaning "which epic", makes a
  * bare URL mean "no tab pinned" by simple absence, and keeps every tab a shareable link.
  *
- * <p>All eight load eagerly. There are eight of them, they share every component below them, and a
+ * <p>All nine load eagerly. There are nine of them, they share every component below them, and a
  * lazy chunk boundary here would be ceremony that costs a round trip.
  *
  * <p>The `**` route sits *inside* the layout: this application is served at the root of its own
@@ -118,6 +125,11 @@ export const routes: Routes = [
         path: ':project/:group/:repository/api-docs',
         canMatch: [repositoryGroupIsKnown],
         component: RepositoryApiDocsPage,
+      },
+      {
+        path: ':project/:group/:repository/release-requests',
+        canMatch: [repositoryGroupIsKnown],
+        component: RepositoryReleaseRequestsPage,
       },
       { path: '**', component: NotFound },
     ],

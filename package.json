@@ -1,6 +1,6 @@
 {
   "name": "qits-spa-projects",
-  "version": "2026.901.124455",
+  "version": "2026.901.152250",
   "private": true,
   "description": "The projects service's frontend: an Angular application that consumes @qits/ui-components from qits' own npm registry. It ships no image — qits-projects serves it via Quinoa at the root of its own host.",
   "license": "MIT",
