@@ -182,13 +182,14 @@ describe('ProjectPage', () => {
 
     expect(cards()).toEqual([
       { label: 'Epics', href: '/p1/epics' },
+      { label: 'Release requests', href: '/p1/release-requests' },
       { label: 'Project setup', href: '/p1/project-setup' },
       { label: 'Workspaces', href: 'https://workspaces.dev.example.test/p1/' },
       { label: 'Editor', href: 'https://workspaces.dev.example.test/p1/editor' },
     ]);
   });
 
-  /** A platform that names no project-scoped application still has the two this SPA serves itself. */
+  /** A platform that names no project-scoped application still has the three this SPA serves itself. */
   it('keeps its own links when the platform names no other application', async () => {
     TestBed.resetTestingModule();
     configure(navigation('none'));
@@ -196,6 +197,7 @@ describe('ProjectPage', () => {
 
     expect(cards()).toEqual([
       { label: 'Epics', href: '/p1/epics' },
+      { label: 'Release requests', href: '/p1/release-requests' },
       { label: 'Project setup', href: '/p1/project-setup' },
     ]);
   });
@@ -230,7 +232,7 @@ describe('ProjectPage', () => {
     await openResolved([{ id: 'p1', name: 'qits' }], '/nope');
 
     expect(page().querySelector('h1')?.textContent).toContain('nope');
-    expect(cards()[1]).toEqual({ label: 'Project setup', href: '/nope/project-setup' });
+    expect(cards()[2]).toEqual({ label: 'Project setup', href: '/nope/project-setup' });
     http.verify();
   });
 

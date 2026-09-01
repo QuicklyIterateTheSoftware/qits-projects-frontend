@@ -11,6 +11,7 @@ function request(overrides: Partial<ReleaseRequestDto> = {}): ReleaseRequestDto 
   return {
     id: 'r1',
     repoId: 'repo-1',
+    repoName: 'qits-ci',
     branch: 'adhoc-changes',
     commitSha: '20c377ee71fabe6f32429d1506989efecec7798b',
     state: 'PENDING',

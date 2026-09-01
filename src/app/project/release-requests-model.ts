@@ -1,6 +1,32 @@
 import type { QitsBadgeTone } from '@qits/ui-components';
 import type { ReleaseRequestDto } from '../api/dto';
 
+/**
+ * How long a release-request page waits before reading its list again — and it only ever waits
+ * while something on screen is still moving.
+ *
+ * <p><b>This is the one poll in this application, and the exception is argued rather than assumed.</b>
+ * The standing rule here is that nothing polls: a page with an SSE channel must not also put a
+ * traffic floor under a project nobody is changing. These pages have no channel — release requests
+ * are settled by the build gate and by a sweep, on threads with no hint stream in front of them —
+ * and the thing a reader came to watch is a row that changes minutes after they pressed something
+ * somewhere else. A page that only ever answered the question once would be a page people reload.
+ *
+ * <p>What keeps the rule's *reason* intact is the gate on the timer, not the interval: the tick is
+ * scheduled only while {@link hasOpenRequests} holds, so a list with nothing moving in it costs
+ * exactly one read for as long as the page is open, and there is no floor under anything nobody is
+ * changing. Six seconds is under the settle window a request with no verdict waits (PT30S), so a
+ * state change is on screen well inside the step that caused it.
+ *
+ * <p>Each tick is scheduled **after** the previous read answered, never on a fixed interval: a
+ * service having a slow minute must not be handed a queue of overlapping reads.
+ *
+ * <p>It lives beside the model rather than in either page because both of them poll on it: the
+ * repository's list and the project's are the same surface at two scopes, and an interval that could
+ * differ between them would be two answers to one question.
+ */
+export const RELEASE_REQUESTS_POLL_MS = 6000;
+
 /** The badge one state draws as: the word a person reads, and the tone that colours it. */
 export interface ReleaseStateBadge {
   readonly label: string;

@@ -5,7 +5,8 @@ import { QITS_API_BASE } from './api-base';
 import type { ReleaseRequestDto, ReleaseRequestResponse, ReleaseRequestsResponse } from './dto';
 
 /**
- * The release-request surface: one repository's asks, and the one verb a person has over them.
+ * The release-request surface: a repository's asks, a project's, and the one verb a person has over
+ * them.
  *
  * <p><b>Read-and-withdraw, and nothing else.</b> The other route on that controller is the
  * `POST` that *creates* a request, and it is deliberately absent here: a release is asked for by
@@ -27,6 +28,25 @@ export class ReleaseRequestsApi {
     const response = await firstValueFrom(
       this.http.get<ReleaseRequestsResponse>(
         `${this.base}/projects/api/repositories/${encodeURIComponent(repoId)}/release-requests`,
+      ),
+    );
+    return response.requests ?? [];
+  }
+
+  /**
+   * A whole project's release requests, across every repository it owns — most recently moved
+   * first, which is the service's order and not this SPA's.
+   *
+   * <p><b>The state is left off, and that is the call.</b> The route answers the open requests
+   * (PENDING, READY, FAILED, REJECTED) when nobody names one, and open is exactly what a project-wide
+   * list is for: the question it exists to answer is "is anything here waiting on me", and a project
+   * with a year of releases behind it would otherwise answer it with a year of history. `state=all`
+   * is the route's other half and this SPA has no page that wants it yet.
+   */
+  async listByProject(projectId: string): Promise<readonly ReleaseRequestDto[]> {
+    const response = await firstValueFrom(
+      this.http.get<ReleaseRequestsResponse>(
+        `${this.base}/projects/api/projects/${encodeURIComponent(projectId)}/release-requests`,
       ),
     );
     return response.requests ?? [];

@@ -50,11 +50,11 @@ interface ElsewhereLink extends HubLink {
  * same rows. That is what keeps a card and its sidebar row one URL by construction, and what keeps
  * an application the platform does not run from appearing here as a dead link.
  *
- * <p>This application's <b>own</b> entries in that slot are dropped: `project.detail.Epics` is how
- * the Epics row reaches the sidebar, and drawing it from the registry as well would put the same
- * destination on the page twice — once as a router hop and once as a page load. The internal
- * declaration wins because it is the cheaper of the two and because it is there before any edge has
- * answered.
+ * <p>This application's <b>own</b> entries in that slot are dropped: `project.detail.Release
+ * Requests` is how that row reaches the sidebar, and drawing it from the registry here as well would
+ * put the same destination on the page twice — once as a router hop and once as a full page load of
+ * this very host. The {@link own} declaration wins because it is the cheaper of the two and because
+ * it is there before any edge has answered.
  */
 @Component({
   selector: 'app-project-page',
@@ -140,8 +140,9 @@ export class ProjectPage {
 
   /**
    * The sub-elements this application serves itself, in the order a reader needs them: the plan
-   * first, because it is what a project is mostly for, and its configuration second, because setting
-   * a project up is rare.
+   * first, because it is what a project is mostly for; what is waiting to be released second,
+   * because that is the other standing question about a whole project; and its configuration last,
+   * because setting a project up is rare.
    *
    * <p>The addresses are relative to the root and spelled with the slug, which is the same address
    * the sidebar's own rows carry — this page just reaches them with the router.
@@ -150,6 +151,12 @@ export class ProjectPage {
     const project = this.projectSlug();
     return [
       { key: 'epics', label: 'Epics', note: PROJECTS_APP, route: ['/', project, 'epics'] },
+      {
+        key: 'release-requests',
+        label: 'Release requests',
+        note: PROJECTS_APP,
+        route: ['/', project, 'release-requests'],
+      },
       {
         key: 'project-setup',
         label: 'Project setup',

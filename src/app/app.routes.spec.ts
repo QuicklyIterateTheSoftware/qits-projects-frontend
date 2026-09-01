@@ -13,6 +13,7 @@ import { LandingPage } from './landing/landing-page';
 import { NotFound } from './not-found/not-found';
 import { EpicsPage } from './project/epics-page';
 import { ProjectPage } from './project/project-page';
+import { ProjectReleaseRequestsPage } from './project/project-release-requests-page';
 import { ProjectSetupPage } from './project/project-setup-page';
 import { RepositoryPage } from './project/repository-page';
 import { RepositoryReleaseRequestsPage } from './project/repository-release-requests-page';
@@ -104,6 +105,16 @@ describe('routes', () => {
   });
 
   /**
+   * The project's release requests are a sub-element of the same shape, and the address the
+   * `project.detail` navigation entry composes: the project's scope path plus the entry's subpath.
+   */
+  it('serves the project-wide release requests beside the board', async () => {
+    expect(await at('/qits/release-requests')).toBe(ProjectReleaseRequestsPage);
+    // Its own word is not a group, so nothing hangs below it.
+    expect(await at('/qits/release-requests/qits-ci')).toBe(NotFound);
+  });
+
+  /**
    * The repository form, and the reason its literal siblings are declared above it:
    * `repositories/new` is three segments too, and would otherwise read as a repository called
    * `new`. The guard refuses it as well, which is belt and braces on purpose — the order is the
@@ -165,7 +176,12 @@ describe('routes', () => {
  */
 describe('OWN_PROJECT_SEGMENTS', () => {
   it('names every literal this application routes below a project, and nothing else', () => {
-    expect([...OWN_PROJECT_SEGMENTS].sort()).toEqual(['epics', 'project-setup', 'repositories']);
+    expect([...OWN_PROJECT_SEGMENTS].sort()).toEqual([
+      'epics',
+      'project-setup',
+      'release-requests',
+      'repositories',
+    ]);
   });
 
   it('takes no route parameter for a word of its own', () => {

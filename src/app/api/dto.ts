@@ -491,6 +491,13 @@ export type ReleaseRequestState = string;
 export interface ReleaseRequestDto {
   readonly id: string;
   readonly repoId: string;
+  /**
+   * The repository's public name, or null where it has none. A list scoped to one repository has no
+   * use for it — the address already says which — but the project-wide list has nothing else to name
+   * a row with, and an opaque id is not a name. The service resolves it live there, so a repository
+   * renamed since the ask is drawn as it is addressed now.
+   */
+  readonly repoName: string | null;
   readonly branch: string;
   readonly commitSha: string;
   readonly state: ReleaseRequestState;

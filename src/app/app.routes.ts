@@ -5,6 +5,7 @@ import { LandingPage } from './landing/landing-page';
 import { NotFound } from './not-found/not-found';
 import { EpicsPage } from './project/epics-page';
 import { ProjectPage } from './project/project-page';
+import { ProjectReleaseRequestsPage } from './project/project-release-requests-page';
 import { ProjectSetupPage } from './project/project-setup-page';
 import { RepositoryApiDocsPage } from './project/repository-api-docs-page';
 import { RepositoryPage } from './project/repository-page';
@@ -44,7 +45,7 @@ export const repositoryGroupIsKnown: CanMatchFn = (_route, segments) => {
 };
 
 /**
- * Ten routes, all of them inside the platform chrome.
+ * Eleven routes, all of them inside the platform chrome.
  *
  * `QitsMainLayout` is the root *route* component rather than something the shell templates, so the
  * bar, the navigation and the project picker hanging under it mount once and survive every
@@ -74,6 +75,15 @@ export const repositoryGroupIsKnown: CanMatchFn = (_route, segments) => {
  * `workspaces`/`editor` — one row per place, and the project node itself is then what a repository's
  * node already is, a name and the ways into it. The refinement agent came down with the board,
  * because the agent is what changes the epics and the two are one surface.
+ *
+ * <p><b>`:project/release-requests` is the same sub-element shape, one scope up from the
+ * repository's own.</b> It answers what is waiting to be released anywhere in the project, which is
+ * a question the sidebar could not put anywhere: the per-repository rows hang under a repository, so
+ * finding one open request meant opening every repository in turn. Its row reaches the chrome the
+ * way the repository ones do — `project.detail.Release Requests:3=release-requests` in this
+ * repository's service's `deployments.yml`, below qits-workspaces' Workspaces 1 and Editor 2 — and
+ * it is a registry entry rather than something this SPA declares because the shared chrome draws the
+ * Project node's children itself, so there is no other way to put a row there.
  *
  * <p><b>`:project/:group/:repository` is the repository detail</b>, the address every other SPA
  * on the platform also serves — so the sidebar's per-repository entries and this page's cards are
@@ -109,7 +119,7 @@ export const repositoryGroupIsKnown: CanMatchFn = (_route, segments) => {
  * epic's workspace. Keeping the tab in the query string leaves the path meaning "which epic", makes a
  * bare URL mean "no tab pinned" by simple absence, and keeps every tab a shareable link.
  *
- * <p>All ten load eagerly. There are ten of them, they share every component below them, and a
+ * <p>All eleven load eagerly. There are eleven of them, they share every component below them, and a
  * lazy chunk boundary here would be ceremony that costs a round trip.
  *
  * <p>The `**` route sits *inside* the layout: this application is served at the root of its own
@@ -124,6 +134,7 @@ export const routes: Routes = [
       { path: ':project', component: ProjectPage },
       { path: ':project/project-setup', component: ProjectSetupPage },
       { path: ':project/epics', component: EpicsPage },
+      { path: ':project/release-requests', component: ProjectReleaseRequestsPage },
       { path: ':project/epics/:epicSlug/refining', component: RefiningPage },
       { path: ':project/repositories/new', component: CreateRepositoryPage },
       {
