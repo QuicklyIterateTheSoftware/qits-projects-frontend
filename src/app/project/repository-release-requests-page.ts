@@ -20,33 +20,12 @@ import { Empty } from '../ui/empty';
 import { NONE, formatInstant, formatRelativeTime, shortSha } from '../ui/format';
 import { LOADING, describeError, failed, ready, type Loadable } from '../ui/loadable';
 import {
+  RELEASE_REQUESTS_POLL_MS,
   canWithdraw,
   hasOpenRequests,
   releaseDetail,
   releaseStateBadge,
 } from './release-requests-model';
-
-/**
- * How long the page waits before reading the list again — and it only ever waits when something on
- * screen is still moving.
- *
- * <p><b>This is the one poll in this application, and the exception is argued rather than assumed.</b>
- * The standing rule here is that nothing polls: a page with an SSE channel must not also put a
- * traffic floor under a project nobody is changing. This page has no channel — release requests are
- * settled by the build gate and by a sweep, on threads with no hint stream in front of them — and
- * the thing a reader came to watch is a row that changes minutes after they pressed something
- * somewhere else. A page that only ever answered the question once would be a page people reload.
- *
- * <p>What keeps the rule's *reason* intact is the gate on the timer, not the interval: the tick is
- * scheduled only while {@link hasOpenRequests} holds, so a repository whose requests all landed
- * weeks ago costs exactly one read for as long as the page is open, and there is no floor under
- * anything nobody is changing. Six seconds is under the settle window a request with no verdict
- * waits (PT30S), so a state change is on screen well inside the step that caused it.
- *
- * <p>Each tick is scheduled **after** the previous read answered, never on a fixed interval: a
- * service having a slow minute must not be handed a queue of overlapping reads.
- */
-export const RELEASE_REQUESTS_POLL_MS = 6000;
 
 /**
  * One repository's release requests: what has been asked for, what the gates made of it, and what

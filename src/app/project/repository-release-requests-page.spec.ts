@@ -16,7 +16,7 @@ import {
 } from '@qits/ui-components';
 import { routes } from '../app.routes';
 import type { ReleaseRequestDto } from '../api/dto';
-import { RELEASE_REQUESTS_POLL_MS } from './repository-release-requests-page';
+import { RELEASE_REQUESTS_POLL_MS } from './release-requests-model';
 
 const LIST = '/projects/api/repositories/repo-ci/release-requests';
 
@@ -32,6 +32,7 @@ function request(overrides: Partial<ReleaseRequestDto> = {}): ReleaseRequestDto 
   return {
     id: 'r1',
     repoId: 'repo-ci',
+    repoName: 'qits-ci',
     branch: 'adhoc-changes',
     commitSha: '20c377ee71fabe6f32429d1506989efecec7798b',
     state: 'PENDING',
