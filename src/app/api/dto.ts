@@ -216,10 +216,12 @@ export interface WrapperDto {
  * of a fact the tree already carries, free to disagree with it. See `isDone` in the epics model.
  *
  * `REFINING` is the draft phase: everything is still being written. `IMPLEMENTATION` freezes the
- * scope and only the implemented markers move after it. `SUPERSEDED` sent the plan back to the
- * drawing board and names the draft that replaced it. `ABANDONED` is terminal.
+ * scope and only the implemented markers move after it. `IMPLEMENTED` is shipped — declared
+ * through the transition, which stamps any features and tasks still unmarked. `SUPERSEDED` sent
+ * the plan back to the drawing board and names the draft that replaced it. `ABANDONED` is
+ * terminal.
  */
-export type EpicStatus = 'REFINING' | 'IMPLEMENTATION' | 'SUPERSEDED' | 'ABANDONED';
+export type EpicStatus = 'REFINING' | 'IMPLEMENTATION' | 'IMPLEMENTED' | 'SUPERSEDED' | 'ABANDONED';
 
 /**
  * An epic: the backbone of a change to the platform.

@@ -105,10 +105,10 @@ export function featureStatus(feature: Pick<FeatureDto, 'implementedOn'>): Statu
  * An epic, read off its features: all of them implemented is implemented, some is in progress,
  * none is open.
  *
- * <p><b>Known limitation: an epic with no features never reads as implemented.</b> An epic carries
- * no completion field of its own, so its features are the only evidence there is, and an epic with
- * none of them offers none. Open is the honest answer for that case — claiming an epic nobody has
- * broken down is finished would be inventing a fact from an absence.
+ * <p>An epic with no features never reads as implemented <em>here</em> — its features are the only
+ * evidence this derivation has, and an epic with none of them offers none. The declared
+ * `IMPLEMENTED` status is the service's answer for that epic, and `isDone`/`epicBadge` read it
+ * first.
  */
 export function epicStatus(node: EpicNode): StatusBadge {
   const implemented = node.features.filter((child) => child.feature.implementedOn).length;
@@ -133,6 +133,8 @@ export function epicBadge(node: EpicNode): StatusBadge {
   switch (node.epic.status) {
     case 'REFINING':
       return REFINING;
+    case 'IMPLEMENTED':
+      return IMPLEMENTED;
     case 'SUPERSEDED':
       return SUPERSEDED;
     case 'ABANDONED':
@@ -143,13 +145,18 @@ export function epicBadge(node: EpicNode): StatusBadge {
 }
 
 /**
- * Whether an epic is finished, **read off its features rather than off a field**.
+ * Whether an epic is finished — the stored `IMPLEMENTED` status, or the feature derivation.
  *
- * Done is not a stored status: an implementation epic with at least one feature and every one of
- * them implemented is done, and nothing has to be pressed for it to become true. That is the same
- * derivation `epicStatus` makes, so the two can never disagree.
+ * The derivation came first and stays: an implementation epic with at least one feature and every
+ * one of them implemented is done without anything being pressed. `IMPLEMENTED` is the declared
+ * spelling the service added for the epic the derivation cannot reach — one implemented straight
+ * from its description, with no features to read. The transition that sets it stamps every
+ * unmarked feature in the same breath, so the two spellings cannot disagree about one epic.
  */
 export function isDone(node: EpicNode): boolean {
+  if (node.epic.status === 'IMPLEMENTED') {
+    return true;
+  }
   return node.epic.status === 'IMPLEMENTATION' && epicStatus(node) === IMPLEMENTED;
 }
 
@@ -181,6 +188,9 @@ export function groupEpics(nodes: readonly EpicNode[]): EpicGroups {
     switch (node.epic.status) {
       case 'REFINING':
         refining.push(node);
+        break;
+      case 'IMPLEMENTED':
+        done.push(node);
         break;
       case 'SUPERSEDED':
         superseded.push(node);
@@ -245,6 +255,13 @@ const SUPERSEDE: EpicTransitionAction = {
   label: 'Supersede',
   confirmLabel: 'Confirm supersede?',
 };
+const MARK_IMPLEMENTED: EpicTransitionAction = {
+  kind: 'transition',
+  target: 'IMPLEMENTED',
+  label: 'Mark implemented',
+  // One-way, and it stamps every still-open feature and task — worth a second press.
+  confirmLabel: 'Confirm implemented?',
+};
 const ABANDON: EpicTransitionAction = {
   kind: 'transition',
   target: 'ABANDONED',
@@ -270,7 +287,9 @@ export function actionsFor(status: EpicStatus): readonly EpicAction[] {
     case 'REFINING':
       return [REFINE, START, ABANDON];
     case 'IMPLEMENTATION':
-      return [SUPERSEDE, ABANDON];
+      return [MARK_IMPLEMENTED, SUPERSEDE, ABANDON];
+    case 'IMPLEMENTED':
+      return [SUPERSEDE];
     default:
       return [];
   }
