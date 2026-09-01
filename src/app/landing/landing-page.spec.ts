@@ -85,14 +85,11 @@ describe('LandingPage', () => {
     await settle();
 
     expect(router.url).toBe('/p1');
-    // The project page took over. It names itself from the list the store already holds, so the
-    // redirect costs no second project read — only the epics it is there to show, and the wrapper
-    // behind its ad-hoc workspace link.
+    // The project hub took over. It names itself from the list the store already holds and links to
+    // the sub-elements from the navigation the chrome asked for, so the redirect costs no second
+    // read of any kind — which is what `verify` states here.
     await settle();
     expect(text()).toContain('p1 project');
-    http.expectOne('/projects/api/projects/p1/epics').flush({ entries: [] });
-    http.expectOne('/projects/api/projects/p1/repositories').flush({ entries: [], wrapper: null });
-    await settle();
     http.verify();
   });
 

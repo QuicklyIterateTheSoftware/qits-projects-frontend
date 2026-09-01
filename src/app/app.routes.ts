@@ -3,6 +3,7 @@ import { QITS_CATEGORIES, QitsMainLayout, type QitsCategory } from '@qits/ui-com
 import { CreateRepositoryPage } from './create/create-repository-page';
 import { LandingPage } from './landing/landing-page';
 import { NotFound } from './not-found/not-found';
+import { EpicsPage } from './project/epics-page';
 import { ProjectPage } from './project/project-page';
 import { ProjectSetupPage } from './project/project-setup-page';
 import { RepositoryApiDocsPage } from './project/repository-api-docs-page';
@@ -43,7 +44,7 @@ export const repositoryGroupIsKnown: CanMatchFn = (_route, segments) => {
 };
 
 /**
- * Nine routes, all of them inside the platform chrome.
+ * Ten routes, all of them inside the platform chrome.
  *
  * `QitsMainLayout` is the root *route* component rather than something the shell templates, so the
  * bar, the navigation and the project picker hanging under it mount once and survive every
@@ -65,6 +66,14 @@ export const repositoryGroupIsKnown: CanMatchFn = (_route, segments) => {
  * arrives at most often the page they need least. Splitting them puts configuration one deliberate
  * click away and leaves `:project` free for what a project is mostly for. It is a path segment
  * rather than a query parameter because it is a different *place*, not a view of the same one.
+ *
+ * <p><b>`:project` is a hub and `:project/epics` is the plan.</b> The board used to be what the
+ * bare project address rendered, which made it a page with no name: the chrome's Project row leads
+ * here, and nothing in the sidebar said that the epics were what "here" meant. Giving the board a
+ * segment of its own makes it a sub-element beside `project-setup` and the workspaces application's
+ * `workspaces`/`editor` — one row per place, and the project node itself is then what a repository's
+ * node already is, a name and the ways into it. The refinement agent came down with the board,
+ * because the agent is what changes the epics and the two are one surface.
  *
  * <p><b>`:project/:group/:repository` is the repository detail</b>, the address every other SPA
  * on the platform also serves — so the sidebar's per-repository entries and this page's cards are
@@ -100,7 +109,7 @@ export const repositoryGroupIsKnown: CanMatchFn = (_route, segments) => {
  * epic's workspace. Keeping the tab in the query string leaves the path meaning "which epic", makes a
  * bare URL mean "no tab pinned" by simple absence, and keeps every tab a shareable link.
  *
- * <p>All nine load eagerly. There are nine of them, they share every component below them, and a
+ * <p>All ten load eagerly. There are ten of them, they share every component below them, and a
  * lazy chunk boundary here would be ceremony that costs a round trip.
  *
  * <p>The `**` route sits *inside* the layout: this application is served at the root of its own
@@ -114,6 +123,7 @@ export const routes: Routes = [
       { path: '', component: LandingPage },
       { path: ':project', component: ProjectPage },
       { path: ':project/project-setup', component: ProjectSetupPage },
+      { path: ':project/epics', component: EpicsPage },
       { path: ':project/epics/:epicSlug/refining', component: RefiningPage },
       { path: ':project/repositories/new', component: CreateRepositoryPage },
       {

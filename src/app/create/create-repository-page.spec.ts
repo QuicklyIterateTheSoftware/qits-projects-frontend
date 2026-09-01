@@ -159,11 +159,9 @@ describe('CreateRepositoryPage', () => {
     await settle();
 
     expect(router.url).toBe('/p1');
-    // The project page took over. The project list is already read — one flight per application
-    // instance — so what it costs is its epics and the wrapper behind its ad-hoc workspace link;
-    // the component rows live behind project-setup.
-    http.expectOne('/projects/api/projects/p1/epics').flush({ entries: [] });
-    http.expectOne('/projects/api/projects/p1/repositories').flush({ entries: [], wrapper: null });
+    // The project hub took over, and it reads nothing: the project list is already read — one
+    // flight per application instance — and the hub is a name and a card per way in. The component
+    // rows live behind project-setup, and the epics behind the segment of their own.
     await settle();
     http.verify();
   });
@@ -198,9 +196,8 @@ describe('CreateRepositoryPage', () => {
     await settle();
 
     expect(router.url).toBe('/p1');
-    // The project list is already read — one flight per application instance.
-    http.expectOne('/projects/api/projects/p1/epics').flush({ entries: [] });
-    http.expectOne('/projects/api/projects/p1/repositories').flush({ entries: [], wrapper: null });
+    // The project list is already read — one flight per application instance — and the hub it
+    // landed on adds no read of its own.
     await settle();
     http.verify();
   });
@@ -247,8 +244,6 @@ describe('CreateRepositoryPage', () => {
     await settle();
 
     expect(router.url).toBe('/p1');
-    http.expectOne('/projects/api/projects/p1/epics').flush({ entries: [] });
-    http.expectOne('/projects/api/projects/p1/repositories').flush({ entries: [], wrapper: null });
     await settle();
     http.verify();
   });

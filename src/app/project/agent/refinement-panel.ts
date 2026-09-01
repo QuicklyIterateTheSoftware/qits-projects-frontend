@@ -19,18 +19,18 @@ import { TerminalView } from './terminal-view';
 type Pending = 'terminate' | 'stop' | null;
 
 /**
- * The refinement agent: one conversation per project, driven from a terminal on the project page.
+ * The refinement agent: one conversation per project, driven from a terminal on the epics page.
  *
  * <p><b>One agent per project, not one per epic.</b> Refining is a conversation about the whole
  * plan — "new epic: …", "add a feature to the auth epic", "that one is superseded" — and an agent
- * that could only see one epic could not answer any of those. So this sits above the epics
- * overview, between the page's actions and the plan it is about, and the epics below it refresh
- * through the project's live channel when the agent changes them.
+ * that could only see one epic could not answer any of those. So this sits at the head of the epics
+ * page, above the plan it is about, and the epics below it refresh through the project's live
+ * channel when the agent changes them.
  *
  * <p><b>Collapsed and dormant by default, and that is a rule rather than a default.</b> A session
  * costs an image pull, a repository clone and a model process. So this panel is one row until it is
  * asked for: expanding reads the container's status and nothing else, and only Start ensures a
- * container. The project page must stay exactly as cheap to open as it was before this existed —
+ * container. The epics page must stay exactly as cheap to open as it was before this existed —
  * the spec pins that by verifying no request at all leaves on page load.
  *
  * <p><b>Collapsing detaches; it never terminates.</b> The agent keeps working with the panel shut
