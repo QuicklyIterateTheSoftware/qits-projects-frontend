@@ -462,31 +462,96 @@ export interface SyncStatusDto {
 /**
  * Where a release request has got to — the service's stored word, **as a plain string**.
  *
- * <p>The six below are what it stores today, and its own DTO says the vocabulary may grow. That is
- * why this is not a union: a closed one would make a platform that added a seventh state fail to
+ * <p>The seven below are what it stores today, and its own DTO says the vocabulary may grow. That is
+ * why this is not a union: a closed one would make a platform that added an eighth state fail to
  * type against a build of this SPA that is otherwise perfectly able to draw it. Every reader here
  * therefore decides what an unknown word means for itself, the way {@link RepositoryDto}'s
  * archetype is handled — and each of those decisions is stated where it is made.
  *
- * - `PENDING` — created, waiting on the gates for its sha.
+ * - `PENDING` — created, waiting on the gates for the fold's sha.
  * - `READY` — the gates passed; the worker is about to call the release door.
  * - `RELEASED` — landed, and `version` is the calver it landed as.
  * - `REJECTED` — a gating build went red. The refusal stands until a push re-arms the request.
+ * - `CONFLICTED` — the sources cannot be folded; `conflict` says which paths and whose head. The
+ *   service does *not* re-fold one on its sweep, so it stands until a push changes the content.
  * - `FAILED` — the release itself did not go through; `retryable` says whether the sweep keeps
  *   trying it or the refusal stands.
- * - `WITHDRAWN` — the ask is moot. Terminal, and it frees the branch for a fresh request.
+ * - `WITHDRAWN` — the ask is moot. Terminal, and it frees the sources for a fresh request.
  */
 export type ReleaseRequestState = string;
 
 /**
+ * What kind of thing a source is.
+ *
+ * <p>Closed where {@link ReleaseRequestState} is open, and the difference is not an oversight: the
+ * service's state javadoc says its vocabulary may grow, its source javadoc enumerates exactly these
+ * two and says what distinguishes them. Nothing here switches on the word anyway — `implicit` is
+ * what the drawing turns on — so a third kind arriving would still render; it would only fail to
+ * type in code that names it.
+ */
+export type ReleaseRequestSourceKind = 'BRANCH' | 'RELEASED_TAG';
+
+/**
+ * One participant of a release request — what is being folded into the request's backing branch.
+ *
+ * <p>Two kinds travel in one shape and `implicit` tells them apart. A `BRANCH` with `implicit` false
+ * is a branch somebody put on the request (`main` is on every request, because creating one implies
+ * it). A `RELEASED_TAG` with `implicit` true is a release of the same repository that has not
+ * reached `main` yet: derived, never caller-managed — it joins every open request of the repository
+ * the moment a sibling releases and leaves them all when that tag is merged. That is why the two are
+ * drawn differently and only the named ones can be reasoned about as somebody's choice.
+ *
+ * <p>`ref` is the fully qualified name the git host is given (`refs/heads/main`,
+ * `refs/tags/2026.903.1`); `name` is the same thing as a person spells it, and is what is shown.
+ */
+export interface ReleaseRequestSourceDto {
+  readonly kind: ReleaseRequestSourceKind;
+  readonly name: string;
+  readonly ref: string;
+  readonly implicit: boolean;
+}
+
+/** One path the fold could not resolve, with the participant that introduced it. */
+export interface ConflictedPathDto {
+  readonly path: string;
+  /** The source as it was spelled to the git host — `refs/heads/feature/x`, `refs/tags/2026.903.1`. */
+  readonly head: string;
+  readonly headSha: string;
+  /** The git host's own word for the kind of conflict (`content`, and the merger's own reasons). */
+  readonly reason: string;
+}
+
+/**
+ * Why a `CONFLICTED` request could not be folded — the git host's answer, forwarded rather than
+ * reworded. Null on every request that is not `CONFLICTED`, and cleared by the first fold that
+ * succeeds.
+ */
+export interface MergeConflictDto {
+  /** The ref the fold was being made onto — the request's backing branch. */
+  readonly target: string;
+  readonly conflicts: readonly ConflictedPathDto[];
+}
+
+/**
  * One release request — the asynchronous ask that replaced calling the release door blind.
  *
- * <p>`commitSha` is what the request is *about*: gates evaluate that commit and what lands is
- * pinned to it, so a new head on the branch re-arms this same row rather than opening a second.
- * That is why the sha is drawn beside the branch and not instead of it.
+ * <p><b>A request is a merge of `sources`, not a branch head.</b> `backingBranch` is `release/<id>`,
+ * the ref the git host folds them into, and `mergedSha` is the tip of that fold: what the gates
+ * evaluate and what an execution is pinned to. A new head on any source re-folds this same row
+ * rather than opening a second one, which is why the sha is drawn beside the sources and not instead
+ * of them.
+ *
+ * <p>`mergedSha` is **null until the first fold lands**, and null on a `CONFLICTED` request whose
+ * first fold never did. That reads as "nothing is gated yet" and never as "nothing to release",
+ * which is why it is drawn as the em dash rather than left out.
  *
  * <p>`detail` is the sentence explaining a request that is not simply pending or released, and it
  * is null for the two that are. `version` is null until the door answers with one.
+ *
+ * <p>`mergedToMainAt` is the end of the lifecycle and the only place it is visible: a release is a
+ * tag and `main` is finalized after the deployment succeeds, so a `RELEASED` request with a
+ * `version` and no `mergedToMainAt` shipped and has not reached `main` yet. Null on everything that
+ * has not released, where there is nothing to have reached `main`.
  */
 export interface ReleaseRequestDto {
   readonly id: string;
@@ -498,13 +563,16 @@ export interface ReleaseRequestDto {
    * renamed since the ask is drawn as it is addressed now.
    */
   readonly repoName: string | null;
-  readonly branch: string;
-  readonly commitSha: string;
+  readonly backingBranch: string;
+  readonly sources: readonly ReleaseRequestSourceDto[];
+  readonly mergedSha: string | null;
   readonly state: ReleaseRequestState;
   readonly summary: string;
   readonly requester: string | null;
   readonly detail: string | null;
+  readonly conflict: MergeConflictDto | null;
   readonly version: string | null;
+  readonly mergedToMainAt: string | null;
   readonly retryable: boolean;
   readonly createdAt: string;
   readonly updatedAt: string;

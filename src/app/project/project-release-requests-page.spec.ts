@@ -29,13 +29,19 @@ function request(overrides: Partial<ReleaseRequestDto> = {}): ReleaseRequestDto 
     id: 'r1',
     repoId: 'repo-ci',
     repoName: 'qits-ci-service',
-    branch: 'adhoc-changes',
-    commitSha: '20c377ee71fabe6f32429d1506989efecec7798b',
+    backingBranch: 'release/r1',
+    sources: [
+      { kind: 'BRANCH', name: 'main', ref: 'refs/heads/main', implicit: false },
+      { kind: 'BRANCH', name: 'adhoc-changes', ref: 'refs/heads/adhoc-changes', implicit: false },
+    ],
+    mergedSha: '20c377ee71fabe6f32429d1506989efecec7798b',
     state: 'PENDING',
     summary: 'A change worth releasing',
     requester: 'someone',
     detail: null,
+    conflict: null,
     version: null,
+    mergedToMainAt: null,
     retryable: false,
     createdAt: '2026-09-01T13:34:59.888Z',
     updatedAt: '2026-09-01T13:34:59.888Z',
@@ -252,7 +258,7 @@ describe('ProjectReleaseRequestsPage', () => {
       expect(page().textContent).toContain('repo-nameless');
     });
 
-    it('draws the state, the branch, the short sha, who asked and why', async () => {
+    it('draws the state, every source, the fold, who asked and why', async () => {
       configure();
       await open();
       await answer([
@@ -271,6 +277,78 @@ describe('ProjectReleaseRequestsPage', () => {
       expect(text).not.toContain('20c377ee71fabe');
       expect(text).toContain('dyn-workspace-601');
       expect(text).toContain('The door could not be reached');
+    });
+
+    /**
+     * The worklist has to answer "what is in this release" too — the branches somebody named and,
+     * apart from them, the released tags the service folds in on its own.
+     */
+    it('chips the sources, and marks the ones the service added underneath', async () => {
+      configure();
+      await open();
+      await answer([
+        request({
+          sources: [
+            { kind: 'BRANCH', name: 'main', ref: 'refs/heads/main', implicit: false },
+            {
+              kind: 'RELEASED_TAG',
+              name: '2026.903.1',
+              ref: 'refs/tags/2026.903.1',
+              implicit: true,
+            },
+          ],
+        }),
+      ]);
+
+      const chips = [...page().querySelectorAll('li.source')];
+      expect(chips.map((chip) => chip.textContent?.trim())).toEqual(['main', '2026.903.1']);
+      expect(chips[1].classList.contains('implicit')).toBe(true);
+    });
+
+    /** Null is "nothing is gated yet", which is not the same sentence as "nothing to release". */
+    it('draws the em dash for a request whose first fold has not landed', async () => {
+      configure();
+      await open();
+      await answer([request({ mergedSha: null })]);
+
+      expect(page().querySelector('.fact')?.textContent).toContain('—');
+    });
+
+    /**
+     * A conflicted request is on this list because it is waiting on somebody, and what it is
+     * waiting for is on the row: the paths, and whose head introduced each.
+     */
+    it('draws the conflict on a conflicted row, and watches nothing for it', async () => {
+      configure();
+      await open();
+      await answer([
+        request({
+          state: 'CONFLICTED',
+          mergedSha: null,
+          conflict: {
+            target: 'release/r1',
+            conflicts: [
+              {
+                path: 'pom.xml',
+                head: 'refs/heads/adhoc-changes',
+                headSha: '9f1c2b3d4e5f60718293a4b5c6d7e8f901234567',
+                reason: 'content',
+              },
+            ],
+          },
+        }),
+      ]);
+
+      const text = page().querySelector('.conflict')?.textContent ?? '';
+      expect(text).toContain('pom.xml');
+      expect(text).toContain('adhoc-changes');
+      expect(text).toContain('9f1c2b3');
+      expect(page().textContent).toContain('conflicted');
+
+      // The service's sweep does not re-fold a conflict, so only a push changes it: shown, unwatched.
+      expect(vi.getTimerCount()).toBe(0);
+      await vi.advanceTimersByTimeAsync(RELEASE_REQUESTS_POLL_MS * 3);
+      http.expectNone(() => true);
     });
 
     it('says a project with nothing outstanding is empty, rather than drawing nothing', async () => {

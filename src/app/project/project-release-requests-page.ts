@@ -15,15 +15,18 @@ import { ReleaseRequestsApi } from '../api/release-requests-api';
 import { ProjectParam } from '../nav/project-param';
 import { Async } from '../ui/async';
 import { Empty } from '../ui/empty';
-import { NONE, formatInstant, formatRelativeTime, shortSha } from '../ui/format';
+import { NONE, formatInstant, formatRelativeTime } from '../ui/format';
 import { LOADING, describeError, failed, ready, type Loadable } from '../ui/loadable';
+import { ReleaseConflict } from './release-conflict';
 import {
   RELEASE_REQUESTS_POLL_MS,
   canWithdraw,
   hasOpenRequests,
+  mergedShaLabel,
   releaseDetail,
   releaseStateBadge,
 } from './release-requests-model';
+import { ReleaseSources } from './release-sources';
 
 /**
  * Everything waiting to be released anywhere in the project.
@@ -36,10 +39,11 @@ import {
  * One read, one screen, one answer.
  *
  * <p><b>Open only, and that is the service's default rather than a filter here.</b> The route
- * answers PENDING, READY, FAILED and REJECTED when nobody names a state. A project with a year of
- * releases behind it has a year of RELEASED rows, and a worklist that led with them would be a
- * history — the thing this page is *not*. A request that lands therefore leaves the list on the next
- * read, which is the right disappearance: it is no longer waiting on anybody.
+ * answers PENDING, READY, FAILED, REJECTED and CONFLICTED when nobody names a state — everything
+ * that can still move. A project with a year of releases behind it has a year of RELEASED rows, and
+ * a worklist that led with them would be a history — the thing this page is *not*. A request that
+ * lands therefore leaves the list on the next read, which is the right disappearance: it is no
+ * longer waiting on anybody.
  *
  * <p><b>Each row names its repository, and links to it where the chrome can spell the address.</b>
  * The name comes from the service (the DTO carries it, resolved live, so a rename is reflected); the
@@ -49,13 +53,18 @@ import {
  * hold is drawn as plain text rather than as a link to nowhere.
  *
  * <p><b>A person can call an ask off and cannot make one</b>, exactly as one level down: the create
- * route is deliberately not wired up, because a release is asked for by pushing a branch and calling
- * the release door, which mints the request against the head it resolved.
+ * route is deliberately not wired up, because a release is asked for where the branch is and a
+ * button here would need a form in front of it.
+ *
+ * <p><b>Each row says what is in the release rather than which branch it is.</b> A request folds N
+ * sources onto its own backing branch, so the branches somebody named, the released tags the service
+ * added underneath, and the sha that fold produced are the row's facts — and a fold that could not
+ * be made is drawn as its conflict, which the read already carries.
  */
 @Component({
   selector: 'app-project-release-requests-page',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [Async, Empty, QitsBadge, QitsButton, RouterLink],
+  imports: [Async, Empty, QitsBadge, QitsButton, ReleaseConflict, ReleaseSources, RouterLink],
   template: `
     <p class="back">
       <a [routerLink]="['/', projectSlug()]">← {{ heading() }}</a>
@@ -115,15 +124,21 @@ import {
                 </span>
               </div>
 
+              <app-release-sources [request]="request" />
+
               <div class="facts">
-                <span class="ref">{{ request.branch }}</span>
-                <span class="ref">{{ sha(request.commitSha) }}</span>
+                <span class="fact">
+                  merged
+                  <span class="ref" [title]="foldTitle(request)">{{ mergedSha(request) }}</span>
+                </span>
                 <span class="by">{{ request.requester || none }}</span>
               </div>
 
               @if (detail(request); as sentence) {
                 <p class="detail">{{ sentence }}</p>
               }
+
+              <app-release-conflict [request]="request" />
 
               @if (withdrawable(request)) {
                 <div class="withdraw">
@@ -238,6 +253,11 @@ import {
       font-size: 0.8rem;
       color: #6b7280;
     }
+    .fact {
+      display: inline-flex;
+      align-items: baseline;
+      gap: 0.25rem;
+    }
     .ref {
       font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
       overflow-wrap: anywhere;
@@ -284,7 +304,7 @@ export class ProjectReleaseRequestsPage {
   protected readonly stateBadge = releaseStateBadge;
   protected readonly detail = releaseDetail;
   protected readonly withdrawable = canWithdraw;
-  protected readonly sha = shortSha;
+  protected readonly mergedSha = mergedShaLabel;
   protected readonly ago = (iso: string) => formatRelativeTime(iso);
   protected readonly instant = formatInstant;
 
@@ -367,6 +387,17 @@ export class ProjectReleaseRequestsPage {
       label,
       route: ['/', this.projectSlug(), group, row.name, 'release-requests'],
     };
+  }
+
+  /**
+   * The whole of the fold in one tooltip: which ref it lands on and what its tip is. The row shows
+   * seven characters because that is a label; a person pasting into `git show` wants the rest.
+   */
+  protected foldTitle(request: ReleaseRequestDto): string {
+    const sha = request.mergedSha;
+    return sha
+      ? `${sha} — the fold of this request's sources onto ${request.backingBranch}`
+      : `Nothing has been folded onto ${request.backingBranch} yet`;
   }
 
   protected errorFor(request: ReleaseRequestDto): string | null {

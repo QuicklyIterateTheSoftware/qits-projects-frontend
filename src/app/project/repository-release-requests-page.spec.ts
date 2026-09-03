@@ -33,13 +33,24 @@ function request(overrides: Partial<ReleaseRequestDto> = {}): ReleaseRequestDto 
     id: 'r1',
     repoId: 'repo-ci',
     repoName: 'qits-ci',
-    branch: 'adhoc-changes',
-    commitSha: '20c377ee71fabe6f32429d1506989efecec7798b',
+    backingBranch: 'release/r1',
+    sources: [
+      { kind: 'BRANCH', name: 'main', ref: 'refs/heads/main', implicit: false },
+      {
+        kind: 'BRANCH',
+        name: 'adhoc-changes',
+        ref: 'refs/heads/adhoc-changes',
+        implicit: false,
+      },
+    ],
+    mergedSha: '20c377ee71fabe6f32429d1506989efecec7798b',
     state: 'PENDING',
     summary: 'A change worth releasing',
     requester: 'someone',
     detail: null,
+    conflict: null,
     version: null,
+    mergedToMainAt: null,
     retryable: false,
     createdAt: '2026-09-01T13:34:59.888Z',
     updatedAt: '2026-09-01T13:34:59.888Z',
@@ -198,13 +209,12 @@ describe('RepositoryReleaseRequestsPage', () => {
   });
 
   describe('what a row says', () => {
-    it('draws the state, the branch, the short sha, who asked and when', async () => {
+    it('draws the state, every source, the fold, who asked and when', async () => {
       withRepositories();
       await open();
       await answer([
         request({
           state: 'REJECTED',
-          branch: 'adhoc-changes',
           requester: 'dyn-workspace-601',
           detail: 'A gating build went red',
         }),
@@ -212,6 +222,7 @@ describe('RepositoryReleaseRequestsPage', () => {
 
       const text = page().textContent ?? '';
       expect(text).toContain('rejected');
+      expect(text).toContain('main');
       expect(text).toContain('adhoc-changes');
       expect(text).toContain('20c377e');
       expect(text).not.toContain('20c377ee71fabe');
@@ -219,12 +230,132 @@ describe('RepositoryReleaseRequestsPage', () => {
       expect(text).toContain('A gating build went red');
     });
 
-    it('names the version a released request landed as', async () => {
+    /**
+     * The two kinds are not the same fact: a named branch is somebody's choice, a released tag is
+     * what the service folds in underneath and nobody can take off. They are drawn apart.
+     */
+    it('tells the tags it folds in on its own apart from the branches somebody named', async () => {
+      withRepositories();
+      await open();
+      await answer([
+        request({
+          sources: [
+            { kind: 'BRANCH', name: 'main', ref: 'refs/heads/main', implicit: false },
+            {
+              kind: 'RELEASED_TAG',
+              name: '2026.903.1',
+              ref: 'refs/tags/2026.903.1',
+              implicit: true,
+            },
+          ],
+        }),
+      ]);
+
+      const chips = [...page().querySelectorAll('li.source')];
+      expect(chips.map((chip) => chip.textContent?.trim())).toEqual(['main', '2026.903.1']);
+      expect(chips[0].classList.contains('implicit')).toBe(false);
+      expect(chips[1].classList.contains('implicit')).toBe(true);
+      expect(chips[1].getAttribute('title')).toContain('has not reached main yet');
+    });
+
+    /** Null is "nothing is gated yet", which is not the same sentence as "nothing to release". */
+    it('draws the em dash for a request whose first fold has not landed', async () => {
+      withRepositories();
+      await open();
+      await answer([request({ mergedSha: null })]);
+
+      const merged = page().querySelector('.fact')?.textContent ?? '';
+      expect(merged).toContain('—');
+      expect(page().querySelector('.fact .ref')?.getAttribute('title')).toContain('release/r1');
+    });
+
+    /**
+     * A release is a tag and `main` is finalized after the deployment succeeds, so a version that
+     * shipped and has not reached `main` is a real state — mid-deployment, or stuck — and this row
+     * is the only place either is visible.
+     */
+    it('names the version a released request landed as, and says it is not on main yet', async () => {
       withRepositories();
       await open();
       await answer([request({ state: 'RELEASED', version: '2026.901.134748' })]);
 
       expect(page().textContent).toContain('2026.901.134748');
+      expect(page().textContent).toContain('not on main yet');
+    });
+
+    it('says so once the release has reached main', async () => {
+      withRepositories();
+      await open();
+      await answer([
+        request({
+          state: 'RELEASED',
+          version: '2026.901.134748',
+          mergedToMainAt: '2026-09-01T14:02:11Z',
+        }),
+      ]);
+
+      expect(page().textContent).toContain('on main');
+      expect(page().textContent).not.toContain('not on main yet');
+    });
+
+    /**
+     * The one state on this page a person has to act on, and the action is somewhere else — so the
+     * row has to say exactly what to resolve without a second read.
+     */
+    it('draws the conflict, its paths and whose head introduced them', async () => {
+      withRepositories();
+      await open();
+      await answer([
+        request({
+          state: 'CONFLICTED',
+          mergedSha: null,
+          detail: 'The sources could not be folded (a push): pom.xml',
+          conflict: {
+            target: 'release/r1',
+            conflicts: [
+              {
+                path: 'pom.xml',
+                head: 'refs/tags/2026.903.1',
+                headSha: '9f1c2b3d4e5f60718293a4b5c6d7e8f901234567',
+                reason: 'content',
+              },
+            ],
+          },
+        }),
+      ]);
+
+      const panel = page().querySelector('.conflict');
+      expect(panel).not.toBeNull();
+      const text = panel?.textContent ?? '';
+      expect(text).toContain('release/r1');
+      expect(text).toContain('pom.xml');
+      expect(text).toContain('2026.903.1');
+      expect(text).toContain('9f1c2b3');
+      expect(text).toContain('content');
+      expect(page().textContent).toContain('conflicted');
+    });
+
+    /**
+     * A conflict answers the same on every knock and the service's sweep does not re-fold one, so
+     * watching it would be a poll waiting for a push — the rejected-request argument exactly.
+     */
+    it('shows a conflicted request without watching it', async () => {
+      withRepositories();
+      await open();
+      await answer([request({ state: 'CONFLICTED', mergedSha: null })]);
+
+      expect(vi.getTimerCount()).toBe(0);
+      await vi.advanceTimersByTimeAsync(RELEASE_REQUESTS_POLL_MS * 3);
+      http.expectNone(() => true);
+      expect(page().textContent).not.toContain('Watching for changes');
+    });
+
+    it('draws no conflict panel on a request that has none', async () => {
+      withRepositories();
+      await open();
+      await answer([request({ state: 'PENDING' })]);
+
+      expect(page().querySelector('.conflict')).toBeNull();
     });
 
     it('says a repository nobody has released anything on is empty, rather than drawing nothing', async () => {
