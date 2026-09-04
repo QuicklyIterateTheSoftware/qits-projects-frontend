@@ -17,15 +17,18 @@ import { ReleaseRequestsApi } from '../api/release-requests-api';
 import { NotFound } from '../not-found/not-found';
 import { Async } from '../ui/async';
 import { Empty } from '../ui/empty';
-import { NONE, formatInstant, formatRelativeTime, shortSha } from '../ui/format';
+import { NONE, formatInstant, formatRelativeTime } from '../ui/format';
 import { LOADING, describeError, failed, ready, type Loadable } from '../ui/loadable';
+import { ReleaseConflict } from './release-conflict';
 import {
   RELEASE_REQUESTS_POLL_MS,
   canWithdraw,
   hasOpenRequests,
+  mergedShaLabel,
   releaseDetail,
   releaseStateBadge,
 } from './release-requests-model';
+import { ReleaseSources } from './release-sources';
 
 /**
  * One repository's release requests: what has been asked for, what the gates made of it, and what
@@ -40,15 +43,20 @@ import {
  * on this service that must never sit behind a poll; and `…/repositories/by-name/{name}` is
  * `qits:system` alone, so a browser session gets a 403 from it.
  *
- * <p><b>A person can call an ask off and cannot make one.</b> The create route on that controller
- * is deliberately not wired up: a release is asked for by pushing a branch and calling the release
- * door, which mints the request against the head it resolved. A button here would be a second door
- * that skips the first one's whole job.
+ * <p><b>A person can call an ask off and cannot make one.</b> The create route on that controller is
+ * deliberately not wired up: a release is asked for where the branch is, and a button here would
+ * need a branch picker and a summary in front of it — a form, which is a different page from a list.
+ *
+ * <p><b>A request is a set of sources, not a branch.</b> What is drawn per row is what the service
+ * folds: the named branches, the released tags it added underneath, and the sha that fold produced —
+ * which is what the gates evaluate. A fold that could not be made at all is `CONFLICTED`, and the
+ * conflict travels on the read, so the panel under the row needs no second request to say what to
+ * resolve.
  */
 @Component({
   selector: 'app-repository-release-requests-page',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [Async, Empty, NotFound, QitsBadge, QitsButton],
+  imports: [Async, Empty, NotFound, QitsBadge, QitsButton, ReleaseConflict, ReleaseSources],
   template: `
     @if (chromeFailed()) {
       <p class="state">
@@ -72,8 +80,8 @@ import {
       </header>
 
       <p class="lead">
-        Every release asked for on {{ repository() }}, newest first. A request is gated on its
-        commit's builds and lands by itself when they pass.
+        Every release asked for on {{ repository() }}, newest first. A request folds its sources
+        together, is gated on the builds of that fold, and lands by itself when they pass.
       </p>
 
       <app-async
@@ -107,11 +115,16 @@ import {
                   </span>
                 </div>
 
+                <app-release-sources [request]="request" />
+
                 <div class="facts">
-                  <span class="ref">{{ request.branch }}</span>
-                  <span class="ref">{{ sha(request.commitSha) }}</span>
+                  <span class="fact">
+                    merged
+                    <span class="ref" [title]="foldTitle(request)">{{ mergedSha(request) }}</span>
+                  </span>
                   @if (request.version; as version) {
                     <span class="ref version">{{ version }}</span>
+                    <span class="on-main">{{ mainState(request) }}</span>
                   }
                   <span class="by">{{ request.requester || none }}</span>
                 </div>
@@ -119,6 +132,8 @@ import {
                 @if (detail(request); as sentence) {
                   <p class="detail">{{ sentence }}</p>
                 }
+
+                <app-release-conflict [request]="request" />
 
                 @if (withdrawable(request)) {
                   <div class="withdraw">
@@ -230,12 +245,20 @@ import {
       font-size: 0.8rem;
       color: #6b7280;
     }
+    .fact {
+      display: inline-flex;
+      align-items: baseline;
+      gap: 0.25rem;
+    }
     .ref {
       font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
       overflow-wrap: anywhere;
     }
     .version {
       color: #111827;
+    }
+    .on-main {
+      font-style: italic;
     }
     .detail {
       margin: 0.35rem 0 0;
@@ -284,9 +307,30 @@ export class RepositoryReleaseRequestsPage {
   protected readonly stateBadge = releaseStateBadge;
   protected readonly detail = releaseDetail;
   protected readonly withdrawable = canWithdraw;
-  protected readonly sha = shortSha;
+  protected readonly mergedSha = mergedShaLabel;
   protected readonly ago = (iso: string) => formatRelativeTime(iso);
   protected readonly instant = formatInstant;
+
+  /**
+   * The whole of the fold in one tooltip: which ref it lands on and what its tip is. The row shows
+   * seven characters because that is a label; a person pasting into `git show` wants the rest.
+   */
+  protected foldTitle(request: ReleaseRequestDto): string {
+    const sha = request.mergedSha;
+    return sha
+      ? `${sha} — the fold of this request's sources onto ${request.backingBranch}`
+      : `Nothing has been folded onto ${request.backingBranch} yet`;
+  }
+
+  /**
+   * Where a released request stands against `main`. A release is a tag and `main` is finalized after
+   * the deployment succeeds, so the gap between the two is a real state and not a lag to hide: a
+   * version that shipped and has not reached `main` is either mid-deployment or stuck, and this line
+   * is the only place either is visible.
+   */
+  protected mainState(request: ReleaseRequestDto): string {
+    return request.mergedToMainAt ? 'on main' : 'not on main yet';
+  }
 
   /**
    * The address, with this route's own segments standing in until the scope settles — the same
