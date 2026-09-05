@@ -548,6 +548,12 @@ export interface MergeConflictDto {
  * <p>`detail` is the sentence explaining a request that is not simply pending or released, and it
  * is null for the two that are. `version` is null until the door answers with one.
  *
+ * <p>`releasedSha` is what the tag points at, and it is **not** `mergedSha`: the release commits the
+ * rewritten manifests on top of the fold and tags that commit, so the two are a parent and its
+ * child. It is the sha to open the release with in the code browser. Null on everything that has not
+ * released, and null on a release made before the service recorded the column — a link built from it
+ * is therefore dropped rather than drawn, while the one built from `version` still works.
+ *
  * <p>`mergedToMainAt` is the end of the lifecycle and the only place it is visible: a release is a
  * tag and `main` is finalized after the deployment succeeds, so a `RELEASED` request with a
  * `version` and no `mergedToMainAt` shipped and has not reached `main` yet. Null on everything that
@@ -572,6 +578,7 @@ export interface ReleaseRequestDto {
   readonly detail: string | null;
   readonly conflict: MergeConflictDto | null;
   readonly version: string | null;
+  readonly releasedSha: string | null;
   readonly mergedToMainAt: string | null;
   readonly retryable: boolean;
   readonly createdAt: string;
@@ -586,4 +593,82 @@ export interface ReleaseRequestsResponse {
 /** The single-request envelope, which the create, the read and the withdraw all answer with. */
 export interface ReleaseRequestResponse {
   readonly request: ReleaseRequestDto;
+}
+
+/**
+ * One commit a release request's fold brought in — the service's `CommitDto`, which every git read
+ * on this surface answers with.
+ *
+ * `files` is empty for a merge commit, which git omits under `--name-only`; that is not "changed
+ * nothing" and is drawn as nothing rather than as a count of zero.
+ */
+export interface ReleaseRequestCommitDto {
+  readonly hash: string;
+  /** git's own abbreviation. The full `hash` travels beside it for anything worth pasting. */
+  readonly shortHash: string;
+  readonly author: string;
+  readonly email: string;
+  /** The committer date, strict ISO-8601 (git `%cI`). */
+  readonly date: string;
+  /** The subject line, which is all a list wants. */
+  readonly message: string;
+  readonly files: readonly string[];
+}
+
+/**
+ * What a release request folded in: the range `mergedSha^1..mergedSha`, which is exactly what its
+ * sources contributed over the branch they were folded onto.
+ *
+ * <p>**The fold itself leads the list**, because a range ending at a commit contains it — its
+ * message is the request's own summary, which reads as the newest thing in the release and is.
+ *
+ * <p>**An empty list is never an error**, and `detail` is the whole of the difference between the
+ * three ways it happens: nothing has been folded yet, the fold is no longer in the repository's
+ * history (a withdrawn request's backing branch is deleted, and history predating the mirror was
+ * never there), or the fold genuinely brought nothing in. A page that drew "no commits" for all
+ * three would be saying something false in two of them.
+ */
+export interface ReleaseRequestCommitsResponse {
+  readonly mergedSha: string | null;
+  readonly commits: readonly ReleaseRequestCommitDto[];
+  readonly detail: string | null;
+}
+
+/**
+ * One thing a release published, in the platform's own vocabulary.
+ *
+ * <p>`type` is the release recipe's word — `docker`, `maven`, `npm`, `docs`, `daemon` — plus
+ * `userflows`, which the service derives rather than reads. It is deliberately a plain string: a
+ * kind this build has never heard of still arrives, and the rule here is to name it and offer no
+ * link rather than to guess an address for it.
+ *
+ * <p>`version` is **not always the release's calver**: the userflow bundle is published at the
+ * fold's sha, because its pipeline runs per release request.
+ */
+export interface ReleaseArtifactDto {
+  readonly type: string;
+  readonly name: string;
+  readonly version: string;
+}
+
+/**
+ * What one release put on the platform, read out of the released tag's own tree.
+ *
+ * <p>`deployable` is whether that tree declares `.config/qits/deployments.yml` — the platform's own
+ * statement that something deploys this repository, and the whole of what tells a service apart from
+ * a library. It is what the link to the deployment request is offered on: a library has no
+ * deployment to look at.
+ *
+ * <p>**Every failure is a 200 with a sentence.** A request that has not released, a git host that
+ * cannot be asked and a recipe that will not parse all answer here rather than by status code,
+ * because this read draws a panel and "we could not ask" is a thing the panel can say. A repository
+ * that declares no recipe published nothing and gets `detail: null` — publishing nothing is an
+ * answer, and every SPA is in that case.
+ */
+export interface ReleaseArtifactsResponse {
+  readonly version: string | null;
+  readonly releasedSha: string | null;
+  readonly deployable: boolean;
+  readonly artifacts: readonly ReleaseArtifactDto[];
+  readonly detail: string | null;
 }

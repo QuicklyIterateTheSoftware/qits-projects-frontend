@@ -50,6 +50,7 @@ function request(overrides: Partial<ReleaseRequestDto> = {}): ReleaseRequestDto 
     detail: null,
     conflict: null,
     version: null,
+    releasedSha: null,
     mergedToMainAt: null,
     retryable: false,
     createdAt: '2026-09-01T13:34:59.888Z',
@@ -61,13 +62,14 @@ function request(overrides: Partial<ReleaseRequestDto> = {}): ReleaseRequestDto 
 /**
  * One repository's release requests.
  *
- * <p>Three things here are worth pinning and none of them is the markup. **The request budget**:
+ * <p>Four things here are worth pinning and none of them is the markup. **The request budget**:
  * the address names a repository by name and the API is keyed by its row id, and the whole point of
  * resolving that through the chrome's list is that the page costs exactly one read. **The timer**:
  * this is the only page in this application that polls, and what makes that acceptable is that it
  * stops — a repository whose requests have all concluded must arm nothing. **The withdraw**: it is
  * destructive, so it asks in the button, and the answer replaces the row rather than costing a
- * re-read.
+ * re-read. **The way in**: every row's summary is a relative link to that request's own page, which
+ * is where the reads a list must not make live.
  */
 describe('RepositoryReleaseRequestsPage', () => {
   let harness: RouterTestingHarness;
@@ -350,6 +352,40 @@ describe('RepositoryReleaseRequestsPage', () => {
       expect(page().textContent).not.toContain('Watching for changes');
     });
 
+    /**
+     * The row is the way in. The link is relative — this page's address plus the request's id — so
+     * the list and the detail page cannot spell two different addresses for one request.
+     */
+    it('links each summary to that request own page, relatively', async () => {
+      withRepositories();
+      await open();
+      await answer([request({ id: 'r7', summary: 'A change worth releasing' })]);
+
+      const link = page().querySelector<HTMLAnchorElement>('a.summary');
+      expect(link?.textContent?.trim()).toBe('A change worth releasing');
+      expect(link?.getAttribute('href')).toBe('/qits/services/qits-ci/release-requests/r7');
+    });
+
+    /** The tail the route's default carries: a release stays on the page after it lands. */
+    it('draws a landed release beside the open work', async () => {
+      withRepositories();
+      await open();
+      await answer([
+        request({ id: 'open', state: 'PENDING', summary: 'Still going' }),
+        request({
+          id: 'done',
+          state: 'RELEASED',
+          summary: 'Just landed',
+          version: '2026.904.161524',
+        }),
+      ]);
+
+      const text = page().textContent ?? '';
+      expect(text).toContain('Still going');
+      expect(text).toContain('Just landed');
+      expect(text).toContain('2026.904.161524');
+    });
+
     it('draws no conflict panel on a request that has none', async () => {
       withRepositories();
       await open();
@@ -358,12 +394,13 @@ describe('RepositoryReleaseRequestsPage', () => {
       expect(page().querySelector('.conflict')).toBeNull();
     });
 
-    it('says a repository nobody has released anything on is empty, rather than drawing nothing', async () => {
+    it('says a repository with nothing open and nothing recent is empty, not blank', async () => {
       withRepositories();
       await open();
       await answer([]);
 
-      expect(page().textContent).toContain('Nothing has been asked for');
+      expect(page().textContent).toContain('Nothing is open on this repository');
+      expect(page().textContent).toContain('nothing has been released recently');
     });
 
     it('offers a way back when the read fails', async () => {

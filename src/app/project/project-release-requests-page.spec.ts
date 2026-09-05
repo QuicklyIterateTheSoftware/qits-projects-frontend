@@ -41,6 +41,7 @@ function request(overrides: Partial<ReleaseRequestDto> = {}): ReleaseRequestDto 
     detail: null,
     conflict: null,
     version: null,
+    releasedSha: null,
     mergedToMainAt: null,
     retryable: false,
     createdAt: '2026-09-01T13:34:59.888Z',
@@ -50,16 +51,16 @@ function request(overrides: Partial<ReleaseRequestDto> = {}): ReleaseRequestDto 
 }
 
 /**
- * The whole project's open release requests.
+ * The whole project's open release requests, and the handful that have just landed.
  *
  * <p>What is worth pinning here is what makes this page different from the repository's, not the
  * markup they share. **The scope**: one read, keyed on the project id the address does not carry —
  * so nothing is asked for until the shared project list has resolved the slug. **The filter**: the
- * read names no state, because the route's own default is the open ones and open is the entire
- * point; asking for `state=all` here would turn a worklist into a history. **The naming**: every row
- * says which repository it belongs to, and links there only when the chrome can spell the address.
- * **The withdraw**: it is addressed by the row's own `repoId`, which is why a project-wide list can
- * offer the verb at all.
+ * read names no state, because the route's own default is the open ones plus the last ten released;
+ * asking for `state=all` here would turn a worklist into a history. **The naming**: every row says
+ * which repository it belongs to, and links to the request itself only when the chrome can spell the
+ * address. **The withdraw**: it is addressed by the row's own `repoId`, which is why a project-wide
+ * list can offer the verb at all.
  */
 describe('ProjectReleaseRequestsPage', () => {
   let harness: RouterTestingHarness;
@@ -155,10 +156,11 @@ describe('ProjectReleaseRequestsPage', () => {
     });
 
     /**
-     * The whole design of the route: no `state` means the open ones. A project with a year of
-     * releases behind it must not answer "is anything waiting" with a year of history.
+     * The whole design of the route: no `state` means the open ones plus the last ten released. A
+     * project with a year of releases behind it must not answer "is anything waiting" with a year of
+     * history, and a page that dropped a release the instant it landed would never show one.
      */
-    it('names no state, so the service answers the open requests', async () => {
+    it('names no state, so the service answers the open requests and the recent releases', async () => {
       configure();
       await open();
 
@@ -204,6 +206,7 @@ describe('ProjectReleaseRequestsPage', () => {
       await vi.advanceTimersByTimeAsync(RELEASE_REQUESTS_POLL_MS * 3);
       http.expectNone(() => true);
       expect(page().textContent).toContain('Nothing is waiting to be released');
+      expect(page().textContent).toContain('nothing has been released recently');
     });
   });
 
@@ -227,8 +230,11 @@ describe('ProjectReleaseRequestsPage', () => {
      * The link needs the middle segment of `/<project>/<group>/<repository>`, which only the
      * chrome's repository list knows — so it is offered where that list holds the row and not
      * otherwise. A link to nowhere would be worse than a name.
+     *
+     * <p>Where it goes is the REQUEST's own page and not the repository's list: this row has already
+     * found the request, and sending a reader to a list to find it again is a click for nothing.
      */
-    it('links a row to its repository when the chrome can spell the address', async () => {
+    it('links a row to the REQUEST when the chrome can spell the address', async () => {
       configure(
         provideQitsRepositoryList([
           { id: 'repo-ci', name: 'qits-ci-service', component: 'qits-ci', category: 'services' },
@@ -238,7 +244,31 @@ describe('ProjectReleaseRequestsPage', () => {
       await answer([request({ repoId: 'repo-ci', repoName: 'qits-ci-service' })]);
 
       const link = page().querySelector<HTMLAnchorElement>('a.repo');
-      expect(link?.getAttribute('href')).toBe('/qits/qits-ci/qits-ci-service/release-requests');
+      expect(link?.getAttribute('href')).toBe('/qits/qits-ci/qits-ci-service/release-requests/r1');
+    });
+
+    /**
+     * The tail the route's default carries: a release is on this page after it lands, so the one
+     * event people come here to check is the one thing the page no longer hides.
+     */
+    it('draws a landed release beside the open work', async () => {
+      configure();
+      await open();
+      await answer([
+        request({ id: 'open', state: 'PENDING', summary: 'Still going' }),
+        request({
+          id: 'done',
+          state: 'RELEASED',
+          summary: 'Just landed',
+          version: '2026.904.161524',
+          releasedSha: '9f1c2b3d4e5f60718293a4b5c6d7e8f901234567',
+        }),
+      ]);
+
+      const text = page().textContent ?? '';
+      expect(text).toContain('Still going');
+      expect(text).toContain('Just landed');
+      expect(text).toContain('released');
     });
 
     it('draws the name without a link for a repository the chrome does not hold', async () => {
@@ -357,6 +387,7 @@ describe('ProjectReleaseRequestsPage', () => {
       await answer([]);
 
       expect(page().textContent).toContain('Nothing is waiting to be released');
+      expect(page().textContent).toContain('nothing has been released recently');
     });
 
     it('offers a way back when the read fails', async () => {

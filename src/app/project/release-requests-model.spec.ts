@@ -43,6 +43,7 @@ function request(overrides: Partial<ReleaseRequestDto> = {}): ReleaseRequestDto 
     detail: null,
     conflict: null,
     version: null,
+    releasedSha: null,
     mergedToMainAt: null,
     retryable: false,
     createdAt: '2026-09-01T13:34:59.888123Z',
