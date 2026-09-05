@@ -150,6 +150,9 @@ interface DrawnArtifact {
               @if (deploymentHref(); as href) {
                 <li><a [href]="href">The deployment of this release</a></li>
               }
+              @if (trainHref(); as href) {
+                <li><a [href]="href">The release train of this version</a></li>
+              }
             </ul>
           </section>
         }
@@ -486,6 +489,39 @@ export class ReleaseRequestDetailPage {
     return this.appLinks.href(
       'qits-deployments',
       `deployment-requests/by-release/${encodeURIComponent(request.repoId)}/` +
+        `${encodeURIComponent(request.version)}`,
+      { project: this.addressed().project },
+    );
+  });
+
+  /**
+   * The release train this version opened, in qits-platform-maintenance — what followed the release
+   * *outwards*: which repositories pin this version, which of them were bumped for it, and how far
+   * the wave got.
+   *
+   * <p>Offered for every released version, unlike the deployment link: a library that deploys
+   * nothing is precisely the case a train is *most* about, because a library's whole effect on the
+   * platform is the hops its release opens.
+   *
+   * <p><b>It is addressed by repository NAME</b>, not by the row id every route in this application
+   * is keyed on. qits-platform-maintenance inventories the catalog by name — its own repository
+   * pages are `repositories/<name>` — so the name is the coordinate the two services share, and a
+   * release request carries it. A request from before the service recorded one has no address here
+   * and gets no anchor.
+   *
+   * <p><b>The scope is the PROJECT alone</b>, the same shape and the same reason as the deployment
+   * link: that application serves its addresses bare and under a project slug and under no
+   * repository-scoped one, so spelling the group and the repository into it would compose a URL that
+   * 404s.
+   */
+  protected readonly trainHref = computed(() => {
+    const request = this.row();
+    if (!request?.version || request.state !== 'RELEASED' || !request.repoName) {
+      return undefined;
+    }
+    return this.appLinks.href(
+      'qits-platform-maintenance',
+      `trains/by-release/${encodeURIComponent(request.repoName)}/` +
         `${encodeURIComponent(request.version)}`,
       { project: this.addressed().project },
     );

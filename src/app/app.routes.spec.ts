@@ -15,6 +15,7 @@ import { EpicsPage } from './project/epics-page';
 import { ProjectPage } from './project/project-page';
 import { ProjectReleaseRequestsPage } from './project/project-release-requests-page';
 import { ProjectSetupPage } from './project/project-setup-page';
+import { ReleaseRequestByReleaseResolver } from './project/release-request-by-release-resolver';
 import { ReleaseRequestDetailPage } from './project/release-request-detail-page';
 import { RepositoryPage } from './project/repository-page';
 import { RepositoryReleaseRequestsPage } from './project/repository-release-requests-page';
@@ -113,6 +114,18 @@ describe('routes', () => {
     expect(await at('/qits/release-requests')).toBe(ProjectReleaseRequestsPage);
     // Its own word is not a group, so nothing hangs below it.
     expect(await at('/qits/release-requests/qits-ci')).toBe(NotFound);
+  });
+
+  /**
+   * The by-release address is a *resolver* and not a page: a linker holds a repository and a version
+   * and never the request's id. It is five segments below a project, so what it proves here is that
+   * the literal wins over the guarded `:group` routes — which is route order, and the one thing in
+   * this table that fails silently.
+   */
+  it('serves the by-release resolver below the project, not a repository page', async () => {
+    expect(await at('/qits/release-requests/by-release/repo-ci/2026.905.91746')).toBe(
+      ReleaseRequestByReleaseResolver,
+    );
   });
 
   /**

@@ -61,8 +61,29 @@ const PLATFORM: QitsNavigation = {
         origin: 'https://deployments.dev.example.test',
       },
     ],
+    // The maintenance client hangs under the platform heading rather than a repository's, which is
+    // where its own `deployments.yml` puts it — and `href` reads the first entry for an application
+    // whichever slot it is filed under, so the row's placement is not this page's business.
+    platform: [
+      {
+        app: 'qits-platform-maintenance',
+        label: 'Maintenance',
+        host: 'maintenance.dev.example.test',
+        origin: 'https://maintenance.dev.example.test',
+      },
+    ],
   },
   applications: {},
+};
+
+/**
+ * The same platform with qits-platform-maintenance served nowhere — the "cannot spell it" case, and
+ * the only honest way to produce one: `QitsAppLinks.href` answers `undefined` for an application the
+ * navigation names in no entry.
+ */
+const WITHOUT_MAINTENANCE: QitsNavigation = {
+  ...PLATFORM,
+  slots: { 'services.details': PLATFORM.slots?.['services.details'] ?? [] },
 };
 
 function request(overrides: Partial<ReleaseRequestDto> = {}): ReleaseRequestDto {
@@ -431,6 +452,59 @@ describe('ReleaseRequestDetailPage', () => {
         'https://githost.dev.example.test/qits/services/qits-ci/tags/2026.904.161524',
       );
       expect(page().textContent).not.toContain('The released commit');
+    });
+
+    /**
+     * **The train link's scope is the PROJECT alone**, the same shape and the same reason the
+     * deployment link has: qits-platform-maintenance serves its addresses bare and under a project
+     * slug and under no repository-scoped one. It is addressed by repository NAME rather than by the
+     * row id, because that inventory is keyed by name and the name is the coordinate the two
+     * services share.
+     */
+    it('links the release train of the version, scoped to the project alone', async () => {
+      withRepositories();
+      await open();
+      await answer(released());
+
+      expect(page().textContent).toContain('The release train of this version');
+      expect(hrefs()).toContain(
+        'https://maintenance.dev.example.test/qits/trains/by-release/qits-ci/2026.904.161524',
+      );
+    });
+
+    /**
+     * Unlike the deployment link, this one is offered for a release that deploys nothing: a library
+     * is precisely the case a train is most about, because the hops its release opens are its whole
+     * effect on the platform.
+     */
+    it('links the train of a release nothing deploys', async () => {
+      withRepositories();
+      await open();
+      await answer(released(), {}, { deployable: false });
+
+      expect(page().textContent).toContain('The release train of this version');
+    });
+
+    /** An application the platform serves nowhere has no address, and gets no anchor. */
+    it('offers no train link where the platform serves no maintenance client', async () => {
+      withRepositories(provideQitsNavigationTree(WITHOUT_MAINTENANCE));
+      await open();
+      await answer(released());
+
+      expect(page().textContent).not.toContain('The release train of this version');
+      // The tag still links, so this is the one application missing rather than a bare navigation.
+      expect(hrefs()).toContain(
+        'https://githost.dev.example.test/qits/services/qits-ci/tags/2026.904.161524',
+      );
+    });
+
+    /** A request from before the service recorded the repository's name cannot spell the address. */
+    it('offers no train link for a release that names no repository', async () => {
+      withRepositories();
+      await open();
+      await answer(released({ repoName: null }));
+
+      expect(page().textContent).not.toContain('The release train of this version');
     });
 
     it('says a release has reached main once it has', async () => {
