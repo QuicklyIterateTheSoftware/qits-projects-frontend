@@ -38,19 +38,22 @@ import { ReleaseSources } from './release-sources';
  * open request meant opening each repository in turn and being told "nothing" by almost all of them.
  * One read, one screen, one answer.
  *
- * <p><b>Open only, and that is the service's default rather than a filter here.</b> The route
- * answers PENDING, READY, FAILED, REJECTED and CONFLICTED when nobody names a state — everything
- * that can still move. A project with a year of releases behind it has a year of RELEASED rows, and
- * a worklist that led with them would be a history — the thing this page is *not*. A request that
- * lands therefore leaves the list on the next read, which is the right disappearance: it is no
- * longer waiting on anybody.
+ * <p><b>The open work plus what has just landed, and that is the service's default rather than a
+ * filter here.</b> The route answers PENDING, READY, FAILED, REJECTED and CONFLICTED when nobody
+ * names a state — everything that can still move — followed by the last 10 released. A project with
+ * a year of releases behind it has a year of RELEASED rows and a worklist that led with them would
+ * be a history, the thing this page is *not*; but a release dropping off the moment it landed made
+ * the one event people come here to check the one thing this page never showed. Ten is the tail that
+ * answers both.
  *
- * <p><b>Each row names its repository, and links to it where the chrome can spell the address.</b>
- * The name comes from the service (the DTO carries it, resolved live, so a rename is reflected); the
- * *link* needs the middle segment of `/<project>/<group>/<repository>`, which is the repository's
- * component or its archetype category — and only the chrome's repository list knows that. That list
- * is already fetched to draw the sidebar, so reading it costs nothing, and a repository it does not
- * hold is drawn as plain text rather than as a link to nowhere.
+ * <p><b>Each row names its repository, and links to the REQUEST where the chrome can spell the
+ * address.</b> The name comes from the service (the DTO carries it, resolved live, so a rename is
+ * reflected); the *link* needs the middle segment of `/<project>/<group>/<repository>`, which is the
+ * repository's component or its archetype category — and only the chrome's repository list knows
+ * that. That list is already fetched to draw the sidebar, so reading it costs nothing, and a
+ * repository it does not hold is drawn as plain text rather than as a link to nowhere. What the link
+ * opens is the request's own page rather than its repository's list: the row has already found the
+ * request, and a reader should not have to find it a second time.
  *
  * <p><b>A person can call an ask off and cannot make one</b>, exactly as one level down: the create
  * route is deliberately not wired up, because a release is asked for where the branch is and a
@@ -83,8 +86,8 @@ import { ReleaseSources } from './release-sources';
     </header>
 
     <p class="lead">
-      Every release still waiting on something, across all of this project's repositories, most
-      recently moved first. A request that lands leaves this list.
+      The open requests plus the last 10 released, across all of this project's repositories, most
+      recently moved first. Open one to see what is in it and what it published.
     </p>
 
     <app-async
@@ -96,7 +99,9 @@ import { ReleaseSources } from './release-sources';
 
     @if (rows(); as rows) {
       @if (rows.length === 0) {
-        <app-empty message="Nothing is waiting to be released in this project." />
+        <app-empty
+          message="Nothing is waiting to be released in this project, and nothing has been released recently."
+        />
       } @else {
         <ul class="requests">
           @for (request of rows; track request.id) {
@@ -385,7 +390,9 @@ export class ProjectReleaseRequestsPage {
     }
     return {
       label,
-      route: ['/', this.projectSlug(), group, row.name, 'release-requests'],
+      // The request's OWN page, not its repository's list: the row already names the request, so
+      // landing on a list the reader would then have to find it in again is a click nobody wants.
+      route: ['/', this.projectSlug(), group, row.name, 'release-requests', request.id],
     };
   }
 

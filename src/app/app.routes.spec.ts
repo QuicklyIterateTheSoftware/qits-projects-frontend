@@ -15,6 +15,7 @@ import { EpicsPage } from './project/epics-page';
 import { ProjectPage } from './project/project-page';
 import { ProjectReleaseRequestsPage } from './project/project-release-requests-page';
 import { ProjectSetupPage } from './project/project-setup-page';
+import { ReleaseRequestDetailPage } from './project/release-request-detail-page';
 import { RepositoryPage } from './project/repository-page';
 import { RepositoryReleaseRequestsPage } from './project/repository-release-requests-page';
 
@@ -161,9 +162,23 @@ describe('routes', () => {
     expect(await at('/qits/epics/planning/release-requests')).toBe(NotFound);
   });
 
+  /**
+   * One request is a place of its own, at the list's address plus its id — which is what makes the
+   * link from a row a relative `['./', id]` rather than a second spelling of the address.
+   */
+  it('serves one release request below its repository list', async () => {
+    expect(await at('/qits/services/qits-ci/release-requests/r1')).toBe(ReleaseRequestDetailPage);
+    expect(await at('/qits/qits-ci/qits-ci-service/release-requests/r1')).toBe(
+      ReleaseRequestDetailPage,
+    );
+    // The guard still applies to the middle segment, five segments deep as at three.
+    expect(await at('/qits/epics/planning/release-requests/r1')).toBe(NotFound);
+  });
+
   it('answers anything deeper with the 404 it is', async () => {
     expect(await at('/qits/services/qits-ci/runs')).toBe(NotFound);
     expect(await at('/qits/project-setup/extra')).toBe(NotFound);
+    expect(await at('/qits/services/qits-ci/release-requests/r1/extra')).toBe(NotFound);
   });
 });
 

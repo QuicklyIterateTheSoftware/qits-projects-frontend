@@ -7,6 +7,7 @@ import { EpicsPage } from './project/epics-page';
 import { ProjectPage } from './project/project-page';
 import { ProjectReleaseRequestsPage } from './project/project-release-requests-page';
 import { ProjectSetupPage } from './project/project-setup-page';
+import { ReleaseRequestDetailPage } from './project/release-request-detail-page';
 import { RepositoryApiDocsPage } from './project/repository-api-docs-page';
 import { RepositoryPage } from './project/repository-page';
 import { RepositoryReleaseRequestsPage } from './project/repository-release-requests-page';
@@ -45,7 +46,7 @@ export const repositoryGroupIsKnown: CanMatchFn = (_route, segments) => {
 };
 
 /**
- * Eleven routes, all of them inside the platform chrome.
+ * Twelve routes, all of them inside the platform chrome.
  *
  * `QitsMainLayout` is the root *route* component rather than something the shell templates, so the
  * bar, the navigation and the project picker hanging under it mount once and survive every
@@ -104,6 +105,12 @@ export const repositoryGroupIsKnown: CanMatchFn = (_route, segments) => {
  * repository carries the row. The address is the same three segments with a fourth, so the entry
  * the chrome composes and the page the router builds are one URL by construction.
  *
+ * <p><b>One request is the fifth segment</b>, `:project/:group/:repository/release-requests/:requestId`,
+ * and it is a place rather than an expanded row: it costs four reads — the request, the commits its
+ * fold brought in, what it published, and where its deployment got to — three of which reach a
+ * different service and none of which could ride on a list that polls. The address is the list's own
+ * plus the request's id, so the link from a row is a relative `['./', id]` and cannot drift from it.
+ *
  * <p><b>The refining route names an epic and never a workspace.</b>
  * `:project/epics/:epicSlug/refining` is where an epic is worked out, and the workspace behind it is
  * *looked up* — the ACTIVE workspace on `refining/<epicSlug>` in the project's wrapper repository.
@@ -119,8 +126,8 @@ export const repositoryGroupIsKnown: CanMatchFn = (_route, segments) => {
  * epic's workspace. Keeping the tab in the query string leaves the path meaning "which epic", makes a
  * bare URL mean "no tab pinned" by simple absence, and keeps every tab a shareable link.
  *
- * <p>All eleven load eagerly. There are eleven of them, they share every component below them, and a
- * lazy chunk boundary here would be ceremony that costs a round trip.
+ * <p>All twelve load eagerly. There are twelve of them, they share every component below them, and
+ * a lazy chunk boundary here would be ceremony that costs a round trip.
  *
  * <p>The `**` route sits *inside* the layout: this application is served at the root of its own
  * host, so an unknown URL here is an ordinary 404 and is drawn with the chrome around it.
@@ -151,6 +158,11 @@ export const routes: Routes = [
         path: ':project/:group/:repository/release-requests',
         canMatch: [repositoryGroupIsKnown],
         component: RepositoryReleaseRequestsPage,
+      },
+      {
+        path: ':project/:group/:repository/release-requests/:requestId',
+        canMatch: [repositoryGroupIsKnown],
+        component: ReleaseRequestDetailPage,
       },
       { path: '**', component: NotFound },
     ],

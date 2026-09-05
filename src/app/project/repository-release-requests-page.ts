@@ -9,7 +9,7 @@ import {
   untracked,
 } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
-import { ActivatedRoute, convertToParamMap } from '@angular/router';
+import { ActivatedRoute, RouterLink, convertToParamMap } from '@angular/router';
 import { QITS_REPOSITORIES, QITS_SCOPE, QitsBadge, QitsButton } from '@qits/ui-components';
 import type { QitsScope } from '@qits/ui-components';
 import type { ReleaseRequestDto } from '../api/dto';
@@ -52,11 +52,32 @@ import { ReleaseSources } from './release-sources';
  * which is what the gates evaluate. A fold that could not be made at all is `CONFLICTED`, and the
  * conflict travels on the read, so the panel under the row needs no second request to say what to
  * resolve.
+ *
+ * <p><b>Every row is a way in.</b> The summary links to the request's own page, relatively — the
+ * detail address is this one with the request's id appended, so `['./', id]` is the address rather
+ * than a second spelling of it. What the row cannot hold is what lives there: the commits the fold
+ * brought in, what the release published, and where its deployment got to are three reads against
+ * three services, and none of them belongs behind a poll.
+ *
+ * <p><b>The list is no longer the whole history.</b> The service's default is the open requests plus
+ * the last 10 released, so a release stops vanishing off the page the moment it lands — and a
+ * WITHDRAWN request, which used to appear here only because this route had no filter at all, now
+ * needs `state=all`. This page does not offer that filter, because the question it exists to answer
+ * is what is happening rather than what has ever happened.
  */
 @Component({
   selector: 'app-repository-release-requests-page',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [Async, Empty, NotFound, QitsBadge, QitsButton, ReleaseConflict, ReleaseSources],
+  imports: [
+    Async,
+    Empty,
+    NotFound,
+    QitsBadge,
+    QitsButton,
+    ReleaseConflict,
+    ReleaseSources,
+    RouterLink,
+  ],
   template: `
     @if (chromeFailed()) {
       <p class="state">
@@ -80,8 +101,9 @@ import { ReleaseSources } from './release-sources';
       </header>
 
       <p class="lead">
-        Every release asked for on {{ repository() }}, newest first. A request folds its sources
-        together, is gated on the builds of that fold, and lands by itself when they pass.
+        The open requests plus the last 10 released on {{ repository() }}, newest first. A request
+        folds its sources together, is gated on the builds of that fold, and lands by itself when
+        they pass. Open one to see what is in it and what it published.
       </p>
 
       <app-async
@@ -93,7 +115,9 @@ import { ReleaseSources } from './release-sources';
 
       @if (rows(); as rows) {
         @if (rows.length === 0) {
-          <app-empty message="Nothing has been asked for on this repository yet." />
+          <app-empty
+            message="Nothing is open on this repository, and nothing has been released recently."
+          />
         } @else {
           <ul class="requests">
             @for (request of rows; track request.id) {
@@ -101,7 +125,7 @@ import { ReleaseSources } from './release-sources';
                 @let badge = stateBadge(request.state);
                 <div class="row">
                   <qits-badge [label]="badge.label" [tone]="badge.tone" />
-                  <span class="summary">{{ request.summary }}</span>
+                  <a class="summary" [routerLink]="['./', request.id]">{{ request.summary }}</a>
                   <span
                     class="when"
                     [title]="
@@ -230,6 +254,10 @@ import { ReleaseSources } from './release-sources';
       min-width: 12rem;
       font-weight: 600;
       overflow-wrap: anywhere;
+      color: #1d4ed8;
+    }
+    a.summary:hover {
+      text-decoration: underline;
     }
     .when {
       font-size: 0.8rem;
