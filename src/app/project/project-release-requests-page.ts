@@ -24,6 +24,7 @@ import {
   hasOpenRequests,
   mergedShaLabel,
   releaseDetail,
+  releasePriorityBadge,
   releaseStateBadge,
 } from './release-requests-model';
 import { ReleaseSources } from './release-sources';
@@ -109,6 +110,11 @@ import { ReleaseSources } from './release-sources';
               @let badge = stateBadge(request.state);
               <div class="row">
                 <qits-badge [label]="badge.label" [tone]="badge.tone" />
+                @if (priorityBadge(request.priority); as priority) {
+                  <span class="priority" [title]="priorityTitle">
+                    <qits-badge [label]="priority.label" [tone]="priority.tone" />
+                  </span>
+                }
                 @let where = repositoryLink(request);
                 @if (where.route) {
                   <a class="repo" [routerLink]="where.route">{{ where.label }}</a>
@@ -231,6 +237,9 @@ import { ReleaseSources } from './release-sources';
       gap: 0.5rem;
       flex-wrap: wrap;
     }
+    .priority {
+      display: inline-flex;
+    }
     .repo {
       font-weight: 600;
       overflow-wrap: anywhere;
@@ -307,11 +316,21 @@ export class ProjectReleaseRequestsPage {
 
   protected readonly none = NONE;
   protected readonly stateBadge = releaseStateBadge;
+  protected readonly priorityBadge = releasePriorityBadge;
   protected readonly detail = releaseDetail;
   protected readonly withdrawable = canWithdraw;
   protected readonly mergedSha = mergedShaLabel;
   protected readonly ago = (iso: string) => formatRelativeTime(iso);
   protected readonly instant = formatInstant;
+
+  /**
+   * What the priority badge on a row means, said on hover — the maximum over the request's branches,
+   * which is the request's urgency rather than any one branch's, and a signal nothing acts on yet.
+   * This is the page where it earns its place: a project-wide worklist is exactly where "which of
+   * these is the one that matters" is the question being asked.
+   */
+  protected readonly priorityTitle =
+    'The highest priority among this request’s branches. Nothing is reordered by it yet.';
 
   /** The id the API takes, and the slug every link is spelled with. */
   protected readonly projectId = this.param.projectId;

@@ -14,12 +14,12 @@ import type {
  * The release-request surface: a repository's asks, a project's, and the one verb a person has over
  * them.
  *
- * <p><b>Read-and-withdraw, and nothing else.</b> The other route on that controller is the
- * `POST` that *creates* a request, and it is deliberately absent here: a release is asked for by
- * pushing a branch and calling qits-workspaces' release door, which is what mints the request. A
- * create button on this page would be a second way in that skips the branch the door resolves, so
- * this SPA reads the record and can call one ask off — the two things a person looking at the list
- * actually needs.
+ * <p><b>Read, withdraw, and re-declare what a branch is worth — and nothing else.</b> The other
+ * route on that controller is the `POST` that *creates* a request, and it is deliberately absent
+ * here: a release is asked for by pushing a branch and calling qits-workspaces' release door, which
+ * is what mints the request. A create button on this page would be a second way in that skips the
+ * branch the door resolves, so this SPA reads the record, can call one ask off, and can change the
+ * priority of a branch already on it — the things a person looking at the list actually needs.
  *
  * <p><b>The two derived reads are separate calls on purpose.</b> `commits` reaches the repository's
  * git mirror and `artifacts` reaches the git host, so neither could ride on a list without putting
@@ -117,6 +117,36 @@ export class ReleaseRequestsApi {
       `${this.base}/projects/api/repositories/${encodeURIComponent(repoId)}/release-requests/` +
       `${encodeURIComponent(requestId)}`
     );
+  }
+
+  /**
+   * Re-declare what one participating branch is worth. The whole request comes back, with its
+   * effective priority — the highest of its branches — already recomputed.
+   *
+   * <p><b>The branch travels in the body rather than in the path</b>, which is the service's own
+   * shape and not a preference: branch names contain slashes, so a path segment would either have to
+   * be escaped by both sides in exactly the same way or would address the wrong row.
+   *
+   * <p>Nothing is re-folded and nothing is announced by this: the fold did not move, so the request
+   * is the same release it was — only the signal on it changed.
+   *
+   * <p>A request already RELEASED or WITHDRAWN answers **409**, exactly as the withdraw does. The
+   * control is disabled in those states rather than hidden, and the refusal is still rendered where
+   * it happens, because the usual cause is a page that went stale under the reader.
+   */
+  async setSourcePriority(
+    repoId: string,
+    requestId: string,
+    branch: string,
+    priority: string,
+  ): Promise<ReleaseRequestDto> {
+    const response = await firstValueFrom(
+      this.http.post<ReleaseRequestResponse>(
+        `${this.requestBase(repoId, requestId)}/sources/priority`,
+        { branch, priority },
+      ),
+    );
+    return response.request;
   }
 
   /**

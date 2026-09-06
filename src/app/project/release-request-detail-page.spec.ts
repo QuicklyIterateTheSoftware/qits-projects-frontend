@@ -394,6 +394,24 @@ describe('ReleaseRequestDetailPage', () => {
       expect(page().textContent).toContain('no longer in the repository');
     });
 
+    /** The request's own badge is the highest of its branches, and it says so on hover. */
+    it('badges the effective priority, and nothing where the service gave none', async () => {
+      withRepositories();
+      await open();
+      await answer(request({ priority: 'HIGHER' }));
+
+      expect(page().querySelector('.head .priority')?.textContent).toContain('higher');
+      expect(page().querySelector('.head .priority')?.getAttribute('title')).toContain(
+        'highest priority among',
+      );
+
+      await vi.advanceTimersByTimeAsync(RELEASE_REQUESTS_POLL_MS);
+      http.expectOne(REQUEST).flush({ request: request() });
+      await settle();
+      harness.fixture.detectChanges();
+      expect(page().querySelector('.head .priority')).toBeNull();
+    });
+
     it('draws the conflict panel on a conflicted request', async () => {
       withRepositories();
       await open();
@@ -419,6 +437,99 @@ describe('ReleaseRequestDetailPage', () => {
       const panel = page().querySelector('.conflict')?.textContent ?? '';
       expect(panel).toContain('pom.xml');
       expect(panel).toContain('2026.903.1');
+    });
+  });
+
+  /**
+   * The one place a priority can be changed. This page is where somebody has already decided which
+   * release they care about, which is why the control is here and not on the lists — and what is
+   * worth pinning is that the answer replaces the row instead of costing three reads over again.
+   */
+  describe('changing what a branch is worth', () => {
+    const BRANCHES: readonly ReleaseRequestDto['sources'][number][] = [
+      { kind: 'BRANCH', name: 'main', ref: 'refs/heads/main', implicit: false, priority: 'MEDIUM' },
+      {
+        kind: 'BRANCH',
+        name: 'adhoc-changes',
+        ref: 'refs/heads/adhoc-changes',
+        implicit: false,
+        priority: 'MEDIUM',
+      },
+      {
+        kind: 'RELEASED_TAG',
+        name: '2026.903.1',
+        ref: 'refs/tags/2026.903.1',
+        implicit: true,
+      },
+    ];
+
+    function pickers(): readonly HTMLSelectElement[] {
+      return [...page().querySelectorAll('select')];
+    }
+
+    /** The derived tag has no priority to have, so it is not offered one. */
+    it('offers a select on every named branch and none on the tags', async () => {
+      withRepositories();
+      await open();
+      await answer(request({ sources: BRANCHES, priority: 'MEDIUM' }));
+
+      expect(pickers().map((picker) => picker.getAttribute('aria-label'))).toEqual([
+        'Priority of main',
+        'Priority of adhoc-changes',
+      ]);
+    });
+
+    /**
+     * The whole request comes back with its effective priority recomputed, and it is put in place of
+     * the row that was there. Nothing else is re-read: a priority does not move the fold, so the
+     * commits on screen are the same commits.
+     */
+    it('posts the change and takes the answer in place of a re-read', async () => {
+      withRepositories();
+      await open();
+      await answer(request({ sources: BRANCHES, priority: 'MEDIUM' }));
+
+      pickers()[1].value = 'BLOCKING';
+      pickers()[1].dispatchEvent(new Event('change'));
+      await settle();
+
+      const posted = http.expectOne(`${REQUEST}/sources/priority`);
+      expect(posted.request.method).toBe('POST');
+      expect(posted.request.body).toEqual({ branch: 'adhoc-changes', priority: 'BLOCKING' });
+      posted.flush({
+        request: request({
+          sources: [BRANCHES[0], { ...BRANCHES[1], priority: 'BLOCKING' }, BRANCHES[2]],
+          priority: 'BLOCKING',
+        }),
+      });
+      await settle();
+      harness.fixture.detectChanges();
+
+      expect(page().querySelector('.head .priority')?.textContent).toContain('blocking');
+      // The fold did not move, so neither read behind it is asked for again.
+      http.expectNone(COMMITS);
+      http.expectNone(ARTIFACTS);
+    });
+
+    /**
+     * A released request refuses every change, and the service would answer 409. The control stays
+     * on the page and goes inert: what each branch was worth is part of what shipped.
+     */
+    it('leaves the selects inert once the request is released', async () => {
+      withRepositories();
+      await open();
+      await answer(released({ sources: BRANCHES }));
+
+      expect(pickers()).toHaveLength(2);
+      expect(pickers().every((picker) => picker.disabled)).toBe(true);
+    });
+
+    it('leaves them inert on a withdrawn request too', async () => {
+      withRepositories();
+      await open();
+      await answer(request({ state: 'WITHDRAWN', sources: BRANCHES }));
+
+      expect(pickers().every((picker) => picker.disabled)).toBe(true);
     });
   });
 

@@ -248,6 +248,34 @@ describe('ProjectReleaseRequestsPage', () => {
     });
 
     /**
+     * The badge is the request's **effective** priority — the highest of its branches — and this is
+     * the page it is most for: a project-wide worklist is read to answer "which of these is the one
+     * that matters", and a reader who had to open every row to find out is not scanning. A request
+     * the service gave no priority draws none, because absent is not `MEDIUM`.
+     */
+    it('badges the request’s effective priority, and nothing where the service gave none', async () => {
+      configure();
+      await open();
+      await answer([request({ id: 'a', priority: 'HIGHER' }), request({ id: 'b' })]);
+
+      const rows = [...page().querySelectorAll('li.request')];
+      expect(rows[0].querySelector('.row .priority')?.textContent).toContain('higher');
+      expect(rows[0].querySelector('.row .priority')?.getAttribute('title')).toContain(
+        'highest priority among',
+      );
+      expect(rows[1].querySelector('.row .priority')).toBeNull();
+    });
+
+    /** A list that polls is not a form: changing a priority lives on the request's own page. */
+    it('offers no way to change a priority from the list', async () => {
+      configure();
+      await open();
+      await answer([request({ priority: 'HIGH' })]);
+
+      expect(page().querySelector('select')).toBeNull();
+    });
+
+    /**
      * The tail the route's default carries: a release is on this page after it lands, so the one
      * event people come here to check is the one thing the page no longer hides.
      */

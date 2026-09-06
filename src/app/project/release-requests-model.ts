@@ -28,7 +28,13 @@ import { NONE, shortSha } from '../ui/format';
  */
 export const RELEASE_REQUESTS_POLL_MS = 6000;
 
-/** The badge one state draws as: the word a person reads, and the tone that colours it. */
+/**
+ * The badge one word draws as: the word a person reads, and the tone that colours it.
+ *
+ * <p>Named for the state because that is what it was invented for, and shared with the priority
+ * badge rather than copied: the two are the same shape answering the same question — which word, in
+ * which colour — and a second identical interface would be two names for one fact.
+ */
 export interface ReleaseStateBadge {
   readonly label: string;
   readonly tone: QitsBadgeTone;
@@ -83,8 +89,56 @@ const SETTLED_STATES: ReadonlySet<string> = new Set([
   'WITHDRAWN',
 ]);
 
-/** The states the service itself refuses to withdraw, and the whole of what it refuses. */
-const WITHDRAWAL_REFUSED: ReadonlySet<string> = new Set(['RELEASED', 'WITHDRAWN']);
+/**
+ * The states the service refuses to change a request in, and the whole of what it refuses.
+ *
+ * <p>One set for both verbs, because the service has one rule: withdrawing an ask and re-declaring
+ * what one of its branches is worth are both changes to a request, and both are answered by the same
+ * `requireOpenForChange` — RELEASED and WITHDRAWN are done and everything else is still open.
+ * Spelling the refusal once here is what keeps the two buttons and the 409 from drifting apart, and
+ * what keeps a state added on the service side offerable with no edit on this side.
+ */
+const CLOSED_TO_CHANGE: ReadonlySet<string> = new Set(['RELEASED', 'WITHDRAWN']);
+
+/**
+ * How urgent a participating branch is, **lowest first** — the service's own order, which is the
+ * whole of what makes "the highest of them" a meaningful answer, and the order the select draws.
+ *
+ * <p>The word travels as a plain string on both DTOs, the way the state does, so a vocabulary that
+ * grew on the service side still arrives and is still drawn. That is also why
+ * {@link priorityOptions} folds a word this build has never heard of into the list rather than
+ * dropping it: a select that silently replaced the stored value with the first thing it knows would
+ * change a branch's priority because somebody opened the page.
+ *
+ * <p><b>Nothing is reordered by any of this yet.</b> The value is recorded on the branch, carried
+ * down the chain and shown; the build queue is untouched, which is a later feature.
+ */
+export const RELEASE_PRIORITIES: readonly string[] = [
+  'LOWEST',
+  'LOW',
+  'MEDIUM',
+  'HIGH',
+  'HIGHER',
+  'BLOCKING',
+];
+
+/**
+ * How each priority is drawn.
+ *
+ * <p><b>Only what is above the default gets a colour.</b> `MEDIUM` is what a branch has when nobody
+ * said anything, and the two below it are somebody standing aside — none of the three is news, so
+ * all three are neutral and the badge's job is left to the two that mean "look at this" and the one
+ * that means "everything else waits". A colour on every row would make the escalated ones invisible,
+ * which is the one thing this badge exists to prevent.
+ */
+const PRIORITY_TONES: Readonly<Record<string, QitsBadgeTone>> = {
+  LOWEST: 'neutral',
+  LOW: 'neutral',
+  MEDIUM: 'neutral',
+  HIGH: 'warning',
+  HIGHER: 'warning',
+  BLOCKING: 'danger',
+};
 
 /**
  * What one state is drawn as. An unknown word is shown **as itself**, in the neutral tone — the
@@ -96,6 +150,65 @@ export function releaseStateBadge(state: string): ReleaseStateBadge {
     label: (state || 'unknown').toLowerCase(),
     tone: STATE_TONES[state] ?? 'neutral',
   };
+}
+
+/**
+ * What one priority is drawn as, or **nothing at all** where there is no priority.
+ *
+ * <p>The null is the whole of the care here. A missing value is not `MEDIUM`: it is either a source
+ * that has none to have — the implicit released tags are derived rows the service never stores a
+ * priority on — or an answer from a service build older than the field, which is every answer on the
+ * day this SPA ships, because the SPA is released before the service that grew the field. Drawing
+ * the default for either would be inventing a fact about somebody's release.
+ *
+ * <p>A word this build has never heard of is drawn **as itself**, in the neutral tone — the same
+ * three-valued honesty {@link releaseStateBadge} keeps, and the reason both are plain strings.
+ */
+export function releasePriorityBadge(
+  priority: string | null | undefined,
+): ReleaseStateBadge | null {
+  const word = priority?.trim();
+  if (!word) {
+    return null;
+  }
+  return { label: word.toLowerCase(), tone: PRIORITY_TONES[word] ?? 'neutral' };
+}
+
+/**
+ * What a select over one source's priority offers: the six the service stores, plus whatever that
+ * source is *already* set to if this build has never heard of it.
+ *
+ * <p>The tail is not decoration. A `<select>` shows its first option when its value matches none of
+ * them, so a request carrying a word from a newer service would be drawn as `LOWEST` and one
+ * inattentive change would post that back — a downgrade nobody asked for, caused by opening a page.
+ */
+export function priorityOptions(current: string | null | undefined): readonly string[] {
+  const word = current?.trim();
+  return word && !RELEASE_PRIORITIES.includes(word)
+    ? [...RELEASE_PRIORITIES, word]
+    : RELEASE_PRIORITIES;
+}
+
+/**
+ * Whether a source's priority can still be re-declared on this request.
+ *
+ * <p>The same negative as {@link canWithdraw} and the same reason: the service refuses to change a
+ * RELEASED or WITHDRAWN request and nothing else, so a control offered on anything else is offered
+ * exactly where the service will take it. A release that has already gone out keeps its priority
+ * visible — the control is drawn and disabled rather than removed, because what a branch was worth
+ * is part of the record.
+ */
+export function canSetPriority(request: ReleaseRequestDto): boolean {
+  return !CLOSED_TO_CHANGE.has(request.state);
+}
+
+/**
+ * Whether this participant is one a person can put a priority on: the named branches, never the
+ * released tags the service adds underneath. Those are derived rows that are never persisted, so
+ * they carry no priority and the endpoint knows nothing about them.
+ */
+export function canPrioritiseSource(source: ReleaseRequestSourceDto): boolean {
+  return !source.implicit;
 }
 
 /**
@@ -132,7 +245,7 @@ export function hasOpenRequests(requests: readonly ReleaseRequestDto[]): boolean
  * 409 enforces, so the button and the answer cannot drift apart.
  */
 export function canWithdraw(request: ReleaseRequestDto): boolean {
-  return !WITHDRAWAL_REFUSED.has(request.state);
+  return !CLOSED_TO_CHANGE.has(request.state);
 }
 
 /**

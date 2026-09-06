@@ -1,12 +1,17 @@
 import type { ReleaseRequestDto, ReleaseRequestSourceDto } from '../api/dto';
 import {
+  RELEASE_PRIORITIES,
+  canPrioritiseSource,
+  canSetPriority,
   canWithdraw,
   hasOpenRequests,
   isSettled,
   mergedShaLabel,
+  priorityOptions,
   refName,
   releaseConflict,
   releaseDetail,
+  releasePriorityBadge,
   releaseSources,
   releaseStateBadge,
   sourceTitle,
@@ -159,6 +164,87 @@ describe('release-requests-model', () => {
     it('does not offer what would answer 409', () => {
       expect(canWithdraw(request({ state: 'RELEASED' }))).toBe(false);
       expect(canWithdraw(request({ state: 'WITHDRAWN' }))).toBe(false);
+    });
+  });
+
+  describe('releasePriorityBadge', () => {
+    /**
+     * Only what is above the default is coloured. A tone on every row would make the escalated ones
+     * invisible, which is the one thing this badge exists to prevent.
+     */
+    it('leaves the default and everything under it uncoloured', () => {
+      expect(releasePriorityBadge('LOWEST')).toEqual({ label: 'lowest', tone: 'neutral' });
+      expect(releasePriorityBadge('LOW')).toEqual({ label: 'low', tone: 'neutral' });
+      expect(releasePriorityBadge('MEDIUM')).toEqual({ label: 'medium', tone: 'neutral' });
+    });
+
+    it('warns above the default and shouts at the top of it', () => {
+      expect(releasePriorityBadge('HIGH')).toEqual({ label: 'high', tone: 'warning' });
+      expect(releasePriorityBadge('HIGHER')).toEqual({ label: 'higher', tone: 'warning' });
+      expect(releasePriorityBadge('BLOCKING')).toEqual({ label: 'blocking', tone: 'danger' });
+    });
+
+    /**
+     * The null is the point, and it is not `MEDIUM`. An implicit tag has no priority to have and a
+     * service build older than the field answers none at all — which is every answer on the day this
+     * SPA ships, because it is released before the service. Drawing the default would invent a fact.
+     */
+    it('draws nothing at all where there is no priority', () => {
+      expect(releasePriorityBadge(undefined)).toBeNull();
+      expect(releasePriorityBadge(null)).toBeNull();
+      expect(releasePriorityBadge('  ')).toBeNull();
+    });
+
+    it('draws a word this build has never heard of as itself, in no colour at all', () => {
+      expect(releasePriorityBadge('URGENT')).toEqual({ label: 'urgent', tone: 'neutral' });
+    });
+  });
+
+  describe('RELEASE_PRIORITIES', () => {
+    /** Lowest first: the service's own order, which is what makes "the highest of them" mean this. */
+    it('is the six the service stores, weakest first', () => {
+      expect(RELEASE_PRIORITIES).toEqual(['LOWEST', 'LOW', 'MEDIUM', 'HIGH', 'HIGHER', 'BLOCKING']);
+    });
+  });
+
+  describe('priorityOptions', () => {
+    it('offers the six, in the service’s order', () => {
+      expect(priorityOptions('MEDIUM')).toEqual(RELEASE_PRIORITIES);
+      expect(priorityOptions(undefined)).toEqual(RELEASE_PRIORITIES);
+    });
+
+    /**
+     * A select shows its first option when its value matches none of them, so a word from a newer
+     * service would be drawn as LOWEST and one inattentive change would post that back — a downgrade
+     * caused by opening a page. The stored word is offered instead.
+     */
+    it('folds a stored word this build has never heard of into the list', () => {
+      expect(priorityOptions('URGENT')).toEqual([...RELEASE_PRIORITIES, 'URGENT']);
+    });
+  });
+
+  /**
+   * The same negative as {@link canWithdraw}, from the same set, because the service has one rule:
+   * a RELEASED or WITHDRAWN request refuses every change, and everything else is open.
+   */
+  describe('canSetPriority', () => {
+    it('offers everything the service does not refuse', () => {
+      for (const state of ['PENDING', 'READY', 'REJECTED', 'CONFLICTED', 'FAILED', 'RELEASING']) {
+        expect(canSetPriority(request({ state }))).toBe(true);
+      }
+    });
+
+    it('does not offer what would answer 409', () => {
+      expect(canSetPriority(request({ state: 'RELEASED' }))).toBe(false);
+      expect(canSetPriority(request({ state: 'WITHDRAWN' }))).toBe(false);
+    });
+  });
+
+  describe('canPrioritiseSource', () => {
+    /** The derived rows are never persisted, so the endpoint knows nothing about them. */
+    it('is the named branches, never the tags the service added underneath', () => {
+      expect(canPrioritiseSource(source())).toBe(true);
+      expect(canPrioritiseSource(TAG)).toBe(false);
     });
   });
 

@@ -260,6 +260,38 @@ describe('RepositoryReleaseRequestsPage', () => {
       expect(chips[1].getAttribute('title')).toContain('has not reached main yet');
     });
 
+    /**
+     * The badge is the request's **effective** priority — the highest of its branches — and a list
+     * is where that earns its place: the question a worklist is scanned with is which of these
+     * matters, and answering it by opening every row is not scanning. A request the service gave no
+     * priority draws none, because absent is not `MEDIUM`.
+     */
+    it('badges the request’s effective priority, and nothing where the service gave none', async () => {
+      withRepositories();
+      await open();
+      await answer([request({ id: 'a', priority: 'BLOCKING' }), request({ id: 'b' })]);
+
+      const rows = [...page().querySelectorAll('li.request')];
+      expect(rows[0].querySelector('.row .priority')?.textContent).toContain('blocking');
+      expect(rows[0].querySelector('.row .priority')?.getAttribute('title')).toContain(
+        'highest priority among',
+      );
+      expect(rows[1].querySelector('.row .priority')).toBeNull();
+    });
+
+    /**
+     * The lists are scanned and they poll: a form control on a page that redraws itself every six
+     * seconds is a control that moves under the hand using it. Changing a priority lives on the
+     * request's own page.
+     */
+    it('offers no way to change a priority from the list', async () => {
+      withRepositories();
+      await open();
+      await answer([request({ priority: 'HIGH' })]);
+
+      expect(page().querySelector('select')).toBeNull();
+    });
+
     /** Null is "nothing is gated yet", which is not the same sentence as "nothing to release". */
     it('draws the em dash for a request whose first fold has not landed', async () => {
       withRepositories();

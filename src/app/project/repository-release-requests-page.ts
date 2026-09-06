@@ -26,6 +26,7 @@ import {
   hasOpenRequests,
   mergedShaLabel,
   releaseDetail,
+  releasePriorityBadge,
   releaseStateBadge,
 } from './release-requests-model';
 import { ReleaseSources } from './release-sources';
@@ -125,6 +126,11 @@ import { ReleaseSources } from './release-sources';
                 @let badge = stateBadge(request.state);
                 <div class="row">
                   <qits-badge [label]="badge.label" [tone]="badge.tone" />
+                  @if (priorityBadge(request.priority); as priority) {
+                    <span class="priority" [title]="priorityTitle">
+                      <qits-badge [label]="priority.label" [tone]="priority.tone" />
+                    </span>
+                  }
                   <a class="summary" [routerLink]="['./', request.id]">{{ request.summary }}</a>
                   <span
                     class="when"
@@ -249,6 +255,9 @@ import { ReleaseSources } from './release-sources';
       gap: 0.5rem;
       flex-wrap: wrap;
     }
+    .priority {
+      display: inline-flex;
+    }
     .summary {
       flex: 1;
       min-width: 12rem;
@@ -333,11 +342,21 @@ export class RepositoryReleaseRequestsPage {
 
   protected readonly none = NONE;
   protected readonly stateBadge = releaseStateBadge;
+  protected readonly priorityBadge = releasePriorityBadge;
   protected readonly detail = releaseDetail;
   protected readonly withdrawable = canWithdraw;
   protected readonly mergedSha = mergedShaLabel;
   protected readonly ago = (iso: string) => formatRelativeTime(iso);
   protected readonly instant = formatInstant;
+
+  /**
+   * What the priority badge on a row means, said on hover: it is the maximum over the request's
+   * branches, so it is the request's own urgency rather than any one branch's — and it is a signal a
+   * person reads, not something the platform acts on yet. The branch it came from is on the request's
+   * own page, which is where the value can be changed.
+   */
+  protected readonly priorityTitle =
+    'The highest priority among this request’s branches. Nothing is reordered by it yet.';
 
   /**
    * The whole of the fold in one tooltip: which ref it lands on and what its tip is. The row shows

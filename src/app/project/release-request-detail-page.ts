@@ -31,6 +31,7 @@ import {
   isSettled,
   mergedShaLabel,
   releaseDetail,
+  releasePriorityBadge,
   releaseStateBadge,
 } from './release-requests-model';
 import { ReleaseSources } from './release-sources';
@@ -96,13 +97,18 @@ interface DrawnArtifact {
         @let badge = stateBadge(request.state);
         <header class="head">
           <qits-badge [label]="badge.label" [tone]="badge.tone" />
+          @if (priorityBadge(request.priority); as priority) {
+            <span class="priority" [title]="priorityTitle">
+              <qits-badge [label]="priority.label" [tone]="priority.tone" />
+            </span>
+          }
           <h1>{{ request.summary }}</h1>
           @if (watching()) {
             <span class="watching" role="status">Watching for changes…</span>
           }
         </header>
 
-        <app-release-sources [request]="request" />
+        <app-release-sources [request]="request" editable (changed)="prioritised($event)" />
 
         <div class="facts">
           <span class="fact">
@@ -249,6 +255,9 @@ interface DrawnArtifact {
       font-size: 0.95rem;
       font-weight: 600;
     }
+    .priority {
+      display: inline-flex;
+    }
     .watching {
       font-size: 0.8rem;
       color: #6b7280;
@@ -378,8 +387,17 @@ export class ReleaseRequestDetailPage {
 
   protected readonly none = NONE;
   protected readonly stateBadge = releaseStateBadge;
+  protected readonly priorityBadge = releasePriorityBadge;
   protected readonly detail = releaseDetail;
   protected readonly mergedSha = mergedShaLabel;
+
+  /**
+   * What the request's own priority badge means, said once on hover: it is the maximum of the
+   * branches below it — which is why it can rise when one of them is escalated and never falls on
+   * its own — and it reorders nothing yet.
+   */
+  protected readonly priorityTitle =
+    'The highest priority among this request’s branches. Nothing is reordered by it yet.';
   protected readonly ago = (iso: string) => formatRelativeTime(iso);
   protected readonly instant = formatInstant;
   protected readonly short = (sha: string | null) => (sha ? shortSha(sha) : NONE);
@@ -592,6 +610,18 @@ export class ReleaseRequestDetailPage {
     if (!repoId || !requestId) return;
     this.cancelTimer();
     void this.load(repoId, requestId, this.row() !== null);
+  }
+
+  /**
+   * The request as the service answered a change to one of its branches' priorities.
+   *
+   * <p>The answer replaces the row rather than triggering a re-read, exactly as the withdraw does on
+   * the lists: the whole request came back, so asking again would be a second round trip for bytes
+   * already held. Nothing else on the page is stale — a priority does not move the fold, so the
+   * commits are the same commits and are deliberately not asked for again.
+   */
+  protected prioritised(request: ReleaseRequestDto): void {
+    this.request.set(ready(request));
   }
 
   /** The reader asking again for a fold whose read failed — the same read the answer triggers. */

@@ -509,6 +509,20 @@ export interface ReleaseRequestSourceDto {
   readonly name: string;
   readonly ref: string;
   readonly implicit: boolean;
+  /**
+   * How urgent this branch is — `LOWEST`, `LOW`, `MEDIUM`, `HIGH`, `HIGHER` or `BLOCKING`, declared
+   * when the branch is put on the request and re-declarable while the request is open. `MEDIUM` is
+   * what a branch has when nobody said anything.
+   *
+   * <p>**Absent on the implicit `RELEASED_TAG` sources**, which are derived rows the service never
+   * persists and so has no priority to answer for — and absent on every answer from a service build
+   * older than the field, which is the ordinary case while this SPA is ahead of the service it is
+   * served by. Neither is `MEDIUM`, which is why this is optional rather than defaulted.
+   *
+   * <p>A plain string, exactly as `state` is: the service's vocabulary may grow and a word this
+   * build has never heard of should still be drawn rather than fail to type.
+   */
+  readonly priority?: string;
 }
 
 /** One path the fold could not resolve, with the participant that introduced it. */
@@ -581,6 +595,21 @@ export interface ReleaseRequestDto {
   readonly releasedSha: string | null;
   readonly mergedToMainAt: string | null;
   readonly retryable: boolean;
+  /**
+   * The request's **effective** priority: the highest of its named branches', which is the whole of
+   * how a request comes to have one — the value is declared on the participants and the request's is
+   * derived. A late escalation on one branch therefore raises the request, and nothing lowers it
+   * while that branch is still on it.
+   *
+   * <p>Absent where the service has none to give: an answer from a build older than the field. The
+   * implicit released tags are excluded from the max, so a request folding nothing but tags has no
+   * priority either.
+   *
+   * <p><b>Nothing acts on it yet.</b> qits-ci does not reorder its queue by it and qits-deployments
+   * records it without deploying differently; it is carried and displayed, and the ordering is a
+   * feature of its own.
+   */
+  readonly priority?: string;
   readonly createdAt: string;
   readonly updatedAt: string;
 }
