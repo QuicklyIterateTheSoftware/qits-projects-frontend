@@ -1,7 +1,12 @@
 import { ApplicationConfig, provideBrowserGlobalErrorListeners } from '@angular/core';
 import { provideHttpClient, withFetch } from '@angular/common/http';
 import { provideRouter } from '@angular/router';
-import { provideQitsNavigation, provideQitsProjects, provideQitsScope } from '@qits/ui-components';
+import {
+  provideQitsBuilds,
+  provideQitsNavigation,
+  provideQitsProjects,
+  provideQitsScope,
+} from '@qits/ui-components';
 
 import { routes } from './app.routes';
 
@@ -19,6 +24,12 @@ import { routes } from './app.routes';
 // `/<slug>/<category>/<repoName>` as well as `/<slug>`, so a pick in the picker navigates here
 // rather than leaving for another host. Every SPA declares its own kind — the library installs
 // none.
+//
+// `provideQitsBuilds` puts the pending-builds bolt beside the picker: a popover of what qits-ci is
+// building right now, from `GET /ci/api/runs/active`. Same-origin like the two reads above — the
+// edge routes `/ci` on every host — so it needs the `HttpClient` too and names no origin of its
+// own. Providing it is what puts the bolt there, exactly as no project source means no picker.
+// Closed, it asks nothing at all; it polls only for as long as a reader keeps the panel open.
 export const appConfig: ApplicationConfig = {
   providers: [
     provideBrowserGlobalErrorListeners(),
@@ -27,5 +38,6 @@ export const appConfig: ApplicationConfig = {
     provideQitsNavigation(),
     provideQitsProjects(),
     provideQitsScope('repository'),
+    provideQitsBuilds(),
   ],
 };
