@@ -28,8 +28,8 @@ const SILENT: EventSourceFactory = () => ({
  * the cards are composed from the navigation the chrome already asked the edge for — so a hub that
  * grew a request of its own would fail here rather than by feeling slow in front of somebody.
  *
- * <p>The rest is the link set. Two cards are this application's own routes and are asserted as
- * relative addresses; the others are other applications on hosts of their own, so they are whole
+ * <p>The rest is the link set. The leading cards are this application's own routes and are asserted
+ * as relative addresses; the others are other applications on hosts of their own, so they are whole
  * URLs, and an entry this application itself declares is dropped rather than drawn beside the
  * router hop that already leads there.
  */
@@ -182,6 +182,7 @@ describe('ProjectPage', () => {
 
     expect(cards()).toEqual([
       { label: 'Epics', href: '/p1/epics' },
+      { label: 'Tickets', href: '/p1/tickets' },
       { label: 'Release requests', href: '/p1/release-requests' },
       { label: 'Project setup', href: '/p1/project-setup' },
       { label: 'Workspaces', href: 'https://workspaces.dev.example.test/p1/' },
@@ -189,7 +190,7 @@ describe('ProjectPage', () => {
     ]);
   });
 
-  /** A platform that names no project-scoped application still has the three this SPA serves itself. */
+  /** A platform that names no project-scoped application still has the four this SPA serves itself. */
   it('keeps its own links when the platform names no other application', async () => {
     TestBed.resetTestingModule();
     configure(navigation('none'));
@@ -197,9 +198,23 @@ describe('ProjectPage', () => {
 
     expect(cards()).toEqual([
       { label: 'Epics', href: '/p1/epics' },
+      { label: 'Tickets', href: '/p1/tickets' },
       { label: 'Release requests', href: '/p1/release-requests' },
       { label: 'Project setup', href: '/p1/project-setup' },
     ]);
+  });
+
+  /** The tickets are the plan's smaller sibling, so their card sits directly beside the board's. */
+  it('goes to the tickets board when its card is followed', async () => {
+    await openResolved();
+
+    Array.from(page().querySelectorAll<HTMLAnchorElement>('a.app'))[1].click();
+    await settle();
+
+    expect(TestBed.inject(Router).url).toBe('/p1/tickets');
+    // The board reads the tickets for itself, which is the read this page does not do.
+    http.expectOne('/projects/api/projects/p1/tickets').flush({ entries: [] });
+    await settle();
   });
 
   it('goes to the epics board when its card is followed', async () => {
@@ -232,7 +247,7 @@ describe('ProjectPage', () => {
     await openResolved([{ id: 'p1', name: 'qits' }], '/nope');
 
     expect(page().querySelector('h1')?.textContent).toContain('nope');
-    expect(cards()[2]).toEqual({ label: 'Project setup', href: '/nope/project-setup' });
+    expect(cards()[3]).toEqual({ label: 'Project setup', href: '/nope/project-setup' });
     http.verify();
   });
 

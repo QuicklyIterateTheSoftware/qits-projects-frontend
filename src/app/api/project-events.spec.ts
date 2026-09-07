@@ -116,6 +116,20 @@ describe('ProjectEvents', () => {
 
     expect(events.invalidations('epics')()).toBe(2);
     expect(events.invalidations('agent-activity')()).toBe(0);
+    expect(events.invalidations('tickets')()).toBe(0);
+  });
+
+  /**
+   * One topic covers the tickets and their comments alike. The hint carries nothing, so a second
+   * counter for the comments would buy no reader anything: both screens that listen re-read what
+   * they are showing whichever of the two moved.
+   */
+  it('counts the tickets topic, and the epics panel does not hear it', () => {
+    events.connect('p1');
+    opened[0].emit('tickets');
+
+    expect(events.invalidations('tickets')()).toBe(1);
+    expect(events.invalidations('epics')()).toBe(0);
   });
 
   it('ignores the heartbeat and any topic a newer service invents', () => {
