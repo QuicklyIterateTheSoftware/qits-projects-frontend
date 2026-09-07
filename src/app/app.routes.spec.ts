@@ -19,6 +19,8 @@ import { ReleaseRequestByReleaseResolver } from './project/release-request-by-re
 import { ReleaseRequestDetailPage } from './project/release-request-detail-page';
 import { RepositoryPage } from './project/repository-page';
 import { RepositoryReleaseRequestsPage } from './project/repository-release-requests-page';
+import { TicketDetailPage } from './project/ticket-detail-page';
+import { TicketsPage } from './project/tickets-page';
 
 /** jsdom has no `EventSource`, and the epics overview opens one on the epics page. */
 const SILENT: EventSourceFactory = () => ({
@@ -107,6 +109,17 @@ describe('routes', () => {
   });
 
   /**
+   * The tickets sit beside the board, and one ticket is a place of its own at the list's address
+   * plus its **slug**. The two literals are what keep `/qits/tickets/cancelled-badge` from reading
+   * as a repository called `cancelled-badge` in a group called `tickets` — which is route order,
+   * and the one thing in this table that fails silently.
+   */
+  it('serves the tickets beside the board, and one ticket below them by slug', async () => {
+    expect(await at('/qits/tickets')).toBe(TicketsPage);
+    expect(await at('/qits/tickets/cancelled-badge')).toBe(TicketDetailPage);
+  });
+
+  /**
    * The project's release requests are a sub-element of the same shape, and the address the
    * `project.detail` navigation entry composes: the project's scope path plus the entry's subpath.
    */
@@ -157,6 +170,9 @@ describe('routes', () => {
     expect(await at('/qits/epics/planning')).toBe(NotFound);
     expect(await at('/qits/repositories/qits-ci')).toBe(NotFound);
     expect(await at('/qits/project-setup/qits-ci')).toBe(NotFound);
+    // `tickets` becomes one of those words by derivation, so the guard refuses it too — and the
+    // literal route above still wins, which is the assertion one test up.
+    expect(await at('/qits/tickets/one/two')).toBe(NotFound);
   });
 
   /**
@@ -209,6 +225,7 @@ describe('OWN_PROJECT_SEGMENTS', () => {
       'project-setup',
       'release-requests',
       'repositories',
+      'tickets',
     ]);
   });
 

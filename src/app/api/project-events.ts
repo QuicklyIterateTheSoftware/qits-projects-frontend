@@ -10,8 +10,13 @@ import { EVENT_SOURCE_FACTORY, type EventSourceLike } from './event-source';
  * reader that does not exist yet — the channel is ahead of the screen — and a counter costs a
  * signal, so declaring it now means the refinement panel wires to a topic that is already ticking
  * instead of adding one.
+ *
+ * `tickets` is the third, and it is one topic for the tickets **and** their comments rather than
+ * two. The hint carries nothing, so a finer split would buy a reader nothing either: both screens
+ * that listen — the overview and one ticket's page — re-read what they are showing whichever of the
+ * two moved, and a `ticket-comments` topic would only be a second counter they both had to watch.
  */
-export const PROJECT_TOPICS = ['epics', 'agent-activity'] as const;
+export const PROJECT_TOPICS = ['epics', 'agent-activity', 'tickets'] as const;
 
 /** One of {@link PROJECT_TOPICS}. */
 export type ProjectTopic = (typeof PROJECT_TOPICS)[number];

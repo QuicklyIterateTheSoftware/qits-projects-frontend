@@ -338,6 +338,110 @@ export interface TaskEntriesResponse {
 }
 
 /**
+ * What a ticket is about: something that is broken, or something that could be better.
+ *
+ * Two values and no more, because the distinction has to be one a reporter can make without
+ * thinking. A third kind — "task", "chore", "question" — would be a taxonomy this platform has no
+ * use for: the plan is the epics, and a ticket is the small thing beside it.
+ */
+export type TicketType = 'BUG' | 'IMPROVEMENT';
+
+/**
+ * Whether a ticket is still asking for something.
+ *
+ * Deliberately two values where {@link EpicStatus} has five. An epic has a *life* — drafted,
+ * frozen, shipped, replaced — and each phase changes what may be done to it. A ticket is one
+ * question, so it is answered or it is not, and `RESOLVED` covers "fixed", "done" and "we are not
+ * doing this" alike: what actually happened is in the comments, which is where a sentence belongs.
+ */
+export type TicketStatus = 'OPEN' | 'RESOLVED';
+
+/**
+ * A ticket: one small, self-contained piece of work, beside the plan rather than inside it.
+ *
+ * <p>Project-scoped like an epic, and holding nothing under it — no features, no tasks, no
+ * dependencies. That is the whole difference and it is what makes the two worth having separately:
+ * an epic is read as a *tree* and a ticket is read as a *row*, so a ticket that grew children would
+ * be an epic that had not noticed.
+ *
+ * <p>`slug` is the git-safe identity, and it is what the detail address is spelled with — the same
+ * convention the epics' refining route uses, for the same reason: it is immutable where the title
+ * is not, so a link stays pointing at the ticket it was made for after a retitle.
+ *
+ * <p>`assignee` is **free text and nullable**, not a reference to anything. This platform has no
+ * user directory to point at, so a name here is a note about who is looking at it rather than a
+ * foreign key — and `null` means nobody has said, which is a different fact from an empty string.
+ *
+ * <p>`createdBy` is stamped server-side from the session principal and is never sent by a client.
+ * Null is a row written before there was a principal to stamp, or by one the service could not
+ * name; it draws as the dash, not as an empty byline.
+ */
+export interface TicketDto {
+  readonly id: string;
+  readonly projectId: string;
+  readonly title: string;
+  readonly slug: string;
+  readonly type: TicketType;
+  readonly status: TicketStatus;
+  /** Free text — whoever is looking at it. Null when nobody has said. */
+  readonly assignee: string | null;
+  /** Stamped from the session, never sent. Null for a row with no principal behind it. */
+  readonly createdBy: string | null;
+  /** Markdown, like every description on this service. Null when nothing was written. */
+  readonly description: string | null;
+  readonly createdAt: string;
+  readonly updatedAt: string;
+}
+
+/**
+ * One thing somebody said about a ticket.
+ *
+ * <p>`body` is markdown and is **not** nullable: a comment with nothing in it is not a comment, so
+ * the service refuses one rather than storing a row that draws as blank space.
+ *
+ * <p>`author` is the same server-stamped, nullable field {@link TicketDto.createdBy} is, and for the
+ * same reason. `updatedAt` moving past `createdAt` is the only record that a comment was edited —
+ * there is no revision history and no `edited` flag, so the two timestamps together are what the
+ * "edited" hint is derived from.
+ */
+export interface TicketCommentDto {
+  readonly id: string;
+  readonly ticketId: string;
+  /** Stamped from the session, never sent. Null for a comment with no principal behind it. */
+  readonly author: string | null;
+  readonly body: string;
+  readonly createdAt: string;
+  readonly updatedAt: string;
+}
+
+/**
+ * One project's tickets, in the same entries envelope every list on this service uses — and with
+ * the level's own name as the entry key, exactly as `epic`, `feature` and `task` are.
+ *
+ * The server sorts these **createdAt ascending**. The overview re-orders them itself rather than
+ * asking for another sort: the two sections it draws want newest-first, and a client that trusted
+ * an order it did not impose would silently draw the wrong one the day the server's changed.
+ */
+export interface TicketEntriesResponse {
+  readonly entries: readonly { readonly ticket: TicketDto }[];
+}
+
+/** One ticket, wrapped — what every single-row write and read answers. */
+export interface TicketResponse {
+  readonly ticket: TicketDto;
+}
+
+/** One ticket's comments, oldest first, which is the order a conversation is read in. */
+export interface TicketCommentEntriesResponse {
+  readonly entries: readonly { readonly comment: TicketCommentDto }[];
+}
+
+/** One comment, wrapped — the answer to a post and to an edit. */
+export interface TicketCommentResponse {
+  readonly comment: TicketCommentDto;
+}
+
+/**
  * Create a repository in a project: **exactly one** of `url` and `name`.
  *
  * The two are the two flows, not two spellings of one. `name` is a repository born blank on the

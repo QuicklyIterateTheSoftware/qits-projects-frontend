@@ -12,6 +12,8 @@ import { ReleaseRequestDetailPage } from './project/release-request-detail-page'
 import { RepositoryApiDocsPage } from './project/repository-api-docs-page';
 import { RepositoryPage } from './project/repository-page';
 import { RepositoryReleaseRequestsPage } from './project/repository-release-requests-page';
+import { TicketDetailPage } from './project/ticket-detail-page';
+import { TicketsPage } from './project/tickets-page';
 import { RefiningPage } from './refining/refining-page';
 
 /**
@@ -47,7 +49,7 @@ export const repositoryGroupIsKnown: CanMatchFn = (_route, segments) => {
 };
 
 /**
- * Thirteen routes, all of them inside the platform chrome.
+ * Fifteen routes, all of them inside the platform chrome.
  *
  * `QitsMainLayout` is the root *route* component rather than something the shell templates, so the
  * bar, the navigation and the project picker hanging under it mount once and survive every
@@ -77,6 +79,14 @@ export const repositoryGroupIsKnown: CanMatchFn = (_route, segments) => {
  * `workspaces`/`editor` — one row per place, and the project node itself is then what a repository's
  * node already is, a name and the ways into it. The refinement agent came down with the board,
  * because the agent is what changes the epics and the two are one surface.
+ *
+ * <p><b>`:project/tickets` is the plan's smaller sibling, and its detail route names a SLUG.</b>
+ * A ticket is a self-contained piece of work rather than a tree, so it gets a page of its own where
+ * an epic gets a refining workspace — and `:project/tickets/:ticket` spells the slug for the reason
+ * the refining route does: the slug is the immutable git-safe identity, where a title is editable and
+ * an id is the API's vocabulary rather than the address's. Both sit with the project's own literals
+ * **above** the guarded routes, which is where every literal below `:project` has to be, and `tickets`
+ * therefore becomes an {@link OWN_PROJECT_SEGMENTS} word by derivation — nothing lists it twice.
  *
  * <p><b>`:project/release-requests` is the same sub-element shape, one scope up from the
  * repository's own.</b> It answers what is waiting to be released anywhere in the project, which is
@@ -134,7 +144,7 @@ export const repositoryGroupIsKnown: CanMatchFn = (_route, segments) => {
  * epic's workspace. Keeping the tab in the query string leaves the path meaning "which epic", makes a
  * bare URL mean "no tab pinned" by simple absence, and keeps every tab a shareable link.
  *
- * <p>All thirteen load eagerly. There are thirteen of them, they share every component below them,
+ * <p>All fifteen load eagerly. There are fifteen of them, they share every component below them,
  * and a lazy chunk boundary here would be ceremony that costs a round trip.
  *
  * <p>The `**` route sits *inside* the layout: this application is served at the root of its own
@@ -149,6 +159,8 @@ export const routes: Routes = [
       { path: ':project', component: ProjectPage },
       { path: ':project/project-setup', component: ProjectSetupPage },
       { path: ':project/epics', component: EpicsPage },
+      { path: ':project/tickets', component: TicketsPage },
+      { path: ':project/tickets/:ticket', component: TicketDetailPage },
       { path: ':project/release-requests', component: ProjectReleaseRequestsPage },
       {
         path: ':project/release-requests/by-release/:repoId/:version',
@@ -183,7 +195,7 @@ export const routes: Routes = [
 
 /**
  * The literal words this application routes for itself directly below `:project` — today
- * `project-setup`, `epics` and `repositories`.
+ * `project-setup`, `epics`, `tickets`, `release-requests` and `repositories`.
  *
  * <p>**Derived from the table above, never listed twice.** It is what {@link repositoryGroupIsKnown}
  * inverts, so a second copy would be a list that silently stops matching the routes it is about,
