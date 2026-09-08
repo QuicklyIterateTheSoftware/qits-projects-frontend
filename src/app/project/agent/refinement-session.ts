@@ -2,6 +2,7 @@ import { DOCUMENT } from '@angular/common';
 import { Injectable, computed, effect, inject, signal, untracked } from '@angular/core';
 import {
   AgentDaemonApi,
+  type AgentDesk,
   type AgentType,
   type CommandDto,
   type LaunchAgentRequest,
@@ -37,8 +38,30 @@ const REPLAY_LIMIT = 2;
 /** The statuses that mean the container is not answering, as opposed to answering "no". */
 const UNREACHABLE: readonly number[] = [0, 502, 503, 504];
 
-/** What this panel launches. `REPOSITORY` is the scope carrying the epic tools. */
-const FRESH: LaunchAgentRequest = { scope: 'REPOSITORY', mode: 'INTERACTIVE' };
+/** What every desk launches, before the desk is stamped on it. `REPOSITORY` carries the tools. */
+const FRESH: Omit<LaunchAgentRequest, 'desk'> = { scope: 'REPOSITORY', mode: 'INTERACTIVE' };
+
+/**
+ * The substring the daemon puts in a ticket-desk command's name.
+ *
+ * **This is the contract, and it is a string because the run list has no desk field.** The daemon
+ * names a `TICKETS` launch with "(tickets desk)" in its `actionName`; an `EPICS` launch keeps the
+ * plain names it always had ("Claude Code (repository MCP)"). Matched case-insensitively so a rename
+ * that changes only the casing does not silently split one desk's history in two.
+ */
+const TICKETS_MARK = 'tickets desk';
+
+/**
+ * Which desk a command belongs to, read from the only place it is written down: its name.
+ *
+ * <p>The asymmetry is deliberate. A *named* command is the ticket desk's; **everything else is the
+ * epic desk's**, including every command launched before desks existed. Reading it the other way
+ * round — epic commands must be named too — would orphan all of that history the day this shipped
+ * and leave the epics panel offering a fresh session on a container full of its own past work.
+ */
+export function deskOf(command: CommandDto): AgentDesk {
+  return command.actionName.toLowerCase().includes(TICKETS_MARK) ? 'TICKETS' : 'EPICS';
+}
 
 /**
  * Whether a command is the sign-in terminal the launch path hands back instead of a session.
@@ -98,8 +121,31 @@ export function isSignInTerminal(command: CommandDto): boolean {
  * {@link detach} closes the socket and leaves the agent running; {@link terminate} signals the
  * agent's process group; {@link stopContainer} stops the container the agent lives in. Only the
  * first is safe to do without asking.
+ *
+ * ## One instance per desk, which is why this is not a root singleton
+ *
+ * **A desk is a front desk, and a project has more than one.** The epics page opens a session for
+ * drafting the plan; the tickets page opens one for filing and triaging the small work. They share a
+ * container and share a sign-in, and they must not share a conversation — one root instance would
+ * mean opening the second panel yanked the first panel's socket onto the other desk's screen. So
+ * this is provided by the panel component that owns it, one instance each, and the desk is set with
+ * the project in {@link use}.
+ *
+ * The desk changes exactly three things, and nothing else:
+ *
+ * - **Every launch carries it**, explicitly for both desks rather than leaning on the daemon's
+ *   default, so a request body says which desk asked without anyone having to know the default.
+ * - **Resolution only sees its own commands.** Branch 1 attaches to a running agent run at *this*
+ *   desk, and branches 3–4 count history and pick the last session from the same filtered list. See
+ *   {@link deskOf} for how a command's desk is read.
+ * - **The ticket desk does not fall back to the lineage read.** `GET /agent-sessions` answers a tree
+ *   of sessions with no desk on them, so it cannot say whether *this* desk has history. An empty
+ *   filtered command list is the ticket desk's answer: launch fresh.
+ *
+ * Branch 2 stays desk-agnostic on purpose: a container waiting on a login blocks both desks equally,
+ * and the sign-in terminal is one shared terminal rather than one per desk.
  */
-@Injectable({ providedIn: 'root' })
+@Injectable()
 export class RefinementSession {
   private readonly host = inject(ProjectAgentApi);
   private readonly daemon = inject(AgentDaemonApi);
@@ -107,6 +153,13 @@ export class RefinementSession {
   private readonly document = inject(DOCUMENT);
 
   private readonly project = signal('');
+
+  /**
+   * Which desk this instance answers for. A plain field rather than a signal: nothing renders it,
+   * and every reader of it is already inside a method the desk cannot change under.
+   */
+  private deskKind: AgentDesk = 'EPICS';
+
   private readonly state = signal<SessionBranch>({ kind: 'dormant' });
   private readonly containerState = signal<AgentContainerDto | null>(null);
   private readonly harness = signal<AgentType | null>(null);
@@ -165,16 +218,19 @@ export class RefinementSession {
   // ---- pointing it somewhere ---------------------------------------------------------------
 
   /**
-   * Point at a project. **Makes no request**, by design — see the class note on dormancy.
+   * Point at a project, at a desk. **Makes no request**, by design — see the class note on dormancy.
    *
-   * Idempotent for the same id. A different id drops everything: an attached socket, a held launch
-   * and a container status all belong to one project and mean nothing in another.
+   * Idempotent for the same pair. A different id drops everything: an attached socket, a held launch
+   * and a container status all belong to one project and mean nothing in another. The desk is in the
+   * guard for the same reason it is in the reset — a session resolved at one desk is not the other
+   * desk's session, even in the same project.
    */
-  use(projectId: string): void {
-    if (this.project() === projectId) {
+  use(projectId: string, desk: AgentDesk = 'EPICS'): void {
+    if (this.project() === projectId && this.deskKind === desk) {
       return;
     }
     this.detach();
+    this.deskKind = desk;
     this.project.set(projectId);
     this.containerState.set(null);
     this.harness.set(null);
@@ -242,7 +298,7 @@ export class RefinementSession {
 
   /** Start a brand-new session. The Start press when history already exists, and nothing else. */
   async startFresh(): Promise<void> {
-    await this.launch(FRESH);
+    await this.launch(this.fresh());
   }
 
   /**
@@ -255,7 +311,7 @@ export class RefinementSession {
     if (!sessionId) {
       return;
     }
-    await this.launch({ ...FRESH, resumeSessionId: sessionId });
+    await this.launch({ ...this.fresh(), resumeSessionId: sessionId });
   }
 
   /**
@@ -363,10 +419,14 @@ export class RefinementSession {
     // `agentType` takes the container's own default, which is the answer this read would have given.
     void this.loadHarness(projectId);
 
+    // Everything below branch 2 is about *this* desk's work. The sign-in terminal is the exception
+    // and is looked for in the unfiltered list, because a login blocks the container, not a desk.
+    const mine = commands.filter((command) => deskOf(command) === this.deskKind);
+
     // A lineage is what tells an agent run apart from any other interactive command the container
     // declares. A run this panel launched is attached directly by {@link launch} and never comes
     // back through here, which is why the "no lineage yet" case needs no second rule.
-    const run = commands.find(
+    const run = mine.find(
       (command) =>
         command.kind === 'TERMINAL' &&
         command.status === 'RUNNING' &&
@@ -380,17 +440,22 @@ export class RefinementSession {
       (command) => command.status === 'RUNNING' && isSignInTerminal(command),
     );
     if (signIn) {
-      this.held ??= FRESH;
+      this.held ??= this.fresh();
       this.attach(signIn.id, 'signin');
       return;
     }
-    if (!(await this.hasHistory(projectId, commands))) {
-      await this.launch(FRESH);
+    if (!(await this.hasHistory(projectId, mine))) {
+      await this.launch(this.fresh());
       return;
     }
     if (this.project() === projectId) {
-      this.state.set({ kind: 'idle', lastSessionId: lastSessionOf(commands) });
+      this.state.set({ kind: 'idle', lastSessionId: lastSessionOf(mine) });
     }
+  }
+
+  /** A fresh launch at this desk. The desk is sent explicitly, never left to the daemon's default. */
+  private fresh(): LaunchAgentRequest {
+    return { ...FRESH, desk: this.deskKind };
   }
 
   private async launch(request: LaunchAgentRequest): Promise<void> {
@@ -445,10 +510,21 @@ export class RefinementSession {
     );
   }
 
-  /** Whether anything has ever run an agent here. Branch 3's only question. */
+  /**
+   * Whether anything has ever run an agent *at this desk*. Branch 3's only question.
+   *
+   * `commands` arrives already filtered to the desk. The lineage fallback below is the epic desk's
+   * alone: `GET /agent-sessions` answers a tree of session ids with no desk on them, so it cannot
+   * tell whose history it is describing — and the epic desk is the one that may legitimately claim
+   * all of it, since it owns every pre-desk command. For the ticket desk an empty filtered list is
+   * the answer, and the answer is "launch fresh".
+   */
   private async hasHistory(projectId: string, commands: readonly CommandDto[]): Promise<boolean> {
     if (commands.some((command) => command.agentSessions.length > 0)) {
       return true;
+    }
+    if (this.deskKind !== 'EPICS') {
+      return false;
     }
     try {
       return (await this.daemon.sessions(projectId)).length > 0;

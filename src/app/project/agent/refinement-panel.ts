@@ -10,6 +10,7 @@ import {
   untracked,
 } from '@angular/core';
 import { QitsBadge, QitsButton, type QitsBadgeTone } from '@qits/ui-components';
+import type { AgentDesk } from '../../api/agent-daemon-api';
 import type { AgentContainerDto } from '../../api/project-agent-api';
 import { ProjectEvents } from '../../api/project-events';
 import { RefinementSession } from './refinement-session';
@@ -19,19 +20,66 @@ import { TerminalView } from './terminal-view';
 type Pending = 'terminate' | 'stop' | null;
 
 /**
- * The refinement agent: one conversation per project, driven from a terminal on the epics page.
+ * The four sentences a desk owns. Everything else on the panel is the same at both.
  *
- * <p><b>One agent per project, not one per epic.</b> Refining is a conversation about the whole
- * plan — "new epic: …", "add a feature to the auth epic", "that one is superseded" — and an agent
- * that could only see one epic could not answer any of those. So this sits at the head of the epics
- * page, above the plan it is about, and the epics below it refresh through the project's live
+ * <p>Kept as a table rather than as two components because the difference between the desks really
+ * is only what they are called and what they are for: the container, the three verbs, the sign-in
+ * replay, the badge and the status line are one behaviour, and a second copy of them would be a
+ * second place for that behaviour to drift.
+ */
+interface DeskWords {
+  /** The disclosure's own word — what a reader scanning a collapsed page sees. */
+  readonly title: string;
+  /** The invitation in the dormant branch, before the shared sentence about the container. */
+  readonly invitation: string;
+  /** The resolving line. */
+  readonly starting: string;
+  /** The idle branch's opening sentence, before the shared one about resuming being a choice. */
+  readonly idleLead: string;
+  /** The terminal's accessible label. */
+  readonly terminal: string;
+}
+
+const WORDS: Readonly<Record<AgentDesk, DeskWords>> = {
+  EPICS: {
+    title: 'Refinement agent',
+    invitation: 'Talk to the agent to draft and refine this project’s epics.',
+    starting: 'Starting the refinement agent…',
+    idleLead: 'This project has been refined before and nothing is running now.',
+    terminal: 'Refinement agent session',
+  },
+  TICKETS: {
+    title: 'Triage agent',
+    invitation: 'Talk to the agent to file and triage this project’s tickets.',
+    starting: 'Starting the triage agent…',
+    idleLead: 'This project’s tickets have been triaged before and nothing is running now.',
+    terminal: 'Triage agent session',
+  },
+};
+
+/**
+ * A front desk: one conversation per project per desk, driven from a terminal at the head of a board.
+ *
+ * <p><b>One agent per board, not one per row.</b> Refining is a conversation about the whole plan —
+ * "new epic: …", "add a feature to the auth epic", "that one is superseded" — and an agent that could
+ * only see one epic could not answer any of those. Triage is the same shape one size down: "file
+ * this", "that is a duplicate of the badge one", "close the fixed ones". So this sits at the head of
+ * the board it is about, above the rows it changes, and those rows refresh through the project's live
  * channel when the agent changes them.
+ *
+ * <p><b>Two desks, one panel, one behaviour.</b> {@link desk} chooses which board this is the front
+ * desk of. It changes four sentences ({@link WORDS}) and is sent on every launch so the daemon can
+ * seed the right system prompt; it does not change what any button does. The two desks share a
+ * container and a sign-in and nothing else — each gets its own {@link RefinementSession}, provided
+ * here rather than at the root, so mounting the second panel cannot pull the first one's terminal
+ * onto the other desk's screen.
  *
  * <p><b>Collapsed and dormant by default, and that is a rule rather than a default.</b> A session
  * costs an image pull, a repository clone and a model process. So this panel is one row until it is
  * asked for: expanding reads the container's status and nothing else, and only Start ensures a
- * container. The epics page must stay exactly as cheap to open as it was before this existed —
- * the spec pins that by verifying no request at all leaves on page load.
+ * container. The board below must stay exactly as cheap to open as it was before this existed — the
+ * spec pins that by verifying no request at all leaves on page load, and it is what makes putting a
+ * second one of these on the tickets page free.
  *
  * <p><b>Collapsing detaches; it never terminates.</b> The agent keeps working with the panel shut
  * and with the browser closed, which is what makes reopening cheap and is why closing asks nothing.
@@ -48,12 +96,14 @@ type Pending = 'terminate' | 'stop' | null;
   selector: 'app-refinement-panel',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [QitsBadge, QitsButton, TerminalView],
+  // One session per panel, not one per application: see the class note on two desks.
+  providers: [RefinementSession],
   template: `
     <section class="panel">
       <header class="bar">
         <button class="toggle" type="button" [attr.aria-expanded]="expanded()" (click)="toggle()">
           <span class="caret" aria-hidden="true">{{ expanded() ? '▾' : '▸' }}</span>
-          Refinement agent
+          {{ words().title }}
         </button>
 
         <qits-badge [label]="chip().label" [tone]="chip().tone" />
@@ -81,8 +131,8 @@ type Pending = 'terminate' | 'stop' | null;
         @switch (branch().kind) {
           @case ('dormant') {
             <p class="prose">
-              Talk to the agent to draft and refine this project’s epics. Starting one creates the
-              project’s agent container if it does not exist yet.
+              {{ words().invitation }} Starting one creates the project’s agent container if it does
+              not exist yet.
             </p>
             <qits-button variant="secondary" size="sm" [busy]="session.busy()" (pressed)="start()">
               Start
@@ -90,7 +140,7 @@ type Pending = 'terminate' | 'stop' | null;
           }
 
           @case ('resolving') {
-            <p class="prose">Starting the refinement agent…</p>
+            <p class="prose">{{ words().starting }}</p>
           }
 
           @case ('unavailable') {
@@ -102,9 +152,8 @@ type Pending = 'terminate' | 'stop' | null;
 
           @case ('idle') {
             <p class="prose">
-              This project has been refined before and nothing is running now. Continuing the last
-              conversation is a choice rather than something that happens on its own — the container
-              may no longer hold it.
+              {{ words().idleLead }} Continuing the last conversation is a choice rather than
+              something that happens on its own — the container may no longer hold it.
             </p>
             <div class="actions">
               <qits-button
@@ -132,7 +181,7 @@ type Pending = 'terminate' | 'stop' | null;
             <app-terminal-view
               [frames]="session.frames()"
               [attached]="live()"
-              label="Refinement agent session"
+              [label]="words().terminal"
               (data)="session.send($event)"
               (resized)="session.resize($event.cols, $event.rows)"
             />
@@ -246,6 +295,17 @@ export class RefinementPanel {
   /** Which project's agent. The panel is per project, and so is the container behind it. */
   readonly projectId = input.required<string>();
 
+  /**
+   * Which front desk this is.
+   *
+   * Defaulted rather than required, and to the desk that existed first: the epics page mounts this
+   * without the attribute and gets exactly what it always got, which is also what the daemon does
+   * with a launch that names no desk.
+   */
+  readonly desk = input<AgentDesk>('EPICS');
+
+  protected readonly words = computed(() => WORDS[this.desk()]);
+
   protected readonly expanded = signal(false);
 
   protected readonly pending = signal<Pending>(null);
@@ -305,8 +365,9 @@ export class RefinementPanel {
     // heading.
     effect(() => {
       const projectId = this.projectId();
+      const desk = this.desk();
       untracked(() => {
-        this.session.use(projectId);
+        this.session.use(projectId, desk);
         this.expanded.set(false);
         this.pending.set(null);
       });

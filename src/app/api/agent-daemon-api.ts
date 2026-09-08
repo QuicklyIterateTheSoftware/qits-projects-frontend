@@ -36,8 +36,30 @@ export type CommandKind = 'TERMINAL' | 'CHAT' | 'SERVICE';
 /** Which harness ran, or is to run. */
 export type AgentType = 'CLAUDE' | 'KIMI';
 
-/** Which MCP servers a launch is wired to. `REPOSITORY` is the one that carries the epic tools. */
-export type AgentMcpScope = 'ACTIONS' | 'REPOSITORY';
+/**
+ * Which MCP servers a launch is wired to. `REPOSITORY` is the one that carries the epic tools.
+ *
+ * Copied from the daemon's own enum, and it is worth saying which one: the *workspaces* daemon spells
+ * the other member `ACTIONS`, this one spells it `PROJECT`, and sending the wrong word is a 400 with
+ * nothing in the panel to explain it. Do not unify these two types across the two clients.
+ */
+export type AgentMcpScope = 'PROJECT' | 'REPOSITORY';
+
+/**
+ * Which front desk a launch is steered by. **Absent means `EPICS`** — today's behaviour, and what
+ * every command launched before desks existed was.
+ *
+ * <p><b>A desk is steering, not scoping.</b> Both desks launch into the same {@link AgentMcpScope}
+ * with the same tools; the desk only decides which system prompt the daemon seeds the session with —
+ * drafting a plan, or filing and triaging the small work. Nothing is taken away from either, so an
+ * agent asked at the ticket desk to open an epic still can.
+ *
+ * <p><b>The desk comes back in the name.</b> A `TICKETS` launch is named with the substring
+ * "(tickets desk)" in `CommandDto.actionName`, and that substring is the whole contract for telling
+ * the two desks' running commands apart afterwards — the run list carries no desk field. See
+ * {@link ../project/agent/refinement-session#deskOf}.
+ */
+export type AgentDesk = 'EPICS' | 'TICKETS';
 
 /** `INTERACTIVE` is the full agent TUI on a PTY — the only mode this panel launches. */
 export type AgentLaunchMode = 'CHAT' | 'INTERACTIVE';
@@ -126,6 +148,8 @@ interface AgentSessionTreeResponse {
 export interface LaunchAgentRequest {
   readonly scope: AgentMcpScope;
   readonly mode: AgentLaunchMode;
+  /** Which front desk the session is steered by; omitted is `EPICS`. See {@link AgentDesk}. */
+  readonly desk?: AgentDesk;
   readonly agentType?: AgentType;
   readonly initialContext?: string;
   readonly resumeSessionId?: string;

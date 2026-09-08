@@ -1,7 +1,7 @@
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import type { CommandDto } from '../../api/agent-daemon-api';
+import type { AgentDesk, CommandDto } from '../../api/agent-daemon-api';
 import { EVENT_SOURCE_FACTORY, type EventSourceLike } from '../../api/event-source';
 import type { AgentContainerDto } from '../../api/project-agent-api';
 import { ProjectEvents } from '../../api/project-events';
@@ -119,9 +119,10 @@ describe('RefinementPanel', () => {
     http.verify();
   });
 
-  async function mount(projectId = 'p1'): Promise<void> {
+  async function mount(projectId = 'p1', desk: AgentDesk = 'EPICS'): Promise<void> {
     fixture = TestBed.createComponent(RefinementPanel);
     fixture.componentRef.setInput('projectId', projectId);
+    fixture.componentRef.setInput('desk', desk);
     await settle();
   }
 
@@ -213,7 +214,13 @@ describe('RefinementPanel', () => {
 
     const launch = http.expectOne('/projects/container/p1/agents');
     expect(launch.request.method).toBe('POST');
-    expect(launch.request.body).toEqual({ scope: 'REPOSITORY', mode: 'INTERACTIVE' });
+    // The desk is sent explicitly even though `EPICS` is what an absent one means: a body that says
+    // which desk asked is readable in a proxy log without knowing the daemon's default.
+    expect(launch.request.body).toEqual({
+      scope: 'REPOSITORY',
+      mode: 'INTERACTIVE',
+      desk: 'EPICS',
+    });
     launch.flush({ command: running('c1') });
     await settle();
 
@@ -266,6 +273,7 @@ describe('RefinementPanel', () => {
     expect(launch.request.body).toEqual({
       scope: 'REPOSITORY',
       mode: 'INTERACTIVE',
+      desk: 'EPICS',
       resumeSessionId: 's1',
     });
     launch.flush({ command: running('c2') });
@@ -379,6 +387,158 @@ describe('RefinementPanel', () => {
       container: container({ daemonConnected: false }),
     });
     expect(text()).toContain('daemon not connected');
+  });
+
+  // ---- the two desks ------------------------------------------------------------------------
+
+  /**
+   * One panel, two front desks, and the one thing that keeps them apart.
+   *
+   * The run list carries no desk field, so the daemon writes the desk into the command's *name* — a
+   * `TICKETS` launch is named with "(tickets desk)" in it — and this suite pins both halves of the
+   * rule that reads it back. The ticket desk attaches only to named runs; the epic desk attaches only
+   * to unnamed ones, which is what keeps every command from before desks existed belonging to it.
+   *
+   * Getting either direction wrong is not a cosmetic failure: it puts one board's conversation on the
+   * other board's screen, under a heading that says it is about something else.
+   */
+  describe('at the ticket desk', () => {
+    /** A run the daemon named for the ticket desk. The substring is the whole contract. */
+    function triage(id: string, over: Partial<CommandDto> = {}): CommandDto {
+      return running(id, { actionName: 'Claude Code (tickets desk · repository MCP)', ...over });
+    }
+
+    it('is named for triage rather than refinement, and says what it is for', async () => {
+      await mount('p1', 'TICKETS');
+
+      expect(element().querySelector('button.toggle')?.textContent).toContain('Triage agent');
+      expect(text()).not.toContain('Refinement agent');
+
+      await press('Triage agent');
+      await flush('/projects/api/projects/p1/agent-container', {
+        container: container({ runtimeStatus: 'ABSENT', daemonConnected: false }),
+      });
+      expect(text()).toContain('file and triage this project’s tickets');
+    });
+
+    /**
+     * The lineage read is the epic desk's alone. `GET /agent-sessions` answers session ids with no
+     * desk on them, so it cannot say whether the ticket desk has ever run anything — asking it would
+     * mean the first press at this desk landed on an idle screen offering somebody else's session.
+     * An empty filtered list is the answer, and `http.verify()` is what proves the read never left.
+     */
+    it('launches at its own desk without asking the desk-blind lineage read', async () => {
+      await mount('p1', 'TICKETS');
+      await press('Start');
+
+      await flush('/projects/api/projects/p1/agent-container/ensure', { container: container() });
+      // The container has epic history and no ticket history. That is still "nothing here yet".
+      await flush('/projects/container/p1/commands', {
+        entries: [{ command: running('epic-old', { status: 'EXITED' }) }],
+      });
+      await flushHarness();
+
+      const launch = http.expectOne('/projects/container/p1/agents');
+      expect(launch.request.method).toBe('POST');
+      expect(launch.request.body).toEqual({
+        scope: 'REPOSITORY',
+        mode: 'INTERACTIVE',
+        desk: 'TICKETS',
+      });
+      launch.flush({ command: triage('t1') });
+      await settle();
+
+      expect(sockets).toHaveLength(1);
+      expect(sockets[0].url).toContain('/terminal/commands/t1');
+      // No /agent-sessions read, and nothing else outstanding.
+      http.verify();
+    });
+
+    it('adopts a running ticket-desk session and leaves the epic desk’s alone', async () => {
+      await mount('p1', 'TICKETS');
+      await press('Start');
+
+      await flush('/projects/api/projects/p1/agent-container/ensure', { container: container() });
+      await flush('/projects/container/p1/commands', {
+        entries: [{ command: running('epic-run') }, { command: triage('tix-run') }],
+      });
+      await flushHarness();
+
+      expect(sockets).toHaveLength(1);
+      expect(sockets[0].url).toContain('/terminal/commands/tix-run');
+      // No launch: branch 1 answered, at this desk.
+      http.verify();
+    });
+
+    it('offers this desk’s last session to resume, never the other desk’s', async () => {
+      await mount('p1', 'TICKETS');
+      await press('Start');
+
+      await flush('/projects/api/projects/p1/agent-container/ensure', { container: container() });
+      await flush('/projects/container/p1/commands', {
+        entries: [
+          // Newest first, and the newest is the epic desk's. Ordering must not decide this.
+          {
+            command: running('epic-old', {
+              status: 'EXITED',
+              agentSessions: [{ sessionId: 'epic-9', source: 'PINNED', recordedAt: AT }],
+            }),
+          },
+          {
+            command: triage('tix-old', {
+              status: 'EXITED',
+              agentSessions: [{ sessionId: 'tix-1', source: 'PINNED', recordedAt: AT }],
+            }),
+          },
+        ],
+      });
+      await flushHarness();
+
+      expect(sockets).toHaveLength(0);
+      expect(text()).toContain('tickets have been triaged before');
+      http.verify();
+
+      await press('Resume the last session');
+      const launch = http.expectOne('/projects/container/p1/agents');
+      expect(launch.request.body).toEqual({
+        scope: 'REPOSITORY',
+        mode: 'INTERACTIVE',
+        desk: 'TICKETS',
+        resumeSessionId: 'tix-1',
+      });
+      launch.flush({ command: triage('t2') });
+      await settle();
+    });
+  });
+
+  /**
+   * The other direction of the same rule: an unnamed command is the epic desk's, and a named one is
+   * not — so the epic desk launches rather than adopting the tickets terminal, and still consults the
+   * lineage read, which is what keeps every pre-desk session resumable from this panel.
+   */
+  it('does not adopt the ticket desk’s running session onto the epics panel', async () => {
+    await mount();
+    await press('Start');
+
+    await flush('/projects/api/projects/p1/agent-container/ensure', { container: container() });
+    await flush('/projects/container/p1/commands', {
+      entries: [{ command: running('tix-run', { actionName: 'Claude Code (tickets desk)' }) }],
+    });
+    await flushHarness();
+    await flush('/projects/container/p1/agent-sessions', { sessions: [] });
+
+    const launch = http.expectOne('/projects/container/p1/agents');
+    expect(launch.request.body).toEqual({
+      scope: 'REPOSITORY',
+      mode: 'INTERACTIVE',
+      desk: 'EPICS',
+    });
+    launch.flush({ command: running('e1') });
+    await settle();
+
+    expect(sockets).toHaveLength(1);
+    expect(sockets[0].url).toContain('/terminal/commands/e1');
+    expect(sockets[0].url).not.toContain('tix-run');
   });
 
   /** The common set-up: open, ensure, launch, attach, and an open PTY. */

@@ -118,6 +118,26 @@ describe('TicketsPage', () => {
     http.verify();
   });
 
+  /**
+   * The triage agent is on the page and has cost nothing. `http.verify()` in the test above already
+   * proves the second half; this states the first, so that a panel accidentally made eager fails here
+   * by name rather than as an unexpected request in an unrelated test. It also pins *which* desk this
+   * page mounts — the epics page's panel is the same component, and a missing `desk` would put a
+   * conversation about the plan at the head of the tickets board.
+   */
+  it('offers the triage agent closed, having asked nothing about it', async () => {
+    await openResolved();
+    flushTickets();
+    await settle();
+
+    const toggle = page().querySelector<HTMLButtonElement>('button.toggle');
+    expect(toggle?.textContent).toContain('Triage agent');
+    expect(toggle?.getAttribute('aria-expanded')).toBe('false');
+    expect(page().textContent).not.toContain('Refinement agent');
+    expect(page().textContent).toContain('Not started');
+    http.verify();
+  });
+
   it('says the project has no tickets rather than leaving the section blank', async () => {
     await openResolved();
     flushTickets();

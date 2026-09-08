@@ -12,6 +12,7 @@ import type { TicketType } from '../api/dto';
 import { TicketsApi, type NewTicket } from '../api/tickets-api';
 import { ProjectParam } from '../nav/project-param';
 import { IDLE, LOADING, ready, failed, type Loadable } from '../ui/loadable';
+import { RefinementPanel } from './agent/refinement-panel';
 import { TicketsOverview } from './tickets-overview';
 
 /** The two kinds, in the order the form offers them: what is broken first, then what could be better. */
@@ -27,6 +28,13 @@ const TYPES: readonly { readonly value: TicketType; readonly label: string }[] =
  * page's own word as an `h1`, and the panel that does the reading — and both halves of the header
  * come from the shared project list {@link ProjectParam} has already read to resolve the address's
  * slug, so the page adds no request of its own.
+ *
+ * <p><b>The agent above the list is the tickets' own front desk.</b> It is the same panel the epics
+ * page carries, mounted at the `TICKETS` desk: same container, same three verbs, its own conversation
+ * and its own system prompt — one for filing and triaging, where the epics page's is for drafting a
+ * plan. It sits above the list for the reason the epics one does, that it is what changes the rows
+ * below it, and it costs nothing until somebody opens it. The form beneath it is not made redundant
+ * by it: filing a known ticket by hand is four boxes, where asking an agent to is a model process.
  *
  * <p><b>The form is closed until it is asked for, and that is not only about space.</b> This page is
  * read far more often than it is written to: a reader arrives to find a ticket, not to file one. An
@@ -51,7 +59,7 @@ const TYPES: readonly { readonly value: TicketType; readonly label: string }[] =
 @Component({
   selector: 'app-tickets-page',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [QitsButton, RouterLink, TicketsOverview],
+  imports: [QitsButton, RefinementPanel, RouterLink, TicketsOverview],
   template: `
     <p class="back">
       <a [routerLink]="['/', projectSlug()]">← {{ heading() }}</a>
@@ -137,6 +145,8 @@ const TYPES: readonly { readonly value: TicketType; readonly label: string }[] =
         }
       </section>
     }
+
+    <app-refinement-panel [projectId]="projectId()" desk="TICKETS" />
 
     <app-tickets-overview [projectId]="projectId()" [projectSlug]="projectSlug()" />
   `,
