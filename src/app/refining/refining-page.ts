@@ -80,6 +80,15 @@ export const LINGER_MS = 5000;
  */
 const PANEL_NOTES: Readonly<Record<string, string>> = {};
 
+/**
+ * Whether a state draws something of its own — which, for the two this shell hands to `app-async`,
+ * means loading or failed. Ready and idle draw nothing there, by that component's own contract, and
+ * that contract is what {@link RefiningPage.silent} is asking about.
+ */
+function speaking(state: Loadable<unknown>): boolean {
+  return state.kind === 'loading' || state.kind === 'error';
+}
+
 /** What the page had to resolve before it could show anything: the epic. */
 interface Subject {
   /** The epic, so the header can name it and the refining route can address its refinement. */
@@ -129,6 +138,21 @@ interface Subject {
  * again, made with the same find-or-create flow the epic card uses, which adopts the existing branch.
  * Rendering a 404 there would ask the reader to go back to the epics list and press a button that does
  * exactly this.
+ *
+ * ## Nothing on the screen is never a state
+ *
+ * The shell used to have three branches — the tab host, the offer, and no `@else` — so every moment
+ * that was none of them drew an empty content area. That is the one screen a reader cannot tell from
+ * a page that failed to load, and it was reachable on the ordinary path: the refinements signal was
+ * seeded `idle`, and idle draws nothing anywhere. A freshly created refinement is where it stopped
+ * being a flicker, because {@link loadRefinements} used to hold the whole listing back until the
+ * single-row drift read had answered, and that read refreshes the wrapper's git mirror — cold
+ * exactly when the branch it is asked about was cut a second ago.
+ *
+ * Both halves are now closed by construction: every state of the two reads draws something (the
+ * `app-async` bars, the tab host, the offer), and {@link silent} catches whatever is left with a
+ * branch of its own. The rule is worth keeping when this file grows: **there is no fourth way to
+ * render nothing.**
  *
  * ## The URL's tab
  *
@@ -199,7 +223,19 @@ export class RefiningPage {
   protected readonly branch = computed(() => refiningBranch(this.epicSlug()));
 
   protected readonly subject = signal<Loadable<Subject>>(LOADING);
-  protected readonly workspaces = signal<Loadable<readonly RefinementDto[]>>(IDLE);
+
+  /**
+   * The wrapper's refinements — **LOADING from the first frame.**
+   *
+   * `idle` means "nobody asked", and on the ordinary path nobody ever does not ask: the
+   * constructor's effect issues the listing before anything can be painted. Seeding it idle
+   * described a state that does not exist there, and the template paid for the lie — neither the tab
+   * host (which wants a matched row) nor the offer (which wants a *settled* absence) draws on idle,
+   * so the whole first round trip was a blank content area with no spinner and no banner to explain
+   * it. Idle remains reachable and remains meant: {@link loadRefinements} sets it for an address
+   * that names no project, which is the one case where nothing was asked for.
+   */
+  protected readonly workspaces = signal<Loadable<readonly RefinementDto[]>>(LOADING);
 
   /** The create offer's own state, so a failure to start one is reported where it was asked for. */
   protected readonly starting = signal(false);
@@ -248,6 +284,13 @@ export class RefiningPage {
 
   /** Which epic the subject on hand was resolved for, so a hop is told from a hint. */
   private resolvedFor: string | null = null;
+
+  /**
+   * How many refinement reads have started. A read that is no longer the newest is dropped when it
+   * lands — see {@link loadRefinements}, which writes twice and must not let an older listing's
+   * second write overtake a newer listing's first.
+   */
+  private attempt = 0;
 
   /**
    * What makes the workspace row stale: its agent activity, its cleanliness and its container's
@@ -410,6 +453,21 @@ export class RefiningPage {
       this.subject().kind === 'ready' && this.workspaces().kind === 'ready' && !this.workspace(),
   );
 
+  /**
+   * Whether the page has nothing at all to say — the condition the template's last branch exists to
+   * make impossible.
+   *
+   * It is asked of the two `app-async` states rather than of a flag, because they are the two things
+   * that speak for the page when there is no content: while either is loading or failed the reader
+   * has a bar and a sentence, and drawing "nothing resolved" beside them would contradict what they
+   * say. Everything else — a matched workspace, a settled absence — is drawn by the branches above,
+   * so reaching this one means genuinely nothing is happening and nothing has gone wrong, which is
+   * the state an address naming no project produces.
+   */
+  protected readonly silent = computed(
+    () => !speaking(this.subject()) && !speaking(this.workspaces()),
+  );
+
   protected readonly reachability = this.daemon.reachability;
   protected readonly live = this.events.connected;
 
@@ -465,7 +523,10 @@ export class RefiningPage {
       return;
     }
     this.subject.set(LOADING);
-    this.workspaces.set(IDLE);
+    // An epic hop must not leave the previous epic's rows on screen matching against the new
+    // branch. LOADING rather than IDLE because the sibling effect re-reads them in this same flush:
+    // what is true of them is "being read again", and idle would blank the page until it answered.
+    this.workspaces.set(LOADING);
     try {
       this.subject.set(ready({ node: await this.refining.node(projectId, epicSlug) }));
     } catch (error) {
@@ -473,30 +534,71 @@ export class RefiningPage {
     }
   }
 
+  /**
+   * Read the wrapper's refinements, and **draw the page off the listing rather than off the
+   * upgrade.**
+   *
+   * The two reads are deliberately not one moment. The listing is the light projection — live
+   * halves, no git drift — and it is everything this page needs to decide *which* screen it is
+   * showing: a matched branch is a workspace, no match is the offer. The single-row read
+   * that follows adds drift for the status strip alone, and on the service that read refreshes the
+   * wrapper's git mirror behind a lock: a fetch, or a clone when the mirror is cold. Publishing only
+   * after it settled therefore spent an unbounded git operation before the first paint, and spent it
+   * hardest in exactly the case that has the least to gain — a refinement created seconds ago, whose
+   * branch the mirror has never seen and whose drift is `null` anyway. That was the blank page: not
+   * an error, not a stall, a page correctly waiting for something it did not need yet.
+   *
+   * So the rows are published as they arrive and the row this page is about is swapped underneath a
+   * screen already drawn. An upgrade that fails changes nothing, as before; an upgrade that is slow
+   * now costs a late "3 ahead" on one tab instead of the whole page.
+   *
+   * {@link attempt} is what makes two writes per read safe: a hint can start another listing while
+   * an upgrade is still out, and the older answer must not be allowed to land on top of the newer
+   * one. Only the newest read may write.
+   */
   protected async loadRefinements(projectId: string): Promise<void> {
     if (!projectId) {
+      // Idle is the honest word for an address that names no project: nothing was asked, and
+      // nothing is coming. Returning quietly here is what left a page seeded LOADING shimmering
+      // forever at a reader who had nothing to wait for.
+      this.workspaces.set(IDLE);
       return;
+    }
+    const attempt = ++this.attempt;
+    // Loud only when there is nothing on screen to keep: a hint's re-read swaps the rows when they
+    // arrive, and blanking the page for every agent keystroke would be worse than a moment's lag.
+    if (this.workspaces().kind !== 'ready') {
+      this.workspaces.set(LOADING);
     }
     try {
       const rows = await this.refinementsApi.list(projectId);
-      // The listing is the light projection — live halves, no git drift. This page's own row is
-      // upgraded to the full read (drift included), because the strip renders it; the peers stay
-      // light, because the bar reads only branch and activity.
-      const match = rows.find((entry) => entry.branch === this.branch());
-      let value: readonly RefinementDto[] = rows;
-      if (match) {
-        try {
-          const full = await this.refinementsApi.get(match.id);
-          value = rows.map((entry) => (entry.id === match.id ? full : entry));
-        } catch {
-          // The light row still draws the page; the drift arrives with the next hint.
-        }
+      if (attempt !== this.attempt) {
+        return;
       }
       // Before the signal, so the bar's order is settled by the time anything renders it.
-      this.memory.observe(value);
-      this.workspaces.set(ready(value));
+      this.memory.observe(rows);
+      this.workspaces.set(ready(rows));
+
+      const match = rows.find((entry) => entry.branch === this.branch());
+      if (!match) {
+        return;
+      }
+      try {
+        const full = await this.refinementsApi.get(match.id);
+        const current = this.workspaces();
+        if (attempt !== this.attempt || current.kind !== 'ready') {
+          return;
+        }
+        this.workspaces.set(
+          ready(current.value.map((entry) => (entry.id === match.id ? full : entry))),
+        );
+      } catch {
+        // The light row is already drawing the page; the drift arrives with the next hint.
+      }
     } catch (error) {
-      this.workspaces.set(failed(error));
+      if (attempt === this.attempt) {
+        this.workspaces.set(failed(error));
+      }
     }
   }
 
@@ -717,6 +819,17 @@ export class RefiningPage {
 
   protected reload(): void {
     void this.loadSubject();
+  }
+
+  /**
+   * Ask for everything again — what the residue branch offers, where there is no one failed read to
+   * point a retry at. Both, and not just the subject: reaching that branch means neither of them has
+   * an answer, and re-issuing one of the two would leave the reader pressing a button that changes
+   * nothing.
+   */
+  protected retryAll(): void {
+    void this.loadSubject();
+    void this.loadRefinements(this.projectId());
   }
 
   /**
