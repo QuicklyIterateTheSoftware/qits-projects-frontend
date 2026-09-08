@@ -134,5 +134,24 @@
         <p class="fault" role="alert">That did not work — {{ message }}.</p>
       }
     </section>
+  } @else if (silent()) {
+    <!--
+      The residue, drawn rather than left empty.
+
+      A workspace, an absence and the two async bars above account for everything this page can
+      normally be, and what was left over was rendered as nothing at all — which is the one screen a
+      reader cannot act on, because it is indistinguishable from a page that never loaded. The
+      residue is real and reachable: an address naming no project leaves the subject idle, so neither
+      read is in flight, neither has failed, and there is nothing to draw. That is a state, so it is
+      said, with the retry a reader would otherwise get by reloading the whole application.
+    -->
+    <section class="pending" aria-label="Nothing resolved">
+      <h2>Nothing has resolved for this address yet</h2>
+      <p>
+        No epic and no refining workspace on <code>{{ branch() }}</code> — and nothing failed either,
+        so there is nothing to retry automatically.
+      </p>
+      <qits-button variant="ghost" (pressed)="retryAll()">Try again</qits-button>
+    </section>
   }
 }

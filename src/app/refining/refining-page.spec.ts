@@ -930,4 +930,120 @@ describe('RefiningPage', () => {
       await settle();
     });
   });
+
+  /**
+   * The blank page, which is a state and not a symptom.
+   *
+   * A refining page that has asked for its refinements and not been answered yet used to render
+   * literally nothing — the tab host wants a matched row, the offer wants a settled absence, and the
+   * shell had no third branch — so the whole first round trip was an empty content area with no
+   * spinner and no banner. A freshly created refinement is where that stopped being imperceptible:
+   * its single-row read is the one that refreshes the wrapper's git mirror behind a lock, which is
+   * cold precisely when the branch it is asked about was cut a second ago.
+   */
+  describe('while the refinements are still being read', () => {
+    it('says it is looking rather than drawing nothing at all', async () => {
+      await harness.navigateByUrl(URL_BASE);
+      await flushSubject();
+
+      // The listing is in flight: nothing can be drawn, but the page still has to say so.
+      expect(text()).toContain('Looking for the refining workspace');
+      expect(element().querySelector('app-tab-host')).toBeNull();
+
+      await flushRefinements([workspace()]);
+      http.expectOne('/projects/api/refinements/7/active-process').flush({
+        technicalProcessId: null,
+      });
+      await settle();
+      await answerChatPanel();
+      expect(text()).not.toContain('Looking for the refining workspace');
+    });
+
+    /**
+     * The light listing draws the page and the drift arrives afterwards — the split the listing
+     * projection exists for. Holding the rows back until the single-row upgrade lands spends a
+     * mirror refresh before the first paint, which is what a freshly cut refining branch pays for.
+     */
+    it('draws the workspace from the listing without waiting for its drift upgrade', async () => {
+      await harness.navigateByUrl(URL_BASE);
+      await flushSubject();
+      http.expectOne(REFINEMENTS_URL).flush({ refinements: [workspace()] });
+      await settle();
+
+      expect(element().querySelector('app-tab-host')).not.toBeNull();
+      expect(text()).toContain('Epic refining workspace');
+
+      // Only then does the upgrade land, and it swaps the row underneath a page already drawn.
+      http.expectOne('/projects/api/refinements/7').flush({ refinement: workspace({ ahead: 4 }) });
+      await settle();
+      http.expectOne('/projects/api/refinements/7/active-process').flush({
+        technicalProcessId: null,
+      });
+      await settle();
+      await answerChatPanel();
+
+      tabs()
+        .find((tab) => tab.textContent?.trim() === 'Container')!
+        .click();
+      await settle();
+      expect(text()).toContain('4 ahead');
+    });
+
+    /** The residue of the three states is a state too, and it is never an empty content area. */
+    it('names the case where nothing resolved and nothing failed', async () => {
+      await harness.navigateByUrl('/nobody/epics/epic-refining-workspace/refining');
+      for (const request of http.match('/projects/api/projects')) {
+        request.flush({ entries: [] });
+      }
+      await settle();
+
+      expect(text()).toContain('Nothing has resolved for this address yet');
+      expect(element().querySelector('app-tab-host')).toBeNull();
+    });
+  });
+
+  /**
+   * The production shape of the blank page, kept as the case it was reported as: a refinement
+   * created seconds ago, on an epic with no description and no features drafted yet.
+   */
+  describe('a freshly started refinement', () => {
+    const FRESH = { ...EPIC, id: 'e3', slug: 'agent-configuration-system', description: null };
+    const FRESH_URL = '/p1/epics/agent-configuration-system/refining';
+    const fresh = (): RefinementDto =>
+      workspace({
+        id: 3,
+        epicId: 'e3',
+        branch: 'refining/agent-configuration-system',
+        label: 'refining-agent-configuration-system',
+        preamble: '# Refine: Agent Configuration System\n',
+        runtimeStatus: 'RUNNING',
+        clean: true,
+        ahead: null,
+        behind: null,
+        agentActivity: null,
+        daemonOutdated: null,
+      });
+
+    it('opens on the listing alone, with the drift read still outstanding', async () => {
+      await harness.navigateByUrl(FRESH_URL);
+      await flushProjectList();
+      http.expectOne(EPICS_URL).flush({ entries: [{ epic: FRESH }] });
+      await settle();
+      http.expectOne('/projects/api/epics/e3/features').flush({ entries: [] });
+      await settle();
+      http.expectOne(REFINEMENTS_URL).flush({ refinements: [fresh()] });
+      await settle();
+
+      expect(element().querySelector('app-tab-host')).not.toBeNull();
+      expect(tabs().map((tab) => tab.textContent?.trim())).toContain('Chat');
+
+      // The reads the page went on to make, answered so the verifier has nothing left over.
+      http.expectOne('/projects/api/refinements/3').flush({ refinement: fresh() });
+      await settle();
+      for (const request of http.match((c) => c.url.endsWith('/active-process'))) {
+        request.flush({ technicalProcessId: null });
+      }
+      await settle();
+    });
+  });
 });

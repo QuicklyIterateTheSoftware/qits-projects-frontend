@@ -85,3 +85,24 @@
 code {
   font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, monospace;
 }
+
+/* The residue reads as a note and not as a failure: nothing went wrong, the page simply has nothing
+   — which is why it is quieter than the offer above and louder than the empty box it replaced. */
+.pending {
+  margin: 1rem 0 0;
+  padding: 0.9rem 1rem;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.5rem;
+  background: #f9fafb;
+  color: #4b5563;
+  max-width: 44rem;
+}
+
+.pending h2 {
+  margin: 0 0 0.35rem;
+  font-size: 1rem;
+}
+
+.pending p {
+  margin: 0 0 0.6rem;
+}
