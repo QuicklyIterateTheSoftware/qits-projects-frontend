@@ -345,7 +345,12 @@ describe('RefiningPage', () => {
       http.expectNone('/projects/api/refinements/7/discard');
     });
 
-    it('confirms abandonment, deletes the refinement workspace first, then abandons the epic', async () => {
+    /**
+     * The teardown moved to the service on 2026-09-08: it discards the refinement and only then
+     * makes the epic terminal, so every route to a resolved epic cleans up and this page asks for
+     * the transition alone.
+     */
+    it('confirms abandonment, then abandons the epic with one request and no discard of its own', async () => {
       await open();
       const navigate = vi.spyOn(TestBed.inject(Router), 'navigate').mockResolvedValue(true);
 
@@ -356,9 +361,7 @@ describe('RefiningPage', () => {
 
       buttonNamed('Confirm abandon?').click();
       await settle();
-      const discard = http.expectOne('/projects/api/refinements/7/discard');
-      discard.flush({ success: true });
-      await settle();
+      http.expectNone('/projects/api/refinements/7/discard');
 
       const transition = http.expectOne('/projects/api/epics/e1/transition');
       expect(transition.request.body).toEqual({ target: 'ABANDONED' });

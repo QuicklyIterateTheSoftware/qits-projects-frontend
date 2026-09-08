@@ -685,25 +685,25 @@ export class RefiningPage {
   }
 
   /**
-   * Finish refinement from the document itself.
+   * Finish refinement from the document itself — one request now.
    *
-   * Abandoning is intentionally two operations: discard first removes the container, volume,
-   * workspace row and refinement branch; only then is the epic made terminal. If the second request
-   * fails, Refine can recreate the workspace. Reversing that order could leave an abandoned epic
-   * owning an unreachable active workspace with no UI from which to clean it up.
+   * The teardown used to be here, and only for `ABANDONED`: discard first, then transition. It is
+   * the service's job as of 2026-09-08, because this page was never the only route to a resolved
+   * epic — the board, the REST API and an agent all reached the transition without it and left the
+   * container, its volume, its credential and the `refining/<slug>` branch allocated for good. The
+   * order that argued for two operations still holds and is kept on the server side: the refinement
+   * is discarded first, and the epic is made terminal only once it owns nothing.
    */
   protected async resolveEpic(action: EpicAction): Promise<void> {
     if (action.kind !== 'transition' || this.resolutionPending()) return;
     const current = this.resolved();
-    const workspace = this.workspace();
-    if (!current || !workspace) return;
+    // The refinement row is no longer needed to resolve — the service finds it by epic — so a page
+    // whose row has already gone can still take the epic to its terminal status.
+    if (!current) return;
 
     this.resolutionPending.set(actionKey(action));
     this.resolutionFailure.set(null);
     try {
-      if (action.target === 'ABANDONED') {
-        await this.refinementsApi.discard(workspace.id);
-      }
       await this.projects.transitionEpic(current.node.epic.id, action.target);
       await this.router.navigate([this.projectSlug(), 'epics'], {
         fragment: `epic-${current.node.epic.id}`,
