@@ -328,17 +328,31 @@ describe('RefiningPage', () => {
       expect(actions?.textContent).toContain('Abandon');
     });
 
-    it('starts implementation through the same epic transition as the overview', async () => {
+    /**
+     * The same door the board presses, which is the whole point: ending a refinement here has to
+     * freeze the scope *and* put an implementing agent on `epic/<slug>`, or this route would leave
+     * the epic frozen with nobody on it while the board's route did not.
+     */
+    it('starts implementation through the same dispatch door as the overview', async () => {
       await open();
       const navigate = vi.spyOn(TestBed.inject(Router), 'navigate').mockResolvedValue(true);
 
       buttonNamed('Start implementation').click();
       await settle();
 
-      const request = http.expectOne('/projects/api/epics/e1/transition');
+      http.expectNone('/projects/api/epics/e1/transition');
+      const request = http.expectOne('/projects/api/epics/e1/dispatch-agent');
       expect(request.request.method).toBe('POST');
-      expect(request.request.body).toEqual({ target: 'IMPLEMENTATION' });
-      request.flush({ epic: { ...EPIC, status: 'IMPLEMENTATION' }, successor: null });
+      expect(request.request.body).toEqual({});
+      request.flush({
+        dispatch: {
+          workspaceRowId: 7,
+          repositoryId: 'r1',
+          branch: 'epic/epic-refining-workspace',
+          fresh: true,
+          agentLaunch: 'SCHEDULED',
+        },
+      });
       await settle();
 
       expect(navigate).toHaveBeenCalledWith(['p1', 'epics'], { fragment: 'epic-e1' });

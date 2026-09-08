@@ -275,9 +275,17 @@ export class RefiningPage {
   /** Whether the transient tab currently holds the selection. Never written to the URL. */
   private readonly transient = signal(false);
 
-  /** The same lifecycle moves offered on a refining epic in the project overview, minus Refine. */
+  /**
+   * The same moves offered on a refining epic in the project overview, minus Refine.
+   *
+   * <p>Refine is the one that is excluded and the filter says so directly, rather than keeping only
+   * the transitions: this page **is** the refining workspace, so offering to open it would be a
+   * button that goes where the reader already is. Start implementation stopped being a transition on
+   * 2026-09-08 without stopping being an ending, and a keep-the-transitions filter would have
+   * dropped it here silently.
+   */
   protected readonly resolutionActions = actionsFor('REFINING').filter(
-    (action) => action.kind === 'transition',
+    (action) => action.kind !== 'refine',
   );
   protected readonly resolutionPending = signal<string | null>(null);
   protected readonly resolutionFailure = signal<string | null>(null);
@@ -795,20 +803,34 @@ export class RefiningPage {
    * container, its volume, its credential and the `refining/<slug>` branch allocated for good. The
    * order that argued for two operations still holds and is kept on the server side: the refinement
    * is discarded first, and the epic is made terminal only once it owns nothing.
+   *
+   * <p><b>Two requests are possible now, and the action's discriminant is what picks.</b> Abandoning
+   * is a transition; starting implementation is the dispatch door, which freezes the scope *and*
+   * stands an implementing agent up on `epic/<slug>` — the same press the board makes, and it has to
+   * be the same door, or ending a refinement here would leave the epic frozen with nobody on it.
+   *
+   * <p>Either way the page leaves for the board, which is why nothing here draws the workspace link
+   * the board draws: this screen is about to stop existing. A reader who wants the address presses
+   * Start implementation again there, which adopts the workspace this press just made.
    */
   protected async resolveEpic(action: EpicAction): Promise<void> {
-    if (action.kind !== 'transition' || this.resolutionPending()) return;
+    if (action.kind === 'refine' || this.resolutionPending()) return;
     const current = this.resolved();
     // The refinement row is no longer needed to resolve — the service finds it by epic — so a page
     // whose row has already gone can still take the epic to its terminal status.
     if (!current) return;
 
+    const epicId = current.node.epic.id;
     this.resolutionPending.set(actionKey(action));
     this.resolutionFailure.set(null);
     try {
-      await this.projects.transitionEpic(current.node.epic.id, action.target);
+      if (action.kind === 'start') {
+        await this.projects.dispatchEpicAgent(epicId);
+      } else {
+        await this.projects.transitionEpic(epicId, action.target);
+      }
       await this.router.navigate([this.projectSlug(), 'epics'], {
-        fragment: `epic-${current.node.epic.id}`,
+        fragment: `epic-${epicId}`,
       });
     } catch (error) {
       this.resolutionFailure.set(describeError(error));

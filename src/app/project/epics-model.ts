@@ -239,13 +239,49 @@ export interface EpicRefineAction {
   readonly confirmLabel: null;
 }
 
-/** One move a reader can make on an epic — a lifecycle transition, or opening its refining workspace. */
-export type EpicAction = EpicTransitionAction | EpicRefineAction;
+/**
+ * Freeze the scope and put an implementing agent on it: move the epic to `IMPLEMENTATION` **and**
+ * stand a real qits-workspaces workspace with a coding agent up on the wrapper's `epic/<slug>`
+ * branch, in one press.
+ *
+ * <p><b>A third kind rather than a flag on the transition, for {@link EpicRefineAction}'s reason
+ * turned the other way round.</b> Refine is not a transition because the epic does not move; this
+ * one *is* a transition and is still not one, because moving the epic is only half of what the
+ * press does. There is a single door behind it — `POST /epics/{id}/dispatch-agent` — which
+ * transitions and dispatches in one call and in that order, because the tool the agent is told to
+ * mark tasks with is only open to an epic already in implementation. Routing this through
+ * `transitionEpic` would do the first half and silently drop the second: a frozen epic with nobody
+ * on it, which is exactly what pressing this button used to produce. A boolean on
+ * {@link EpicTransitionAction} would have been worse — every reader of a transition would then have
+ * to know that one of them is not sent to the transition endpoint at all.
+ *
+ * <p>It carries no `target`, for the same reason refine carries none: the status it lands on is the
+ * door's decision and not a parameter the browser supplies. A re-press on an epic already in
+ * implementation moves nothing and adopts the workspace already on the branch.
+ *
+ * <p><b>No confirmation, which is the stance the old transition already took and the argument is
+ * unchanged by the dispatch.</b> Freezing a scope is the ordinary next step on a draft, and nothing
+ * is thrown away — the refinement survives the freeze, and a second press lands in the workspace the
+ * first one made rather than starting a second agent. That is Refine's argument word for word. What
+ * the press *does* commit to is the scope, and the answer to that has always been the ordering in
+ * {@link actionsFor} rather than a second click: refining comes first, and the press that ends it is
+ * not the one nearest the reader's hand.
+ */
+export interface EpicStartAction {
+  readonly kind: 'start';
+  readonly label: string;
+  readonly confirmLabel: null;
+}
+
+/**
+ * One move a reader can make on an epic — a lifecycle transition, opening its refining workspace, or
+ * starting implementation, which is a transition and a dispatch at once.
+ */
+export type EpicAction = EpicTransitionAction | EpicRefineAction | EpicStartAction;
 
 const REFINE: EpicRefineAction = { kind: 'refine', label: 'Refine', confirmLabel: null };
-const START: EpicTransitionAction = {
-  kind: 'transition',
-  target: 'IMPLEMENTATION',
+const START: EpicStartAction = {
+  kind: 'start',
   label: 'Start implementation',
   confirmLabel: null,
 };
@@ -271,7 +307,7 @@ const ABANDON: EpicTransitionAction = {
 
 /**
  * What can be done to an epic in a given phase — the service's legal transitions, mirrored, plus the
- * one action that is not a transition.
+ * two actions on a draft that are not transitions.
  *
  * Mirrored rather than guessed at from the buttons: the server validates every move and answers a 409
  * for the rest, so this list is only about not offering a press that cannot work. The two terminal
@@ -298,12 +334,19 @@ export function actionsFor(status: EpicStatus): readonly EpicAction[] {
 /**
  * What identifies one action among the row — for `track`, and for saying which button is busy.
  *
- * A transition is identified by where it goes, which is unique within a phase; refine is identified by
- * being refine. The status values and the literal `'refine'` cannot collide, because `EpicStatus` is
- * closed and screaming-case.
+ * A transition is identified by where it goes, which is unique within a phase; the two that are not
+ * transitions are identified by their own discriminant, so the key is `refine` or `start`.
+ *
+ * <p><b>Total and collision-free over all three kinds, and both halves are structural rather than
+ * lucky.</b> Total: the union is discriminated, so the one branch that is not a transition covers
+ * `refine` and `start` together and TypeScript narrows the other to something with a `target` —
+ * a fourth kind would have to widen `action.kind` and would land in that same branch as its own
+ * literal, never as `undefined`. Collision-free: the non-transition keys are the discriminants
+ * themselves, which are lower-case, while every transition key is an `EpicStatus`, a closed
+ * screaming-case set — so no value of one can ever spell a value of the other.
  */
 export function actionKey(action: EpicAction): string {
-  return action.kind === 'refine' ? 'refine' : action.target;
+  return action.kind === 'transition' ? action.target : action.kind;
 }
 
 /** Every epic's title by id, so a superseded row can name the draft that replaced it. */

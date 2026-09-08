@@ -10,6 +10,7 @@ import {
   untracked,
 } from '@angular/core';
 import { Router } from '@angular/router';
+import type { EpicAgentDispatchDto } from '../api/dto';
 import { ProjectEvents } from '../api/project-events';
 import { ProjectsApi } from '../api/projects-api';
 import { RefiningService } from '../refining/refining-service';
@@ -33,7 +34,10 @@ import {
 /** Which epic an action is running against, and which of its buttons it is. */
 interface InFlight {
   readonly id: string;
-  /** The action's {@link actionKey} — a status for a transition, `refine` for the refining workspace. */
+  /**
+   * The action's {@link actionKey} — a status for a transition, `refine` for the refining workspace,
+   * `start` for the press that freezes the scope and dispatches an implementing agent.
+   */
   readonly key: string;
 }
 
@@ -69,6 +73,13 @@ interface Failure {
  *
  * <p>A transition re-reads the whole tree rather than splicing the answer in: superseding creates a
  * second epic, and a panel that patched one row would show a draft that is not there.
+ *
+ * <p><b>Start implementation is a third kind of press, and the panel remembers what it answered.</b>
+ * It goes to one door that freezes the scope *and* stands a workspace with a coding agent up on the
+ * wrapper's `epic/<slug>` branch, so it moves the epic (the tree is re-read) and produces an address
+ * in another application (which is drawn beside the card). That address is kept in memory only —
+ * the service stores no queryable record of a dispatch — so a reload forgets it and the way back is
+ * another press, which adopts the workspace already on the branch rather than making a second one.
  *
  * <p><b>One of a draft's buttons is not a transition.</b> Refine starts (or re-enters) a workspace on
  * the wrapper's `refining/<slug>` branch and navigates to it, leaving the epic exactly where it was.
@@ -122,6 +133,7 @@ interface Failure {
                     [disabled]="inFlight() !== null"
                     [running]="running(node)"
                     [error]="error(node)"
+                    [dispatch]="dispatch(node)"
                     (chosen)="choose(node, $event)"
                   />
                 </div>
@@ -144,6 +156,7 @@ interface Failure {
                     [disabled]="inFlight() !== null"
                     [running]="running(node)"
                     [error]="error(node)"
+                    [dispatch]="dispatch(node)"
                     (chosen)="choose(node, $event)"
                   />
                 </div>
@@ -164,6 +177,7 @@ interface Failure {
                     [disabled]="inFlight() !== null"
                     [running]="running(node)"
                     [error]="error(node)"
+                    [dispatch]="dispatch(node)"
                     (chosen)="choose(node, $event)"
                   />
                 </div>
@@ -260,6 +274,12 @@ export class EpicsOverview {
 
   protected readonly failure = signal<Failure | null>(null);
 
+  /**
+   * Where a "Start implementation" sent an agent, by epic id — the only record there is, and it
+   * lives no longer than this component. See the class note on why nothing re-reads it.
+   */
+  private readonly dispatches = signal<ReadonlyMap<string, EpicAgentDispatchDto>>(new Map());
+
   protected readonly loaded = computed(() => this.epics().kind === 'ready');
 
   protected readonly nodes = computed<readonly EpicNode[]>(() => {
@@ -334,6 +354,18 @@ export class EpicsOverview {
     return failure?.id === node.epic.id ? failure.message : null;
   }
 
+  /**
+   * What this epic's last successful start answered, or null.
+   *
+   * It is offered to every card and not only to the drafts, because the press *moves* the epic: by
+   * the time the tree has been re-read the card the link belongs to is in the implementation
+   * section, and pinning the link to the refining section would make it vanish at the exact moment
+   * it became useful.
+   */
+  protected dispatch(node: EpicNode): EpicAgentDispatchDto | null {
+    return this.dispatches().get(node.epic.id) ?? null;
+  }
+
   /** The successor's title when this list holds it; null draws no link — see the row component. */
   protected successorTitle(node: EpicNode): string | null {
     const id = node.epic.supersededByEpicId;
@@ -341,11 +373,12 @@ export class EpicsOverview {
   }
 
   /**
-   * Do what the button asked for — one of two quite different things, told apart by the action's own
-   * discriminant rather than by reading a status.
+   * Do what the button asked for — one of three quite different things, told apart by the action's
+   * own discriminant rather than by reading a status.
    *
-   * The two share the busy state and the error-pinning and nothing else: a transition moves the epic and
-   * re-reads the tree, refining leaves the epic exactly where it was and navigates away.
+   * The three share the busy state and the error-pinning and nothing else: a transition moves the epic
+   * and re-reads the tree, refining leaves the epic exactly where it was and navigates away, and
+   * starting implementation moves the epic *and* stands a workspace up somewhere else.
    */
   protected async choose(node: EpicNode, action: EpicAction): Promise<void> {
     const id = node.epic.id;
@@ -354,6 +387,8 @@ export class EpicsOverview {
     try {
       if (action.kind === 'refine') {
         await this.refine(node);
+      } else if (action.kind === 'start') {
+        await this.start(node);
       } else {
         await this.api.transitionEpic(id, action.target);
         await this.load();
@@ -363,6 +398,26 @@ export class EpicsOverview {
     } finally {
       this.inFlight.set(null);
     }
+  }
+
+  /**
+   * Freeze this epic's scope and put an implementing agent on it, then keep where it went.
+   *
+   * <p><b>The tree is re-read, which is the difference from {@link refine}.</b> That press leaves the
+   * epic `REFINING` and re-reading would confirm a tree nothing changed; this one genuinely moved the
+   * row — `REFINING` to `IMPLEMENTATION` — so the card has to leave the Refining section and appear
+   * under Implementation, and a panel that skipped the read would go on drawing a draft the service
+   * no longer has. The door fires the project's `epics` hint as well, but the redraw must not depend
+   * on a live channel being up: the reader pressed this button and is looking at its result.
+   *
+   * <p>The answer is remembered *before* the read, so the link is drawn against whichever section the
+   * card lands in.
+   */
+  private async start(node: EpicNode): Promise<void> {
+    const id = node.epic.id;
+    const dispatch = await this.api.dispatchEpicAgent(id);
+    this.dispatches.update((known) => new Map(known).set(id, dispatch));
+    await this.load();
   }
 
   /**

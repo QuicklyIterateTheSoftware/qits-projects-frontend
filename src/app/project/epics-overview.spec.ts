@@ -2,7 +2,8 @@ import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { Router, provideRouter } from '@angular/router';
-import type { EpicDto, FeatureDto, TaskDto } from '../api/dto';
+import { provideQitsNavigationTree, type QitsNavigation } from '@qits/ui-components';
+import type { EpicAgentDispatchDto, EpicDto, FeatureDto, TaskDto } from '../api/dto';
 import { EVENT_SOURCE_FACTORY, type EventSourceLike } from '../api/event-source';
 import { EpicsOverview } from './epics-overview';
 
@@ -33,6 +34,37 @@ class FakeStream implements EventSourceLike {
 }
 
 const AT = '2026-08-08T09:00:00Z';
+
+/**
+ * The platform as the edge states it, with qits-workspaces on a host of its own — which is the shape
+ * `QitsAppLinks.href` can answer an address for, and the only way the workspace link is drawn.
+ */
+const PLATFORM: QitsNavigation = {
+  environment: 'dev',
+  origin: 'https://dev.example.test',
+  slots: {
+    'services.details': [
+      {
+        app: 'qits-workspaces',
+        label: 'Workspaces',
+        host: 'workspaces.dev.example.test',
+        origin: 'https://workspaces.dev.example.test',
+      },
+    ],
+  },
+};
+
+/** What the dispatch door answered — the whole of what the panel remembers about a press. */
+function dispatched(over: Partial<EpicAgentDispatchDto> = {}): EpicAgentDispatchDto {
+  return {
+    workspaceRowId: 7,
+    repositoryId: 'r1',
+    branch: 'epic/draft',
+    fresh: true,
+    agentLaunch: 'SCHEDULED',
+    ...over,
+  };
+}
 
 function epic(id: string, slug: string, over: Partial<EpicDto> = {}): EpicDto {
   return {
@@ -97,6 +129,7 @@ describe('EpicsOverview', () => {
         provideHttpClient(),
         provideHttpClientTesting(),
         provideRouter([]),
+        provideQitsNavigationTree(PLATFORM),
         {
           provide: EVENT_SOURCE_FACTORY,
           useValue: (url: string) => {
@@ -449,24 +482,26 @@ describe('EpicsOverview', () => {
   });
 
   describe('transitions', () => {
-    it('freezes a draft on one press and re-reads the whole tree', async () => {
+    it('declares an epic implemented on a confirmed press and re-reads the whole tree', async () => {
       await loadGroups();
 
-      buttonNamed('Start implementation').click();
+      buttonNamed('Mark implemented').click();
+      await settle();
+      buttonNamed('Confirm implemented?').click();
       await settle();
 
-      const request = http.expectOne('/projects/api/epics/e1/transition');
+      const request = http.expectOne('/projects/api/epics/e2/transition');
       expect(request.request.method).toBe('POST');
-      expect(request.request.body).toEqual({ target: 'IMPLEMENTATION' });
-      request.flush({ epic: epic('e1', 'draft'), successor: null });
+      expect(request.request.body).toEqual({ target: 'IMPLEMENTED' });
+      request.flush({ epic: epic('e2', 'running', { status: 'IMPLEMENTED' }), successor: null });
       await settle();
 
       // The answer is not spliced in — the panel reads the tree again.
-      await flushEpics([epic('e1', 'draft')]);
-      await flushFeatures('e1', []);
+      await flushEpics([epic('e2', 'running', { status: 'IMPLEMENTED' })]);
+      await flushFeatures('e2', []);
 
-      expect(branches()).toEqual(['epic/draft']);
-      expect(element().querySelector('app-epic-draft-card')).toBeNull();
+      expect(branches()).toEqual(['epic/running']);
+      expect(sections()).toContain('Done (1)');
     });
 
     /** Superseding throws a plan away, so the button asks first — in itself, not in a dialog. */
@@ -494,7 +529,7 @@ describe('EpicsOverview', () => {
     it('holds every button while a move is in flight', async () => {
       await loadGroups();
 
-      buttonNamed('Start implementation').click();
+      buttonNamed('Refine').click();
       await settle();
 
       expect(Array.from(element().querySelectorAll('button')).every((node) => node.disabled)).toBe(
@@ -517,21 +552,127 @@ describe('EpicsOverview', () => {
     it('surfaces a refused move next to the epic and leaves the tree alone', async () => {
       await loadGroups();
 
-      buttonNamed('Start implementation').click();
+      buttonNamed('Abandon').click();
+      await settle();
+      buttonNamed('Confirm abandon?').click();
       await settle();
       http
         .expectOne('/projects/api/epics/e1/transition')
         .flush(
-          { message: 'an epic with no features cannot be frozen' },
+          { message: 'an epic with no features cannot be abandoned' },
           { status: 409, statusText: 'Conflict' },
         );
       await settle();
 
       expect(element().querySelector('#epic-e1')?.textContent).toContain(
-        'Could not move this epic — 409 an epic with no features cannot be frozen.',
+        'Could not move this epic — 409 an epic with no features cannot be abandoned.',
       );
       http.expectNone('/projects/api/projects/p1/epics');
       expect(element().querySelector('app-epic-draft-card')).not.toBeNull();
+    });
+  });
+
+  /**
+   * Start implementation is neither of the other two presses. It goes to one door that freezes the
+   * scope *and* stands a workspace with a coding agent up on `epic/<slug>` — so unlike Refine the
+   * epic really moves and the tree is re-read, and unlike a transition the press answers an address
+   * in another application that the panel has to remember and draw.
+   */
+  describe('starting implementation', () => {
+    const DISPATCH = '/projects/api/epics/e1/dispatch-agent';
+
+    /** The one door, with nothing in the body: the epic is the whole of what it needs. */
+    it('dispatches an agent instead of transitioning, then re-reads the tree', async () => {
+      await loadGroups();
+
+      buttonNamed('Start implementation').click();
+      await settle();
+
+      // The freeze is the door's own first half — the browser never asks for the transition.
+      http.expectNone('/projects/api/epics/e1/transition');
+      const request = http.expectOne(DISPATCH);
+      expect(request.request.method).toBe('POST');
+      expect(request.request.body).toEqual({});
+      request.flush({ dispatch: dispatched() });
+      await settle();
+
+      // The epic's status moved, so the panel redraws rather than trusting what is on screen.
+      await flushEpics([epic('e1', 'draft')]);
+      await flushFeatures('e1', []);
+
+      expect(branches()).toEqual(['epic/draft']);
+      expect(element().querySelector('app-epic-draft-card')).toBeNull();
+    });
+
+    it('swaps in a full-document link to the workspace the agent went to', async () => {
+      await loadGroups();
+
+      expect(element().querySelector('#epic-e1 a.workspace')).toBeNull();
+
+      buttonNamed('Start implementation').click();
+      await settle();
+      http.expectOne(DISPATCH).flush({ dispatch: dispatched() });
+      await settle();
+      await flushEpics([epic('e1', 'draft')]);
+      await flushFeatures('e1', []);
+
+      const link = element().querySelector('#epic-e1 a.workspace');
+      expect(link?.textContent?.trim()).toBe('Open workspace');
+      expect(link?.getAttribute('href')).toBe(
+        'https://workspaces.dev.example.test/repositories/r1/workspaces/7?tab=chat',
+      );
+      // Cross-application, so it is an href and never a router command.
+      expect(link?.getAttribute('routerlink')).toBeNull();
+      expect(element().querySelector('#epic-e1')?.textContent).toContain(
+        'an agent is starting on epic/draft',
+      );
+      // The pressed epic's link is its own — no other card grew one.
+      expect(element().querySelectorAll('a.workspace')).toHaveLength(1);
+    });
+
+    /** Already-running is a success: the workspace is the thing worth opening either way. */
+    it('draws the link for a launch that was skipped because one is already running', async () => {
+      await loadGroups();
+
+      buttonNamed('Start implementation').click();
+      await settle();
+      http
+        .expectOne(DISPATCH)
+        .flush({ dispatch: dispatched({ fresh: false, agentLaunch: 'SKIPPED_RUNNING' }) });
+      await settle();
+      await flushEpics([epic('e1', 'draft')]);
+      await flushFeatures('e1', []);
+
+      expect(element().querySelector('#epic-e1 a.workspace')?.getAttribute('href')).toBe(
+        'https://workspaces.dev.example.test/repositories/r1/workspaces/7?tab=chat',
+      );
+      expect(element().querySelector('#epic-e1')?.textContent).toContain(
+        'an agent is already working on epic/draft',
+      );
+    });
+
+    /** A refused dispatch changed nothing this panel can see, so the tree stays exactly as it was. */
+    it('reports a refusal beside the epic, re-reads nothing, and draws no link', async () => {
+      await loadGroups();
+
+      buttonNamed('Start implementation').click();
+      await settle();
+      http
+        .expectOne(DISPATCH)
+        .flush(
+          { message: 'the project has no wrapper repository' },
+          { status: 409, statusText: 'Conflict' },
+        );
+      await settle();
+
+      expect(element().querySelector('#epic-e1')?.textContent).toContain(
+        'Could not move this epic — 409 the project has no wrapper repository.',
+      );
+      http.expectNone('/projects/api/projects/p1/epics');
+      expect(element().querySelector('app-epic-draft-card')).not.toBeNull();
+      expect(element().querySelector('#epic-e1 a.workspace')).toBeNull();
+      // A second press is an ordinary one — the door adopts the workspace already on the branch.
+      expect(buttonNamed('Start implementation').disabled).toBe(false);
     });
   });
 
@@ -590,14 +731,15 @@ describe('EpicsOverview', () => {
       http
         .expectOne('/projects/api/refinements')
         .flush(
-          { message: 'Project p1 has no wrapper repository (demo-demo), so there is nothing to refine against.' },
+          {
+            message:
+              'Project p1 has no wrapper repository (demo-demo), so there is nothing to refine against.',
+          },
           { status: 409, statusText: 'Conflict' },
         );
       await settle();
 
-      expect(element().querySelector('#epic-e1')?.textContent).toContain(
-        'no wrapper repository',
-      );
+      expect(element().querySelector('#epic-e1')?.textContent).toContain('no wrapper repository');
       expect(element().querySelector('app-epic-draft-card')).not.toBeNull();
     });
   });

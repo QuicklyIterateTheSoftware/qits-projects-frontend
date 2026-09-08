@@ -6,6 +6,8 @@ import type {
   BackupSyncResponse,
   CreateRepositoryRequest,
   CreateRepositoryResponse,
+  EpicAgentDispatchDto,
+  EpicAgentDispatchResponse,
   EpicDto,
   EpicEntriesResponse,
   EpicStatus,
@@ -194,6 +196,39 @@ export class ProjectsApi {
         { target },
       ),
     );
+  }
+
+  /**
+   * Start implementing an epic: freeze the scope **and** stand a workspace and a coding agent up on
+   * the wrapper's `epic/<slug>` branch, in one press. Answers where they went.
+   *
+   * <p>A POST to a verb with **no body at all**, the same shape {@link ./tickets-api#TicketsApi}'s
+   * `dispatchAgent` has: everything the door needs is the epic, which the path already names, and
+   * the principal, which the session stamps. The `{}` is Angular's way of spelling an empty POST.
+   *
+   * <p><b>Not {@link transitionEpic} with an extra step.</b> The status move is only half of what
+   * this door does, and the halves are ordered on the server — the epic is in IMPLEMENTATION before
+   * the dispatch is made, because the marking tool the agent is told to use is only open to an epic
+   * that is. A client that transitioned and then dispatched would be that order without the
+   * transaction, and a client that only transitioned would leave the epic frozen with nobody on it.
+   *
+   * <p><b>Re-pressable, which is what makes it safe to retry.</b> An epic already in IMPLEMENTATION
+   * is dispatched onto as it stands rather than refused, and the far side adopts the workspace
+   * already on the branch — so a dispatch that failed after the status moved is fixed by pressing
+   * again. An epic whose work is over is a 409 naming the status.
+   *
+   * <p>The door fires the project's `epics` topic itself. The caller still re-reads, because unlike
+   * a ticket dispatch this one *moved the row it is about* and the panel showing it has to redraw
+   * whether or not the live channel is up.
+   */
+  async dispatchEpicAgent(epicId: string): Promise<EpicAgentDispatchDto> {
+    const response = await firstValueFrom(
+      this.http.post<EpicAgentDispatchResponse>(
+        `${this.base}/projects/api/epics/${encodeURIComponent(epicId)}/dispatch-agent`,
+        {},
+      ),
+    );
+    return response.dispatch;
   }
 
   /** One epic's features. */

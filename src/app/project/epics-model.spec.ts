@@ -1,4 +1,4 @@
-import type { EpicDto, FeatureDto, TaskDto } from '../api/dto';
+import type { EpicDto, EpicStatus, FeatureDto, TaskDto } from '../api/dto';
 import {
   actionKey,
   actionsFor,
@@ -301,12 +301,7 @@ describe('actionsFor', () => {
   it('offers a draft the refine, then the freeze, then the drop', () => {
     expect(actionsFor('REFINING')).toEqual([
       { kind: 'refine', label: 'Refine', confirmLabel: null },
-      {
-        kind: 'transition',
-        target: 'IMPLEMENTATION',
-        label: 'Start implementation',
-        confirmLabel: null,
-      },
+      { kind: 'start', label: 'Start implementation', confirmLabel: null },
       {
         kind: 'transition',
         target: 'ABANDONED',
@@ -317,14 +312,17 @@ describe('actionsFor', () => {
   });
 
   /**
-   * The discriminant, not the status. Refine leaves the epic exactly where it was, so reaching it
-   * through `EpicStatus` would mean inventing a fifth status the service has never heard of.
+   * The discriminant, not the status. Refine leaves the epic exactly where it was, and starting
+   * implementation does more than move it — one door freezes the scope *and* dispatches an agent —
+   * so neither carries a `target` a transition endpoint could be called with.
    */
-  it('marks refine as the one action that is not a transition', () => {
-    const [refine, ...transitions] = actionsFor('REFINING');
+  it('marks refine and the start as the two actions that are not transitions', () => {
+    const [refine, start, ...transitions] = actionsFor('REFINING');
 
     expect(refine.kind).toBe('refine');
     expect(refine).not.toHaveProperty('target');
+    expect(start.kind).toBe('start');
+    expect(start).not.toHaveProperty('target');
     expect(transitions.every((action) => action.kind === 'transition')).toBe(true);
   });
 
@@ -351,6 +349,9 @@ describe('actionsFor', () => {
       .map((action) => actionKey(action));
 
     expect(asked).toEqual(['ABANDONED', 'IMPLEMENTED', 'SUPERSEDED', 'ABANDONED']);
+    expect(actionsFor('REFINING').find((action) => action.kind === 'start')?.confirmLabel).toBe(
+      null,
+    );
   });
 
   it('offers nothing on a terminal epic', () => {
@@ -361,12 +362,33 @@ describe('actionsFor', () => {
 
 /** Keys have to be unique within a row, because they are both the `track` and the busy marker. */
 describe('actionKey', () => {
-  it('identifies a transition by where it goes and refine by being refine', () => {
+  it('identifies a transition by where it goes and the other two by their own kind', () => {
     expect(actionsFor('REFINING').map((action) => actionKey(action))).toEqual([
       'refine',
-      'IMPLEMENTATION',
+      'start',
       'ABANDONED',
     ]);
+  });
+
+  /**
+   * Total and collision-free over the widened union: every action in every phase answers a key, and
+   * no two in one row share it. The lower-case discriminants cannot spell a screaming-case status.
+   */
+  it('answers a distinct key for every action of every phase', () => {
+    const phases: readonly EpicStatus[] = [
+      'REFINING',
+      'IMPLEMENTATION',
+      'IMPLEMENTED',
+      'SUPERSEDED',
+      'ABANDONED',
+    ];
+
+    for (const phase of phases) {
+      const keys = actionsFor(phase).map((action) => actionKey(action));
+
+      expect(keys.every((key) => key.length > 0)).toBe(true);
+      expect(new Set(keys).size).toBe(keys.length);
+    }
   });
 });
 

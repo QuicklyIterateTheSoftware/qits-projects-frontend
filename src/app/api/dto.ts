@@ -486,6 +486,54 @@ export interface TicketAgentDispatchResponse {
 }
 
 /**
+ * Whether a coding agent was actually started on the workspace an epic's dispatch landed in — the
+ * same two words {@link TicketAgentLaunch} carries, and read the same way.
+ *
+ * <p>A name of its own rather than a re-export, because the two doors are two flows and a shape
+ * called `Ticket…` inside an epic's answer would say the wrong thing about where it came from. That
+ * is the service's own stance on the record — {@code EpicAgentDispatchDto} is a separate record
+ * beside {@code TicketAgentDispatchDto} for the same reason — and it is mirrored here rather than
+ * flattened out.
+ */
+export type EpicAgentLaunch = 'SCHEDULED' | 'SKIPPED_RUNNING';
+
+/**
+ * Where "Start implementation" put an agent: which workspace, on which repository's which branch,
+ * and whether an agent was started there.
+ *
+ * <p>The five fields are {@link TicketAgentDispatchDto}'s, and everything that note says about the
+ * `workspaceRowId`/`repositoryId` split and about `fresh` holds here word for word. Two things are
+ * different, and both are about the press rather than the shape.
+ *
+ * <p><b>The branch is the epic's, on the project's wrapper.</b> `epic/<slug>` over the whole estate,
+ * not a component's repository: an epic's tasks name repositories one each and the epic itself names
+ * none, so the aggregate workspace is the only honest answer.
+ *
+ * <p><b>`agentLaunch` matters more here, because the press is re-pressable by design.</b> An epic
+ * already in IMPLEMENTATION is dispatched onto as it stands, and the far side then adopts the
+ * workspace already on `epic/<slug>` and answers `SKIPPED_RUNNING` rather than starting a second
+ * agent. That is a success, and it is the reason a second press is also the retry for a dispatch
+ * that failed after the status had already moved.
+ *
+ * <p><b>Nothing here is stored on the epic</b>, exactly as nothing is stored on a ticket: this is the
+ * answer to one press, so a reload forgets where the last agent went and the cure is another press.
+ */
+export interface EpicAgentDispatchDto {
+  readonly workspaceRowId: number;
+  readonly repositoryId: string;
+  /** The branch the workspace is on — `epic/<slug>` on the wrapper, as the service names it. */
+  readonly branch: string;
+  /** Whether this press created the workspace, rather than re-entering one that was there. */
+  readonly fresh: boolean;
+  readonly agentLaunch: EpicAgentLaunch;
+}
+
+/** One dispatch, wrapped — the whole answer to `POST /epics/{id}/dispatch-agent`. */
+export interface EpicAgentDispatchResponse {
+  readonly dispatch: EpicAgentDispatchDto;
+}
+
+/**
  * Create a repository in a project: **exactly one** of `url` and `name`.
  *
  * The two are the two flows, not two spellings of one. `name` is a repository born blank on the
