@@ -164,6 +164,46 @@ describe('TicketsApi', () => {
       expect((await answer).status).toBe('OPEN');
     });
 
+    /** Nothing is sent: the ticket is in the path and the principal is in the session. */
+    it('dispatches an agent with an empty body, and unwraps the dispatch', async () => {
+      const answer = api.dispatchAgent('t1');
+      const request = http.expectOne('/projects/api/tickets/t1/dispatch-agent');
+      request.flush({
+        dispatch: {
+          workspaceRowId: 7,
+          repositoryId: 'r1',
+          branch: 'ticket/the-cancelled-badge-is-the-wrong-colour',
+          fresh: true,
+          agentLaunch: 'SCHEDULED',
+        },
+      });
+
+      expect(request.request.method).toBe('POST');
+      expect(request.request.body).toEqual({});
+      expect(await answer).toEqual({
+        workspaceRowId: 7,
+        repositoryId: 'r1',
+        branch: 'ticket/the-cancelled-badge-is-the-wrong-colour',
+        fresh: true,
+        agentLaunch: 'SCHEDULED',
+      });
+    });
+
+    it('escapes the ticket id on the dispatch path too', async () => {
+      const answer = api.dispatchAgent('a/b');
+      http.expectOne('/projects/api/tickets/a%2Fb/dispatch-agent').flush({
+        dispatch: {
+          workspaceRowId: 7,
+          repositoryId: 'r1',
+          branch: 'ticket/a-b',
+          fresh: false,
+          agentLaunch: 'SKIPPED_RUNNING',
+        },
+      });
+
+      expect((await answer).agentLaunch).toBe('SKIPPED_RUNNING');
+    });
+
     /** The `success` body adds nothing a 200 has not said, so it is dropped rather than returned. */
     it('deletes a ticket and drops the body that only says it worked', async () => {
       const answer = api.remove('t1');

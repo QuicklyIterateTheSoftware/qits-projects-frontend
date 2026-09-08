@@ -9,15 +9,22 @@ import {
   signal,
   untracked,
 } from '@angular/core';
-import type { TicketDto } from '../api/dto';
+import type { TicketAgentDispatchDto, TicketDto } from '../api/dto';
 import { ProjectEvents } from '../api/project-events';
 import { TicketsApi } from '../api/tickets-api';
 import { Async } from '../ui/async';
 import { Empty } from '../ui/empty';
-import { LOADING, failed, ready, type Loadable } from '../ui/loadable';
+import { LOADING, describeError, failed, ready, type Loadable } from '../ui/loadable';
+import { TicketActions } from './ticket-actions';
 import { TicketCard } from './ticket-card';
 import { TicketSummaryRow } from './ticket-summary-row';
 import { groupTickets, ticketAnchor } from './tickets-model';
+
+/** Why the last dispatch on one ticket did not happen, kept beside the ticket it is about. */
+interface Failure {
+  readonly id: string;
+  readonly message: string;
+}
 
 /**
  * A project's tickets, grouped into what is still asking for something and what is not.
@@ -31,6 +38,17 @@ import { groupTickets, ticketAnchor } from './tickets-model';
  * open ones are being chosen between, so each carries its description and both badges; the resolved
  * ones are a record somebody occasionally looks something up in, so they are a scannable list with a
  * link. Drawing the archive as fully as the work would bury the work under it.
+ *
+ * <p><b>Only the open cards carry an action row</b>, the same shape the epics overview mounts beside
+ * its cards: a resolved ticket is terminal, and a terminal row draws no actions — offering to put an
+ * agent on something already answered would be offering to reopen it sideways.
+ *
+ * <p><b>A dispatch is not re-read, and it is not remembered past this page.</b> The door writes a
+ * comment and fires the `tickets` topic, so the list refreshes itself and a manual reload here would
+ * be a second read of the same change. What it answers — which workspace the agent went to — is
+ * kept in memory only, because the service stores no queryable dispatch on the ticket: after a
+ * reload the link is gone and the way back is another press, which lands in the same workspace
+ * because the door is find-or-create.
  *
  * <p><b>Resolved opens collapsed and only when there is something in it.</b> A project that has
  * never resolved a ticket should not carry an empty disclosure explaining that; a project with two
@@ -55,7 +73,7 @@ import { groupTickets, ticketAnchor } from './tickets-model';
 @Component({
   selector: 'app-tickets-overview',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [Async, Empty, TicketCard, TicketSummaryRow],
+  imports: [Async, Empty, TicketActions, TicketCard, TicketSummaryRow],
   template: `
     @if (behind()) {
       <p class="behind" role="status">Live updates are reconnecting — briefly behind.</p>
@@ -81,6 +99,13 @@ import { groupTickets, ticketAnchor } from './tickets-model';
               @for (ticket of groups().open; track ticket.id) {
                 <div class="entry" [id]="anchor(ticket)">
                   <app-ticket-card [ticket]="ticket" [projectSlug]="linkSlug()" />
+                  <app-ticket-actions
+                    [disabled]="inFlight() !== null"
+                    [busy]="running(ticket)"
+                    [error]="error(ticket)"
+                    [dispatch]="dispatch(ticket)"
+                    (assign)="assign(ticket)"
+                  />
                 </div>
               }
             </div>
@@ -160,6 +185,17 @@ export class TicketsOverview {
 
   protected readonly tickets = signal<Loadable<readonly TicketDto[]>>(LOADING);
 
+  /** Which ticket a dispatch is running against, or null. One at a time, as the epics panel has it. */
+  protected readonly inFlight = signal<string | null>(null);
+
+  protected readonly failure = signal<Failure | null>(null);
+
+  /**
+   * Where a press sent an agent, by ticket id — the only record there is, and it lives no longer
+   * than this component. See the class note on why nothing re-reads it.
+   */
+  private readonly dispatches = signal<ReadonlyMap<string, TicketAgentDispatchDto>>(new Map());
+
   protected readonly loaded = computed(() => this.tickets().kind === 'ready');
 
   protected readonly rows = computed<readonly TicketDto[]>(() => {
@@ -219,6 +255,40 @@ export class TicketsOverview {
 
   protected anchor(ticket: TicketDto): string {
     return ticketAnchor(ticket.id);
+  }
+
+  protected running(ticket: TicketDto): boolean {
+    return this.inFlight() === ticket.id;
+  }
+
+  protected error(ticket: TicketDto): string | null {
+    const failure = this.failure();
+    return failure?.id === ticket.id ? failure.message : null;
+  }
+
+  protected dispatch(ticket: TicketDto): TicketAgentDispatchDto | null {
+    return this.dispatches().get(ticket.id) ?? null;
+  }
+
+  /**
+   * Put a workspace and an agent on this ticket, and keep where they went.
+   *
+   * <p><b>Nothing is re-read afterwards.</b> The door comments on the ticket and fires the project's
+   * `tickets` topic, so the panel's own live channel brings the new list in — asking for it here as
+   * well would be two reads of one change, and the second would land first as often as not.
+   */
+  protected async assign(ticket: TicketDto): Promise<void> {
+    const id = ticket.id;
+    this.inFlight.set(id);
+    this.failure.set(null);
+    try {
+      const dispatch = await this.api.dispatchAgent(id);
+      this.dispatches.update((known) => new Map(known).set(id, dispatch));
+    } catch (error) {
+      this.failure.set({ id, message: describeError(error) });
+    } finally {
+      this.inFlight.set(null);
+    }
   }
 
   /**

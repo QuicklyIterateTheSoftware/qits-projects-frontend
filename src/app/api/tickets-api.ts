@@ -3,6 +3,8 @@ import { Injectable, inject } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { QITS_API_BASE } from './api-base';
 import type {
+  TicketAgentDispatchDto,
+  TicketAgentDispatchResponse,
   TicketCommentDto,
   TicketCommentEntriesResponse,
   TicketCommentResponse,
@@ -136,6 +138,28 @@ export class TicketsApi {
       this.http.post<TicketResponse>(`${this.ticket(ticketId)}/transition`, { target }),
     );
     return response.ticket;
+  }
+
+  /**
+   * Put a workspace and a coding agent onto a ticket, and answer where they went.
+   *
+   * <p>A POST to a verb with **no body at all**: everything the door needs is the ticket, which the
+   * path already names, and the principal, which the session stamps. The `{}` is Angular's way of
+   * spelling an empty POST, the same one the refinement container calls use.
+   *
+   * <p><b>Idempotent by construction.</b> Behind it is find-or-create, so a second press re-enters
+   * the workspace the first one made rather than opening another — which is what makes it safe for a
+   * page that cannot remember, after a reload, that it ever pressed.
+   *
+   * <p>The door also writes a comment on the ticket and fires the project's `tickets` topic, so no
+   * caller re-reads the list itself: the live channel does it, and a manual reload on top would be a
+   * second read of the same change.
+   */
+  async dispatchAgent(ticketId: string): Promise<TicketAgentDispatchDto> {
+    const response = await firstValueFrom(
+      this.http.post<TicketAgentDispatchResponse>(`${this.ticket(ticketId)}/dispatch-agent`, {}),
+    );
+    return response.dispatch;
   }
 
   /** Remove a ticket and everything said on it. The `success` body is dropped — see the class note. */

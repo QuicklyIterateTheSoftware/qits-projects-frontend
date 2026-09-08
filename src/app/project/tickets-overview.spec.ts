@@ -2,7 +2,8 @@ import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
-import type { TicketDto } from '../api/dto';
+import { provideQitsNavigationTree, type QitsNavigation } from '@qits/ui-components';
+import type { TicketAgentDispatchDto, TicketDto } from '../api/dto';
 import { EVENT_SOURCE_FACTORY, type EventSourceLike } from '../api/event-source';
 import { TicketsOverview } from './tickets-overview';
 
@@ -52,6 +53,36 @@ function ticket(id: string, over: Partial<TicketDto> = {}): TicketDto {
 }
 
 /**
+ * The platform as the edge states it, with qits-workspaces on a host of its own — which is the shape
+ * `QitsAppLinks.href` can answer an address for, and the only way the workspace link is drawn.
+ */
+const PLATFORM: QitsNavigation = {
+  environment: 'dev',
+  origin: 'https://dev.example.test',
+  slots: {
+    'services.details': [
+      {
+        app: 'qits-workspaces',
+        label: 'Workspaces',
+        host: 'workspaces.dev.example.test',
+        origin: 'https://workspaces.dev.example.test',
+      },
+    ],
+  },
+};
+
+function dispatch(over: Partial<TicketAgentDispatchDto> = {}): TicketAgentDispatchDto {
+  return {
+    workspaceRowId: 7,
+    repositoryId: 'r1',
+    branch: 'ticket/ticket-b',
+    fresh: true,
+    agentLaunch: 'SCHEDULED',
+    ...over,
+  };
+}
+
+/**
  * The overview reads once and draws twice, and the two things worth pinning are what it does between
  * reads: the split into sections, and the *quiet* refresh a hint provokes.
  *
@@ -71,6 +102,7 @@ describe('TicketsOverview', () => {
         provideHttpClient(),
         provideHttpClientTesting(),
         provideRouter([]),
+        provideQitsNavigationTree(PLATFORM),
         {
           provide: EVENT_SOURCE_FACTORY,
           useValue: (url: string) => {
@@ -130,6 +162,28 @@ describe('TicketsOverview', () => {
     return Array.from(element().querySelectorAll('app-ticket-summary-row .title')).map(
       (node) => node.textContent?.trim() ?? '',
     );
+  }
+
+  /** The action row of one ticket, addressed through the entry's own anchor. */
+  function row(id: string): HTMLElement {
+    const found = element().querySelector(`#ticket-${id} app-ticket-actions`);
+    expect(found, `no action row on ticket ${id}`).toBeTruthy();
+    return found as HTMLElement;
+  }
+
+  function assignButton(id: string): HTMLButtonElement {
+    const found = row(id).querySelector('button');
+    expect(found?.textContent?.trim()).toBe('Assign agent');
+    return found as HTMLButtonElement;
+  }
+
+  function workspaceLink(id: string): HTMLAnchorElement | null {
+    return row(id).querySelector('a.workspace');
+  }
+
+  async function press(id: string): Promise<void> {
+    assignButton(id).click();
+    await settle();
   }
 
   /** A project with one of each, so the whole grouped screen is on at once. */
@@ -244,6 +298,139 @@ describe('TicketsOverview', () => {
 
     expect(cardTitles()).toEqual(['Ticket z']);
     expect(text()).not.toContain('Ticket a');
+  });
+
+  /**
+   * The action row, which is the one place this panel writes.
+   *
+   * Three things are worth pinning. It is offered on the open cards *only* — a resolved ticket is
+   * terminal and draws no actions. A press is pinned to the ticket it was made on: the busy state,
+   * the failure and the link all belong to one row, and a panel that pinned them to the panel would
+   * report one ticket's trouble against another. And the list is not re-read afterwards, because the
+   * door's own `tickets` hint is what brings the new one in.
+   */
+  describe('assigning an agent', () => {
+    const DISPATCH = '/projects/api/tickets/b/dispatch-agent';
+
+    it('offers the action on every open card and on no resolved row', async () => {
+      await loadBoth();
+
+      expect(element().querySelectorAll('app-ticket-actions').length).toBe(2);
+      expect(element().querySelector('details app-ticket-actions')).toBeNull();
+      expect(element().querySelector('app-ticket-summary-row button')).toBeNull();
+    });
+
+    it('posts the dispatch for the ticket pressed, with nothing in the body', async () => {
+      await loadBoth();
+
+      await press('b');
+      const request = http.expectOne(DISPATCH);
+      request.flush({ dispatch: dispatch() });
+
+      expect(request.request.method).toBe('POST');
+      expect(request.request.body).toEqual({});
+    });
+
+    /** Busy is a fact about one row: the other card must not look like it is doing anything. */
+    it('marks only the pressed ticket busy while the door answers', async () => {
+      await loadBoth();
+
+      await press('b');
+
+      expect(assignButton('b').getAttribute('aria-busy')).toBe('true');
+      expect(assignButton('a').getAttribute('aria-busy')).toBeNull();
+      // One at a time: nothing else may be pressed while a dispatch is in flight.
+      expect(assignButton('a').disabled).toBe(true);
+
+      http.expectOne(DISPATCH).flush({ dispatch: dispatch() });
+      await settle();
+
+      expect(assignButton('b').getAttribute('aria-busy')).toBeNull();
+      expect(assignButton('a').disabled).toBe(false);
+    });
+
+    it('swaps in a full-document link to the workspace the agent went to', async () => {
+      await loadBoth();
+
+      expect(workspaceLink('b')).toBeNull();
+
+      await press('b');
+      http.expectOne(DISPATCH).flush({ dispatch: dispatch() });
+      await settle();
+
+      const link = workspaceLink('b');
+      expect(link?.textContent?.trim()).toBe('Open workspace');
+      expect(link?.getAttribute('href')).toBe(
+        'https://workspaces.dev.example.test/repositories/r1/workspaces/7?tab=chat',
+      );
+      // Cross-application, so it is an href and never a router command.
+      expect(link?.getAttribute('routerlink')).toBeNull();
+      expect(row('b').textContent).toContain('an agent is starting on ticket/ticket-b');
+      // The pressed ticket's link is its own — the other card is untouched.
+      expect(workspaceLink('a')).toBeNull();
+    });
+
+    /** Already-running is a success: the workspace is the thing worth opening either way. */
+    it('draws the link for a launch that was skipped because one is already running', async () => {
+      await loadBoth();
+
+      await press('b');
+      http
+        .expectOne(DISPATCH)
+        .flush({ dispatch: dispatch({ fresh: false, agentLaunch: 'SKIPPED_RUNNING' }) });
+      await settle();
+
+      expect(workspaceLink('b')?.getAttribute('href')).toBe(
+        'https://workspaces.dev.example.test/repositories/r1/workspaces/7?tab=chat',
+      );
+      expect(row('b').textContent).toContain('an agent is already working on ticket/ticket-b');
+    });
+
+    it('reports a refusal on the row it was pressed on, and lets it be pressed again', async () => {
+      await loadBoth();
+
+      await press('b');
+      http
+        .expectOne(DISPATCH)
+        .flush(
+          { message: 'the project has no repository' },
+          { status: 409, statusText: 'Conflict' },
+        );
+      await settle();
+
+      expect(row('b').textContent).toContain(
+        'Could not assign an agent — 409 the project has no repository',
+      );
+      expect(row('a').textContent).not.toContain('Could not assign an agent');
+      expect(assignButton('b').disabled).toBe(false);
+      expect(workspaceLink('b')).toBeNull();
+
+      // A second press is an ordinary one: the failure clears and the door is asked again.
+      await press('b');
+      expect(row('b').textContent).not.toContain('Could not assign an agent');
+      http.expectOne(DISPATCH).flush({ dispatch: dispatch() });
+      await settle();
+
+      expect(workspaceLink('b')).toBeTruthy();
+    });
+
+    /** The door fires the `tickets` topic itself, so a read from here would be the second one. */
+    it('does not re-read the list itself — the door’s own hint does that', async () => {
+      await loadBoth();
+
+      await press('b');
+      http.expectOne(DISPATCH).flush({ dispatch: dispatch() });
+      await settle();
+
+      http.expectNone('/projects/api/projects/p1/tickets');
+
+      streams[0].emit('tickets');
+      await settle();
+      await flushTickets([ticket('a'), ticket('b')]);
+
+      // The list came back through the channel, and the link the press earned is still there.
+      expect(workspaceLink('b')).toBeTruthy();
+    });
   });
 
   describe('live updates', () => {

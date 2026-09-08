@@ -442,6 +442,50 @@ export interface TicketCommentResponse {
 }
 
 /**
+ * Whether a coding agent was actually started on the workspace a dispatch landed in.
+ *
+ * <p>`SKIPPED_RUNNING` is a success, not a refusal: the workspace already had an agent working in
+ * it, and starting a second one would put two of them on the same branch. The two words exist so a
+ * reader can be told which happened — the workspace is worth opening either way.
+ */
+export type TicketAgentLaunch = 'SCHEDULED' | 'SKIPPED_RUNNING';
+
+/**
+ * Where dispatching an agent onto a ticket put it: which workspace, on which repository's which
+ * branch, and whether an agent was started there.
+ *
+ * <p><b>`workspaceRowId` is a number and `repositoryId` is a string</b>, which is qits-workspaces'
+ * own split rather than an inconsistency here: a workspace is keyed by a row id in that service's
+ * database, a repository by the id this service assigns. Both are carried through exactly as the
+ * wire spells them, because together they are the address of the workspace in qits-workspaces —
+ * `repositories/{repositoryId}/workspaces/{workspaceRowId}`.
+ *
+ * <p><b>`fresh` says the workspace was created for this press</b>; false is the find-or-create path
+ * answering with the workspace a previous press left behind. Nothing on screen has to branch on it
+ * — the link is the same either way — but it is the difference between "a container is starting"
+ * and "the container is already there", which is why the door states it.
+ *
+ * <p><b>Nothing here is stored on the ticket.</b> The service keeps no queryable record of a
+ * dispatch, so this shape is the *answer to one press* and not a field a later read brings back: a
+ * page that reloads has no way to ask where the last agent went. Pressing again is idempotent —
+ * find-or-create lands in the same workspace — so the cure for a lost link is another press.
+ */
+export interface TicketAgentDispatchDto {
+  readonly workspaceRowId: number;
+  readonly repositoryId: string;
+  /** The branch the workspace is on — the ticket's own, as the service names it. */
+  readonly branch: string;
+  /** Whether this press created the workspace, rather than re-entering one that was there. */
+  readonly fresh: boolean;
+  readonly agentLaunch: TicketAgentLaunch;
+}
+
+/** One dispatch, wrapped — the whole answer to `POST /tickets/{id}/dispatch-agent`. */
+export interface TicketAgentDispatchResponse {
+  readonly dispatch: TicketAgentDispatchDto;
+}
+
+/**
  * Create a repository in a project: **exactly one** of `url` and `name`.
  *
  * The two are the two flows, not two spellings of one. `name` is a repository born blank on the
