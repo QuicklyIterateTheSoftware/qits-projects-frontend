@@ -1,0 +1,184 @@
+:host {
+  display: block;
+}
+
+.back {
+  margin: 0 0 0.5rem;
+  font-size: 0.85rem;
+}
+
+.back a {
+  color: #2563eb;
+}
+
+.head {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+h1 {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 600;
+}
+
+h2 {
+  margin: 0 0 0.6rem;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+h3 {
+  margin: 1rem 0 0.4rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.key {
+  color: #6b7280;
+  font-size: 0.8rem;
+}
+
+.where {
+  margin: 0.3rem 0 1rem;
+  max-width: 46rem;
+  color: #6b7280;
+  font-size: 0.88rem;
+}
+
+.denied {
+  margin: 0.5rem 0;
+  color: #b45309;
+  font-size: 0.9rem;
+}
+
+.block {
+  margin: 0 0 1.25rem;
+  padding: 0.9rem 1rem;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.field {
+  display: block;
+  margin: 0 0 0.9rem;
+  max-width: 46rem;
+}
+
+.label {
+  display: block;
+  margin-bottom: 0.25rem;
+  color: #374151;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+input[type='text'],
+select,
+textarea {
+  display: block;
+  width: 100%;
+  padding: 0.35rem 0.45rem;
+  border: 1px solid #d1d5db;
+  border-radius: 0.25rem;
+  background: #fff;
+  font: inherit;
+  font-size: 0.88rem;
+}
+
+textarea {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.82rem;
+  resize: vertical;
+}
+
+.hint {
+  display: block;
+  margin-top: 0.3rem;
+  color: #6b7280;
+  font-size: 0.8rem;
+}
+
+.hint code {
+  margin-right: 0.25rem;
+}
+
+.provenance {
+  display: block;
+  margin-top: 0.15rem;
+  color: #9ca3af;
+}
+
+.absent {
+  margin: 0;
+}
+
+.check {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0.3rem 0;
+  color: #374151;
+  font-size: 0.88rem;
+}
+
+.check input {
+  margin: 0;
+}
+
+.server {
+  padding: 0.4rem 0;
+  border-top: 1px solid #f3f4f6;
+}
+
+.server-name code {
+  font-size: 0.85rem;
+}
+
+.narrowing {
+  margin-left: 1.4rem;
+}
+
+.tools {
+  margin: 0.2rem 0 0 1.4rem;
+  color: #6b7280;
+  font-size: 0.8rem;
+}
+
+/* Moving away from skip-permissions changes what an agent does between turns, not a preference —
+   so it is stated in place rather than left to be discovered by a run that stops and waits. */
+.consequence {
+  margin: 0.3rem 0 0;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid #fcd34d;
+  border-radius: 0.375rem;
+  background: #fffbeb;
+  color: #78350f;
+  font-size: 0.85rem;
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.skills {
+  color: #2563eb;
+  font-size: 0.88rem;
+}
+
+.state {
+  color: #6b7280;
+  font-size: 0.85rem;
+}
+
+.problem {
+  margin: 0.5rem 0 0;
+  color: #b91c1c;
+  font-size: 0.85rem;
+}

@@ -2,11 +2,12 @@ import { DOCUMENT } from '@angular/common';
 import { Injectable, computed, effect, inject, signal, untracked } from '@angular/core';
 import {
   AgentDaemonApi,
-  type AgentDesk,
+  type AgentSurface,
   type AgentType,
   type CommandDto,
   type LaunchAgentRequest,
 } from '../../api/agent-daemon-api';
+import { notSignedIn } from '../../api/agent-sign-in';
 import { ProjectAgentApi, type AgentContainerDto } from '../../api/project-agent-api';
 import { WEB_SOCKET_FACTORY } from '../../api/web-socket';
 import { describeError, statusOf } from '../../ui/loadable';
@@ -27,6 +28,17 @@ export type SessionBranch =
   | { readonly kind: 'attached'; readonly commandId: string }
   /** The launch answered with a sign-in terminal instead of a session. */
   | { readonly kind: 'signin'; readonly commandId: string }
+  /**
+   * The launch was **refused**: nobody has signed the harness in. Not a failure of this panel, and
+   * not a session — a state with exactly one next step, which the reader takes or does not.
+   */
+  | {
+      readonly kind: 'signed-out';
+      /** What to call the harness on screen. */
+      readonly harness: string;
+      /** The service's own sentence about the credential volume. */
+      readonly message: string;
+    }
   /** History exists and nothing is running, so nothing happens without another press. */
   | { readonly kind: 'idle'; readonly lastSessionId: string | null }
   /** The container is not there to be asked. */
@@ -38,33 +50,60 @@ const REPLAY_LIMIT = 2;
 /** The statuses that mean the container is not answering, as opposed to answering "no". */
 const UNREACHABLE: readonly number[] = [0, 502, 503, 504];
 
-/** What every desk launches, before the desk is stamped on it. `REPOSITORY` carries the tools. */
-const FRESH: Omit<LaunchAgentRequest, 'desk'> = { scope: 'REPOSITORY', mode: 'INTERACTIVE' };
+/** What every surface launches, before the surface is stamped on it. `REPOSITORY` carries the tools. */
+const FRESH: Omit<LaunchAgentRequest, 'surface'> = { scope: 'REPOSITORY', mode: 'INTERACTIVE' };
 
 /**
- * The substring the daemon puts in a ticket-desk command's name.
+ * The substring the daemon used to put in a tickets-surface command's name.
  *
- * **This is the contract, and it is a string because the run list has no desk field.** The daemon
- * names a `TICKETS` launch with "(tickets desk)" in its `actionName`; an `EPICS` launch keeps the
- * plain names it always had ("Claude Code (repository MCP)"). Matched case-insensitively so a rename
- * that changes only the casing does not silently split one desk's history in two.
+ * **A MIGRATION CRUTCH WITH AN EXPIRY, and not a contract.** It was a contract, and that is exactly
+ * what the surface field removes: the run list had no field saying which front desk a session
+ * belonged to, so the daemon wrote it into a *display string* ("Claude Code (tickets desk · …)") and
+ * this file matched on it — a cross-repo contract living in a label, where renaming the label
+ * silently moved every ticket session into the epics list.
+ *
+ * <p>What is left of it reads **only commands launched before the daemon shipped `agentSurface`**.
+ * It is scheduled for deletion by task `46e32cb3` once no live command lacks a surface; the sessions
+ * that predate the cutover lose their grouping then, which is accepted, and after that the command's
+ * name is free to change because nothing parses it any more.
+ *
+ * <p>Matched case-insensitively so a rename that changed only the casing did not split one desk's
+ * history in two.
  */
 const TICKETS_MARK = 'tickets desk';
 
 /**
- * Which desk a command belongs to, read from the only place it is written down: its name.
+ * Which surface a command belongs to: **the key the command reports**, and the old name match only
+ * where there is no key to read.
  *
- * <p>The asymmetry is deliberate. A *named* command is the ticket desk's; **everything else is the
- * epic desk's**, including every command launched before desks existed. Reading it the other way
- * round — epic commands must be named too — would orphan all of that history the day this shipped
- * and leave the epics panel offering a fresh session on a container full of its own past work.
+ * <p>The asymmetry in the fallback is deliberate and survives from the desk era. A *named* command is
+ * the tickets surface's; **everything else is the epics surface's**, including every command launched
+ * before either existed. Reading it the other way round — epics commands must be named too — would
+ * orphan all of that history and leave the epics panel offering a fresh session on a container full
+ * of its own past work.
+ *
+ * <p>An unrecognised surface answers itself rather than being folded into one of the two: this panel
+ * filters by equality, so a third key simply belongs to neither of its two instances, which is the
+ * honest answer and not a guess.
  */
-export function deskOf(command: CommandDto): AgentDesk {
-  return command.actionName.toLowerCase().includes(TICKETS_MARK) ? 'TICKETS' : 'EPICS';
+export function surfaceOf(command: CommandDto): string {
+  const reported = command.agentSurface?.trim();
+  if (reported) {
+    return reported;
+  }
+  return command.actionName.toLowerCase().includes(TICKETS_MARK)
+    ? 'project.tickets'
+    : 'project.epics';
 }
 
 /**
  * Whether a command is the sign-in terminal the launch path hands back instead of a session.
+ *
+ * **A ROLLOUT CRUTCH WITH AN EXPIRY.** A launch does not hand one back any more: a daemon carrying
+ * the shared library refuses with `409 {"error": "not-signed-in"}` and this panel offers
+ * {@link RefinementSession.openSignIn} instead. But the *deployed* daemons still substitute, and
+ * will until they are released — so this stays to recognise what they answer, and goes with them.
+ * Nothing new should be built on it.
  *
  * **Lineage alone is not enough, and that is a real trap.** A sign-in terminal is recognisable
  * because it has no session lineage — true, but a *fresh Kimi* launch also arrives with none,
@@ -122,28 +161,38 @@ export function isSignInTerminal(command: CommandDto): boolean {
  * agent's process group; {@link stopContainer} stops the container the agent lives in. Only the
  * first is safe to do without asking.
  *
- * ## One instance per desk, which is why this is not a root singleton
+ * ## Nobody signed in is a state, not a failure
  *
- * **A desk is a front desk, and a project has more than one.** The epics page opens a session for
- * drafting the plan; the tickets page opens one for filing and triaging the small work. They share a
- * container and share a sign-in, and they must not share a conversation — one root instance would
- * mean opening the second panel yanked the first panel's socket onto the other desk's screen. So
- * this is provided by the panel component that owns it, one instance each, and the desk is set with
- * the project in {@link use}.
+ * A launch against a harness nobody has signed in on the shared credential volume is **refused**,
+ * and lands in `signed-out`. It used to be answered with a bare login REPL substituted for the
+ * session that was asked for, which this panel attached to as if it were one — so a signed-out
+ * platform and a working one looked the same from here. The refusal says which harness, and
+ * {@link openSignIn} opens the terminal as a deliberate press rather than something that happens
+ * to the reader.
  *
- * The desk changes exactly three things, and nothing else:
+ * ## One instance per surface, which is why this is not a root singleton
  *
- * - **Every launch carries it**, explicitly for both desks rather than leaning on the daemon's
- *   default, so a request body says which desk asked without anyone having to know the default.
+ * **A front desk is a session surface, and a project has two of them.** The epics page opens a
+ * session for drafting the plan (`project.epics`); the tickets page opens one for filing and triaging
+ * the small work (`project.tickets`). They share a container and share a sign-in, and they must not
+ * share a conversation — one root instance would mean opening the second panel yanked the first
+ * panel's socket onto the other surface's screen. So this is provided by the panel component that
+ * owns it, one instance each, and the surface is set with the project in {@link use}.
+ *
+ * The surface changes exactly three things, and nothing else:
+ *
+ * - **Every launch carries it**, explicitly for both rather than leaning on the daemon's
+ *   shape-implied default, so a request body says where it was started from — and so the platform's
+ *   stored configuration for that place is the one the session is rendered from.
  * - **Resolution only sees its own commands.** Branch 1 attaches to a running agent run at *this*
- *   desk, and branches 3–4 count history and pick the last session from the same filtered list. See
- *   {@link deskOf} for how a command's desk is read.
- * - **The ticket desk does not fall back to the lineage read.** `GET /agent-sessions` answers a tree
- *   of sessions with no desk on them, so it cannot say whether *this* desk has history. An empty
- *   filtered command list is the ticket desk's answer: launch fresh.
+ *   surface, and branches 3–4 count history and pick the last session from the same filtered list.
+ *   See {@link surfaceOf} for how a command's surface is read.
+ * - **The tickets surface does not fall back to the lineage read.** `GET /agent-sessions` answers a
+ *   tree of sessions with no surface on them, so it cannot say whether *this* surface has history. An
+ *   empty filtered command list is the tickets surface's answer: launch fresh.
  *
- * Branch 2 stays desk-agnostic on purpose: a container waiting on a login blocks both desks equally,
- * and the sign-in terminal is one shared terminal rather than one per desk.
+ * Branch 2 stays surface-agnostic on purpose: a container waiting on a login blocks both equally, and
+ * the sign-in terminal is one shared terminal rather than one per surface.
  */
 @Injectable()
 export class RefinementSession {
@@ -155,10 +204,10 @@ export class RefinementSession {
   private readonly project = signal('');
 
   /**
-   * Which desk this instance answers for. A plain field rather than a signal: nothing renders it,
-   * and every reader of it is already inside a method the desk cannot change under.
+   * Which surface this instance answers for. A plain field rather than a signal: nothing renders it,
+   * and every reader of it is already inside a method the surface cannot change under.
    */
-  private deskKind: AgentDesk = 'EPICS';
+  private surfaceKind: AgentSurface = 'project.epics';
 
   private readonly state = signal<SessionBranch>({ kind: 'dormant' });
   private readonly containerState = signal<AgentContainerDto | null>(null);
@@ -218,19 +267,20 @@ export class RefinementSession {
   // ---- pointing it somewhere ---------------------------------------------------------------
 
   /**
-   * Point at a project, at a desk. **Makes no request**, by design — see the class note on dormancy.
+   * Point at a project, at a surface. **Makes no request**, by design — see the class note on
+   * dormancy.
    *
    * Idempotent for the same pair. A different id drops everything: an attached socket, a held launch
-   * and a container status all belong to one project and mean nothing in another. The desk is in the
-   * guard for the same reason it is in the reset — a session resolved at one desk is not the other
-   * desk's session, even in the same project.
+   * and a container status all belong to one project and mean nothing in another. The surface is in
+   * the guard for the same reason it is in the reset — a session resolved at one surface is not the
+   * other one's session, even in the same project.
    */
-  use(projectId: string, desk: AgentDesk = 'EPICS'): void {
-    if (this.project() === projectId && this.deskKind === desk) {
+  use(projectId: string, surface: AgentSurface = 'project.epics'): void {
+    if (this.project() === projectId && this.surfaceKind === surface) {
       return;
     }
     this.detach();
-    this.deskKind = desk;
+    this.surfaceKind = surface;
     this.project.set(projectId);
     this.containerState.set(null);
     this.harness.set(null);
@@ -419,9 +469,9 @@ export class RefinementSession {
     // `agentType` takes the container's own default, which is the answer this read would have given.
     void this.loadHarness(projectId);
 
-    // Everything below branch 2 is about *this* desk's work. The sign-in terminal is the exception
-    // and is looked for in the unfiltered list, because a login blocks the container, not a desk.
-    const mine = commands.filter((command) => deskOf(command) === this.deskKind);
+    // Everything below branch 2 is about *this* surface's work. The sign-in terminal is the
+    // exception and is looked for in the unfiltered list, because a login blocks the container.
+    const mine = commands.filter((command) => surfaceOf(command) === this.surfaceKind);
 
     // A lineage is what tells an agent run apart from any other interactive command the container
     // declares. A run this panel launched is attached directly by {@link launch} and never comes
@@ -453,9 +503,14 @@ export class RefinementSession {
     }
   }
 
-  /** A fresh launch at this desk. The desk is sent explicitly, never left to the daemon's default. */
+  /**
+   * A fresh launch at this surface. The surface is sent explicitly, never left to the daemon's
+   * shape-implied default — that default exists so daemons could ship before frontends, and both
+   * project surfaces are `PROJECT`-scoped chats, so leaning on it would send every tickets session
+   * to the epics configuration.
+   */
   private fresh(): LaunchAgentRequest {
-    return { ...FRESH, desk: this.deskKind };
+    return { ...FRESH, surface: this.surfaceKind };
   }
 
   private async launch(request: LaunchAgentRequest): Promise<void> {
@@ -472,7 +527,9 @@ export class RefinementSession {
         return;
       }
       if (isSignInTerminal(command)) {
-        // Not a session: a login terminal. Hold what was asked for, and replay it when this closes.
+        // A daemon that has not been released yet, still substituting a login terminal for the
+        // session that was asked for. Handled so the panel is not broken during the rollout, and
+        // removed with the substitution — see {@link isSignInTerminal}.
         this.held = request;
         this.attach(command.id, 'signin');
       } else {
@@ -480,8 +537,54 @@ export class RefinementSession {
         this.attach(command.id, 'attached');
       }
     } catch (error) {
+      // The one refusal that is not a fault. It is a *branch* rather than the problem line, because
+      // it has exactly one next step and the reader has to be able to take it — the problem line is
+      // a sentence, and this needs a button.
+      const refusal = notSignedIn(error);
+      if (refusal) {
+        this.held = request;
+        this.state.set({
+          kind: 'signed-out',
+          harness: refusal.label,
+          message: refusal.message,
+        });
+        return;
+      }
       this.problemText.set(describeLaunch(error));
       this.state.set({ kind: 'idle', lastSessionId: null });
+    } finally {
+      this.inFlight.set(false);
+    }
+  }
+
+  /**
+   * Open the sign-in terminal, deliberately.
+   *
+   * <p>Pressed from the `signed-out` branch and from nowhere else. It is an ordinary launch of an
+   * ordinary PTY command, and the only thing that makes it special is that the reader asked for it:
+   * the whole defect this closes is that the platform used to open one *instead of* the session that
+   * was asked for, and say nothing about the swap.
+   *
+   * <p>The refused launch is still held, so completing the sign-in replays it through the same
+   * capped path a login found running already does — the terminal's clean close is the daemon saying
+   * the command is gone.
+   */
+  async openSignIn(): Promise<void> {
+    const projectId = this.project();
+    if (!projectId || this.inFlight()) {
+      return;
+    }
+    this.inFlight.set(true);
+    this.problemText.set(null);
+    try {
+      const command = await this.daemon.launchLogin(projectId, this.harness() ?? undefined);
+      if (this.project() !== projectId) {
+        return;
+      }
+      this.held ??= this.fresh();
+      this.attach(command.id, 'signin');
+    } catch (error) {
+      this.problemText.set(`The sign-in terminal could not be opened — ${describeError(error)}.`);
     } finally {
       this.inFlight.set(false);
     }
@@ -511,19 +614,19 @@ export class RefinementSession {
   }
 
   /**
-   * Whether anything has ever run an agent *at this desk*. Branch 3's only question.
+   * Whether anything has ever run an agent *at this surface*. Branch 3's only question.
    *
-   * `commands` arrives already filtered to the desk. The lineage fallback below is the epic desk's
-   * alone: `GET /agent-sessions` answers a tree of session ids with no desk on them, so it cannot
-   * tell whose history it is describing — and the epic desk is the one that may legitimately claim
-   * all of it, since it owns every pre-desk command. For the ticket desk an empty filtered list is
-   * the answer, and the answer is "launch fresh".
+   * `commands` arrives already filtered to the surface. The lineage fallback below is the epics
+   * surface's alone: `GET /agent-sessions` answers a tree of session ids with no surface on them, so
+   * it cannot tell whose history it is describing — and the epics surface is the one that may
+   * legitimately claim all of it, since it owns every command from before any of this existed. For
+   * the tickets surface an empty filtered list is the answer, and the answer is "launch fresh".
    */
   private async hasHistory(projectId: string, commands: readonly CommandDto[]): Promise<boolean> {
     if (commands.some((command) => command.agentSessions.length > 0)) {
       return true;
     }
-    if (this.deskKind !== 'EPICS') {
+    if (this.surfaceKind !== 'project.epics') {
       return false;
     }
     try {

@@ -59,4 +59,20 @@
       }
     </section>
   }
+
+  <!-- The way in to the agent configuration store. It is here because this is where a reader
+       already comes to configure things, and it says platform-wide in the same breath because it
+       is NOT this project's: there is one configuration per session surface for the whole estate,
+       and per-project overrides are deliberately a later epic. The sidebar row it really wants is a
+       `system` navigation-entry in the service's deployments.yml, which is not this repository. -->
+  <section class="group">
+    <header class="group-head">
+      <h2>Agent configuration</h2>
+      <a class="add" routerLink="/agent-configuration">Session surfaces</a>
+    </header>
+    <p class="empty">
+      What every coding-agent session on this platform runs as — the harness, the model, the
+      prompts, which MCP servers it may call. Platform-wide, not this project's.
+    </p>
+  </section>
 }

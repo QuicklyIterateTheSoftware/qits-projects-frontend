@@ -45,6 +45,23 @@ export type AgentMcpScope = 'ACTIONS' | 'REPOSITORY';
 /** `CHAT` is the stream-json conversation over pipes; `INTERACTIVE` is the full agent TUI on a PTY. */
 export type AgentLaunchMode = 'CHAT' | 'INTERACTIVE';
 
+/**
+ * **Where in the product a session was started from**, sent on the launch and reported back on the
+ * command.
+ *
+ * <p><b>This is the parameter the workspace daemon earns its keep from.</b> Its four human surfaces
+ * send byte-identical launch requests today: `epic.chat` and `workspace.chat` differ only in which
+ * container the request reaches, and so do `epic.agent` and `workspace.agent`. Nothing downstream can
+ * tell them apart, which is why one configuration cannot be given to an epic's chat without giving it
+ * to every ad-hoc workspace chat as well until both frontends send their own key.
+ *
+ * <p>This SPA owns the *refining* route, so it sends the two `epic.*` keys and never the
+ * `workspace.*` ones — those belong to qits-workspaces-frontend, which addresses the same daemon.
+ * `CommandDto.agentSurface` stays a plain string because a daemon may report a key this build has not
+ * been told about, and the vocabulary is deliberately open.
+ */
+export type AgentSurface = 'epic.chat' | 'epic.agent';
+
 /** How a session entered a command's lineage. */
 export type AgentSessionSource = 'PINNED' | 'RESUMED' | 'FORKED' | 'SWITCHED' | 'REPORTED';
 
@@ -84,6 +101,13 @@ export interface CommandDto {
   readonly commitHash?: string;
   readonly shortCommitHash?: string;
   readonly agentSessions: readonly AgentSessionRefDto[];
+  /**
+   * Which surface started this run — the key {@link LaunchAgentRequest.surface} carried in.
+   *
+   * Optional because two things answer nothing: a command launched before the daemon shipped the
+   * field, and the sign-in terminal, which nobody starts from anywhere in the product.
+   */
+  readonly agentSurface?: string;
 }
 
 /** The single-command envelope both `POST /commands` and `POST /agents` answer with. */
@@ -108,6 +132,12 @@ interface CommandListResponse {
 export interface LaunchAgentRequest {
   readonly scope: AgentMcpScope;
   readonly mode: AgentLaunchMode;
+  /**
+   * Where in the product this session was started from. Sent on **every** launch this client makes.
+   * An omitted one resolves to the daemon's shape-implied default, which cannot tell an epic's chat
+   * from a workspace's — see {@link AgentSurface}.
+   */
+  readonly surface?: AgentSurface;
   readonly agentType?: AgentType;
   readonly initialContext?: string;
   readonly resumeSessionId?: string;
@@ -244,9 +274,33 @@ export class CommandsApi {
     return answer.command;
   }
 
-  /** Launch a coding agent. The answer is the command to attach a socket to. */
+  /**
+   * Launch a coding agent. The answer is the command to attach a socket to.
+   *
+   * **It can refuse.** A harness nobody has signed in on the shared credential volume used to be
+   * answered by quietly substituting the sign-in terminal for the session that was asked for; the
+   * shared library refuses instead, and callers read that refusal with
+   * {@link ./agent-sign-in#notSignedIn} and offer {@link launchLogin} as a press.
+   */
   async launchAgent(workspaceRowId: number, request: LaunchAgentRequest): Promise<CommandDto> {
     const answer = await this.daemon.post<CommandEnvelope>(workspaceRowId, '/agents', request);
+    return answer.command;
+  }
+
+  /**
+   * Open the sign-in terminal: a PTY running the harness's own first-run onboarding, so an operator
+   * can complete the one-time OAuth against the shared credential volume.
+   *
+   * **A door, not a fallback.** It used to be what a launch answered with when the harness was signed
+   * out, which meant nobody could ask for it on purpose and everybody got it by accident. Signing in
+   * here signs in every container on the volume, so one press serves the whole platform.
+   */
+  async launchLogin(workspaceRowId: number, agentType?: AgentType): Promise<CommandDto> {
+    const answer = await this.daemon.post<CommandEnvelope>(
+      workspaceRowId,
+      '/agents/sign-in',
+      agentType ? { agentType } : {},
+    );
     return answer.command;
   }
 

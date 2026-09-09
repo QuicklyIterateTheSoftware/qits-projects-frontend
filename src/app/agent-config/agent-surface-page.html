@@ -1,0 +1,301 @@
+<p class="back"><a routerLink="/agent-configuration">← All session surfaces</a></p>
+
+<header class="head">
+  <h1>{{ name().title }}</h1>
+  <code class="key">{{ surface() }}</code>
+  @if (loaded()) {
+    <qits-badge
+      [label]="shipped() ? 'Shipped default' : 'Edited'"
+      [tone]="shipped() ? 'neutral' : 'info'"
+    />
+  }
+</header>
+
+<p class="where">{{ name().where }}</p>
+
+<app-async
+  [state]="state()"
+  loadingLabel="Loading this surface"
+  errorLabel="Could not load this surface"
+  (retry)="load()"
+/>
+
+@if (forbidden()) {
+  <p class="denied" role="status">
+    These are administrator settings. The session you are signed in with does not carry
+    <code>qits:admin</code>, so the store will not answer it.
+  </p>
+}
+
+@if (loaded()) {
+  <section class="block" aria-label="Harness">
+    <h2>Harness</h2>
+
+    <label class="field">
+      <span class="label">Harness</span>
+      <select [value]="harness()" (change)="setHarness($any($event.target).value)">
+        <option value="CLAUDE">Claude Code</option>
+        <option value="KIMI">Kimi Code</option>
+      </select>
+    </label>
+
+    <label class="field">
+      <span class="label">Model</span>
+      <!-- A combobox, not a select. The report says which values it ENUMERATED, never which are
+           legal: Claude Code has no command that lists models at all, so what is offered is a
+           shipped alias set and a full model id typed here is exactly the case this control is
+           for. The launch renders whatever string this holds. -->
+      <input
+        type="text"
+        list="agent-model-options"
+        [value]="model()"
+        placeholder="the harness’s own default"
+        (input)="model.set($any($event.target).value)"
+      />
+      <datalist id="agent-model-options">
+        @for (option of choices().models; track option) {
+          <option [value]="option"></option>
+        }
+      </datalist>
+      <span class="hint">
+        @if (choices().modelsAreAliases) {
+          This harness cannot list its models, so these are shipped aliases rather than the legal
+          values — a full model id can be typed here and is passed through as written.
+        } @else {
+          Reported by the harness. A value outside the list is still accepted and passed through as
+          written.
+        }
+        @if (choices().provenance; as note) {
+          <span class="provenance">{{ note }}</span>
+        }
+      </span>
+    </label>
+
+    @if (choices().effortApplies) {
+      <label class="field">
+        <span class="label">Effort</span>
+        <select [value]="effort()" (change)="effort.set($any($event.target).value)">
+          <option value="">the harness’s own default</option>
+          @for (level of effortChoices(); track level) {
+            <option [value]="level">{{ level }}</option>
+          }
+        </select>
+        <span class="hint">Empty renders no <code>--effort</code> at all.</span>
+      </label>
+    } @else {
+      <!-- No control, rather than a disabled one carrying the other harness's values: this harness
+           has no effort concept, and an effort set on it would render nothing. -->
+      <p class="hint absent">
+        Kimi Code has no effort setting, so there is nothing to choose here. Saving this surface as
+        Kimi clears any effort it was holding.
+      </p>
+    }
+  </section>
+
+  <section class="block" aria-label="Remote control">
+    <h2>Remote control</h2>
+    <label class="check">
+      <input
+        type="checkbox"
+        [checked]="remoteControl()"
+        (change)="remoteControl.set($any($event.target).checked)"
+      />
+      <span>Enable remote control for sessions started here</span>
+    </label>
+    <p class="hint">
+      Sessions started from this surface are reachable from claude.ai, named after the surface and
+      the epic or workspace they run in. Without a name every session on this platform would be
+      hostname-derived and indistinguishable in that list.
+    </p>
+  </section>
+
+  <section class="block" aria-label="MCP servers">
+    <h2>MCP servers</h2>
+    <p class="hint">
+      The rendered set is the whole set: launches run with <code>--strict-mcp-config</code>, so a
+      server that is not attached here cannot be reached, and the shared agent home's own entries
+      stay ignored.
+    </p>
+
+    @for (entry of builtIns(); track entry.server) {
+      <div class="server">
+        <label class="check">
+          <input
+            type="checkbox"
+            [checked]="entry.draft.attached"
+            (change)="setAttachment(entry.server, { attached: $any($event.target).checked })"
+          />
+          <span class="server-name"
+            ><code>{{ entry.server }}</code></span
+          >
+        </label>
+
+        @if (entry.draft.attached) {
+          <div class="narrowing">
+            <label class="check">
+              <input
+                type="checkbox"
+                [checked]="entry.draft.narrowProject"
+                (change)="
+                  setAttachment(entry.server, { narrowProject: $any($event.target).checked })
+                "
+              />
+              <span>Narrow to the project</span>
+            </label>
+            <label class="check">
+              <input
+                type="checkbox"
+                [checked]="entry.draft.narrowRepository"
+                (change)="
+                  setAttachment(entry.server, { narrowRepository: $any($event.target).checked })
+                "
+              />
+              <span>Narrow to the repository</span>
+            </label>
+            <label class="check">
+              <input
+                type="checkbox"
+                [checked]="entry.draft.narrowWorkspace"
+                (change)="
+                  setAttachment(entry.server, { narrowWorkspace: $any($event.target).checked })
+                "
+              />
+              <span>Narrow to the workspace</span>
+            </label>
+            <label class="check">
+              <input
+                type="checkbox"
+                [checked]="entry.draft.readOnly"
+                (change)="setAttachment(entry.server, { readOnly: $any($event.target).checked })"
+              />
+              <span>Read-only (<code>agentReadOnly=true</code>)</span>
+            </label>
+          </div>
+
+          @if (entry.draft.allowedTools.length > 0) {
+            <p class="tools">
+              Pre-approved: {{ entry.draft.allowedTools.join(', ') }}
+              <span class="hint">
+                Shipped with the platform and keyed by server, not edited here.
+              </span>
+            </p>
+          }
+        }
+      </div>
+    }
+
+    <h3>External servers</h3>
+    @if (externalOptions().length === 0) {
+      <p class="hint">
+        Nothing in the catalog yet.
+        <a routerLink="/agent-configuration/mcp-catalog">Define one</a> and it can be attached from
+        every surface without being re-entered.
+      </p>
+    } @else {
+      @for (entry of externalOptions(); track entry.key) {
+        <label class="check">
+          <input
+            type="checkbox"
+            [checked]="attachedExternal(entry.key)"
+            (change)="toggleExternal(entry.key, $any($event.target).checked)"
+          />
+          <span>
+            <code>{{ entry.key }}</code>
+            @if (entry.displayName) {
+              — {{ entry.displayName }}
+            }
+          </span>
+        </label>
+      }
+      <p class="hint">
+        Defined once in the <a routerLink="/agent-configuration/mcp-catalog">catalog</a> and
+        attached here by key.
+      </p>
+    }
+  </section>
+
+  <section class="block" aria-label="Prompts">
+    <h2>Prompts</h2>
+
+    <label class="field">
+      <span class="label">System prompt</span>
+      <textarea
+        rows="8"
+        [value]="systemPrompt()"
+        (input)="systemPrompt.set($any($event.target).value)"
+      ></textarea>
+      <span class="hint">
+        Appended to the harness's own. Empty is a value rather than an absence — it is what the
+        epics desk steers with, deliberately.
+      </span>
+    </label>
+
+    <label class="field">
+      <span class="label">Initial prompt</span>
+      <textarea
+        rows="5"
+        [value]="initialPrompt()"
+        (input)="initialPrompt.set($any($event.target).value)"
+      ></textarea>
+      <span class="hint">
+        Delivered as the session's own first turn, before anything the caller composed. Empty pushes
+        none. These names may be written in double braces and are filled in from what the container
+        knows about itself:
+        @for (placeholder of templateNames; track placeholder) {
+          <code>{{ placeholder }}</code>
+        }
+        — a name nothing can answer is left exactly as written rather than rendered as
+        <code>null</code>.
+      </span>
+    </label>
+  </section>
+
+  <section class="block" aria-label="Permissions and activity">
+    <h2>Permissions</h2>
+
+    <label class="field">
+      <span class="label">Permission mode</span>
+      <select [value]="permissionMode()" (change)="permissionMode.set($any($event.target).value)">
+        <option value="SKIP_PERMISSIONS">Skip permissions</option>
+        <option value="PROMPT">Ask before acting</option>
+      </select>
+    </label>
+
+    @if (prompting()) {
+      <p class="consequence" role="status">
+        The agent will start asking. Every session on this platform has run auto-approved until now,
+        so this changes what happens between turns rather than a preference: a session nobody is
+        watching will stop at the first tool call and wait, and an unattended run started from this
+        surface will not finish on its own.
+      </p>
+    }
+
+    <h2>Activity tracking</h2>
+    <label class="check">
+      <input
+        type="checkbox"
+        [checked]="activityTracking()"
+        (change)="activityTracking.set($any($event.target).checked)"
+      />
+      <span>Inject the turn-boundary hooks for sessions started here</span>
+    </label>
+    <p class="hint">
+      What fills the activity badge. The session-start hook that records lineage is injected either
+      way.
+    </p>
+  </section>
+
+  <footer class="actions">
+    <qits-button variant="primary" [busy]="saving()" (pressed)="save()">Save</qits-button>
+    <a class="skills" [routerLink]="['/agent-configuration/surfaces', surface(), 'skills']">
+      Skills and subagents
+    </a>
+    @if (saved()) {
+      <span class="state" role="status">Saved.</span>
+    }
+  </footer>
+
+  @if (problem(); as text) {
+    <p class="problem" role="alert">⚠ {{ text }}</p>
+  }
+}

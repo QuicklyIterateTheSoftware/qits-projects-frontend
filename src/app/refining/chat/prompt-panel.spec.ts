@@ -411,6 +411,7 @@ describe('PromptPanel', () => {
     expect(launch.request.body).toEqual({
       scope: 'REPOSITORY',
       mode: 'CHAT',
+      surface: 'epic.chat',
       initialContext: 'build the thing',
       deliverTaskPrompt: false,
     });

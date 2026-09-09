@@ -10,7 +10,9 @@ import {
   signal,
   untracked,
 } from '@angular/core';
+import { ActivatedRoute, Router } from '@angular/router';
 import { QitsButton } from '@qits/ui-components';
+import { notSignedIn, type NotSignedIn } from '../../api/agent-sign-in';
 import { CommandsApi, type CommandDto } from '../../api/commands-api';
 import { PromptDraftApi } from '../../api/prompt-draft-api';
 import { SpeechApi } from '../../api/speech-api';
@@ -112,6 +114,8 @@ export class PromptPanel {
   private readonly events = inject(WorkspaceEvents);
   protected readonly picked = inject(PickedContext);
   private readonly nav = inject(FileNavigation);
+  private readonly router = inject(Router);
+  private readonly route = inject(ActivatedRoute);
 
   /** Which workspace's container to launch in, and whose draft to hold. */
   readonly workspaceRowId = input.required<number>();
@@ -145,6 +149,14 @@ export class PromptPanel {
 
   protected readonly launching = signal(false);
   protected readonly launchProblem = signal<string | null>(null);
+
+  /**
+   * The launch was refused because nobody has signed the harness in.
+   *
+   * Held apart from {@link launchProblem} because it is not a problem with this panel and its answer
+   * is a button rather than a retry: the same press works, once somebody has signed in.
+   */
+  protected readonly signedOut = signal<NotSignedIn | null>(null);
 
   private readonly runtime = inject(SPEECH_RUNTIME);
 
@@ -550,15 +562,45 @@ export class PromptPanel {
       const command = await this.commandsApi.launchAgent(this.workspaceRowId(), {
         scope: 'REPOSITORY',
         mode: 'CHAT',
+        surface: 'epic.chat',
         initialContext: this.composed(),
         deliverTaskPrompt: false,
       });
       this.launched.emit(command);
     } catch (error) {
+      // "Nobody has signed in" is not "the agent did not start" — it is a refusal with one next
+      // step, and this used to be invisible: the launch quietly answered a login terminal and the
+      // tab attached to it as if it were the conversation. The draft is untouched, so the press is
+      // still there to make once the sign-in is done.
+      const refusal = notSignedIn(error);
+      if (refusal) {
+        this.signedOut.set(refusal);
+        return;
+      }
       this.launchProblem.set(`The agent did not start — ${describeError(error)}.`);
     } finally {
       this.launching.set(false);
     }
+  }
+
+  /**
+   * The refusal's explicit next step: go to where the sign-in terminal is drawn.
+   *
+   * <p><b>It navigates rather than launching one here, and that is the honest shape.</b> A sign-in is
+   * a PTY, and this tab renders a *conversation* — the workspace draws terminals in exactly one
+   * place, the Agents tab, which already owns the socket, the replay and the "the agent keeps running
+   * while you are elsewhere" rule. Opening a PTY from here would either be invisible or would mean a
+   * second terminal renderer on a panel that has no other use for one.
+   *
+   * <p>The draft is untouched by any of this, so the press that was refused is still there to make
+   * once somebody has signed in.
+   */
+  protected goToSignIn(): void {
+    void this.router.navigate([], {
+      relativeTo: this.route,
+      queryParams: { tab: 'agents' },
+      queryParamsHandling: 'merge',
+    });
   }
 
   private clearTimer(): void {

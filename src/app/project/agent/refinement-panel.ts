@@ -10,7 +10,7 @@ import {
   untracked,
 } from '@angular/core';
 import { QitsBadge, QitsButton, type QitsBadgeTone } from '@qits/ui-components';
-import type { AgentDesk } from '../../api/agent-daemon-api';
+import type { AgentSurface } from '../../api/agent-daemon-api';
 import type { AgentContainerDto } from '../../api/project-agent-api';
 import { ProjectEvents } from '../../api/project-events';
 import { RefinementSession } from './refinement-session';
@@ -20,12 +20,12 @@ import { TerminalView } from './terminal-view';
 type Pending = 'terminate' | 'stop' | null;
 
 /**
- * The four sentences a desk owns. Everything else on the panel is the same at both.
+ * The four sentences a surface owns. Everything else on the panel is the same at both.
  *
- * <p>Kept as a table rather than as two components because the difference between the desks really
- * is only what they are called and what they are for: the container, the three verbs, the sign-in
- * replay, the badge and the status line are one behaviour, and a second copy of them would be a
- * second place for that behaviour to drift.
+ * <p>Kept as a table rather than as two components because the difference between the two front
+ * desks really is only what they are called and what they are for: the container, the three verbs,
+ * the sign-in replay, the badge and the status line are one behaviour, and a second copy of them
+ * would be a second place for that behaviour to drift.
  */
 interface DeskWords {
   /** The disclosure's own word — what a reader scanning a collapsed page sees. */
@@ -40,15 +40,15 @@ interface DeskWords {
   readonly terminal: string;
 }
 
-const WORDS: Readonly<Record<AgentDesk, DeskWords>> = {
-  EPICS: {
+const WORDS: Readonly<Record<AgentSurface, DeskWords>> = {
+  'project.epics': {
     title: 'Refinement agent',
     invitation: 'Talk to the agent to draft and refine this project’s epics.',
     starting: 'Starting the refinement agent…',
     idleLead: 'This project has been refined before and nothing is running now.',
     terminal: 'Refinement agent session',
   },
-  TICKETS: {
+  'project.tickets': {
     title: 'Triage agent',
     invitation: 'Talk to the agent to file and triage this project’s tickets.',
     starting: 'Starting the triage agent…',
@@ -67,12 +67,17 @@ const WORDS: Readonly<Record<AgentDesk, DeskWords>> = {
  * the board it is about, above the rows it changes, and those rows refresh through the project's live
  * channel when the agent changes them.
  *
- * <p><b>Two desks, one panel, one behaviour.</b> {@link desk} chooses which board this is the front
- * desk of. It changes four sentences ({@link WORDS}) and is sent on every launch so the daemon can
- * seed the right system prompt; it does not change what any button does. The two desks share a
- * container and a sign-in and nothing else — each gets its own {@link RefinementSession}, provided
- * here rather than at the root, so mounting the second panel cannot pull the first one's terminal
- * onto the other desk's screen.
+ * <p><b>Two surfaces, one panel, one behaviour.</b> {@link surface} chooses which board this is the
+ * front desk of. It changes four sentences ({@link WORDS}) and is sent on every launch, which is what
+ * decides the stored configuration the session is rendered from; it does not change what any button
+ * does. The two share a container and a sign-in and nothing else — each gets its own
+ * {@link RefinementSession}, provided here rather than at the root, so mounting the second panel
+ * cannot pull the first one's terminal onto the other surface's screen.
+ *
+ * <p><b>Nobody signed in is a screen with a button, not a redirect.</b> A launch against a harness
+ * with no sign-in on the shared credential volume is refused, and this says so and offers the
+ * terminal. It used to be handed one silently in place of the session it asked for, and attach to it
+ * as though that were what happened.
  *
  * <p><b>Collapsed and dormant by default, and that is a rule rather than a default.</b> A session
  * costs an image pull, a repository clone and a model process. So this panel is one row until it is
@@ -147,6 +152,23 @@ const WORDS: Readonly<Record<AgentDesk, DeskWords>> = {
             <p class="prose">{{ unavailableMessage() }}</p>
             <qits-button variant="secondary" size="sm" [busy]="session.busy()" (pressed)="start()">
               Try again
+            </qits-button>
+          }
+
+          @case ('signed-out') {
+            <p class="prose">{{ signedOut().message }}</p>
+            <p class="prose">
+              Signing in writes to the platform's shared credential volume, so one sign-in serves
+              every container on it. The terminal below is opened because you asked for it — nothing
+              was started in place of the session.
+            </p>
+            <qits-button
+              variant="secondary"
+              size="sm"
+              [busy]="session.busy()"
+              (pressed)="openSignIn()"
+            >
+              Open the {{ signedOut().harness }} sign-in terminal
             </qits-button>
           }
 
@@ -296,15 +318,14 @@ export class RefinementPanel {
   readonly projectId = input.required<string>();
 
   /**
-   * Which front desk this is.
+   * Which session surface this is — where in the product the reader is standing.
    *
-   * Defaulted rather than required, and to the desk that existed first: the epics page mounts this
-   * without the attribute and gets exactly what it always got, which is also what the daemon does
-   * with a launch that names no desk.
+   * Defaulted rather than required, and to the one that existed first: the epics page mounts this
+   * without the attribute and gets exactly what it always got.
    */
-  readonly desk = input<AgentDesk>('EPICS');
+  readonly surface = input<AgentSurface>('project.epics');
 
-  protected readonly words = computed(() => WORDS[this.desk()]);
+  protected readonly words = computed(() => WORDS[this.surface()]);
 
   protected readonly expanded = signal(false);
 
@@ -322,6 +343,14 @@ export class RefinementPanel {
   protected readonly lastSessionId = computed(() => {
     const branch = this.session.branch();
     return branch.kind === 'idle' ? branch.lastSessionId : null;
+  });
+
+  /** The refusal's two sentences, or empty ones when this is not the branch on screen. */
+  protected readonly signedOut = computed(() => {
+    const branch = this.session.branch();
+    return branch.kind === 'signed-out'
+      ? { harness: branch.harness, message: branch.message }
+      : { harness: 'the coding agent', message: '' };
   });
 
   protected readonly unavailableMessage = computed(() => {
@@ -365,9 +394,9 @@ export class RefinementPanel {
     // heading.
     effect(() => {
       const projectId = this.projectId();
-      const desk = this.desk();
+      const surface = this.surface();
       untracked(() => {
-        this.session.use(projectId, desk);
+        this.session.use(projectId, surface);
         this.expanded.set(false);
         this.pending.set(null);
       });
@@ -417,6 +446,12 @@ export class RefinementPanel {
   protected resume(sessionId: string): void {
     this.pending.set(null);
     void this.session.resume(sessionId);
+  }
+
+  /** The deliberate press the refusal offers. Opens a terminal; it never opens a session. */
+  protected openSignIn(): void {
+    this.pending.set(null);
+    void this.session.openSignIn();
   }
 
   /**

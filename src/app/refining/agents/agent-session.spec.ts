@@ -160,7 +160,13 @@ describe('AgentSession', () => {
     const launch = http.expectOne('/projects/refinement-container/7/agents');
     // No `agentType`: the automatic launch takes the container's own resolved default rather than
     // this page naming one. Only a launch a person asked for may pick a harness.
-    expect(launch.request.body).toEqual({ scope: 'REPOSITORY', mode: 'INTERACTIVE' });
+    expect(launch.request.body).toEqual({
+      scope: 'REPOSITORY',
+      mode: 'INTERACTIVE',
+      // Sent on every launch: this daemon's four human surfaces are otherwise indistinguishable,
+      // and an epic's agent tab must not take an ad-hoc workspace's configuration.
+      surface: 'epic.agent',
+    });
     // `deliverTaskPrompt` is never set: the tool it names is not implemented anywhere.
     expect(launch.request.body.deliverTaskPrompt).toBeUndefined();
     launch.flush({ command: command({ id: 'c9', agentSessions: [session('s9')] }) });
@@ -198,6 +204,7 @@ describe('AgentSession', () => {
     expect(launch.request.body).toEqual({
       scope: 'REPOSITORY',
       mode: 'INTERACTIVE',
+      surface: 'epic.agent',
       resumeSessionId: 's1',
       fork: true,
     });
@@ -244,6 +251,7 @@ describe('AgentSession', () => {
     expect(replay.request.body).toEqual({
       scope: 'REPOSITORY',
       mode: 'INTERACTIVE',
+      surface: 'epic.agent',
       agentType: 'CLAUDE',
     });
     replay.flush({ command: command({ id: 'c5', agentSessions: [session('s5')] }) });

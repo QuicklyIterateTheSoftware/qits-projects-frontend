@@ -30,7 +30,7 @@ const TYPES: readonly { readonly value: TicketType; readonly label: string }[] =
  * slug, so the page adds no request of its own.
  *
  * <p><b>The agent above the list is the tickets' own front desk.</b> It is the same panel the epics
- * page carries, mounted at the `TICKETS` desk: same container, same three verbs, its own conversation
+ * page carries, mounted at the `project.tickets` surface: same container, same three verbs, its own conversation
  * and its own system prompt — one for filing and triaging, where the epics page's is for drafting a
  * plan. It sits above the list for the reason the epics one does, that it is what changes the rows
  * below it, and it costs nothing until somebody opens it. The form beneath it is not made redundant
@@ -146,7 +146,7 @@ const TYPES: readonly { readonly value: TicketType; readonly label: string }[] =
       </section>
     }
 
-    <app-refinement-panel [projectId]="projectId()" desk="TICKETS" />
+    <app-refinement-panel [projectId]="projectId()" surface="project.tickets" />
 
     <app-tickets-overview [projectId]="projectId()" [projectSlug]="projectSlug()" />
   `,

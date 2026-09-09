@@ -55,12 +55,31 @@ import { TerminalView } from '../../project/agent/terminal-view';
         </div>
       }
 
+      @case ('signed-out') {
+        <div class="signed-out">
+          <p>{{ signedOut().message }}</p>
+          <p class="note">
+            Signing in writes to the shared agent home, so one sign-in serves every workspace on the
+            platform. Nothing was started in place of the session you asked for — the terminal opens
+            when you press this, and the launch is replayed when it exits.
+          </p>
+          <qits-button
+            variant="primary"
+            size="sm"
+            [busy]="session.launching()"
+            (pressed)="openSignIn()"
+          >
+            Open the {{ signedOut().harness }} sign-in terminal
+          </qits-button>
+        </div>
+      }
+
       @case ('signin') {
         <div class="signin">
           <p class="note">
-            The agent is not signed in, so the launch answered with a sign-in terminal instead of a
-            session. Complete the sign-in below — it writes to the shared agent home, so it signs in
-            every workspace at once. When this terminal exits, the launch you asked for is replayed.
+            The sign-in terminal. Complete the sign-in below — it writes to the shared agent home,
+            so it signs in every workspace at once. When this terminal exits, the launch you asked
+            for is replayed.
           </p>
           <app-terminal-view
             [frames]="session.frames()"
@@ -198,6 +217,21 @@ import { TerminalView } from '../../project/agent/terminal-view';
       color: #1e3a8a;
       font-size: 0.9rem;
     }
+    .signed-out {
+      padding: 0.75rem;
+      border: 1px solid #fcd34d;
+      border-radius: 0.375rem;
+      background: #fffbeb;
+    }
+    .signed-out p {
+      margin: 0 0 0.5rem;
+      color: #78350f;
+      font-size: 0.9rem;
+    }
+    .signed-out .note {
+      color: #92400e;
+      font-size: 0.85rem;
+    }
     .choice {
       display: flex;
       align-items: center;
@@ -263,6 +297,14 @@ export class EmbeddedSession {
     return branch.kind === 'unavailable' ? branch.message : '';
   });
 
+  /** The refusal's harness and sentence, or empty ones when this is not the branch on screen. */
+  protected readonly signedOut = computed(() => {
+    const branch = this.branch();
+    return branch.kind === 'signed-out'
+      ? { harness: branch.harness, message: branch.message }
+      : { harness: 'the coding agent', message: '' };
+  });
+
   protected readonly linkLabel = computed(() => {
     switch (this.session.link()) {
       case 'open':
@@ -285,6 +327,11 @@ export class EmbeddedSession {
 
   protected resumeLast(sessionId: string): void {
     void this.session.resume(sessionId);
+  }
+
+  /** The deliberate press the refusal offers. Opens a terminal; it never opens a session. */
+  protected openSignIn(): void {
+    void this.session.openSignIn();
   }
 
   /**

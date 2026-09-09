@@ -7,14 +7,12 @@ import {
   type CommandDto,
   type LaunchAgentRequest,
 } from '../../api/commands-api';
+import { notSignedIn } from '../../api/agent-sign-in';
 import { WEB_SOCKET_FACTORY } from '../../api/web-socket';
 import { WorkspaceCommands } from '../../api/workspace-commands';
 import { WorkspaceDaemonApi } from '../../api/workspace-daemon-api';
 import { IDLE, LOADING, failed, ready, type Loadable } from '../../ui/loadable';
-import {
-  EMPTY_TERMINAL_FRAMES,
-  TerminalSocket,
-} from '../../project/agent/terminal-socket';
+import { EMPTY_TERMINAL_FRAMES, TerminalSocket } from '../../project/agent/terminal-socket';
 
 /**
  * Where the embedded session has landed.
@@ -31,6 +29,11 @@ export type SessionBranch =
   | { readonly kind: 'deferred'; readonly commandId: string }
   /** The special case: the launch answered with a sign-in terminal instead of a session. */
   | { readonly kind: 'signin'; readonly commandId: string }
+  /**
+   * The launch was **refused**: nobody has signed the harness in on the shared credential volume.
+   * Not a failure of this tab, and not a session — a state with one next step the reader may take.
+   */
+  | { readonly kind: 'signed-out'; readonly harness: string; readonly message: string }
   /** 4 — history exists and nothing is running, so nothing happens without a press. */
   | { readonly kind: 'idle' }
   | { readonly kind: 'unavailable'; readonly message: string };
@@ -43,6 +46,12 @@ const UNREACHABLE: readonly number[] = [0, 502, 503, 504];
 
 /**
  * Whether a command is the sign-in terminal the launch paths hand back instead of a session.
+ *
+ * **A ROLLOUT CRUTCH WITH AN EXPIRY.** A launch does not hand one back any more: a daemon carrying
+ * the shared library refuses with `409 {"error": "not-signed-in"}` and this tab offers
+ * {@link AgentSession.openSignIn} instead. The *deployed* daemons still substitute until they are
+ * released, so this stays to recognise what they answer and goes with them. Nothing new is built on
+ * it.
  *
  * **Lineage alone is not enough, and that is a real trap.** The contract says a sign-in terminal is
  * recognisable because it has no session lineage — true, but a *fresh Kimi* launch also arrives with
@@ -75,13 +84,18 @@ export function isSignInTerminal(command: CommandDto): boolean {
  * of a session this container does not own. A finished run does not auto-relaunch either, because a
  * crashing agent would relaunch forever. Every resume here starts at a press.
  *
- * ## The sign-in terminal replays what it interrupted
+ * ## Nobody signed in is answered, not substituted
  *
- * When the agent is not signed in, `POST /agents` answers a **login terminal** rather than a session.
- * It is a PTY like any other, so it renders in place; and when it exits, resolution re-runs *and the
- * launch the sign-in interrupted is issued again*, so completing the login continues what was
- * actually asked for rather than dropping the user back on a menu. The replay is capped, because a
- * sign-in that keeps failing must not become a launch loop.
+ * When the agent is not signed in on the shared credential volume, `POST /agents` **refuses** and
+ * names the harness. It used to answer a login terminal instead — a different session than the one
+ * asked for, swapped invisibly, which this tab attached to exactly as it would a real one. So the
+ * refusal lands in `signed-out`, which says so and offers {@link openSignIn}; the terminal opens
+ * because it was pressed.
+ *
+ * Once open it is a PTY like any other, so it renders in place; and when it exits, resolution re-runs
+ * *and the launch the sign-in interrupted is issued again*, so completing the login continues what
+ * was actually asked for rather than dropping the user back on a menu. The replay is capped, because
+ * a sign-in that keeps failing must not become a launch loop.
  *
  * ## The terminal stack is imported, not copied a third time
  *
@@ -112,6 +126,13 @@ export class AgentSession {
   /** The sign-in terminal on screen, and the launch it interrupted. */
   private readonly signIn = signal<{ commandId: string; replay: LaunchAgentRequest } | null>(null);
   private replays = 0;
+
+  /** The refusal, and the launch it refused — held so completing the sign-in replays it. */
+  private readonly signedOut = signal<{
+    harness: string;
+    message: string;
+    replay: LaunchAgentRequest;
+  } | null>(null);
 
   private readonly inFlight = signal(false);
   private readonly problemText = signal<string | null>(null);
@@ -242,6 +263,14 @@ export class AgentSession {
       return { kind: 'resolving' };
     }
 
+    // Above every resolution branch: there is no session to resolve until somebody signs in, and
+    // the auto-launch guard has already fired, so leaving this out would render an idle screen
+    // offering a button that refuses again.
+    const refused = this.signedOut();
+    if (refused) {
+      return { kind: 'signed-out', harness: refused.harness, message: refused.message };
+    }
+
     const signIn = this.signIn();
     if (signIn) {
       const command = this.commandList().find((entry) => entry.id === signIn.commandId);
@@ -289,6 +318,7 @@ export class AgentSession {
     this.workspaceRowId.set(workspaceRowId);
     this.ownCommandId.set(null);
     this.signIn.set(null);
+    this.signedOut.set(null);
     this.problemText.set(null);
     this.replays = 0;
     this.autoLaunchedFor = null;
@@ -316,6 +346,7 @@ export class AgentSession {
     await this.launch({
       scope: 'REPOSITORY',
       mode: 'INTERACTIVE',
+      surface: 'epic.agent',
       ...(agentType ? { agentType } : {}),
     });
   }
@@ -334,6 +365,7 @@ export class AgentSession {
     await this.launch({
       scope: 'REPOSITORY',
       mode: 'INTERACTIVE',
+      surface: 'epic.agent',
       resumeSessionId: sessionId,
       ...(fork ? { fork: true } : {}),
     });
@@ -370,13 +402,57 @@ export class AgentSession {
     try {
       const command = await this.commandsApi.launchAgent(workspaceRowId, request);
       if (isSignInTerminal(command)) {
-        // Not a session: a login terminal. Hold what was asked for, and replay it when this exits.
+        // A daemon that has not been released yet, still substituting a login terminal for the
+        // session that was asked for. Handled so the tab is not broken during the rollout, and
+        // removed with the substitution — see {@link isSignInTerminal}.
         this.signIn.set({ commandId: command.id, replay: request });
         this.ownCommandId.set(null);
       } else {
         this.ownCommandId.set(command.id);
       }
       await Promise.all([this.entry.refresh(), this.refreshSessions()]);
+    } catch (error) {
+      // The one refusal that is not a fault. A branch rather than the problem line, because it has
+      // exactly one next step and a sentence cannot be pressed.
+      const refusal = notSignedIn(error);
+      if (refusal) {
+        this.signedOut.set({ harness: refusal.label, message: refusal.message, replay: request });
+        this.ownCommandId.set(null);
+        return;
+      }
+      this.problemText.set(describeLaunch(error));
+    } finally {
+      this.inFlight.set(false);
+    }
+  }
+
+  /**
+   * Open the sign-in terminal, deliberately.
+   *
+   * <p>Pressed from the `signed-out` branch and nowhere else. It is an ordinary launch of an ordinary
+   * PTY command in this container, and what makes it different from what used to happen is only that
+   * the reader asked: the substitution it replaces opened exactly this terminal *instead of* the
+   * session, and said nothing.
+   *
+   * <p>The refused launch rides along, so the existing replay path continues what was interrupted
+   * when the terminal exits.
+   */
+  async openSignIn(): Promise<void> {
+    const workspaceRowId = this.workspaceRowId();
+    const refused = this.signedOut();
+    if (workspaceRowId <= 0 || !refused || this.inFlight()) {
+      return;
+    }
+    this.inFlight.set(true);
+    this.problemText.set(null);
+    try {
+      const command = await this.commandsApi.launchLogin(
+        workspaceRowId,
+        this.defaultAgent() ?? undefined,
+      );
+      this.signedOut.set(null);
+      this.signIn.set({ commandId: command.id, replay: refused.replay });
+      await this.entry.refresh();
     } catch (error) {
       this.problemText.set(describeLaunch(error));
     } finally {

@@ -2,6 +2,7 @@ import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { ChangeDetectionStrategy, Component, signal } from '@angular/core';
 import { TestBed, type ComponentFixture } from '@angular/core/testing';
+import { provideRouter } from '@angular/router';
 import { EVENT_SOURCE_FACTORY, type EventSourceLike } from '../../api/event-source';
 import { WorkspaceEvents } from '../../api/workspace-events';
 import { WEB_SOCKET_FACTORY, WEB_SOCKET_OPEN, type WebSocketLike } from '../../api/web-socket';
@@ -101,6 +102,9 @@ describe('ChatPanel', () => {
       providers: [
         provideHttpClient(),
         provideHttpClientTesting(),
+        // The prompt panel writes `?tab=` to send a signed-out reader to where the sign-in terminal
+        // is drawn, so the router has to exist even in a suite that never navigates.
+        provideRouter([]),
         { provide: EVENT_SOURCE_FACTORY, useValue: () => new FakeStream() },
         { provide: SPEECH_RUNTIME, useValue: NO_MICROPHONE },
         {
@@ -330,7 +334,9 @@ describe('ChatPanel', () => {
     save.flush({ draft: { content: save.request.body.content, updatedAt: 'T1' } });
     await settle();
 
-    http.expectOne('/projects/refinement-container/7/agents').flush({ command: chat('cmd-new', 'RUNNING') });
+    http
+      .expectOne('/projects/refinement-container/7/agents')
+      .flush({ command: chat('cmd-new', 'RUNNING') });
     await settle();
 
     // The registry has not answered yet, and the conversation is already on screen.

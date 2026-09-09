@@ -13,6 +13,7 @@ import { ProjectAgentApi } from './project-agent-api';
  *   POST /commands/{id}/terminate      signal a run's process group
  *   GET  /agents/available             the harnesses, and the default
  *   POST /agents                       launch a coding agent
+ *   POST /agents/sign-in               open the sign-in terminal, deliberately
  *   GET  /agent-sessions               the session lineage
  *   WS   /terminal/commands/{id}       the PTY (opened by TerminalSocket, not here)
  * ```
@@ -46,20 +47,22 @@ export type AgentType = 'CLAUDE' | 'KIMI';
 export type AgentMcpScope = 'PROJECT' | 'REPOSITORY';
 
 /**
- * Which front desk a launch is steered by. **Absent means `EPICS`** — today's behaviour, and what
- * every command launched before desks existed was.
+ * **Where in the product a session was started from**, sent on the launch and reported back on the
+ * command. It replaces the `desk` field this client used to send.
  *
- * <p><b>A desk is steering, not scoping.</b> Both desks launch into the same {@link AgentMcpScope}
- * with the same tools; the desk only decides which system prompt the daemon seeds the session with —
- * drafting a plan, or filing and triaging the small work. Nothing is taken away from either, so an
- * agent asked at the ticket desk to open an epic still can.
+ * <p><b>A surface is steering, not scoping.</b> Both of this daemon's surfaces launch into the same
+ * {@link AgentMcpScope} with the same tools; the surface decides what the session is configured *as*
+ * — which system prompt, model, effort, permission mode and MCP attachments the platform's stored
+ * configuration for that place holds. Nothing is taken away from either, so an agent asked at the
+ * tickets surface to open an epic still can.
  *
- * <p><b>The desk comes back in the name.</b> A `TICKETS` launch is named with the substring
- * "(tickets desk)" in `CommandDto.actionName`, and that substring is the whole contract for telling
- * the two desks' running commands apart afterwards — the run list carries no desk field. See
- * {@link ../project/agent/refinement-session#deskOf}.
+ * <p><b>The vocabulary is open and platform-wide</b> — eight keys today, of which this daemon serves
+ * three (`project.epics`, `project.tickets` and the composed `epic.autonomous`, which no human
+ * presses a button for). Only the two a human opens are spelled here, because only those are ever
+ * *sent* from this client; `CommandDto.agentSurface` is a plain string for the same reason a
+ * component name is, since a daemon may know a key this build has not been told about.
  */
-export type AgentDesk = 'EPICS' | 'TICKETS';
+export type AgentSurface = 'project.epics' | 'project.tickets';
 
 /** `INTERACTIVE` is the full agent TUI on a PTY — the only mode this panel launches. */
 export type AgentLaunchMode = 'CHAT' | 'INTERACTIVE';
@@ -99,6 +102,15 @@ export interface CommandDto {
   readonly commitHash?: string;
   readonly shortCommitHash?: string;
   readonly agentSessions: readonly AgentSessionRefDto[];
+  /**
+   * Which surface started this run — the key {@link LaunchAgentRequest.surface} carried in.
+   *
+   * <p>Optional because two things answer nothing: a command launched before the daemon shipped the
+   * field, and the sign-in terminal, which nobody starts from anywhere in the product. A reader that
+   * needs a surface for an old row falls back — see
+   * {@link ../project/agent/refinement-session#surfaceOf} — and that fallback has an expiry.
+   */
+  readonly agentSurface?: string;
 }
 
 /** The single-command envelope both `POST /commands` and `POST /agents` answer with. */
@@ -148,8 +160,12 @@ interface AgentSessionTreeResponse {
 export interface LaunchAgentRequest {
   readonly scope: AgentMcpScope;
   readonly mode: AgentLaunchMode;
-  /** Which front desk the session is steered by; omitted is `EPICS`. See {@link AgentDesk}. */
-  readonly desk?: AgentDesk;
+  /**
+   * Where in the product this session was started from. Sent on **every** launch this client makes;
+   * an omitted one resolves to the shape-implied default, which is a rollout crutch and not a thing
+   * to lean on. See {@link AgentSurface}.
+   */
+  readonly surface?: AgentSurface;
   readonly agentType?: AgentType;
   readonly initialContext?: string;
   readonly resumeSessionId?: string;
@@ -198,9 +214,36 @@ export class AgentDaemonApi {
     return answer.sessions ?? [];
   }
 
-  /** Launch a coding agent. The answer is the command to attach a socket to. */
+  /**
+   * Launch a coding agent. The answer is the command to attach a socket to.
+   *
+   * **It can refuse.** A harness nobody has signed in on the shared credential volume used to be
+   * answered by quietly substituting {@link launchLogin}'s bare REPL for the session that was asked
+   * for; the library refuses instead, and this client's callers read that refusal with
+   * {@link ./agent-sign-in#notSignedIn}.
+   */
   async launch(projectId: string, request: LaunchAgentRequest): Promise<CommandDto> {
     const answer = await this.proxy.post<CommandEnvelope>(projectId, '/agents', request);
+    return answer.command;
+  }
+
+  /**
+   * Open the sign-in terminal: a PTY running the harness's own first-run onboarding, so an operator
+   * can complete the one-time OAuth against the shared credential volume.
+   *
+   * **A door, not a fallback.** It used to be what a launch answered with when the harness was
+   * signed out, which meant nobody could ask for it on purpose and everybody got it by accident.
+   * Now the launch refuses and a caller that knows what it was trying to open presses this.
+   *
+   * Signing in here signs in every container on the volume, which is why one press is enough for the
+   * whole platform and why this is not per project in anything but its address.
+   */
+  async launchLogin(projectId: string, agentType?: AgentType): Promise<CommandDto> {
+    const answer = await this.proxy.post<CommandEnvelope>(
+      projectId,
+      '/agents/sign-in',
+      agentType ? { agentType } : {},
+    );
     return answer.command;
   }
 

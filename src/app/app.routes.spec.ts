@@ -6,6 +6,10 @@ import type { Type } from '@angular/core';
 import { Router, provideRouter } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
 import { provideQitsScope } from '@qits/ui-components';
+import { AgentMcpCatalogPage } from './agent-config/agent-mcp-catalog-page';
+import { AgentSurfacePage } from './agent-config/agent-surface-page';
+import { AgentSurfaceSkillsPage } from './agent-config/agent-surface-skills-page';
+import { AgentSurfacesPage } from './agent-config/agent-surfaces-page';
 import { OWN_PROJECT_SEGMENTS, routes } from './app.routes';
 import { EVENT_SOURCE_FACTORY, type EventSourceFactory } from './api/event-source';
 import { CreateRepositoryPage } from './create/create-repository-page';
@@ -202,6 +206,20 @@ describe('routes', () => {
     );
     // The guard still applies to the middle segment, five segments deep as at three.
     expect(await at('/qits/epics/planning/release-requests/r1')).toBe(NotFound);
+  });
+
+  /**
+   * The one word this application claims above `:project`, because what it configures is
+   * platform-wide rather than a project's. Order is what makes it work — the literal is declared
+   * before `:project`, so it wins — and asserting the address rather than the table is what would
+   * catch somebody moving it below.
+   */
+  it('serves the agent configuration above the projects, being platform-wide', async () => {
+    expect(await at('/agent-configuration')).toBe(AgentSurfacesPage);
+    expect(await at('/agent-configuration/mcp-catalog')).toBe(AgentMcpCatalogPage);
+    expect(await at('/agent-configuration/surfaces/epic.chat')).toBe(AgentSurfacePage);
+    // Reserved, reachable and empty: fixing where per-surface skills will live is the whole scope.
+    expect(await at('/agent-configuration/surfaces/epic.chat/skills')).toBe(AgentSurfaceSkillsPage);
   });
 
   it('answers anything deeper with the 404 it is', async () => {

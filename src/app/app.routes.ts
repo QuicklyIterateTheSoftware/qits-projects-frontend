@@ -1,5 +1,9 @@
 import type { CanMatchFn, Routes } from '@angular/router';
 import { QITS_CATEGORIES, QitsMainLayout, type QitsCategory } from '@qits/ui-components';
+import { AgentMcpCatalogPage } from './agent-config/agent-mcp-catalog-page';
+import { AgentSurfacePage } from './agent-config/agent-surface-page';
+import { AgentSurfaceSkillsPage } from './agent-config/agent-surface-skills-page';
+import { AgentSurfacesPage } from './agent-config/agent-surfaces-page';
 import { CreateRepositoryPage } from './create/create-repository-page';
 import { LandingPage } from './landing/landing-page';
 import { NotFound } from './not-found/not-found';
@@ -49,7 +53,26 @@ export const repositoryGroupIsKnown: CanMatchFn = (_route, segments) => {
 };
 
 /**
- * Fifteen routes, all of them inside the platform chrome.
+ * Nineteen routes, all of them inside the platform chrome.
+ *
+ * <p><b>`agent-configuration` is the one word this application claims at the TOP level</b>, and it is
+ * there because what it configures is platform-wide rather than a project's: one configuration per
+ * *session surface* for the whole estate. Hanging it under `:project` would say the opposite of what
+ * the store does, and per-project overrides are deliberately a later epic rather than a smaller
+ * version of this one. The cost is the same one `''` already carries — a project whose slug were
+ * `agent-configuration` would be shadowed, because Angular matches in order and the literal is above
+ * `:project`. It is not in {@link OWN_PROJECT_SEGMENTS}, which is about words *below* a project and
+ * derives itself from the table, so the group guard is untouched.
+ *
+ * <p>Its children spell the shape of the store: `surfaces/:surface` is one surface's whole
+ * configuration, `surfaces/:surface/skills` is the reserved and empty place per-surface skills will
+ * live, and `mcp-catalog` is the external MCP server catalog — a sibling and not a child, because a
+ * catalog entry is defined once platform-wide and attached from many surfaces.
+ *
+ * <p><b>None of the four is guarded on the client.</b> The store's doors take `qits:admin` and this
+ * application guards no route anywhere; the gateway session is what the browser carries and the
+ * service is the only thing that can decide, so each page renders the 403 as a sentence rather than
+ * a second copy of a decision it cannot make.
  *
  * `QitsMainLayout` is the root *route* component rather than something the shell templates, so the
  * bar, the navigation and the project picker hanging under it mount once and survive every
@@ -144,7 +167,7 @@ export const repositoryGroupIsKnown: CanMatchFn = (_route, segments) => {
  * epic's workspace. Keeping the tab in the query string leaves the path meaning "which epic", makes a
  * bare URL mean "no tab pinned" by simple absence, and keeps every tab a shareable link.
  *
- * <p>All fifteen load eagerly. There are fifteen of them, they share every component below them,
+ * <p>All nineteen load eagerly. There are nineteen of them, they share every component below them,
  * and a lazy chunk boundary here would be ceremony that costs a round trip.
  *
  * <p>The `**` route sits *inside* the layout: this application is served at the root of its own
@@ -156,6 +179,13 @@ export const routes: Routes = [
     component: QitsMainLayout,
     children: [
       { path: '', component: LandingPage },
+      { path: 'agent-configuration', component: AgentSurfacesPage },
+      { path: 'agent-configuration/mcp-catalog', component: AgentMcpCatalogPage },
+      { path: 'agent-configuration/surfaces/:surface', component: AgentSurfacePage },
+      {
+        path: 'agent-configuration/surfaces/:surface/skills',
+        component: AgentSurfaceSkillsPage,
+      },
       { path: ':project', component: ProjectPage },
       { path: ':project/project-setup', component: ProjectSetupPage },
       { path: ':project/epics', component: EpicsPage },

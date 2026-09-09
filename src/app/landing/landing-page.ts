@@ -56,6 +56,14 @@ import { LOADING, failed, ready, type Loadable } from '../ui/loadable';
         </ul>
       }
     }
+
+    <!-- Platform-wide, so it belongs above the projects rather than inside one. Drawn whatever the
+         project list says: a single-project estate redirects past this page, which is exactly why
+         the same link also sits on the project setup page. -->
+    <p class="platform">
+      <a routerLink="/agent-configuration">Agent configuration</a>
+      <span class="note">What every coding-agent session on this platform runs as.</span>
+    </p>
   `,
   styles: `
     :host {
@@ -81,6 +89,12 @@ import { LOADING, failed, ready, type Loadable } from '../ui/loadable';
     .note {
       margin-left: 0.5rem;
       color: #6b7280;
+    }
+    .platform {
+      margin-top: 1.25rem;
+      padding-top: 0.75rem;
+      border-top: 1px solid #e5e7eb;
+      font-size: 0.9rem;
     }
   `,
 })

@@ -179,6 +179,20 @@
   <p class="problem" role="alert">⚠ {{ problem }}</p>
 }
 
+@if (signedOut(); as refusal) {
+  <section class="signed-out" role="alert" aria-label="Nobody is signed in">
+    <p>{{ refusal.message }}</p>
+    <p class="note">
+      Nothing was started in place of the conversation you asked for, and your draft is untouched.
+      The sign-in terminal is a PTY, and this workspace draws terminals on the Agents tab — sign in
+      there once and it counts for every container on the shared credential volume.
+    </p>
+    <qits-button variant="primary" size="sm" (pressed)="goToSignIn()">
+      Open the sign-in terminal on the Agents tab
+    </qits-button>
+  </section>
+}
+
 <p class="note deferred">
   The full agent TUI launches from the Agents tab, which is where a terminal session is rendered and
   resumed.

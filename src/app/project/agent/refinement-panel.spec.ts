@@ -1,7 +1,7 @@
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import type { AgentDesk, CommandDto } from '../../api/agent-daemon-api';
+import type { AgentSurface, CommandDto } from '../../api/agent-daemon-api';
 import { EVENT_SOURCE_FACTORY, type EventSourceLike } from '../../api/event-source';
 import type { AgentContainerDto } from '../../api/project-agent-api';
 import { ProjectEvents } from '../../api/project-events';
@@ -119,10 +119,10 @@ describe('RefinementPanel', () => {
     http.verify();
   });
 
-  async function mount(projectId = 'p1', desk: AgentDesk = 'EPICS'): Promise<void> {
+  async function mount(projectId = 'p1', surface: AgentSurface = 'project.epics'): Promise<void> {
     fixture = TestBed.createComponent(RefinementPanel);
     fixture.componentRef.setInput('projectId', projectId);
-    fixture.componentRef.setInput('desk', desk);
+    fixture.componentRef.setInput('surface', surface);
     await settle();
   }
 
@@ -214,12 +214,13 @@ describe('RefinementPanel', () => {
 
     const launch = http.expectOne('/projects/container/p1/agents');
     expect(launch.request.method).toBe('POST');
-    // The desk is sent explicitly even though `EPICS` is what an absent one means: a body that says
-    // which desk asked is readable in a proxy log without knowing the daemon's default.
+    // The surface is sent explicitly on every launch. Both of this daemon's human surfaces are
+    // `PROJECT`-scoped chats, so the daemon's shape-implied default cannot tell them apart — leaving
+    // it off would send every tickets session to the epics configuration.
     expect(launch.request.body).toEqual({
       scope: 'REPOSITORY',
       mode: 'INTERACTIVE',
-      desk: 'EPICS',
+      surface: 'project.epics',
     });
     launch.flush({ command: running('c1') });
     await settle();
@@ -273,7 +274,7 @@ describe('RefinementPanel', () => {
     expect(launch.request.body).toEqual({
       scope: 'REPOSITORY',
       mode: 'INTERACTIVE',
-      desk: 'EPICS',
+      surface: 'project.epics',
       resumeSessionId: 's1',
     });
     launch.flush({ command: running('c2') });
@@ -389,27 +390,27 @@ describe('RefinementPanel', () => {
     expect(text()).toContain('daemon not connected');
   });
 
-  // ---- the two desks ------------------------------------------------------------------------
+  // ---- the two surfaces ---------------------------------------------------------------------
 
   /**
-   * One panel, two front desks, and the one thing that keeps them apart.
+   * One panel, two session surfaces, and the one thing that keeps them apart.
    *
-   * The run list carries no desk field, so the daemon writes the desk into the command's *name* — a
-   * `TICKETS` launch is named with "(tickets desk)" in it — and this suite pins both halves of the
-   * rule that reads it back. The ticket desk attaches only to named runs; the epic desk attaches only
-   * to unnamed ones, which is what keeps every command from before desks existed belonging to it.
-   *
-   * Getting either direction wrong is not a cosmetic failure: it puts one board's conversation on the
-   * other board's screen, under a heading that says it is about something else.
+   * <p>The command reports the surface it was launched from, and that is what sorts these lists.
+   * **The commands in this block deliberately report none**, which is the other half: they are the
+   * shape of a run launched before the daemon shipped the field, so what they exercise is the
+   * migration crutch that reads the old `"(tickets desk)"` substring out of the command's *name*.
+   * That crutch has an expiry — task `46e32cb3` deletes it — and both directions of it are pinned
+   * here because getting either wrong puts one board's conversation on the other board's screen,
+   * under a heading that says it is about something else.
    */
-  describe('at the ticket desk', () => {
-    /** A run the daemon named for the ticket desk. The substring is the whole contract. */
+  describe('at the tickets surface', () => {
+    /** A pre-surface run, recognisable only by the name the daemon used to write the desk into. */
     function triage(id: string, over: Partial<CommandDto> = {}): CommandDto {
       return running(id, { actionName: 'Claude Code (tickets desk · repository MCP)', ...over });
     }
 
     it('is named for triage rather than refinement, and says what it is for', async () => {
-      await mount('p1', 'TICKETS');
+      await mount('p1', 'project.tickets');
 
       expect(element().querySelector('button.toggle')?.textContent).toContain('Triage agent');
       expect(text()).not.toContain('Refinement agent');
@@ -428,7 +429,7 @@ describe('RefinementPanel', () => {
      * An empty filtered list is the answer, and `http.verify()` is what proves the read never left.
      */
     it('launches at its own desk without asking the desk-blind lineage read', async () => {
-      await mount('p1', 'TICKETS');
+      await mount('p1', 'project.tickets');
       await press('Start');
 
       await flush('/projects/api/projects/p1/agent-container/ensure', { container: container() });
@@ -443,7 +444,7 @@ describe('RefinementPanel', () => {
       expect(launch.request.body).toEqual({
         scope: 'REPOSITORY',
         mode: 'INTERACTIVE',
-        desk: 'TICKETS',
+        surface: 'project.tickets',
       });
       launch.flush({ command: triage('t1') });
       await settle();
@@ -455,7 +456,7 @@ describe('RefinementPanel', () => {
     });
 
     it('adopts a running ticket-desk session and leaves the epic desk’s alone', async () => {
-      await mount('p1', 'TICKETS');
+      await mount('p1', 'project.tickets');
       await press('Start');
 
       await flush('/projects/api/projects/p1/agent-container/ensure', { container: container() });
@@ -471,7 +472,7 @@ describe('RefinementPanel', () => {
     });
 
     it('offers this desk’s last session to resume, never the other desk’s', async () => {
-      await mount('p1', 'TICKETS');
+      await mount('p1', 'project.tickets');
       await press('Start');
 
       await flush('/projects/api/projects/p1/agent-container/ensure', { container: container() });
@@ -503,7 +504,7 @@ describe('RefinementPanel', () => {
       expect(launch.request.body).toEqual({
         scope: 'REPOSITORY',
         mode: 'INTERACTIVE',
-        desk: 'TICKETS',
+        surface: 'project.tickets',
         resumeSessionId: 'tix-1',
       });
       launch.flush({ command: triage('t2') });
@@ -531,7 +532,7 @@ describe('RefinementPanel', () => {
     expect(launch.request.body).toEqual({
       scope: 'REPOSITORY',
       mode: 'INTERACTIVE',
-      desk: 'EPICS',
+      surface: 'project.epics',
     });
     launch.flush({ command: running('e1') });
     await settle();
@@ -539,6 +540,106 @@ describe('RefinementPanel', () => {
     expect(sockets).toHaveLength(1);
     expect(sockets[0].url).toContain('/terminal/commands/e1');
     expect(sockets[0].url).not.toContain('tix-run');
+  });
+
+  // ---- the surface the command reports ------------------------------------------------------
+
+  /**
+   * The field, winning over the name — which is the whole of what this task moved.
+   *
+   * <p>The run below is named exactly as an epics run always was ("Claude agent") and reports
+   * `project.tickets`. The old rule read the name and would have handed it to the epics panel; the
+   * new one reads the field, so the tickets panel adopts it. Asserting it this way round is
+   * deliberate: a name that *agrees* with the surface would pass under either rule and prove
+   * nothing.
+   */
+  it('sorts by the surface the command reports, not by what the command is called', async () => {
+    await mount('p1', 'project.tickets');
+    await press('Start');
+
+    await flush('/projects/api/projects/p1/agent-container/ensure', { container: container() });
+    await flush('/projects/container/p1/commands', {
+      entries: [{ command: running('reported', { agentSurface: 'project.tickets' }) }],
+    });
+    await flushHarness();
+
+    expect(sockets).toHaveLength(1);
+    expect(sockets[0].url).toContain('/terminal/commands/reported');
+    // Branch 1 answered at this surface: no launch, no lineage read.
+    http.verify();
+  });
+
+  /** And the other way: a run named for the old desk that reports the epics surface is the epics'. */
+  it('lets the reported surface overrule the legacy name', async () => {
+    await mount();
+    await press('Start');
+
+    await flush('/projects/api/projects/p1/agent-container/ensure', { container: container() });
+    await flush('/projects/container/p1/commands', {
+      entries: [
+        {
+          command: running('mislabelled', {
+            actionName: 'Claude Code (tickets desk)',
+            agentSurface: 'project.epics',
+          }),
+        },
+      ],
+    });
+    await flushHarness();
+
+    expect(sockets).toHaveLength(1);
+    expect(sockets[0].url).toContain('/terminal/commands/mislabelled');
+    http.verify();
+  });
+
+  // ---- nobody signed in ---------------------------------------------------------------------
+
+  /**
+   * The bug this closes is that the two used to be indistinguishable from here.
+   *
+   * <p>A launch against a harness nobody has signed in used to answer a bare login REPL, and this
+   * panel attached to it exactly as it would to a session — so a signed-out platform looked like a
+   * working one. The refusal is now a state of its own, saying which harness, and the terminal opens
+   * only when the button is pressed.
+   */
+  it('says nobody is signed in, and opens the terminal only when asked', async () => {
+    await mount();
+    await press('Start');
+
+    await flush('/projects/api/projects/p1/agent-container/ensure', { container: container() });
+    await flush('/projects/container/p1/commands', { entries: [] });
+    await flushHarness();
+    await flush('/projects/container/p1/agent-sessions', { sessions: [] });
+
+    http.expectOne('/projects/container/p1/agents').flush(
+      {
+        error: 'not-signed-in',
+        agentType: 'CLAUDE',
+        message:
+          "Nobody has signed Claude Code in on this platform's shared credential volume, so this" +
+          ' session cannot start.',
+      },
+      { status: 409, statusText: 'conflict' },
+    );
+    await settle();
+
+    expect(text()).toContain('Nobody has signed Claude Code in');
+    expect(text()).toContain('nothing was started in place of the session');
+    // Nothing was opened on the reader's behalf. That is the point.
+    expect(sockets).toHaveLength(0);
+    http.verify();
+
+    await press('Open the Claude Code sign-in terminal');
+    const login = http.expectOne('/projects/container/p1/agents/sign-in');
+    expect(login.request.method).toBe('POST');
+    expect(login.request.body).toEqual({ agentType: 'CLAUDE' });
+    login.flush({
+      command: running('login-1', { actionName: 'Claude sign-in', agentSessions: [] }),
+    });
+    await settle();
+
+    expect(sockets).toHaveLength(1);
+    expect(sockets[0].url).toContain('/terminal/commands/login-1');
   });
 
   /** The common set-up: open, ensure, launch, attach, and an open PTY. */
