@@ -27,7 +27,7 @@ export type SessionBranch =
   | { readonly kind: 'attached'; readonly commandId: string }
   /** 2 — a running chat owns the conversation, so this tab defers to it. */
   | { readonly kind: 'deferred'; readonly commandId: string }
-  /** The special case: the launch answered with a sign-in terminal instead of a session. */
+  /** A sign-in terminal is open — pressed for, from `signed-out` — and renders in place. */
   | { readonly kind: 'signin'; readonly commandId: string }
   /**
    * The launch was **refused**: nobody has signed the harness in on the shared credential volume.
@@ -45,13 +45,13 @@ const REPLAY_LIMIT = 2;
 const UNREACHABLE: readonly number[] = [0, 502, 503, 504];
 
 /**
- * Whether a command is the sign-in terminal the launch paths hand back instead of a session.
+ * Whether a running command is a sign-in terminal rather than an agent session.
  *
- * **A ROLLOUT CRUTCH WITH AN EXPIRY.** A launch does not hand one back any more: a daemon carrying
- * the shared library refuses with `409 {"error": "not-signed-in"}` and this tab offers
- * {@link AgentSession.openSignIn} instead. The *deployed* daemons still substitute until they are
- * released, so this stays to recognise what they answer and goes with them. Nothing new is built on
- * it.
+ * <p>**No launch hands one back.** The substitution is gone from both daemons: a launch against a
+ * signed-out harness refuses with `409 {"error": "not-signed-in"}` and this tab offers
+ * {@link AgentSession.openSignIn}, so the only sign-in terminal that exists is one somebody pressed
+ * for. This is still needed for exactly that: a deliberately opened terminal is a running command in
+ * this container, and it must not be mistaken for the agent run this tab attaches to.
  *
  * **Lineage alone is not enough, and that is a real trap.** The contract says a sign-in terminal is
  * recognisable because it has no session lineage — true, but a *fresh Kimi* launch also arrives with
@@ -401,15 +401,10 @@ export class AgentSession {
     this.problemText.set(null);
     try {
       const command = await this.commandsApi.launchAgent(workspaceRowId, request);
-      if (isSignInTerminal(command)) {
-        // A daemon that has not been released yet, still substituting a login terminal for the
-        // session that was asked for. Handled so the tab is not broken during the rollout, and
-        // removed with the substitution — see {@link isSignInTerminal}.
-        this.signIn.set({ commandId: command.id, replay: request });
-        this.ownCommandId.set(null);
-      } else {
-        this.ownCommandId.set(command.id);
-      }
+      // Whatever comes back is the session that was asked for. A daemon does not substitute a login
+      // terminal for it any more — it refuses with 409 not-signed-in, caught below — so there is no
+      // second thing a launch can answer with.
+      this.ownCommandId.set(command.id);
       await Promise.all([this.entry.refresh(), this.refreshSessions()]);
     } catch (error) {
       // The one refusal that is not a fault. A branch rather than the problem line, because it has

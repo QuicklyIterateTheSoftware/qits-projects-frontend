@@ -226,7 +226,17 @@ describe('AgentSession', () => {
     expect(service.branch()).toEqual({ kind: 'attached', commandId: 'c2' });
   });
 
-  it('renders a sign-in terminal in place and replays the launch it interrupted', async () => {
+  /**
+   * The refusal, the deliberate press, and the replay — in that order, which is the order that made
+   * this worth changing.
+   *
+   * <p>A signed-out launch used to answer a login terminal *instead of* the session, and this tab
+   * attached to it as if it were one. Now it refuses with `409 not-signed-in`, the tab says so, and
+   * the terminal opens only because `openSignIn` was pressed. What survives from before is the good
+   * half: the refused launch is held, and completing the sign-in issues it again rather than
+   * dropping the reader on a menu.
+   */
+  it('refuses when nobody is signed in, then replays the launch the sign-in interrupted', async () => {
     const service = await open(
       [command({ id: 'c1', status: 'EXITED', agentSessions: [session('s1')] })],
       [{ sessionId: 's1', subagents: [], children: [] }],
@@ -234,10 +244,32 @@ describe('AgentSession', () => {
 
     void service.startFresh('CLAUDE');
     await settle();
-    // Not signed in: the launch answers a login terminal with no lineage and the daemon's own name.
-    http
-      .expectOne('/projects/refinement-container/7/agents')
-      .flush({ command: command({ id: 'login1', actionName: 'Claude sign-in' }) });
+    http.expectOne('/projects/refinement-container/7/agents').flush(
+      {
+        error: 'not-signed-in',
+        agentType: 'CLAUDE',
+        message: 'Nobody has signed Claude Code in on this platform’s shared credential volume.',
+      },
+      { status: 409, statusText: 'Conflict' },
+    );
+    await settle();
+    await answer([command({ id: 'c1', status: 'EXITED', agentSessions: [session('s1')] })]);
+
+    expect(service.branch()).toEqual({
+      kind: 'signed-out',
+      harness: 'Claude Code',
+      message: 'Nobody has signed Claude Code in on this platform’s shared credential volume.',
+    });
+    // Nothing was attached: a refusal is not a session, and this is exactly what used to be hidden.
+    expect(sockets).toHaveLength(0);
+
+    // The press. Only now does a terminal exist, and it is the door's, not a substitution's.
+    void service.openSignIn();
+    await settle();
+    const door = http.expectOne('/projects/refinement-container/7/agents/sign-in');
+    expect(door.request.method).toBe('POST');
+    expect(door.request.body).toEqual({ agentType: 'CLAUDE' });
+    door.flush({ command: command({ id: 'login1', actionName: 'Claude sign-in' }) });
     await settle();
     await answer([command({ id: 'login1', actionName: 'Claude sign-in' })]);
 

@@ -54,56 +54,36 @@ const UNREACHABLE: readonly number[] = [0, 502, 503, 504];
 const FRESH: Omit<LaunchAgentRequest, 'surface'> = { scope: 'REPOSITORY', mode: 'INTERACTIVE' };
 
 /**
- * The substring the daemon used to put in a tickets-surface command's name.
+ * Which surface a command belongs to: **the key the command reports, and nothing else.**
  *
- * **A MIGRATION CRUTCH WITH AN EXPIRY, and not a contract.** It was a contract, and that is exactly
- * what the surface field removes: the run list had no field saying which front desk a session
- * belonged to, so the daemon wrote it into a *display string* ("Claude Code (tickets desk · …)") and
- * this file matched on it — a cross-repo contract living in a label, where renaming the label
- * silently moved every ticket session into the epics list.
+ * <p>There used to be a fallback here that read `" (tickets desk)"` out of the command's *name*,
+ * because the run list once had no field saying which front desk a session belonged to and the
+ * daemon wrote it into a display string. That was a cross-repo contract living in a label — rename
+ * the label and every ticket session moved into the epics list — and deleting it is what this whole
+ * epic was for. It is gone (task `46e32cb3`).
  *
- * <p>What is left of it reads **only commands launched before the daemon shipped `agentSurface`**.
- * It is scheduled for deletion by task `46e32cb3` once no live command lacks a surface; the sessions
- * that predate the cutover lose their grouping then, which is accepted, and after that the command's
- * name is free to change because nothing parses it any more.
- *
- * <p>Matched case-insensitively so a rename that changed only the casing did not split one desk's
- * history in two.
- */
-const TICKETS_MARK = 'tickets desk';
-
-/**
- * Which surface a command belongs to: **the key the command reports**, and the old name match only
- * where there is no key to read.
- *
- * <p>The asymmetry in the fallback is deliberate and survives from the desk era. A *named* command is
- * the tickets surface's; **everything else is the epics surface's**, including every command launched
- * before either existed. Reading it the other way round — epics commands must be named too — would
- * orphan all of that history and leave the epics panel offering a fresh session on a container full
- * of its own past work.
+ * <p>**Sessions launched before the cutover lose their desk grouping**, and that is the accepted
+ * trade. They report no surface, so they answer `''` and belong to neither panel — better than
+ * keeping a display-string contract alive for old rows forever. The other side of it is that the
+ * command's name is now free to change, because nothing parses it.
  *
  * <p>An unrecognised surface answers itself rather than being folded into one of the two: this panel
  * filters by equality, so a third key simply belongs to neither of its two instances, which is the
  * honest answer and not a guess.
  */
 export function surfaceOf(command: CommandDto): string {
-  const reported = command.agentSurface?.trim();
-  if (reported) {
-    return reported;
-  }
-  return command.actionName.toLowerCase().includes(TICKETS_MARK)
-    ? 'project.tickets'
-    : 'project.epics';
+  return command.agentSurface?.trim() ?? '';
 }
 
 /**
- * Whether a command is the sign-in terminal the launch path hands back instead of a session.
+ * Whether a running command is a sign-in terminal rather than an agent session.
  *
- * **A ROLLOUT CRUTCH WITH AN EXPIRY.** A launch does not hand one back any more: a daemon carrying
- * the shared library refuses with `409 {"error": "not-signed-in"}` and this panel offers
- * {@link RefinementSession.openSignIn} instead. But the *deployed* daemons still substitute, and
- * will until they are released — so this stays to recognise what they answer, and goes with them.
- * Nothing new should be built on it.
+ * <p>**No launch hands one back.** The substitution is gone from both daemons: a launch against a
+ * signed-out harness refuses with `409 {"error": "not-signed-in"}` and this panel offers
+ * {@link RefinementSession.openSignIn}, so the only sign-in terminal that exists is one somebody
+ * pressed for. This is still needed for exactly that: resolution must recognise a *deliberately
+ * opened* terminal in the command list, so it attaches to it instead of launching an agent behind a
+ * login the container is already waiting on.
  *
  * **Lineage alone is not enough, and that is a real trap.** A sign-in terminal is recognisable
  * because it has no session lineage — true, but a *fresh Kimi* launch also arrives with none,
@@ -148,11 +128,11 @@ export function isSignInTerminal(command: CommandDto): boolean {
  *
  * ## The sign-in terminal replays what it interrupted
  *
- * When the harness is not signed in, `POST /agents` answers a **login terminal** rather than a
- * session. It is a PTY like any other, so it renders in place; and when it closes, the launch it
- * interrupted is issued again, so completing the login continues what was actually asked for rather
- * than dropping the reader on a menu. The replay is capped, because a sign-in that keeps failing
- * must not become a launch loop.
+ * The terminal is opened deliberately — by {@link openSignIn} after a refusal, or found already
+ * running in the container by branch 2. Either way it is a PTY like any other, so it renders in
+ * place; and when it closes, the launch it interrupted is issued again, so completing the login
+ * continues what was actually asked for rather than dropping the reader on a menu. The replay is
+ * capped, because a sign-in that keeps failing must not become a launch loop.
  *
  * ## Detaching is not stopping, and stopping is not terminating
  *
@@ -526,16 +506,11 @@ export class RefinementSession {
       if (this.project() !== projectId) {
         return;
       }
-      if (isSignInTerminal(command)) {
-        // A daemon that has not been released yet, still substituting a login terminal for the
-        // session that was asked for. Handled so the panel is not broken during the rollout, and
-        // removed with the substitution — see {@link isSignInTerminal}.
-        this.held = request;
-        this.attach(command.id, 'signin');
-      } else {
-        this.held = null;
-        this.attach(command.id, 'attached');
-      }
+      // Whatever comes back is the session that was asked for. A daemon does not substitute a login
+      // terminal for it any more — it refuses with 409 not-signed-in, caught below — so there is no
+      // second thing a launch can answer with.
+      this.held = null;
+      this.attach(command.id, 'attached');
     } catch (error) {
       // The one refusal that is not a fault. It is a *branch* rather than the problem line, because
       // it has exactly one next step and the reader has to be able to take it — the problem line is

@@ -72,6 +72,9 @@ function running(id: string, over: Partial<CommandDto> = {}): CommandDto {
     kind: 'TERMINAL',
     launchedAt: AT,
     agentSessions: [{ sessionId: 's1', source: 'PINNED', recordedAt: AT }],
+    // Every live command carries its surface — the name match that used to place the ones without a
+    // surface is deleted, so a row that reports none belongs to no panel at all.
+    agentSurface: 'project.epics',
     ...over,
   };
 }
@@ -395,18 +398,25 @@ describe('RefinementPanel', () => {
   /**
    * One panel, two session surfaces, and the one thing that keeps them apart.
    *
-   * <p>The command reports the surface it was launched from, and that is what sorts these lists.
-   * **The commands in this block deliberately report none**, which is the other half: they are the
-   * shape of a run launched before the daemon shipped the field, so what they exercise is the
-   * migration crutch that reads the old `"(tickets desk)"` substring out of the command's *name*.
-   * That crutch has an expiry — task `46e32cb3` deletes it — and both directions of it are pinned
-   * here because getting either wrong puts one board's conversation on the other board's screen,
-   * under a heading that says it is about something else.
+   * <p>The command reports the surface it was launched from, and that is the **only** thing that
+   * sorts these lists. There used to be a fallback that read the old `"(tickets desk)"` substring
+   * out of the command's *name* for rows launched before the daemon shipped the field; task
+   * `46e32cb3` deleted it, so the runs below carry the key and the name is left deliberately
+   * misleading to prove nothing reads it. Both directions are pinned here because getting either
+   * wrong puts one board's conversation on the other board's screen, under a heading that says it is
+   * about something else.
    */
   describe('at the tickets surface', () => {
-    /** A pre-surface run, recognisable only by the name the daemon used to write the desk into. */
+    /**
+     * A tickets run. It keeps the legacy desk suffix in its name on purpose: the name is a label
+     * now, and a run that reports `project.tickets` belongs here whatever it is called.
+     */
     function triage(id: string, over: Partial<CommandDto> = {}): CommandDto {
-      return running(id, { actionName: 'Claude Code (tickets desk · repository MCP)', ...over });
+      return running(id, {
+        actionName: 'Claude Code (tickets desk · repository MCP)',
+        agentSurface: 'project.tickets',
+        ...over,
+      });
     }
 
     it('is named for triage rather than refinement, and says what it is for', async () => {
@@ -513,9 +523,9 @@ describe('RefinementPanel', () => {
   });
 
   /**
-   * The other direction of the same rule: an unnamed command is the epic desk's, and a named one is
-   * not — so the epic desk launches rather than adopting the tickets terminal, and still consults the
-   * lineage read, which is what keeps every pre-desk session resumable from this panel.
+   * The other direction of the same rule: a command reporting the tickets surface is not the epics
+   * panel's, so the epics panel launches rather than adopting the tickets terminal, and still
+   * consults the lineage read.
    */
   it('does not adopt the ticket desk’s running session onto the epics panel', async () => {
     await mount();
@@ -523,7 +533,7 @@ describe('RefinementPanel', () => {
 
     await flush('/projects/api/projects/p1/agent-container/ensure', { container: container() });
     await flush('/projects/container/p1/commands', {
-      entries: [{ command: running('tix-run', { actionName: 'Claude Code (tickets desk)' }) }],
+      entries: [{ command: running('tix-run', { agentSurface: 'project.tickets' }) }],
     });
     await flushHarness();
     await flush('/projects/container/p1/agent-sessions', { sessions: [] });
@@ -567,6 +577,39 @@ describe('RefinementPanel', () => {
     expect(sockets[0].url).toContain('/terminal/commands/reported');
     // Branch 1 answered at this surface: no launch, no lineage read.
     http.verify();
+  });
+
+  /**
+   * The accepted loss, pinned so it is a decision rather than a surprise.
+   *
+   * <p>A run launched before the daemon shipped `agentSurface` reports none, and the name match that
+   * used to place it is deleted. So it belongs to neither panel: the epics panel does not adopt it —
+   * even though its name is the plain "Claude agent" an epics run always had — and launches fresh
+   * instead. Old sessions lose their desk grouping, which is better than keeping a display-string
+   * contract alive for them forever.
+   */
+  it('leaves a run from before the surface existed to no panel at all', async () => {
+    await mount();
+    await press('Start');
+
+    await flush('/projects/api/projects/p1/agent-container/ensure', { container: container() });
+    await flush('/projects/container/p1/commands', {
+      entries: [{ command: running('pre-cutover', { agentSurface: undefined }) }],
+    });
+    await flushHarness();
+    await flush('/projects/container/p1/agent-sessions', { sessions: [] });
+
+    const launch = http.expectOne('/projects/container/p1/agents');
+    expect(launch.request.body).toEqual({
+      scope: 'REPOSITORY',
+      mode: 'INTERACTIVE',
+      surface: 'project.epics',
+    });
+    launch.flush({ command: running('e1') });
+    await settle();
+
+    expect(sockets).toHaveLength(1);
+    expect(sockets[0].url).not.toContain('pre-cutover');
   });
 
   /** And the other way: a run named for the old desk that reports the epics surface is the epics'. */

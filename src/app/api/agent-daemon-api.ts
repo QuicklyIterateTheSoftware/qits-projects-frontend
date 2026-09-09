@@ -106,9 +106,10 @@ export interface CommandDto {
    * Which surface started this run — the key {@link LaunchAgentRequest.surface} carried in.
    *
    * <p>Optional because two things answer nothing: a command launched before the daemon shipped the
-   * field, and the sign-in terminal, which nobody starts from anywhere in the product. A reader that
-   * needs a surface for an old row falls back — see
-   * {@link ../project/agent/refinement-session#surfaceOf} — and that fallback has an expiry.
+   * field, and the sign-in terminal, which nobody starts from anywhere in the product. There is no
+   * fallback for either — the name match that used to place old rows is deleted (see
+   * {@link ../project/agent/refinement-session#surfaceOf}), so a row without this key belongs to no
+   * surface.
    */
   readonly agentSurface?: string;
 }
