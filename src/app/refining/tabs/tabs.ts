@@ -39,7 +39,7 @@ export interface TabDef {
 export const STARTING_SLUG = 'starting';
 
 /**
- * The eight durable tabs, in their default order.
+ * The nine durable tabs, in their default order.
  *
  * Epic leads because refining produces the epic document. Chat is deliberately dormant on a bare
  * URL: it mounts only when called for, then remains alive under the usual tab-host contract.
@@ -50,6 +50,9 @@ export const STARTING_SLUG = 'starting';
  */
 export const DURABLE_TABS: readonly TabDef[] = [
   { slug: 'epic', label: 'Epic', inUrl: true, pinFront: true },
+  // Second, next to the epic it belongs to: the epic is the pitch and the dossier is the breakdown.
+  // It does not pin — only the epic does.
+  { slug: 'dossier', label: 'Dossier', inUrl: true },
   { slug: 'files', label: 'Files', inUrl: true },
   { slug: 'sketch', label: 'Sketch', inUrl: true },
   { slug: 'design', label: 'Design', inUrl: true },

@@ -12,6 +12,15 @@
   />
 
   <!--
+    In use / dangling: whether a dossier page inlines this sketch. A dangling one is safe to delete;
+    an in-use one leaves the dossier's copy standing but loses the chance to re-inline a fresh
+    version of it.
+  -->
+  @if (allRows().length) {
+    <app-use-filter [rows]="allRows()" [filter]="useFilter()" (chosen)="chooseUseFilter($event)" />
+  }
+
+  <!--
     The gallery is a document picker: one tile per drawing, plus “New”. Picking a tile opens that
     drawing on the canvas below, so the canvas always shows the tile that is lit.
   -->

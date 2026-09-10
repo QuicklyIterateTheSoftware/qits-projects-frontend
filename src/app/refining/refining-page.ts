@@ -43,6 +43,7 @@ import { ChatPanel } from './chat/chat-panel';
 import { PickedContext } from './chat/picked-context';
 import { DesignPanel } from './design/design-panel';
 import { DesignSelection } from './design/design-selection';
+import { DossierPanel } from './dossier/dossier-panel';
 import type { WebViewFreeze } from './design/freeze';
 import {
   EpicDocument,
@@ -175,6 +176,7 @@ interface Subject {
     Async,
     ChatPanel,
     DesignPanel,
+    DossierPanel,
     EpicActions,
     EpicDocument,
     FilesPanel,
@@ -866,6 +868,34 @@ export class RefiningPage {
 
   protected epicId(): string {
     return this.resolved()?.node.epic.id ?? '';
+  }
+
+  /** Whether the epic still takes writes. The Dossier tab renders read-only off this. */
+  protected epicRefining(): boolean {
+    return this.resolved()?.node.epic.status === 'REFINING';
+  }
+
+  /**
+   * The dossier page named in the URL. An unknown or missing slug is not an error: the panel
+   * normalises to the first page and says which one it settled on, and that is what
+   * {@link #dossierPageChosen} writes back.
+   */
+  protected dossierPage(): string | null {
+    return this.query().get('page');
+  }
+
+  /**
+   * Follow the panel's choice in the URL, **replacing** rather than pushing: the fragment — a
+   * heading — is what people step back through, not the page.
+   */
+  protected dossierPageChosen(slug: string): void {
+    if (this.query().get('page') === slug) return;
+    void this.router.navigate([], {
+      relativeTo: this.route,
+      queryParams: { page: slug },
+      queryParamsHandling: 'merge',
+      replaceUrl: true,
+    });
   }
 
   // ---- plumbing ---------------------------------------------------------------------------------

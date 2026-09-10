@@ -16,6 +16,7 @@ import { MODE_DRAW, MODE_ERASE } from 'atrament';
 import type { PromptAttachmentDto } from '../../api/prompt-attachments-api';
 import { PromptAttachmentsApi } from '../../api/prompt-attachments-api';
 import { WorkspaceEvents } from '../../api/workspace-events';
+import { UseFilterChips, filterByUse, type UseFilter } from '../figures/use-filter';
 import { Async } from '../../ui/async';
 import {
   IDLE,
@@ -158,7 +159,7 @@ const FLASH_MS = 2000;
 @Component({
   selector: 'app-sketch-panel',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [Async, QitsButton],
+  imports: [Async, QitsButton, UseFilterChips],
   templateUrl: './sketch-panel.html',
   styleUrl: './sketch-panel.css',
 })
@@ -413,14 +414,25 @@ export class SketchPanel {
 
   // ---- the gallery -----------------------------------------------------------------------------
 
-  protected readonly rows = computed<readonly PromptAttachmentDto[]>(() => {
+  protected readonly allRows = computed<readonly PromptAttachmentDto[]>(() => {
     const state = this.attachments();
     return state.kind === 'ready' ? state.value : [];
   });
 
+  /** Which of the two chips is lit. Neither, at first: the unfiltered gallery is where it opens. */
+  protected readonly useFilter = signal<UseFilter>(null);
+
+  protected readonly rows = computed<readonly PromptAttachmentDto[]>(() =>
+    filterByUse(this.allRows(), this.useFilter()),
+  );
+
+  protected chooseUseFilter(filter: UseFilter): void {
+    this.useFilter.set(filter);
+  }
+
   /** How many sketches this workspace already holds — the number the next label continues from. */
   private readonly sketchCount = computed(
-    () => this.rows().filter((row) => row.source === 'SKETCH').length,
+    () => this.allRows().filter((row) => row.source === 'SKETCH').length,
   );
 
   /** Which tile is picked. `null` is the "New" tile, and it is where the panel opens. */

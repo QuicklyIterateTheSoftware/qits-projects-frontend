@@ -37,6 +37,14 @@ export interface PromptAttachmentDto {
   readonly mimeType: string;
   readonly label: string;
   readonly source: PromptAttachmentSource;
+  /**
+   * Whether some dossier page of this refinement's epic inlines this sketch.
+   *
+   * What it means, and what the tab's tooltip says: a **dangling** sketch is safe to delete and an
+   * **in use** one is not — the dossier's copy stays either way, but deleting the source loses the
+   * ability to re-inline a fresh version of it.
+   */
+  readonly inUse?: boolean;
   readonly createdAt: string;
   /** Bare base64 — no `data:` prefix. Only the list read carries it. */
   readonly dataBase64?: string;

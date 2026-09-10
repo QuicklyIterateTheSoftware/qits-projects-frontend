@@ -287,4 +287,51 @@ describe('the remaining blocks', () => {
   it('reads a spaced rule as a rule rather than as a list', () => {
     expect(renderMarkdown('- - -')).toBe('<hr>');
   });
+
+  /**
+   * The renderer decides the tag, not the author.
+   *
+   * `renderer.html` stays `escapeHtml`, so an author-written `<iframe>` renders as visible text —
+   * which is why a design is inlined as ordinary image syntax and framed here, from the asset's
+   * kind. The third case is the one that keeps that from becoming a hole: a URL that is not a
+   * dossier asset **of this epic** is an ordinary image, never a frame.
+   */
+  describe('dossier figures', () => {
+    const figures = {
+      epicId: 'e1',
+      kinds: new Map<string, 'IMAGE' | 'DESIGN'>([
+        ['a1', 'IMAGE'],
+        ['a2', 'DESIGN'],
+      ]),
+    };
+
+    const line = (epicId: string, assetId: string) =>
+      `![A figure](/epics/${epicId}/dossier-assets/${assetId}/content)`;
+
+    it('draws an IMAGE asset as an image', () => {
+      const html = renderMarkdown(line('e1', 'a1'), figures);
+
+      expect(html).toContain('<img src="/epics/e1/dossier-assets/a1/content"');
+      expect(html).not.toContain('<iframe');
+    });
+
+    it('frames a DESIGN asset, sandboxed and never same-origin', () => {
+      const html = renderMarkdown(line('e1', 'a2'), figures);
+
+      expect(html).toContain('<iframe src="/epics/e1/dossier-assets/a2/content" sandbox');
+      expect(html).not.toContain('allow-same-origin');
+      expect(html).toContain('title="A figure"');
+    });
+
+    it('does not frame an asset URL belonging to another epic', () => {
+      const html = renderMarkdown(line('e2', 'a2'), figures);
+
+      expect(html).toContain('<img');
+      expect(html).not.toContain('<iframe');
+    });
+
+    it('frames nothing at all when no dossier context is given', () => {
+      expect(renderMarkdown(line('e1', 'a2'))).toContain('<img');
+    });
+  });
 });

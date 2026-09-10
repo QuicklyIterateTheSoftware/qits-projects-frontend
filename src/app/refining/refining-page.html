@@ -79,6 +79,15 @@
               />
             } @else if (tab.slug === 'files') {
               <app-files-panel [workspaceRowId]="ws.id" [visible]="selected() === 'files'" />
+            } @else if (tab.slug === 'dossier') {
+              <app-dossier-panel
+                [epicId]="epicId()"
+                [workspaceRowId]="ws.id"
+                [visible]="selected() === 'dossier'"
+                [editable]="epicRefining()"
+                [pageSlug]="dossierPage()"
+                (pageChosen)="dossierPageChosen($event)"
+              />
             } @else if (tab.slug === 'sketch') {
               <app-sketch-panel [workspaceRowId]="ws.id" [visible]="selected() === 'sketch'" />
             } @else if (tab.slug === 'design') {
@@ -148,8 +157,8 @@
     <section class="pending" aria-label="Nothing resolved">
       <h2>Nothing has resolved for this address yet</h2>
       <p>
-        No epic and no refining workspace on <code>{{ branch() }}</code> — and nothing failed either,
-        so there is nothing to retry automatically.
+        No epic and no refining workspace on <code>{{ branch() }}</code> — and nothing failed
+        either, so there is nothing to retry automatically.
       </p>
       <qits-button variant="ghost" (pressed)="retryAll()">Try again</qits-button>
     </section>

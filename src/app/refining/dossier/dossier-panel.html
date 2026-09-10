@@ -1,0 +1,162 @@
+<section class="dossier" aria-label="Dossier">
+  <app-async
+    [state]="pages()"
+    loadingLabel="Loading the dossier"
+    errorLabel="Could not load the dossier"
+    (retry)="reload()"
+  />
+
+  @if (pages().kind === 'ready' && rows().length === 0) {
+    <div class="first">
+      <app-empty
+        message="The epic is the pitch; the dossier is the breakdown, one page per part."
+      />
+      @if (editable()) {
+        <qits-button variant="primary" [busy]="busy() === 'add'" (pressed)="addPage()"
+          >+ page</qits-button
+        >
+      }
+    </div>
+  } @else {
+    <div class="split">
+      <!-- Left: the pages, and under the current one its own headings. -->
+      <nav class="rail" aria-label="Dossier pages">
+        <ul class="pages">
+          @for (page of rows(); track page.id) {
+            <li>
+              <button
+                type="button"
+                class="page"
+                [class.on]="isCurrent(page)"
+                [attr.aria-current]="isCurrent(page) ? 'page' : null"
+                [attr.draggable]="editable()"
+                (dragstart)="onDragStart(page)"
+                (dragover)="$event.preventDefault()"
+                (drop)="onDrop(page)"
+                (click)="open(page)"
+              >
+                {{ page.title }}
+              </button>
+              @if (isCurrent(page) && headings().length) {
+                <ul class="headings">
+                  @for (heading of headings(); track heading.id) {
+                    <li [class]="'depth-' + heading.level">
+                      <a
+                        [href]="'#' + heading.id"
+                        [class.on]="currentHeading() === heading.id"
+                        (click)="chooseHeading(heading.id)"
+                        >{{ heading.text }}</a
+                      >
+                    </li>
+                  }
+                </ul>
+              }
+            </li>
+          }
+        </ul>
+        @if (editable()) {
+          <qits-button variant="ghost" [busy]="busy() === 'add'" (pressed)="addPage()"
+            >+ page</qits-button
+          >
+        }
+      </nav>
+
+      <!-- Right: the page itself. -->
+      <article class="page-body">
+        @if (current(); as page) {
+          <header class="page-head">
+            @if (renaming()) {
+              <label class="rename">
+                <span class="sr">A name for this page</span>
+                <input
+                  type="text"
+                  [value]="renameValue()"
+                  (input)="renameValue.set($any($event.target).value)"
+                  (keydown.enter)="saveRename()"
+                />
+              </label>
+              <qits-button variant="primary" [busy]="busy() === 'rename'" (pressed)="saveRename()"
+                >Save</qits-button
+              >
+              <qits-button variant="ghost" (pressed)="cancelRename()">Cancel</qits-button>
+            } @else {
+              <h2>{{ page.title }}</h2>
+              @if (editable()) {
+                <qits-button variant="ghost" (pressed)="startRename()">Rename</qits-button>
+                @if (editing()) {
+                  <qits-button variant="ghost" (pressed)="stopEditing()">Done</qits-button>
+                  <qits-button
+                    variant="ghost"
+                    [busy]="busy() === 'figure'"
+                    (pressed)="insertFigure('IMAGE')"
+                    >from Sketch</qits-button
+                  >
+                  <qits-button
+                    variant="ghost"
+                    [busy]="busy() === 'figure'"
+                    (pressed)="insertFigure('DESIGN')"
+                    >from Design</qits-button
+                  >
+                } @else {
+                  <qits-button variant="ghost" (pressed)="startEditing()">Edit</qits-button>
+                }
+                <qits-button variant="ghost" [busy]="busy() === 'remove'" (pressed)="removePage()"
+                  >Delete</qits-button
+                >
+              }
+            }
+          </header>
+
+          @if (failure(); as message) {
+            <p class="fault" role="alert">{{ message }}</p>
+          }
+
+          <!--
+            A refused write is never dropped. What the person typed stands on the left, what is
+            current stands on the right, and retrying writes theirs against the version that is now
+            current — which is the ordinary case on a route where nobody accepts a write.
+          -->
+          @if (conflict(); as clash) {
+            <section class="clash" role="alert">
+              <p>
+                This page moved underneath you. Nothing of yours was written — here is what you
+                typed, beside what the page says now.
+              </p>
+              <div class="sides">
+                <pre class="mine">{{ clash.mine }}</pre>
+                <pre class="theirs">{{ clash.current.body }}</pre>
+              </div>
+              <qits-button
+                variant="primary"
+                [busy]="busy() === 'retry'"
+                (pressed)="retryConflicted()"
+                >Write mine over it</qits-button
+              >
+              <qits-button variant="ghost" (pressed)="discardConflicted()"
+                >Keep what is there</qits-button
+              >
+            </section>
+          }
+
+          @if (editing()) {
+            <label class="dossier-editor">
+              <span class="sr">The page's markdown</span>
+              <textarea
+                rows="24"
+                [value]="draft() ?? ''"
+                (input)="onInput($any($event.target).value)"
+                (blur)="flushSave()"
+              ></textarea>
+            </label>
+          } @else {
+            <!--
+              `[innerHTML]` with no bypass: renderMarkdown keeps raw HTML inert, and the one element
+              it emits that is not ordinary markup is the sandboxed frame it decides itself.
+            -->
+            <div #rendered class="rendered" [innerHTML]="html()"></div>
+          }
+        }
+      </article>
+    </div>
+  }
+</section>

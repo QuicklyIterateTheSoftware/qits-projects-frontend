@@ -25,6 +25,7 @@ import {
   type Loadable,
 } from '../../ui/loadable';
 import { DesignSelection } from './design-selection';
+import { UseFilterChips, filterByUse, type UseFilter } from '../figures/use-filter';
 
 /**
  * The Design tab: the frozen pages of this application, as documents.
@@ -66,7 +67,7 @@ import { DesignSelection } from './design-selection';
 @Component({
   selector: 'app-design-panel',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [Async, Empty, QitsButton],
+  imports: [Async, Empty, QitsButton, UseFilterChips],
   templateUrl: './design-panel.html',
   styleUrl: './design-panel.css',
 })
@@ -147,11 +148,22 @@ export class DesignPanel {
    * The gallery, **most recently updated first**. With no status to privilege a row, recency is what
    * puts the design somebody is working on at the front.
    */
-  protected readonly rows = computed<readonly DesignDto[]>(() => {
+  protected readonly allRows = computed<readonly DesignDto[]>(() => {
     const state = this.designs();
     const rows = state.kind === 'ready' ? state.value : [];
     return [...rows].sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
   });
+
+  /** Which of the two chips is lit. Neither, at first: the unfiltered list is the landing state. */
+  protected readonly useFilter = signal<UseFilter>(null);
+
+  protected readonly rows = computed<readonly DesignDto[]>(() =>
+    filterByUse(this.allRows(), this.useFilter()),
+  );
+
+  protected chooseUseFilter(filter: UseFilter): void {
+    this.useFilter.set(filter);
+  }
 
   /**
    * The design the tiles point at.

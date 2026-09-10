@@ -536,13 +536,14 @@ describe('RefiningPage', () => {
 
   describe('the tab row', () => {
     /**
-     * The epic document leads, followed by the workspace tools inherited from workspace detail.
+     * The epic document leads, the dossier sits beside it, and the workspace tools follow.
      */
-    it('keeps the epic first and all workspace tools after it', async () => {
+    it('keeps the epic first, the dossier second and all workspace tools after them', async () => {
       await open();
 
       expect(tabs().map((tab) => tab.textContent?.trim())).toEqual([
         'Epic',
+        'Dossier',
         'Files',
         'Sketch',
         'Design',

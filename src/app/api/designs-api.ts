@@ -31,6 +31,13 @@ import { QITS_API_BASE } from './api-base';
 export interface DesignDto {
   readonly id: string;
   readonly title: string;
+  /**
+   * Whether some dossier page of this refinement's epic inlines this design.
+   *
+   * A **dangling** design is safe to delete and an **in use** one is not — the dossier's copy stays
+   * either way, but deleting the source loses the ability to re-inline a fresh version.
+   */
+  readonly inUse?: boolean;
   /** The application route this was frozen from, as the page saw it. */
   readonly sourceRoute: string | null;
   /** UTF-8 size of the stored markup, which is what a tile draws instead of the markup. */
@@ -107,9 +114,7 @@ export class DesignsApi {
    * silently dropping either side is the one thing this door exists to prevent.
    */
   async write(refinementId: number, designId: string, write: DesignWrite): Promise<DesignDto> {
-    return await firstValueFrom(
-      this.http.put<DesignDto>(this.row(refinementId, designId), write),
-    );
+    return await firstValueFrom(this.http.put<DesignDto>(this.row(refinementId, designId), write));
   }
 
   /** Retitle a design, leaving its markup alone. */

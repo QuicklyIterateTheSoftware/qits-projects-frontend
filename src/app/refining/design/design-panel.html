@@ -15,6 +15,15 @@
     <app-empty message="Freeze a page from the Web view tab to start." />
   }
 
+  <!--
+    In use / dangling: whether a dossier page inlines this design. A dangling one is safe to delete;
+    an in-use one leaves the dossier's copy standing but loses the chance to re-inline a fresh
+    version.
+  -->
+  @if (allRows().length) {
+    <app-use-filter [rows]="allRows()" [filter]="useFilter()" (chosen)="chooseUseFilter($event)" />
+  }
+
   <!-- One tile per design. Picking a tile opens that page in the frame below. -->
   <ul class="gallery" aria-label="Designs on this refinement">
     @for (design of rows(); track design.id) {
