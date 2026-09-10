@@ -805,6 +805,44 @@ export interface ReleaseRequestDto {
    */
   readonly gateTicketId?: string | null;
   readonly detail: string | null;
+  /**
+   * **Whether a person has to sign this release off** — the second gate, beside the build gate. A
+   * green build is not enough on a repository whose releases are approved (today the project
+   * wrapper): the request stays `PENDING` until somebody says yes.
+   *
+   * <p>Derived by the service from the repository's archetype and never stored on the request, which
+   * is what makes a policy change reach the requests that are already open. Optional here for the
+   * ordinary reason every field on this DTO is: this SPA ships ahead of the service that grew it, and
+   * an answer from a build older than the field must read as "no approval gate" — which is exactly
+   * what `undefined` means to every reader below, none of which draws an approval affordance without
+   * a `true`.
+   */
+  readonly approvalRequired?: boolean;
+  /**
+   * Where the approval gate stands: `NOT_REQUIRED`, `WAITING`, `APPROVED` or `DECLINED`.
+   *
+   * <p>A plain string rather than a union, the same three-valued honesty `state` and `priority` are
+   * typed with and for the service's own stated reason: the vocabulary may grow, and a build of this
+   * SPA that cannot type a fifth word would fail to draw a request it is otherwise perfectly able to
+   * show.
+   *
+   * <p>**It is an answer about the request's CURRENT `mergedSha`.** An approval is a statement about
+   * content, so a push that re-folds the request moves it back to `WAITING` with no state to clear —
+   * the decision below simply no longer names the fold the request is on.
+   */
+  readonly approvalState?: string;
+  /**
+   * Who made the current decision, when, and what they said about it — **null together** where there
+   * is none: a repository nobody has to ask, a fold nobody has judged, and a fold whose decisions
+   * were all made against a sha the request has since moved past, which are one answer on purpose.
+   *
+   * <p>They carry whichever decision is current, **a decline included**. `approvalState` already
+   * says which it was, so a second neutral trio beside these would be two sets of the same three
+   * fields and one of them would be read while the other was missed.
+   */
+  readonly approvedBy?: string | null;
+  readonly approvedAt?: string | null;
+  readonly approvalNote?: string | null;
   readonly conflict: MergeConflictDto | null;
   readonly version: string | null;
   readonly releasedSha: string | null;
@@ -837,6 +875,49 @@ export interface ReleaseRequestsResponse {
 /** The single-request envelope, which the create, the read and the withdraw all answer with. */
 export interface ReleaseRequestResponse {
   readonly request: ReleaseRequestDto;
+}
+
+/**
+ * One CI run's terminal verdict about one commit, as qits-projects forwards it.
+ *
+ * <p>`status` is **qits-ci's own word** — `SUCCESS`, `FAILED`, `TIMED_OUT` and `CONFIG_ERROR`
+ * today — and it is a plain string for the reason every open vocabulary on this file is: the
+ * publisher owns it, it may grow, and a word this build has never heard of should be drawn as
+ * itself rather than fail to type or be guessed into a colour. Only `SUCCESS` is read as a pass
+ * anywhere in this SPA; everything else is drawn as a refusal, which is the safe direction for a
+ * word nobody here knows.
+ *
+ * <p>`gating` is whether this run's verdict is one the release gate actually waits on. It is not
+ * decoration: a repository runs pipelines that have nothing to do with releasing, and a red one of
+ * those is a fact worth showing and **not** a reason a release is stuck. A panel that drew the two
+ * alike would send somebody to fix a build that was never blocking anything.
+ *
+ * <p>`finishedAt` is always set, because only terminal runs are answered here — a queued or running
+ * build does not appear at all, which is why an empty list means "no verdict yet" and never "no
+ * run".
+ */
+export interface CommitBuildStatusDto {
+  /** qits-ci's own run id — the coordinate its `runs/:runId` page is addressed by. */
+  readonly runId: string;
+  readonly status: string;
+  /** The branch the run was made on, which for a release request is its backing branch. */
+  readonly branch: string;
+  readonly gating: boolean;
+  readonly finishedAt: string;
+}
+
+/**
+ * Every verdict recorded for one commit, **newest first** — the service's order, which this SPA
+ * keeps rather than re-sorts.
+ *
+ * <p>The list is deliberately not reduced to a single word on the service side, and this SPA does
+ * not reduce it either: a fold can be built more than once (a re-run, a second pipeline, a gating
+ * and a non-gating recipe over the same sha), and "the" status of a commit is a summary that hides
+ * exactly the run somebody is looking for. Each verdict is drawn as its own line, with its own link
+ * into qits-ci.
+ */
+export interface ListCommitBuildsResponse {
+  readonly builds: readonly CommitBuildStatusDto[];
 }
 
 /**

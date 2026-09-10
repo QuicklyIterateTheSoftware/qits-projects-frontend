@@ -1,6 +1,8 @@
 import type { ReleaseRequestDto, ReleaseRequestSourceDto } from '../api/dto';
 import {
   RELEASE_PRIORITIES,
+  approvalOutstanding,
+  awaitingApproval,
   canPrioritiseSource,
   canSetPriority,
   canWithdraw,
@@ -96,25 +98,118 @@ describe('release-requests-model', () => {
   });
 
   describe('releaseStateBadge', () => {
+    /** The badge takes the request, not the word: one state now draws two ways. */
+    const badge = (state: string) => releaseStateBadge(request({ state }));
+
     it('gives each stored state a tone, and tells the two refusals apart', () => {
-      expect(releaseStateBadge('PENDING')).toEqual({ label: 'pending', tone: 'info' });
-      expect(releaseStateBadge('READY')).toEqual({ label: 'ready', tone: 'info' });
-      expect(releaseStateBadge('RELEASED')).toEqual({ label: 'released', tone: 'success' });
+      expect(badge('PENDING')).toEqual({ label: 'pending', tone: 'info' });
+      expect(badge('READY')).toEqual({ label: 'ready', tone: 'info' });
+      expect(badge('RELEASED')).toEqual({ label: 'released', tone: 'success' });
       // A red build is the platform working and the request re-arms itself; a failed release is
       // the one a person has to do something about.
-      expect(releaseStateBadge('REJECTED').tone).toBe('warning');
-      expect(releaseStateBadge('FAILED').tone).toBe('danger');
-      expect(releaseStateBadge('WITHDRAWN').tone).toBe('neutral');
+      expect(badge('REJECTED').tone).toBe('warning');
+      expect(badge('FAILED').tone).toBe('danger');
+      expect(badge('WITHDRAWN').tone).toBe('neutral');
     });
 
     /** Sources disagreeing about content is not the platform breaking, and a push clears it. */
     it('colours a conflict like a rejection rather than like a failure', () => {
-      expect(releaseStateBadge('CONFLICTED')).toEqual({ label: 'conflicted', tone: 'warning' });
+      expect(badge('CONFLICTED')).toEqual({ label: 'conflicted', tone: 'warning' });
     });
 
     it('draws a state this build has never heard of as itself, in no colour at all', () => {
-      expect(releaseStateBadge('RELEASING')).toEqual({ label: 'releasing', tone: 'neutral' });
-      expect(releaseStateBadge('')).toEqual({ label: 'unknown', tone: 'neutral' });
+      expect(badge('RELEASING')).toEqual({ label: 'releasing', tone: 'neutral' });
+      expect(badge('')).toEqual({ label: 'unknown', tone: 'neutral' });
+    });
+
+    /**
+     * The reading the whole second gate exists for. A pending request nobody has to approve is the
+     * platform working; a pending request waiting on a person will sit there for ever unless
+     * somebody opens it, and the two must not look alike on a list that is scanned.
+     */
+    it('says a pending request whose approval is outstanding is awaiting approval', () => {
+      expect(
+        releaseStateBadge(
+          request({ state: 'PENDING', approvalRequired: true, approvalState: 'WAITING' }),
+        ),
+      ).toEqual({ label: 'awaiting approval', tone: 'warning' });
+    });
+
+    it('leaves an ordinary pending request pending', () => {
+      expect(badge('PENDING').label).toBe('pending');
+      expect(
+        releaseStateBadge(
+          request({ state: 'PENDING', approvalRequired: false, approvalState: 'NOT_REQUIRED' }),
+        ).label,
+      ).toBe('pending');
+    });
+
+    /** Approved and declined are both *decided*: the gate is answered and the state speaks again. */
+    it('goes back to the state once the fold has been judged', () => {
+      expect(
+        releaseStateBadge(
+          request({
+            state: 'PENDING',
+            approvalRequired: true,
+            approvalState: 'APPROVED',
+            approvedBy: 'someone',
+          }),
+        ).label,
+      ).toBe('pending');
+      expect(
+        releaseStateBadge(
+          request({ state: 'REJECTED', approvalRequired: true, approvalState: 'DECLINED' }),
+        ),
+      ).toEqual({ label: 'rejected', tone: 'warning' });
+    });
+
+    /**
+     * A `READY` request has passed both gates by construction — the service does not mark one ready
+     * with an approval outstanding — and a badge that said otherwise would be arguing with the state.
+     */
+    it('never says awaiting approval about a request that is not pending', () => {
+      expect(
+        releaseStateBadge(
+          request({ state: 'READY', approvalRequired: true, approvalState: 'WAITING' }),
+        ).label,
+      ).toBe('ready');
+    });
+  });
+
+  /**
+   * The two readings the panel and the badge share. What is worth pinning is the **absence**: this
+   * SPA ships ahead of the service, so every answer on the day it lands carries none of these fields,
+   * and that has to read as "no approval gate" rather than as "nobody has approved it".
+   */
+  describe('the approval gate', () => {
+    it('is not on a request the service says nothing about', () => {
+      expect(approvalOutstanding(request())).toBe(false);
+      expect(awaitingApproval(request())).toBe(false);
+    });
+
+    it('is not on a repository whose releases need no person', () => {
+      expect(
+        approvalOutstanding(request({ approvalRequired: false, approvalState: 'NOT_REQUIRED' })),
+      ).toBe(false);
+    });
+
+    it('is outstanding while the fold is unjudged, and answered once it is', () => {
+      const gated = { approvalRequired: true } as const;
+      expect(approvalOutstanding(request({ ...gated, approvalState: 'WAITING' }))).toBe(true);
+      expect(approvalOutstanding(request({ ...gated, approvalState: 'APPROVED' }))).toBe(false);
+      expect(approvalOutstanding(request({ ...gated, approvalState: 'DECLINED' }))).toBe(false);
+    });
+
+    /**
+     * A request that needs a person and answers a word this build has never heard of still needs a
+     * person. Guessing the other way would leave a wrapper release waiting with no affordance on the
+     * page to be the person it waits for.
+     */
+    it('reads an unknown word — and a missing one — as still waiting', () => {
+      expect(approvalOutstanding(request({ approvalRequired: true }))).toBe(true);
+      expect(
+        approvalOutstanding(request({ approvalRequired: true, approvalState: 'ESCALATED' })),
+      ).toBe(true);
     });
   });
 

@@ -141,11 +141,71 @@ const PRIORITY_TONES: Readonly<Record<string, QitsBadgeTone>> = {
 };
 
 /**
- * What one state is drawn as. An unknown word is shown **as itself**, in the neutral tone — the
- * same three-valued honesty the runtime badge on the refining page uses, and the reason `state` is
- * typed as a plain string.
+ * Whether the approval gate on this request is still open — nobody has judged the fold it is on now.
+ *
+ * <p>**`approvalRequired` is the only thing that turns this on**, and it is optional: a service build
+ * older than the field answers `undefined`, which reads as "no approval gate" and draws nothing
+ * anywhere. That is the ordinary state of affairs on the day this SPA ships, since it is released
+ * before the service that grew the field.
+ *
+ * <p>A missing `approvalState` on a request that *does* require approval is read as `WAITING` rather
+ * than as "unknown, say nothing": the request needs a person by the service's own answer, and the
+ * failure mode of guessing the other way is a wrapper release that waits for somebody with no
+ * affordance on the page to be that somebody. Every word that is neither of the two decisions is
+ * therefore outstanding — including one this build has never heard of, on the same argument.
+ *
+ * <p>It is a question about the request's **current fold** and needs no sha to ask, because the
+ * service derives the three decision fields at that fold: a push that re-folds the request answers
+ * `WAITING` again on its own, with nothing to clear here.
  */
-export function releaseStateBadge(state: string): ReleaseStateBadge {
+export function approvalOutstanding(request: ReleaseRequestDto): boolean {
+  if (request.approvalRequired !== true) {
+    return false;
+  }
+  const word = request.approvalState;
+  return word !== 'APPROVED' && word !== 'DECLINED';
+}
+
+/**
+ * Whether this request is **stopped on a person**: it is pending, its repository's releases have to
+ * be approved, and the fold it is on has not been judged.
+ *
+ * <p>The state is in the reading and it is `PENDING` alone. A `READY` request has passed both gates
+ * by construction, and every settled state has stopped for a reason of its own that a second sentence
+ * about approval would only argue with — a `REJECTED` request whose fold was declined says *rejected*,
+ * which is the truth a reader needs, and its decline is drawn beneath it by the gates panel.
+ *
+ * <p>This is what the badge is drawn from, and it is worth a name of its own rather than being
+ * inlined there: the panel asks the same question to decide whether to offer the two buttons, and
+ * "the badge says a person is needed" and "a person is offered the decision" drifting apart is
+ * exactly the bug that would not be noticed.
+ */
+export function awaitingApproval(request: ReleaseRequestDto): boolean {
+  return request.state === 'PENDING' && approvalOutstanding(request);
+}
+
+/**
+ * What one request's state is drawn as. An unknown word is shown **as itself**, in the neutral tone —
+ * the same three-valued honesty the runtime badge on the refining page uses, and the reason `state`
+ * is typed as a plain string.
+ *
+ * <p><b>It takes the request rather than the word, because one state now draws two ways.</b> A
+ * `PENDING` request is ordinarily the platform working — the gates are being asked, nothing is
+ * needed from anybody — and that is `info`. A pending request whose repository's releases have to be
+ * approved and whose fold nobody has judged is not that: it will sit there for ever unless a person
+ * opens it and says yes, and a list that drew it identically to the one the build gate is still
+ * chewing on would hide the only row on the page that is waiting for its reader.
+ *
+ * <p>`warning` rather than a fourth shade of blue, for that reason and no other: the tone here means
+ * "this one is on you", which is what it means on `REJECTED` and `CONFLICTED` too — a state that has
+ * stopped and needs somebody. It is deliberately not `danger`, which is reserved for the platform
+ * itself having failed; nothing is wrong with a release waiting to be approved.
+ */
+export function releaseStateBadge(request: ReleaseRequestDto): ReleaseStateBadge {
+  if (awaitingApproval(request)) {
+    return { label: 'awaiting approval', tone: 'warning' };
+  }
+  const state = request.state;
   return {
     label: (state || 'unknown').toLowerCase(),
     tone: STATE_TONES[state] ?? 'neutral',
@@ -161,11 +221,7 @@ export function releaseStateBadge(state: string): ReleaseStateBadge {
  * non-retryable failure on a push — so a machine's request in one of them is a repository that has
  * quietly stopped moving with no reader at the end of it. That pair is what the badge says.
  */
-const UNATTENDED_AND_BLOCKED: ReadonlySet<string> = new Set([
-  'REJECTED',
-  'CONFLICTED',
-  'FAILED',
-]);
+const UNATTENDED_AND_BLOCKED: ReadonlySet<string> = new Set(['REJECTED', 'CONFLICTED', 'FAILED']);
 
 /**
  * The badge for a request **nobody is waiting on that has stopped**, or nothing at all.

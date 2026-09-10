@@ -109,7 +109,7 @@ import { ReleaseSources } from './release-sources';
         <ul class="requests">
           @for (request of rows; track request.id) {
             <li class="request">
-              @let badge = stateBadge(request.state);
+              @let badge = stateBadge(request);
               <div class="row">
                 <qits-badge [label]="badge.label" [tone]="badge.tone" />
                 @if (priorityBadge(request.priority); as priority) {
