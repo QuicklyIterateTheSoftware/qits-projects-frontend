@@ -12,25 +12,22 @@ const AT = '2026-08-23T09:00:00Z';
 const design = (over: Partial<DesignDto> = {}): DesignDto => ({
   id: 'd1',
   title: 'Projects overview',
-  status: 'ACTIVE',
-  basedOnDesignId: null,
-  note: null,
   sourceRoute: '/epics',
   htmlBytes: 12288,
   truncated: false,
+  version: 0,
   createdBy: 'kim',
   createdAt: AT,
   updatedAt: AT,
   ...over,
 });
 
-const proposal = (over: Partial<DesignDto> = {}): DesignDto =>
+/** A second document. Nothing distinguishes it from the first but its id and its recency. */
+const other = (over: Partial<DesignDto> = {}): DesignDto =>
   design({
     id: 'd2',
     title: 'Projects overview, wider',
-    status: 'PROPOSED',
-    basedOnDesignId: 'd1',
-    note: 'Widened the epic column.',
+    updatedAt: '2026-08-24T09:00:00Z',
     ...over,
   });
 
@@ -58,9 +55,9 @@ class PanelHost {
  * and a panel that drew the frame off the listing would show an empty page — which is why the
  * srcdoc is asserted against what the *single* read answered.
  *
- * **A resolve is followed to the row that survived.** `REPLACE` deletes the proposal and leaves its
- * base, so a panel that kept its own id would sit pointed at a row that no longer exists. The
- * service says which one is left, and this asserts that the panel believes it.
+ * **Nothing here is a proposal.** There is no badge, no review strip and no decision; a write is
+ * live when it lands, and the 409 is what a person meets instead — which is why the stale-write
+ * message is asserted the way the size-cap one is.
  *
  * **The visibility rule is asserted.** A hint arriving behind another tab is spent as one catch-up
  * read on return, not as a fetch nobody is looking at.
@@ -75,7 +72,7 @@ describe('DesignPanel', () => {
     get: ReturnType<typeof vi.fn>;
     create: ReturnType<typeof vi.fn>;
     rename: ReturnType<typeof vi.fn>;
-    resolve: ReturnType<typeof vi.fn>;
+    write: ReturnType<typeof vi.fn>;
     remove: ReturnType<typeof vi.fn>;
   };
 
@@ -90,7 +87,7 @@ describe('DesignPanel', () => {
       })),
       create: vi.fn(),
       rename: vi.fn(async (_row: number, id: string, title: string) => design({ id, title })),
-      resolve: vi.fn(async () => design()),
+      write: vi.fn(async () => design()),
       remove: vi.fn(async () => undefined),
     };
 
@@ -141,14 +138,21 @@ describe('DesignPanel', () => {
     expect(tiles()).toHaveLength(0);
   });
 
-  it('draws one tile per design, with its route, size and proposal badge', async () => {
-    await open([design({ truncated: true }), proposal()]);
+  it('draws one tile per design, with its route and size', async () => {
+    await open([design({ truncated: true }), other({ title: 'Wider overview' })]);
 
     expect(tiles()).toHaveLength(2);
     expect(tile('Projects overview').textContent).toContain('/epics');
     expect(tile('Projects overview').textContent).toContain('12 kB');
     expect(tile('Projects overview').textContent).toContain('truncated');
-    expect(tile('Projects overview, wider').textContent).toContain('Proposal');
+    // No badge on any tile: no row is privileged over another.
+    expect(text()).not.toContain('Proposal');
+  });
+
+  it('puts the most recently updated design first', async () => {
+    await open([design(), other()]);
+
+    expect(tiles()[0].textContent).toContain('Projects overview, wider');
   });
 
   it('reads the markup only when a tile is opened, and frames what came back', async () => {
@@ -164,64 +168,7 @@ describe('DesignPanel', () => {
     expect(frame()?.getAttribute('sandbox')).toBe('allow-same-origin');
   });
 
-  describe('a proposal', () => {
-    beforeEach(async () => {
-      await open([design(), proposal()]);
-      await openTile('Projects overview, wider');
-    });
-
-    it('shows the agent’s note and offers both pages', () => {
-      expect(text()).toContain('Widened the epic column.');
-      expect(frame()?.getAttribute('srcdoc')).toContain('page d2');
-
-      buttonNamed('Current').click();
-      fixture.detectChanges();
-      expect(api.get).toHaveBeenCalledWith(7, 'd1');
-    });
-
-    it('replaces the original and follows the row that survived', async () => {
-      // The proposal is gone once it is folded in; only its base is left.
-      catalog = [design()];
-      buttonNamed('Replace original').click();
-      await settle();
-      fixture.detectChanges();
-
-      expect(api.resolve).toHaveBeenCalledWith(7, 'd2', 'REPLACE');
-      // The service answered d1, so that is what is open — d2 is gone.
-      expect(api.list).toHaveBeenCalledTimes(2);
-      expect(element().querySelector('.tile.on')?.textContent).toContain('Projects overview');
-    });
-
-    it('keeps the proposal as a design of its own', async () => {
-      buttonNamed('Keep as new').click();
-      await settle();
-      fixture.detectChanges();
-
-      expect(api.resolve).toHaveBeenCalledWith(7, 'd2', 'KEEP');
-    });
-
-    it('discards the proposal and closes the frame', async () => {
-      catalog = [design()];
-      buttonNamed('Discard').click();
-      await settle();
-      fixture.detectChanges();
-
-      expect(api.remove).toHaveBeenCalledWith(7, 'd2');
-      expect(frame()).toBeNull();
-    });
-
-    it('names the over-the-cap failure rather than printing its status', async () => {
-      api.resolve.mockRejectedValueOnce(new HttpErrorResponse({ status: 413 }));
-
-      buttonNamed('Keep as new').click();
-      await settle();
-      fixture.detectChanges();
-
-      expect(text()).toContain('over the size limit');
-    });
-  });
-
-  describe('a design of record', () => {
+  describe('an opened design', () => {
     beforeEach(async () => {
       await open([design()]);
       await openTile('Projects overview');
@@ -241,8 +188,34 @@ describe('DesignPanel', () => {
       await settle();
       fixture.detectChanges();
 
-      expect(api.rename).toHaveBeenCalledWith(7, 'd1', 'Overview, tidied');
+      expect(api.rename).toHaveBeenCalledWith(7, 'd1', 'Overview, tidied', 0);
       expect(text()).toContain('Overview, tidied');
+    });
+
+    it('says somebody else wrote to it rather than printing a 409', async () => {
+      api.rename.mockRejectedValueOnce(new HttpErrorResponse({ status: 409 }));
+
+      buttonNamed('Rename').click();
+      fixture.detectChanges();
+      const input = element().querySelector<HTMLInputElement>('.rename input')!;
+      input.value = 'Overview, tidied';
+      input.dispatchEvent(new Event('input'));
+      fixture.detectChanges();
+      buttonNamed('Save').click();
+      await settle();
+      fixture.detectChanges();
+
+      expect(text()).toContain('Somebody wrote to this design after you opened it');
+    });
+
+    it('names the over-the-cap failure rather than printing its status', async () => {
+      api.remove.mockRejectedValueOnce(new HttpErrorResponse({ status: 413 }));
+
+      buttonNamed('Delete').click();
+      await settle();
+      fixture.detectChanges();
+
+      expect(text()).toContain('over the size limit');
     });
 
     it('deletes it', async () => {
@@ -291,7 +264,7 @@ describe('DesignPanel', () => {
   });
 
   it('opens the design another tab asked for, once it is in the list', async () => {
-    await open([design(), proposal()]);
+    await open([design(), other()]);
     expect(element().querySelector('.tile.on')).toBeNull();
 
     TestBed.inject(DesignSelection).open('d2');

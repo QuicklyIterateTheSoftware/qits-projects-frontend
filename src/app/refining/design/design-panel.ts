@@ -10,7 +10,7 @@ import {
 } from '@angular/core';
 import { DomSanitizer, type SafeHtml } from '@angular/platform-browser';
 import { QitsButton } from '@qits/ui-components';
-import { DesignsApi, type DesignDto, type DesignResolution } from '../../api/designs-api';
+import { DesignsApi, type DesignDto } from '../../api/designs-api';
 import { WorkspaceEvents } from '../../api/workspace-events';
 import { Async } from '../../ui/async';
 import { Empty } from '../../ui/empty';
@@ -27,7 +27,7 @@ import {
 import { DesignSelection } from './design-selection';
 
 /**
- * The Design tab: the frozen pages of this application, and the agent's answers to them.
+ * The Design tab: the frozen pages of this application, as documents.
  *
  * ## What a design is
  *
@@ -36,19 +36,15 @@ import { DesignSelection } from './design-selection';
  * after the application has moved on. That is the point: a design is what the reader and the agent
  * are talking *about*, and it must not change underneath the conversation.
  *
- * ## Proposals, and why nothing is overwritten
+ * ## Nothing here is a proposal
  *
- * An agent does not edit a design. It writes another row — `PROPOSED`, pointing at the one it is
- * answering — and stops. A person then says which of the two is the truth:
+ * An agent writes and rewrites these rows exactly as a person does; there is no PROPOSED badge, no
+ * review strip and nothing waiting on a decision, because the gate on the plan is the epic's own
+ * move out of refining. What replaced the decision is the row's `version`: a write composed against
+ * an older read is refused, and the panel says so rather than merging.
  *
- * - **Replace original** folds the proposal's markup into the design it was based on. One row
- *   survives, and it is the one every earlier reference already names.
- * - **Keep as new** promotes the proposal to a design of its own and leaves the original standing —
- *   two pages, both real, which is what a variant is.
- * - **Discard** deletes it.
- *
- * The service answers a resolve with **the row that survived**, so the panel re-selects that rather
- * than guessing which id it is now looking at.
+ * The list is **most recently updated first**, which is the only ordering left once no row is
+ * privileged over another.
  *
  * ## The frame runs nothing, ever
  *
@@ -57,7 +53,8 @@ import { DesignSelection } from './design-selection';
  * a script in it would hold the reader's session. `allow-same-origin` is granted alone and for one
  * reason: the frozen page's images are proxied paths that only load with the session cookie.
  * Angular sanitizes `[srcdoc]` as HTML, and the bypass here is what lets a whole document through —
- * the sandbox, not the sanitizer, is what makes that safe.
+ * the sandbox, not the sanitizer, is what makes that safe. **This tab renders from the JSON field
+ * and never from a URL**; the dossier's framed copies are what the hardened content route serves.
  *
  * ## What it loads
  *
@@ -93,9 +90,6 @@ export class DesignPanel {
 
   /** Which tile is lit. Null is "nothing opened", which is where the panel starts. */
   private readonly selectedId = signal<string | null>(null);
-
-  /** On a proposal with a base, which of the two the frame is showing. */
-  protected readonly viewing = signal<'proposed' | 'current'>('proposed');
 
   /** The action in flight, by name, so one press spins one button. */
   protected readonly busy = signal<string | null>(null);
@@ -149,9 +143,14 @@ export class DesignPanel {
 
   // ---- what is on screen -------------------------------------------------------------------
 
+  /**
+   * The gallery, **most recently updated first**. With no status to privilege a row, recency is what
+   * puts the design somebody is working on at the front.
+   */
   protected readonly rows = computed<readonly DesignDto[]>(() => {
     const state = this.designs();
-    return state.kind === 'ready' ? state.value : [];
+    const rows = state.kind === 'ready' ? state.value : [];
+    return [...rows].sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
   });
 
   /**
@@ -166,23 +165,8 @@ export class DesignPanel {
     return id === null ? null : (this.rows().find((row) => row.id === id) ?? null);
   });
 
-  protected readonly isProposal = computed(() => this.selectedRow()?.status === 'PROPOSED');
-
-  /** The design a proposal answers, when it answers one. */
-  protected readonly baseRow = computed<DesignDto | null>(() => {
-    const baseId = this.selectedRow()?.basedOnDesignId;
-    return baseId ? (this.rows().find((row) => row.id === baseId) ?? null) : null;
-  });
-
-  /** Which row's markup the frame is showing: the proposal, or the design it would replace. */
-  private readonly shownId = computed<string | null>(() => {
-    const selected = this.selectedRow();
-    if (!selected) {
-      return null;
-    }
-    const baseId = selected.basedOnDesignId;
-    return this.viewing() === 'current' && baseId ? baseId : selected.id;
-  });
+  /** Which row's markup the frame is showing — the selection, and nothing else decides it. */
+  private readonly shownId = computed<string | null>(() => this.selectedRow()?.id ?? null);
 
   protected readonly shownRow = computed<DesignDto | null>(() => {
     const state = this.page();
@@ -220,43 +204,14 @@ export class DesignPanel {
 
   // ---- what the panel does -----------------------------------------------------------------
 
-  /** Open a design. A fresh selection always shows the row itself, never the base it answers. */
+  /** Open a design. */
   protected select(design: DesignDto): void {
     this.selectedId.set(design.id);
-    this.viewing.set('proposed');
     this.renaming.set(false);
     this.failure.set(null);
   }
 
-  protected show(which: 'proposed' | 'current'): void {
-    this.viewing.set(which);
-  }
-
-  /** Fold the proposal into the design it answers, then follow the row that survived. */
-  protected replaceOriginal(): Promise<void> {
-    const row = this.selectedRow();
-    if (!row?.basedOnDesignId) {
-      return Promise.resolve();
-    }
-    return this.settle('replace', row.id, 'REPLACE');
-  }
-
-  /** Promote the proposal to a design of its own, leaving the original standing. */
-  protected keepAsNew(): Promise<void> {
-    const row = this.selectedRow();
-    return row ? this.settle('keep', row.id, 'KEEP') : Promise.resolve();
-  }
-
-  private settle(action: string, designId: string, mode: DesignResolution): Promise<void> {
-    return this.act(action, async (workspaceRowId) => {
-      const survivor = await this.api.resolve(workspaceRowId, designId, mode);
-      // The service says which row is left; guessing it here would point the panel at a deleted id.
-      this.selectedId.set(survivor.id);
-      this.viewing.set('proposed');
-    });
-  }
-
-  /** Delete the opened design — a proposal being discarded, or a design being dropped. */
+  /** Delete the opened design. */
   protected remove(): Promise<void> {
     const row = this.selectedRow();
     if (!row) {
@@ -284,7 +239,7 @@ export class DesignPanel {
       return Promise.resolve();
     }
     return this.act('rename', async (workspaceRowId) => {
-      await this.api.rename(workspaceRowId, row.id, title);
+      await this.api.rename(workspaceRowId, row.id, title, row.version);
       this.renaming.set(false);
     });
   }
@@ -302,9 +257,6 @@ export class DesignPanel {
 
   /**
    * One write, then a re-read of the strip.
-   *
-   * The 413 is named rather than printed as a status code: it is the only failure here a reader can
-   * act on, and "over the size limit" is what tells them the page they froze was too big.
    */
   private async act(
     action: string,
@@ -319,16 +271,29 @@ export class DesignPanel {
     try {
       await write(workspaceRowId);
     } catch (error) {
-      this.failure.set(
-        statusOf(error) === 413
-          ? 'That did not work — the page is over the size limit.'
-          : `That did not work — ${describeError(error)}.`,
-      );
+      this.failure.set(this.reasonFor(error));
       return;
     } finally {
       this.busy.set(null);
     }
     await this.load(workspaceRowId);
+  }
+
+  /**
+   * What to say about a failed write.
+   *
+   * The 413 and the 409 are named rather than printed as status codes, because they are the two a
+   * reader can act on: one says the page they froze was too big, the other says somebody else wrote
+   * to this design while they were looking at it, and re-opening it is the move.
+   */
+  private reasonFor(error: unknown): string {
+    if (statusOf(error) === 413) {
+      return 'That did not work — the page is over the size limit.';
+    }
+    if (statusOf(error) === 409) {
+      return 'Somebody wrote to this design after you opened it. Re-open it and try again.';
+    }
+    return `That did not work — ${describeError(error)}.`;
   }
 
   /**

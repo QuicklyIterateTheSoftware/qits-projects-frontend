@@ -1,7 +1,7 @@
 <section class="board" aria-label="Design">
   <p class="note">
     A design is one page of this application, frozen with its styles so it keeps looking the way it
-    did. An agent answers a design with a proposal and changes nothing until you say so.
+    did. You and an agent write these documents together; the newest change is at the front.
   </p>
 
   <app-async
@@ -28,9 +28,6 @@
         >
           <span class="head">
             <span class="name">{{ design.title }}</span>
-            @if (design.status === 'PROPOSED') {
-              <span class="badge">Proposal</span>
-            }
           </span>
           @if (design.sourceRoute; as route) {
             <span class="route">{{ route }}</span>
@@ -51,55 +48,7 @@
 
   @if (selectedRow(); as design) {
     <div class="opened">
-      @if (isProposal()) {
-        @if (design.note; as note) {
-          <p class="agent-note">{{ note }}</p>
-        }
-        @if (baseRow(); as base) {
-          <div class="group" role="group" aria-label="Which page to show">
-            <button
-              type="button"
-              class="chip"
-              [class.on]="viewing() === 'current'"
-              [attr.aria-pressed]="viewing() === 'current'"
-              (click)="show('current')"
-            >
-              Current
-            </button>
-            <button
-              type="button"
-              class="chip"
-              [class.on]="viewing() === 'proposed'"
-              [attr.aria-pressed]="viewing() === 'proposed'"
-              (click)="show('proposed')"
-            >
-              Proposed
-            </button>
-          </div>
-          <qits-button
-            variant="primary"
-            [attr.title]="'Put this page onto ' + base.title"
-            [busy]="busy() === 'replace'"
-            [disabled]="busy() !== null"
-            (pressed)="replaceOriginal()"
-            >Replace original</qits-button
-          >
-        }
-        <qits-button
-          variant="secondary"
-          [busy]="busy() === 'keep'"
-          [disabled]="busy() !== null"
-          (pressed)="keepAsNew()"
-          >Keep as new</qits-button
-        >
-        <qits-button
-          variant="ghost"
-          [busy]="busy() === 'remove'"
-          [disabled]="busy() !== null"
-          (pressed)="remove()"
-          >Discard</qits-button
-        >
-      } @else if (renaming()) {
+      @if (renaming()) {
         <label class="rename">
           <span class="sr">A name for this design</span>
           <input
