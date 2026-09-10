@@ -785,6 +785,25 @@ export interface ReleaseRequestDto {
   readonly state: ReleaseRequestState;
   readonly summary: string;
   readonly requester: string | null;
+  /**
+   * **Nobody is waiting on this request.** Derived by the service, never stored: true where the
+   * `requester` is one of the platform's machine identities — a maintenance bump asked for the
+   * release and stopped — and it is the difference between a `REJECTED` request somebody is
+   * answering and one that is simply stuck with no reader. A list that draws both as "rejected" is
+   * how a repository stops moving for four hours without anybody noticing.
+   *
+   * <p>It says who asked and **not** what state the request is in, so it is true on a healthy
+   * pending bump as well. The badge is the two read together; see `unattendedBadge`.
+   *
+   * <p>Optional so an answer from a build older than the field is drawn as "not unattended" rather
+   * than as `undefined`.
+   */
+  readonly unattended?: boolean;
+  /**
+   * The bug ticket filed because this request's gate went red with nobody watching, or null where
+   * there is none. Null for ever on a request a person opened.
+   */
+  readonly gateTicketId?: string | null;
   readonly detail: string | null;
   readonly conflict: MergeConflictDto | null;
   readonly version: string | null;

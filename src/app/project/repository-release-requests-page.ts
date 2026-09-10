@@ -28,6 +28,8 @@ import {
   releaseDetail,
   releasePriorityBadge,
   releaseStateBadge,
+  unattendedBadge,
+  UNATTENDED_TITLE,
 } from './release-requests-model';
 import { ReleaseSources } from './release-sources';
 
@@ -131,6 +133,11 @@ import { ReleaseSources } from './release-sources';
                       <qits-badge [label]="priority.label" [tone]="priority.tone" />
                     </span>
                   }
+                  @if (unattended(request); as alone) {
+                    <span class="unattended" [title]="unattendedTitle">
+                      <qits-badge [label]="alone.label" [tone]="alone.tone" />
+                    </span>
+                  }
                   <a class="summary" [routerLink]="['./', request.id]">{{ request.summary }}</a>
                   <span
                     class="when"
@@ -157,6 +164,11 @@ import { ReleaseSources } from './release-sources';
                     <span class="on-main">{{ mainState(request) }}</span>
                   }
                   <span class="by">{{ request.requester || none }}</span>
+                  @if (request.gateTicketId) {
+                    <a class="fact ticket" [routerLink]="['/', addressed().project, 'tickets']">
+                      a bug ticket was filed
+                    </a>
+                  }
                 </div>
 
                 @if (detail(request); as sentence) {
@@ -258,6 +270,13 @@ import { ReleaseSources } from './release-sources';
     .priority {
       display: inline-flex;
     }
+    .unattended {
+      display: inline-flex;
+    }
+    .ticket {
+      color: #b45309;
+      text-decoration: underline;
+    }
     .summary {
       flex: 1;
       min-width: 12rem;
@@ -343,6 +362,10 @@ export class RepositoryReleaseRequestsPage {
   protected readonly none = NONE;
   protected readonly stateBadge = releaseStateBadge;
   protected readonly priorityBadge = releasePriorityBadge;
+
+  /** Nobody is waiting on this one and it has stopped; see the model for when that is drawn. */
+  protected readonly unattended = unattendedBadge;
+  protected readonly unattendedTitle = UNATTENDED_TITLE;
   protected readonly detail = releaseDetail;
   protected readonly withdrawable = canWithdraw;
   protected readonly mergedSha = mergedShaLabel;
@@ -384,7 +407,7 @@ export class RepositoryReleaseRequestsPage {
    * fallback the repository page carries, and for the same reason: the middle segment is a
    * component now, so `parseScope` names no repository until the chrome's list has proved the word.
    */
-  private readonly addressed = computed<QitsScope>(() => {
+  protected readonly addressed = computed<QitsScope>(() => {
     const scope = this.scope();
     if (scope.repository) {
       return scope;

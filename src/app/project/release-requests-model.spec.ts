@@ -15,6 +15,7 @@ import {
   releaseSources,
   releaseStateBadge,
   sourceTitle,
+  unattendedBadge,
 } from './release-requests-model';
 
 function source(overrides: Partial<ReleaseRequestSourceDto> = {}): ReleaseRequestSourceDto {
@@ -62,6 +63,38 @@ function request(overrides: Partial<ReleaseRequestDto> = {}): ReleaseRequestDto 
  * costs requests or offers a destructive button actually lives.
  */
 describe('release-requests-model', () => {
+  describe('unattendedBadge', () => {
+    /** The pairing is the whole point: who asked, AND whether it has stopped. */
+    it('marks a machine-asked request that has stopped', () => {
+      expect(unattendedBadge(request({ unattended: true, state: 'REJECTED' }))).toEqual({
+        label: 'nobody watching',
+        tone: 'warning',
+      });
+      expect(unattendedBadge(request({ unattended: true, state: 'CONFLICTED' }))).not.toBeNull();
+      expect(unattendedBadge(request({ unattended: true, state: 'FAILED' }))).not.toBeNull();
+    });
+
+    /**
+     * A bump that is pending is the ordinary night. Nobody watching it is not a problem until it
+     * has stopped, and a badge on every healthy robot request is a badge nobody reads.
+     */
+    it('says nothing about a machine request that is still moving', () => {
+      expect(unattendedBadge(request({ unattended: true, state: 'PENDING' }))).toBeNull();
+      expect(unattendedBadge(request({ unattended: true, state: 'READY' }))).toBeNull();
+      expect(unattendedBadge(request({ unattended: true, state: 'RELEASED' }))).toBeNull();
+    });
+
+    /** A person's rejected request is one a person is answering; it needs no marking. */
+    it('says nothing about a request somebody is waiting on', () => {
+      expect(unattendedBadge(request({ unattended: false, state: 'REJECTED' }))).toBeNull();
+    });
+
+    /** An answer from a service older than the field is "not unattended", never `undefined`. */
+    it('treats a missing field as attended', () => {
+      expect(unattendedBadge(request({ state: 'REJECTED' }))).toBeNull();
+    });
+  });
+
   describe('releaseStateBadge', () => {
     it('gives each stored state a tone, and tells the two refusals apart', () => {
       expect(releaseStateBadge('PENDING')).toEqual({ label: 'pending', tone: 'info' });

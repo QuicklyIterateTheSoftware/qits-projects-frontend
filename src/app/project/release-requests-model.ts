@@ -153,6 +153,41 @@ export function releaseStateBadge(state: string): ReleaseStateBadge {
 }
 
 /**
+ * The states in which "nobody is watching this" is a *problem* rather than a fact about who asked.
+ *
+ * <p>A machine-asked request that is PENDING or READY is the ordinary night: the bump was made, the
+ * gate is working, nothing is wrong with nobody watching it. The three below have stopped and will
+ * not start again on their own — a red gate re-arms on a push, a conflict on a push, a
+ * non-retryable failure on a push — so a machine's request in one of them is a repository that has
+ * quietly stopped moving with no reader at the end of it. That pair is what the badge says.
+ */
+const UNATTENDED_AND_BLOCKED: ReadonlySet<string> = new Set([
+  'REJECTED',
+  'CONFLICTED',
+  'FAILED',
+]);
+
+/**
+ * The badge for a request **nobody is waiting on that has stopped**, or nothing at all.
+ *
+ * <p>Drawn beside the state rather than instead of it, because it answers a different question:
+ * `rejected` says what happened and this says who, if anybody, is going to answer it. `warning`
+ * rather than `danger` for the reason `REJECTED` itself is a warning — the platform is working and
+ * a push clears it — and the ticket the service files is what actually puts it in front of a
+ * person; this is the same fact where somebody is already looking.
+ */
+export function unattendedBadge(request: ReleaseRequestDto): ReleaseStateBadge | null {
+  return request.unattended === true && UNATTENDED_AND_BLOCKED.has(request.state)
+    ? { label: 'nobody watching', tone: 'warning' }
+    : null;
+}
+
+/** The sentence the badge carries as its title — the whole of why it is drawn. */
+export const UNATTENDED_TITLE =
+  'A machine asked for this release, so nobody is waiting on it. It has stopped and will only ' +
+  'move again when somebody pushes a fix.';
+
+/**
  * What one priority is drawn as, or **nothing at all** where there is no priority.
  *
  * <p>The null is the whole of the care here. A missing value is not `MEDIUM`: it is either a source

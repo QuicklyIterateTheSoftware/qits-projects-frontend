@@ -33,6 +33,8 @@ import {
   releaseDetail,
   releasePriorityBadge,
   releaseStateBadge,
+  unattendedBadge,
+  UNATTENDED_TITLE,
 } from './release-requests-model';
 import { ReleaseSources } from './release-sources';
 
@@ -102,6 +104,11 @@ interface DrawnArtifact {
               <qits-badge [label]="priority.label" [tone]="priority.tone" />
             </span>
           }
+          @if (unattended(request); as alone) {
+            <span class="unattended" [title]="unattendedTitle">
+              <qits-badge [label]="alone.label" [tone]="alone.tone" />
+            </span>
+          }
           <h1>{{ request.summary }}</h1>
           @if (watching()) {
             <span class="watching" role="status">Watching for changes…</span>
@@ -120,6 +127,11 @@ interface DrawnArtifact {
             <span class="ref" [title]="foldTitle(request)">{{ mergedSha(request) }}</span>
           </span>
           <span class="fact">asked by {{ request.requester || none }}</span>
+          @if (request.gateTicketId) {
+            <a class="fact ticket" [routerLink]="['/', addressed().project, 'tickets']">
+              a bug ticket was filed for this failure
+            </a>
+          }
           <span class="fact" [title]="instant(request.createdAt)">
             asked {{ ago(request.createdAt) }}
           </span>
@@ -258,6 +270,13 @@ interface DrawnArtifact {
     .priority {
       display: inline-flex;
     }
+    .unattended {
+      display: inline-flex;
+    }
+    .ticket {
+      color: #b45309;
+      text-decoration: underline;
+    }
     .watching {
       font-size: 0.8rem;
       color: #6b7280;
@@ -388,6 +407,10 @@ export class ReleaseRequestDetailPage {
   protected readonly none = NONE;
   protected readonly stateBadge = releaseStateBadge;
   protected readonly priorityBadge = releasePriorityBadge;
+
+  /** Nobody is waiting on this one and it has stopped; see the model for when that is drawn. */
+  protected readonly unattended = unattendedBadge;
+  protected readonly unattendedTitle = UNATTENDED_TITLE;
   protected readonly detail = releaseDetail;
   protected readonly mergedSha = mergedShaLabel;
 
@@ -407,7 +430,7 @@ export class ReleaseRequestDetailPage {
    * fallback its list does, and for the same reason: the middle segment is a component now, so
    * `parseScope` names no repository until the chrome's list has proved the word.
    */
-  private readonly addressed = computed<QitsScope>(() => {
+  protected readonly addressed = computed<QitsScope>(() => {
     const scope = this.scope();
     if (scope.repository) {
       return scope;

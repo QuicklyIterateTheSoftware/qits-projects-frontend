@@ -26,6 +26,8 @@ import {
   releaseDetail,
   releasePriorityBadge,
   releaseStateBadge,
+  unattendedBadge,
+  UNATTENDED_TITLE,
 } from './release-requests-model';
 import { ReleaseSources } from './release-sources';
 
@@ -115,6 +117,11 @@ import { ReleaseSources } from './release-sources';
                     <qits-badge [label]="priority.label" [tone]="priority.tone" />
                   </span>
                 }
+                @if (unattended(request); as alone) {
+                  <span class="unattended" [title]="unattendedTitle">
+                    <qits-badge [label]="alone.label" [tone]="alone.tone" />
+                  </span>
+                }
                 @let where = repositoryLink(request);
                 @if (where.route) {
                   <a class="repo" [routerLink]="where.route">{{ where.label }}</a>
@@ -143,6 +150,11 @@ import { ReleaseSources } from './release-sources';
                   <span class="ref" [title]="foldTitle(request)">{{ mergedSha(request) }}</span>
                 </span>
                 <span class="by">{{ request.requester || none }}</span>
+                @if (request.gateTicketId) {
+                  <a class="fact ticket" [routerLink]="['/', projectSlug(), 'tickets']">
+                    a bug ticket was filed
+                  </a>
+                }
               </div>
 
               @if (detail(request); as sentence) {
@@ -240,6 +252,13 @@ import { ReleaseSources } from './release-sources';
     .priority {
       display: inline-flex;
     }
+    .unattended {
+      display: inline-flex;
+    }
+    .ticket {
+      color: #b45309;
+      text-decoration: underline;
+    }
     .repo {
       font-weight: 600;
       overflow-wrap: anywhere;
@@ -317,6 +336,10 @@ export class ProjectReleaseRequestsPage {
   protected readonly none = NONE;
   protected readonly stateBadge = releaseStateBadge;
   protected readonly priorityBadge = releasePriorityBadge;
+
+  /** Nobody is waiting on this one and it has stopped; see the model for when that is drawn. */
+  protected readonly unattended = unattendedBadge;
+  protected readonly unattendedTitle = UNATTENDED_TITLE;
   protected readonly detail = releaseDetail;
   protected readonly withdrawable = canWithdraw;
   protected readonly mergedSha = mergedShaLabel;
