@@ -3,6 +3,8 @@ import { Injectable, inject } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { QITS_API_BASE } from './api-base';
 import type {
+  CommitBuildStatusDto,
+  ListCommitBuildsResponse,
   ReleaseArtifactsResponse,
   ReleaseRequestCommitsResponse,
   ReleaseRequestDto,
@@ -11,7 +13,7 @@ import type {
 } from './dto';
 
 /**
- * The release-request surface: a repository's asks, a project's, and the one verb a person has over
+ * The release-request surface: a repository's asks, a project's, and the verbs a person has over
  * them.
  *
  * <p><b>Read, withdraw, and re-declare what a branch is worth — and nothing else.</b> The other
@@ -21,11 +23,18 @@ import type {
  * branch the door resolves, so this SPA reads the record, can call one ask off, and can change the
  * priority of a branch already on it — the things a person looking at the list actually needs.
  *
- * <p><b>The two derived reads are separate calls on purpose.</b> `commits` reaches the repository's
- * git mirror and `artifacts` reaches the git host, so neither could ride on a list without putting
- * a poll in front of it. The detail page asks for each exactly once per answer that changes it — the
- * commits per distinct fold, the artifacts once a request has released — which is why they are three
- * methods here rather than one fat read.
+ * <p><b>The derived reads are separate calls on purpose.</b> `commits` reaches the repository's git
+ * mirror, `artifacts` reaches the git host and `builds` is addressed by commit rather than by
+ * request, so none of them could ride on a list without putting a poll in front of it. The detail
+ * page asks for each exactly once per answer that changes it — the commits and the verdicts per
+ * distinct fold, the artifacts once a request has released — which is why they are methods of their
+ * own rather than one fat read.
+ *
+ * <p><b>`approve` and `decline` are the second gate, and they are the only two verbs here a machine
+ * may not use.</b> Every other route on this surface takes `qits:admin` or `qits:system`; these take
+ * `qits:admin` alone, because a machine may ask for a release and call one off and may not sign off
+ * the estate. A browser session carries the first, which is the whole reason they are offered in
+ * this SPA at all.
  *
  * <p>Every route wants `qits:admin` or `qits:system`; a browser session carries the first, so
  * these are same-origin reads with the platform's forwarded identity and no token of their own.
@@ -110,6 +119,97 @@ export class ReleaseRequestsApi {
     return firstValueFrom(
       this.http.get<ReleaseArtifactsResponse>(`${this.requestBase(repoId, requestId)}/artifacts`),
     );
+  }
+
+  /**
+   * Every CI verdict recorded for one commit, newest first — what the build gate is actually
+   * deciding on, said in qits-ci's own words.
+   *
+   * <p><b>It is addressed by the COMMIT, not by the request</b>, and that is the service's shape
+   * rather than an inconvenience: a verdict is a fact about content, so the same fold answers the
+   * same whichever request folded it, and a request whose sources are re-pushed is asking about a
+   * different commit rather than about a changed answer. That is exactly why the caller keys the
+   * read on the fold and asks once per distinct sha.
+   *
+   * <p>An **empty list is an answer** — no terminal run has announced this commit — and it is
+   * unwrapped to one here so a caller cannot mistake a service build that answers no `builds` field
+   * at all for a commit with a verdict it failed to read.
+   */
+  async builds(repoId: string, sha: string): Promise<readonly CommitBuildStatusDto[]> {
+    const response = await firstValueFrom(
+      this.http.get<ListCommitBuildsResponse>(
+        `${this.base}/projects/api/repositories/${encodeURIComponent(repoId)}/commits/` +
+          `${encodeURIComponent(sha)}/builds`,
+      ),
+    );
+    return response.builds ?? [];
+  }
+
+  /**
+   * Sign this request's current fold off, so it may release — the person's half of the second gate.
+   *
+   * <p><b>`mergedSha` is required and is the whole point of the call.</b> An approval is a statement
+   * about *content*, and a push can land while the page is open, so the fold the reader was looking
+   * at travels with the decision and a stale one is refused **409** naming the fold the request is on
+   * now. The caller sends the sha it *rendered*, never the sha it holds at the moment of the click:
+   * they are the same thing until they are not, and the whole gate is about that difference.
+   *
+   * <p>The gate is re-asked immediately on the service side, so a fold whose build is already green
+   * releases on the click — which is why the answer is the whole request and is worth putting in
+   * place of the row rather than following with a re-read.
+   *
+   * <p>The 409 is not a failure to report as one: a request that has concluded, one with no fold, a
+   * repository that needs no approval at all and a fold that moved are all answered with it, and each
+   * of them is a sentence the panel draws where it happened rather than a toast.
+   */
+  async approve(
+    repoId: string,
+    requestId: string,
+    mergedSha: string,
+    note?: string,
+  ): Promise<ReleaseRequestDto> {
+    return this.decide(repoId, requestId, 'approve', mergedSha, note);
+  }
+
+  /**
+   * Refuse this request's current fold, answerably — the request is `REJECTED` carrying the decider's
+   * own sentence as its detail.
+   *
+   * <p><b>This is not a withdrawal and the two must not be read as degrees of the same thing.</b> A
+   * decline judges the *content* and is answered by a new fold: push a fix onto a participating
+   * branch, the request re-folds, the decision no longer names the fold it is on, and both gates are
+   * open again. A withdrawal judges the *ask*, is terminal, and frees the branches for a fresh
+   * request. Same body, same `mergedSha` and the same refusals as {@link approve}.
+   */
+  async decline(
+    repoId: string,
+    requestId: string,
+    mergedSha: string,
+    note?: string,
+  ): Promise<ReleaseRequestDto> {
+    return this.decide(repoId, requestId, 'decline', mergedSha, note);
+  }
+
+  /**
+   * The two decisions are one call with one word changed, because the service's two routes are: same
+   * body, same envelope, same five refusals. Spelling them separately here would be two places for a
+   * field to be forgotten in.
+   */
+  private async decide(
+    repoId: string,
+    requestId: string,
+    verb: 'approve' | 'decline',
+    mergedSha: string,
+    note?: string,
+  ): Promise<ReleaseRequestDto> {
+    const trimmed = note?.trim();
+    const response = await firstValueFrom(
+      this.http.post<ReleaseRequestResponse>(`${this.requestBase(repoId, requestId)}/${verb}`, {
+        mergedSha,
+        ...(trimmed ? { note: trimmed } : {}),
+      }),
+    );
+    return response.request;
   }
 
   private requestBase(repoId: string, requestId: string): string {

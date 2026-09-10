@@ -13,6 +13,7 @@ import { ActivatedRoute, RouterLink, convertToParamMap } from '@angular/router';
 import { QITS_REPOSITORIES, QITS_SCOPE, QitsAppLinks, QitsBadge } from '@qits/ui-components';
 import type { QitsScope } from '@qits/ui-components';
 import type {
+  CommitBuildStatusDto,
   ReleaseArtifactDto,
   ReleaseArtifactsResponse,
   ReleaseRequestCommitsResponse,
@@ -25,6 +26,7 @@ import { Empty } from '../ui/empty';
 import { NONE, formatInstant, formatRelativeTime, shortSha } from '../ui/format';
 import { LOADING, failed, ready, type Loadable } from '../ui/loadable';
 import { ReleaseConflict } from './release-conflict';
+import { ReleaseGatesPanel } from './release-gates-panel';
 import { releaseArtifactLinks, type ReleaseArtifactLink } from './release-artifact-links';
 import {
   RELEASE_REQUESTS_POLL_MS,
@@ -54,10 +56,17 @@ interface DrawnArtifact {
  * off is what keeps the lists costing one read and lets this page cost four.
  *
  * <p><b>Every read here is asked once per answer that could change it, never once per tick.</b> The
- * request itself is polled while it is unsettled, exactly as the lists poll. The commits are keyed on
- * the fold: they change only when the request re-folds onto a new sha, so a new `mergedSha` is the
- * whole trigger. The artifacts are read once, when the request is RELEASED — before that the service
- * answers an honest "not released yet" and there is nothing to draw.
+ * request itself is polled while it is unsettled, exactly as the lists poll. The commits and the CI
+ * verdicts are keyed on the fold: both are facts about the folded commit, so they change only when
+ * the request re-folds onto a new sha and a new `mergedSha` is the whole trigger for either. The
+ * artifacts are read once, when the request is RELEASED — before that the service answers an honest
+ * "not released yet" and there is nothing to draw.
+ *
+ * <p><b>Why the verdicts are read here rather than by the panel that draws them.</b> The gates panel
+ * is redrawn by every poll, and a component that fetched on its own would have to re-derive the
+ * fold-keying this page already does — two answers to one question, one of which would eventually put
+ * a request behind a six-second timer. The page owns the reads; the panel is handed what they said
+ * and owns the two verbs.
  *
  * <p><b>The repository is resolved through the chrome</b>, the arm {@code
  * RepositoryReleaseRequestsPage} states at length: the address names a repository by NAME and every
@@ -73,7 +82,16 @@ interface DrawnArtifact {
 @Component({
   selector: 'app-release-request-detail-page',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [Async, Empty, NotFound, QitsBadge, ReleaseConflict, ReleaseSources, RouterLink],
+  imports: [
+    Async,
+    Empty,
+    NotFound,
+    QitsBadge,
+    ReleaseConflict,
+    ReleaseGatesPanel,
+    ReleaseSources,
+    RouterLink,
+  ],
   template: `
     @if (chromeFailed()) {
       <p class="state">
@@ -96,7 +114,7 @@ interface DrawnArtifact {
       />
 
       @if (row(); as request) {
-        @let badge = stateBadge(request.state);
+        @let badge = stateBadge(request);
         <header class="head">
           <qits-badge [label]="badge.label" [tone]="badge.tone" />
           @if (priorityBadge(request.priority); as priority) {
@@ -142,6 +160,20 @@ interface DrawnArtifact {
 
         @if (detail(request); as sentence) {
           <p class="detail">{{ sentence }}</p>
+        }
+
+        <app-async
+          [state]="gates()"
+          loadingLabel="Loading the gates"
+          errorLabel="Could not load the CI verdicts"
+          (retry)="reloadGates()"
+        />
+        @if (verdicts(); as verdicts) {
+          <app-release-gates-panel
+            [request]="request"
+            [builds]="verdicts"
+            (decided)="decided($event)"
+          />
         }
 
         <app-release-conflict [request]="request" />
@@ -469,6 +501,12 @@ export class ReleaseRequestDetailPage {
 
   protected readonly artifacts = signal<Loadable<ReleaseArtifactsResponse>>(LOADING);
 
+  /**
+   * The CI verdicts for the fold — the build half of what is holding this request, read here because
+   * the page owns every read and keyed on the fold exactly as the commits are.
+   */
+  protected readonly gates = signal<Loadable<readonly CommitBuildStatusDto[]>>(LOADING);
+
   /** The request once there is one — the template's `@if` subject, so waiting draws no panels. */
   protected readonly row = computed(() => {
     const state = this.request();
@@ -477,6 +515,11 @@ export class ReleaseRequestDetailPage {
 
   protected readonly foldedIn = computed(() => {
     const state = this.commits();
+    return state.kind === 'ready' ? state.value : null;
+  });
+
+  protected readonly verdicts = computed(() => {
+    const state = this.gates();
     return state.kind === 'ready' ? state.value : null;
   });
 
@@ -592,6 +635,12 @@ export class ReleaseRequestDetailPage {
   /** The fold the commits on screen are about, so a poll that changed nothing costs no read. */
   private loadedFold: string | null = null;
 
+  /**
+   * The fold the verdicts on screen are about — the same key as the commits and for the same reason,
+   * kept apart from it so a failed read of one is retried without re-reading the other.
+   */
+  private loadedGates: string | null = null;
+
   /** Whether the artifacts have been asked for, so a settled request asks exactly once. */
   private loadedArtifacts = false;
 
@@ -614,8 +663,10 @@ export class ReleaseRequestDetailPage {
       untracked(() => {
         this.cancelTimer();
         this.loadedFold = null;
+        this.loadedGates = null;
         this.loadedArtifacts = false;
         this.commits.set(LOADING);
+        this.gates.set(LOADING);
         this.artifacts.set(LOADING);
         if (!repoId || !requestId) {
           this.request.set(LOADING);
@@ -647,12 +698,35 @@ export class ReleaseRequestDetailPage {
     this.request.set(ready(request));
   }
 
+  /**
+   * The request as the service answered an approval or a decline — the same row replacement, and
+   * deliberately the same one.
+   *
+   * <p>The whole request comes back with its approval fields already re-derived at the fold, so a
+   * re-read would be a second round trip for bytes the page is holding. Nothing else on screen is
+   * stale either: a decision does not move the fold, so the commits and the verdicts are the same
+   * commits and the same verdicts and are not asked for again. What *may* move is the state — an
+   * approval of a fold whose build is already green releases on the click — and the poll the state
+   * change re-arms is what follows that outwards.
+   */
+  protected decided(request: ReleaseRequestDto): void {
+    this.request.set(ready(request));
+  }
+
   /** The reader asking again for a fold whose read failed — the same read the answer triggers. */
   protected reloadCommits(): void {
     const request = this.row();
     if (!request) return;
     this.loadedFold = null;
     void this.loadCommits(this.repoId(), request);
+  }
+
+  /** The reader asking again for the verdicts of the fold on screen, the read having failed. */
+  protected reloadGates(): void {
+    const request = this.row();
+    if (!request) return;
+    this.loadedGates = null;
+    void this.loadGates(this.repoId(), request);
   }
 
   protected reloadArtifacts(): void {
@@ -678,6 +752,7 @@ export class ReleaseRequestDetailPage {
       if (this.reading !== key) return;
       this.request.set(ready(answer));
       await this.loadCommits(repoId, answer);
+      await this.loadGates(repoId, answer);
       await this.loadArtifacts(repoId, answer);
     } catch (error) {
       if (this.reading !== key) return;
@@ -706,6 +781,36 @@ export class ReleaseRequestDetailPage {
     } catch (error) {
       if (this.loadedFold !== fold) return;
       this.commits.set(failed(error));
+    }
+  }
+
+  /**
+   * The CI verdicts, once per distinct fold — the same key as the commits, because a verdict is a
+   * fact about a commit and the route is addressed by one.
+   *
+   * <p><b>A request with no fold is not asked at all</b>, and this is the one place the two reads
+   * differ: the commits route takes the request and answers a sentence explaining why there are none,
+   * while this one takes a *commit hash* there is nothing to put in. An empty list is the honest
+   * answer and the panel draws it as "no verdict yet", which is exactly true of a fold that does not
+   * exist yet.
+   */
+  private async loadGates(repoId: string, request: ReleaseRequestDto): Promise<void> {
+    const fold = request.mergedSha ?? '';
+    if (this.loadedGates === fold) {
+      return;
+    }
+    this.loadedGates = fold;
+    if (!fold) {
+      this.gates.set(ready([]));
+      return;
+    }
+    try {
+      const answer = await this.api.builds(repoId, fold);
+      if (this.loadedGates !== fold) return;
+      this.gates.set(ready(answer));
+    } catch (error) {
+      if (this.loadedGates !== fold) return;
+      this.gates.set(failed(error));
     }
   }
 

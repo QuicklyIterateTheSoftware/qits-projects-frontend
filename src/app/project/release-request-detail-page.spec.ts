@@ -16,6 +16,8 @@ import {
 } from '@qits/ui-components';
 import { routes } from '../app.routes';
 import type {
+  CommitBuildStatusDto,
+  ListCommitBuildsResponse,
   ReleaseArtifactsResponse,
   ReleaseRequestCommitsResponse,
   ReleaseRequestDto,
@@ -25,6 +27,10 @@ import { RELEASE_REQUESTS_POLL_MS } from './release-requests-model';
 const REQUEST = '/projects/api/repositories/repo-ci/release-requests/r1';
 const COMMITS = `${REQUEST}/commits`;
 const ARTIFACTS = `${REQUEST}/artifacts`;
+const FOLD = '20c377ee71fabe6f32429d1506989efecec7798b';
+
+/** The verdicts are addressed by the COMMIT rather than by the request — the service's own shape. */
+const builds = (sha: string) => `/projects/api/repositories/repo-ci/commits/${sha}/builds`;
 
 /**
  * The chrome, answered from literals — and every application this page can link to is served on a
@@ -59,6 +65,14 @@ const PLATFORM: QitsNavigation = {
         label: 'Deployments',
         host: 'deployments.dev.example.test',
         origin: 'https://deployments.dev.example.test',
+      },
+      // The gates panel's one link. qits-ci serves `runs/:runId` at its own root and under no
+      // repository-scoped address, which is why that href is composed with no scope at all.
+      {
+        app: 'qits-ci',
+        label: 'CI',
+        host: 'ci.dev.example.test',
+        origin: 'https://ci.dev.example.test',
       },
     ],
     // The maintenance client hangs under the platform heading rather than a repository's, which is
@@ -200,13 +214,19 @@ describe('ReleaseRequestDetailPage', () => {
   }
 
   /**
-   * Answer the request read, and then whatever it triggered: the commits always, the artifacts only
-   * once the answer says RELEASED — which is the read budget itself, asserted by construction.
+   * Answer the request read, and then whatever it triggered: the commits always, the CI verdicts
+   * wherever there is a fold to ask about, the artifacts only once the answer says RELEASED — which
+   * is the read budget itself, asserted by construction.
+   *
+   * <p>The verdicts read is skipped for a request with no `mergedSha` on purpose and not as a
+   * convenience: that route is addressed by a commit hash there is nothing to put in, so the page
+   * does not ask, and a helper that flushed one anyway would hide the day it started asking.
    */
   async function answer(
     row: ReleaseRequestDto,
     commits: Partial<ReleaseRequestCommitsResponse> = {},
     artifacts: Partial<ReleaseArtifactsResponse> | null = null,
+    verdicts: readonly CommitBuildStatusDto[] = [],
   ): Promise<void> {
     http.expectOne(REQUEST).flush({ request: row });
     await settle();
@@ -217,6 +237,12 @@ describe('ReleaseRequestDetailPage', () => {
       ...commits,
     } satisfies ReleaseRequestCommitsResponse);
     await settle();
+    if (row.mergedSha) {
+      http
+        .expectOne(builds(row.mergedSha))
+        .flush({ builds: verdicts } satisfies ListCommitBuildsResponse);
+      await settle();
+    }
     if (row.state === 'RELEASED') {
       http
         .expectOne(ARTIFACTS)
@@ -238,16 +264,16 @@ describe('ReleaseRequestDetailPage', () => {
 
   describe('the read budget', () => {
     /**
-     * Three reads and no more. The name-to-id resolution is the chrome's list, which the shared
+     * Four reads and no more. The name-to-id resolution is the chrome's list, which the shared
      * layout has already fetched — so nothing here reaches the project's component listing, which
      * refreshes the wrapper's git mirror.
      */
-    it('costs the request, its commits and — once released — its artifacts', async () => {
+    it('costs the request, its commits, its verdicts and — once released — its artifacts', async () => {
       withRepositories();
       await open();
 
       // One at a time, in order: each read is triggered by the answer before it, so a page that
-      // fanned out or asked twice would show up as a different list at one of these three steps.
+      // fanned out or asked twice would show up as a different list at one of these four steps.
       const first = http.match(() => true);
       expect(first.map((entry) => entry.request.url)).toEqual([REQUEST]);
       first[0].flush({ request: released() });
@@ -259,11 +285,30 @@ describe('ReleaseRequestDetailPage', () => {
       await settle();
 
       const third = http.match(() => true);
-      expect(third.map((entry) => entry.request.url)).toEqual([ARTIFACTS]);
-      third[0].flush(NOTHING_PUBLISHED);
+      expect(third.map((entry) => entry.request.url)).toEqual([builds(FOLD)]);
+      third[0].flush({ builds: [] });
+      await settle();
+
+      const fourth = http.match(() => true);
+      expect(fourth.map((entry) => entry.request.url)).toEqual([ARTIFACTS]);
+      fourth[0].flush(NOTHING_PUBLISHED);
       await settle();
 
       http.expectNone(() => true);
+    });
+
+    /**
+     * The verdicts route is addressed by a commit hash, and a request that has not been folded has
+     * none. Asking anyway would be a read with a made-up coordinate in it; the page draws the empty
+     * answer, which the panel says as "no verdict yet" — exactly true of a fold that does not exist.
+     */
+    it('asks for no verdicts about a request with no fold', async () => {
+      withRepositories();
+      await open();
+      await answer(request({ mergedSha: null }), NOTHING_FOLDED);
+
+      http.expectNone((entry) => entry.url.includes('/builds'));
+      expect(page().textContent).toContain('No verdict yet');
     });
 
     /** Before a release there is nothing published to ask about, and the page does not ask. */
@@ -279,7 +324,7 @@ describe('ReleaseRequestDetailPage', () => {
      * The commits are keyed on the FOLD. A poll that brings back the same `mergedSha` has brought
      * back the same commits by construction, and asking again would put a git read behind a timer.
      */
-    it('re-reads the commits when the fold moves, and not when it does not', async () => {
+    it('re-reads the commits and the verdicts when the fold moves, and not when it does not', async () => {
       withRepositories();
       await open();
       await answer(request({ state: 'PENDING' }));
@@ -288,6 +333,7 @@ describe('ReleaseRequestDetailPage', () => {
       http.expectOne(REQUEST).flush({ request: request({ state: 'PENDING', detail: 'still' }) });
       await settle();
       http.expectNone(COMMITS);
+      http.expectNone(builds(FOLD));
 
       await vi.advanceTimersByTimeAsync(RELEASE_REQUESTS_POLL_MS);
       http
@@ -295,6 +341,9 @@ describe('ReleaseRequestDetailPage', () => {
         .flush({ request: request({ state: 'PENDING', mergedSha: 'aaaa1111bbbb2222' }) });
       await settle();
       http.expectOne(COMMITS).flush({ mergedSha: 'aaaa1111bbbb2222', commits: [], detail: null });
+      await settle();
+      // A verdict is a fact about a commit, so the new fold is a new question by construction.
+      http.expectOne(builds('aaaa1111bbbb2222')).flush({ builds: [] });
       await settle();
     });
 
@@ -437,6 +486,92 @@ describe('ReleaseRequestDetailPage', () => {
       const panel = page().querySelector('.conflict')?.textContent ?? '';
       expect(panel).toContain('pom.xml');
       expect(panel).toContain('2026.903.1');
+    });
+  });
+
+  /**
+   * What is holding the request, drawn between the facts and the conflict. The panel owns the two
+   * verbs and this page owns the read behind it — so what is worth pinning here is the wiring: the
+   * verdicts of the fold reach it, the badge above it agrees with it, and a decision replaces the row
+   * rather than costing the page its four reads over again.
+   */
+  describe('the gates', () => {
+    const VERDICT: CommitBuildStatusDto = {
+      runId: 'run-9',
+      status: 'SUCCESS',
+      branch: 'release/r1',
+      gating: true,
+      finishedAt: '2026-09-01T13:40:00Z',
+    };
+
+    /** The run link carries **no scope**: qits-ci serves `runs/:runId` at its own root and nowhere else. */
+    it('draws the verdicts of the fold and links the run in qits-ci', async () => {
+      withRepositories();
+      await open();
+      await answer(request({ state: 'PENDING' }), {}, null, [VERDICT]);
+
+      expect(page().querySelector('.gates .verdict')?.textContent).toContain('success');
+      expect(hrefs()).toContain('https://ci.dev.example.test/runs/run-9');
+    });
+
+    /**
+     * An ordinary repository releases on a green build alone, so there is no approve affordance
+     * anywhere on the page — the service answers 409 to approving what has no gate.
+     */
+    it('offers no approval affordance on a request nobody has to approve', async () => {
+      withRepositories();
+      await open();
+      await answer(request({ state: 'PENDING', approvalRequired: false }), {}, null, [VERDICT]);
+
+      expect(page().textContent).not.toContain('Approval');
+      expect(page().querySelector('.gates .ask')).toBeNull();
+    });
+
+    /**
+     * The wrapper's case, end to end: the badge says a person is needed, the panel asks, and the
+     * answered request goes in place of the row — no re-read, because the whole request came back and
+     * a decision does not move the fold.
+     */
+    it('says a gated request is awaiting approval, and replaces the row when it is approved', async () => {
+      withRepositories();
+      await open();
+      await answer(
+        request({ state: 'PENDING', approvalRequired: true, approvalState: 'WAITING' }),
+        {},
+        null,
+        [VERDICT],
+      );
+
+      expect(page().querySelector('.head qits-badge')?.textContent).toContain('awaiting approval');
+
+      const approve = [...page().querySelectorAll('button')].find((button) =>
+        (button.textContent ?? '').includes('Approve release'),
+      ) as HTMLButtonElement;
+      approve.click();
+      await settle();
+      harness.fixture.detectChanges();
+      approve.click();
+      await settle();
+
+      const posted = http.expectOne(`${REQUEST}/approve`);
+      expect(posted.request.body).toEqual({ mergedSha: FOLD });
+      posted.flush({
+        request: request({
+          state: 'READY',
+          approvalRequired: true,
+          approvalState: 'APPROVED',
+          approvedBy: 'someone',
+          approvedAt: '2026-09-01T13:45:00Z',
+        }),
+      });
+      await settle();
+      harness.fixture.detectChanges();
+
+      expect(page().querySelector('.head qits-badge')?.textContent).toContain('ready');
+      expect(page().textContent).toContain('approved by someone');
+      // The fold did not move, so neither read behind it is asked for again.
+      http.expectNone(COMMITS);
+      http.expectNone(builds(FOLD));
     });
   });
 
