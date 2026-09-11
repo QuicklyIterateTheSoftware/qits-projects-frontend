@@ -4,7 +4,9 @@ import { firstValueFrom } from 'rxjs';
 import { QITS_API_BASE } from './api-base';
 import type {
   CommitBuildStatusDto,
+  CommitFileDiffDto,
   ListCommitBuildsResponse,
+  ReleaseRequestChangesResponse,
   ReleaseArtifactsResponse,
   ReleaseRequestCommitsResponse,
   ReleaseRequestDto,
@@ -105,6 +107,53 @@ export class ReleaseRequestsApi {
       this.http.get<ReleaseRequestCommitsResponse>(
         `${this.requestBase(repoId, requestId)}/commits`,
       ),
+    );
+  }
+
+  /**
+   * What this request's fold **changed** — the files, against the newest release tag that does not
+   * contain the fold.
+   *
+   * <p>Read once per **fold**, exactly as {@link commits} is and for the same reason: the answer is
+   * a fact about the folded commit, so it changes only when the request re-folds onto a new sha. A
+   * poll that found the same `mergedSha` must not cost this read — it reaches the service's git
+   * mirror and diffs two trees.
+   *
+   * <p><b>No base travels from here.</b> The service resolves it (the newest release tag not
+   * containing the fold, by `merge-base`; the empty tree for a repository that has never released)
+   * and names in `baseTag` the tag it used, which is what the page says out loud. A client that
+   * could name a base would be a second answer to an arithmetic the service is the authority on.
+   *
+   * <p>Every empty case is a 200 with an empty list and a sentence, never an error: nothing folded
+   * yet, a fold pruned out of history, a fold that changed nothing over the previous release.
+   */
+  async changes(repoId: string, requestId: string): Promise<ReleaseRequestChangesResponse> {
+    return firstValueFrom(
+      this.http.get<ReleaseRequestChangesResponse>(
+        `${this.requestBase(repoId, requestId)}/changes`,
+      ),
+    );
+  }
+
+  /**
+   * The unified diff of one path in that fold, against the same base {@link changes} listed.
+   *
+   * <p>Keyed on `(mergedSha, path)` by its caller — a second fact about the fold, so a poll costs
+   * nothing here either and only opening a different file, or the fold moving under the reader, is
+   * a reason to ask again.
+   *
+   * <p><b>The path rides in the query string</b> because a path holds slashes, which is the same
+   * grammar every file address on this platform uses; `HttpParams` encodes it once and the service
+   * reads it once.
+   *
+   * <p>An **empty `diff` is an answer** — binary, a pure rename, or a patch the service declined to
+   * send for its size — and the viewer draws the sentence for it rather than an empty pane.
+   */
+  async fileDiff(repoId: string, requestId: string, path: string): Promise<CommitFileDiffDto> {
+    return firstValueFrom(
+      this.http.get<CommitFileDiffDto>(`${this.requestBase(repoId, requestId)}/changes/diff`, {
+        params: { path },
+      }),
     );
   }
 

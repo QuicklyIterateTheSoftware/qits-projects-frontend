@@ -960,6 +960,59 @@ export interface ReleaseRequestCommitsResponse {
 }
 
 /**
+ * One file a fold touched — the service's `CommitFileChangeDto`, spelled as it arrives.
+ *
+ * <p>`oldPath` is non-null only for a rename or a copy, and it is the one fact a rename's empty
+ * patch cannot state for itself. The shared change tree calls the same field `previousPath`; the
+ * mapping is done where the tree is drawn, because this file's job is to say what the wire says.
+ */
+export interface CommitFileChangeDto {
+  readonly path: string;
+  readonly oldPath: string | null;
+  readonly changeType: 'ADDED' | 'MODIFIED' | 'DELETED' | 'RENAMED' | 'COPIED' | 'TYPE_CHANGED';
+}
+
+/**
+ * What a release request's fold **changed** — the files, beside the commits, and the answer to
+ * "what does this release actually do to the tree".
+ *
+ * <p><b>The base is the service's arithmetic and never the client's.</b> It is the newest release
+ * tag that does not contain the fold, resolved to one commit; `baseTag` is the tag it was resolved
+ * *from*, which is what a page says out loud ("since 2026.910.180413") because a reader knows
+ * releases by version and not by sha. `baseTag` is null exactly when `base` is — a repository that
+ * has never released is diffed against the empty tree, which is honestly what its first release
+ * adds.
+ *
+ * <p><b>An empty list is an answer, and `detail` is the whole of the difference between the ways it
+ * happens</b>: nothing folded yet, a fold no longer in the repository's history, a fold that
+ * genuinely changed nothing over the previous release — or, with `truncated`, a list cut at the cap
+ * with the sentence naming the true total. A page that drew "no changes" for all four would be
+ * saying something false in three of them.
+ */
+export interface ReleaseRequestChangesResponse {
+  readonly mergedSha: string | null;
+  readonly base: string | null;
+  readonly baseTag: string | null;
+  readonly files: readonly CommitFileChangeDto[];
+  readonly truncated: boolean;
+  readonly detail: string | null;
+}
+
+/**
+ * One file's unified diff, against whatever base the read it came from used.
+ *
+ * <p><b>An empty `diff` is an answer, not a failure</b>: git emits no patch for a binary change and
+ * none for a pure rename, and the service declines to send one over roughly a mebibyte. The viewer
+ * says so in a sentence rather than drawing a blank pane, which is why this shape carries the empty
+ * string rather than a null.
+ */
+export interface CommitFileDiffDto {
+  readonly path: string;
+  readonly changeType: CommitFileChangeDto['changeType'];
+  readonly diff: string;
+}
+
+/**
  * One thing a release published, in the platform's own vocabulary.
  *
  * <p>`type` is the release recipe's word — `docker`, `maven`, `npm`, `docs`, `daemon` — plus
