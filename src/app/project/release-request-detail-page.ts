@@ -27,6 +27,7 @@ import { Empty } from '../ui/empty';
 import { NONE, formatInstant, formatRelativeTime, shortSha } from '../ui/format';
 import { LOADING, failed, ready, type Loadable } from '../ui/loadable';
 import { ReleaseConflict } from './release-conflict';
+import { ReleaseRequestChanges } from './release-request-changes';
 import { ReleaseGatesPanel } from './release-gates-panel';
 import { releaseArtifactLinks, type ReleaseArtifactLink } from './release-artifact-links';
 import {
@@ -84,6 +85,25 @@ interface DrawnArtifact {
  * panels are the same panels, every read is keyed by the row id either arm resolves, and the two
  * addresses are one page because a release request is one thing.
  *
+ * <p><b>Two tabs, and which one is open rides in `?tab=`, not in a trailing segment.</b> This is the
+ * rule `app.routes.ts` states for the refining page, and every clause of it holds here with
+ * "request" in place of "epic": a trailing segment would make a tab switch free — Angular reuses a
+ * component across a parameter change — and it would make a *request* switch free too, which is the
+ * bug and not the feature. On this page that bug has a name: a component kept alive across a
+ * `:requestId` change draws the previous request's fold under the new request's approve button, and
+ * an approval of the wrong fold is precisely what this page exists to prevent. Keeping the tab in
+ * the query string leaves the path meaning "which request", makes a bare URL mean the overview by
+ * simple absence, and keeps both tabs shareable links. The open file rides in `?path=` for a second
+ * reason on top of that one: a path holds slashes, which is the grammar the git host's SPA uses
+ * everywhere.
+ *
+ * <p><b>The two tabs share everything except scroll.</b> The request read, its poll and the gates
+ * panel stay on this component and run on both — on a wrapper request the outstanding question is
+ * still the approval, and a reader who opens Changes has not stopped being at the gate, they have
+ * started reading it. What the tabs do not share is the viewport: the overview is a column of
+ * `.panel` sections read by scrolling, and the two-pane diff wants the screen, so the changes body
+ * owns its own scrolling and the overview keeps the page's.
+ *
  * <p><b>An anchor whose href this platform cannot spell is dropped, never drawn dead.</b> That is the
  * established rule (see `repository-page.ts`): `QitsAppLinks.href` answers `undefined` both for an
  * application the platform serves nowhere and for a navigation tree that has not arrived, and a link
@@ -101,6 +121,7 @@ interface DrawnArtifact {
     QitsBadge,
     ReleaseConflict,
     ReleaseGatesPanel,
+    ReleaseRequestChanges,
     ReleaseSources,
     RouterLink,
   ],
@@ -156,43 +177,179 @@ interface DrawnArtifact {
           <ng-container [ngTemplateOutlet]="gatesSection" />
         }
 
-        <app-release-sources [request]="request" editable (changed)="prioritised($event)" />
+        <!--
+          The tab strip. Both links address the path this page is already at and change only
+          ?tab=, merging the rest of the query string so the open file survives a switch away and
+          back. "Overview" is named explicitly and is also what an address with no ?tab= at all
+          means, by simple absence.
+        -->
+        <nav class="tabs" aria-label="Release request views">
+          <a
+            class="tab"
+            [class.current]="tab() !== 'changes'"
+            [routerLink]="[]"
+            [queryParams]="{ tab: 'overview' }"
+            queryParamsHandling="merge"
+            >Overview</a
+          >
+          <a
+            class="tab"
+            [class.current]="tab() === 'changes'"
+            [routerLink]="[]"
+            [queryParams]="{ tab: 'changes' }"
+            queryParamsHandling="merge"
+            >Changes</a
+          >
+        </nav>
 
-        <div class="facts">
-          <span class="fact">
-            folded onto
-            <span class="ref">{{ request.backingBranch }}</span>
-          </span>
-          <span class="fact">
-            merged
-            <span class="ref" [title]="foldTitle(request)">{{ mergedSha(request) }}</span>
-          </span>
-          <span class="fact">asked by {{ request.requester || none }}</span>
-          @if (request.gateTicketId) {
-            <a class="fact ticket" [routerLink]="['/', addressed().project, 'tickets']">
-              a bug ticket was filed for this failure
-            </a>
+        @if (tab() === 'changes') {
+          <!--
+            The approval keeps running on this tab. A reader who opened Changes has not stopped
+            being at the gate, they have started reading it — so on a repository request, whose
+            gates sit below the fold in the overview, they are drawn above the panes here rather
+            than below a pane that scrolls on its own. On the estate they are already above.
+          -->
+          @if (!wrapper()) {
+            <ng-container [ngTemplateOutlet]="gatesSection" />
           }
-          <span class="fact" [title]="instant(request.createdAt)">
-            asked {{ ago(request.createdAt) }}
-          </span>
-          <span class="fact" [title]="instant(request.updatedAt)">
-            last change {{ ago(request.updatedAt) }}
-          </span>
-        </div>
 
-        @if (detail(request); as sentence) {
-          <p class="detail">{{ sentence }}</p>
-        }
+          <app-release-request-changes [request]="request" />
+        } @else {
+          <app-release-sources [request]="request" editable (changed)="prioritised($event)" />
 
-        @if (!wrapper()) {
-          <ng-container [ngTemplateOutlet]="gatesSection" />
+          <div class="facts">
+            <span class="fact">
+              folded onto
+              <span class="ref">{{ request.backingBranch }}</span>
+            </span>
+            <span class="fact">
+              merged
+              <span class="ref" [title]="foldTitle(request)">{{ mergedSha(request) }}</span>
+            </span>
+            <span class="fact">asked by {{ request.requester || none }}</span>
+            @if (request.gateTicketId) {
+              <a class="fact ticket" [routerLink]="['/', addressed().project, 'tickets']">
+                a bug ticket was filed for this failure
+              </a>
+            }
+            <span class="fact" [title]="instant(request.createdAt)">
+              asked {{ ago(request.createdAt) }}
+            </span>
+            <span class="fact" [title]="instant(request.updatedAt)">
+              last change {{ ago(request.updatedAt) }}
+            </span>
+          </div>
+
+          @if (detail(request); as sentence) {
+            <p class="detail">{{ sentence }}</p>
+          }
+
+          @if (!wrapper()) {
+            <ng-container [ngTemplateOutlet]="gatesSection" />
+          }
+
+          <app-release-conflict [request]="request" />
+
+          @if (request.state === 'RELEASED') {
+            <section class="panel released">
+              <h2>Released</h2>
+              <p class="lead">
+                <span class="version">{{ request.version || none }}</span>
+                <span class="on-main">{{ mainState(request) }}</span>
+              </p>
+              <ul class="links">
+                @if (tagHref(); as href) {
+                  <li><a [href]="href">View the tag in Code</a></li>
+                }
+                @if (releasedCommitHref(); as href) {
+                  <li>
+                    <a [href]="href">
+                      The released commit
+                      <span class="ref">{{ short(request.releasedSha) }}</span>
+                    </a>
+                  </li>
+                }
+                @if (deploymentHref(); as href) {
+                  <li><a [href]="href">The deployment of this release</a></li>
+                }
+                @if (trainHref(); as href) {
+                  <li><a [href]="href">The release train of this version</a></li>
+                }
+              </ul>
+            </section>
+          }
+
+          <section class="panel">
+            <h2>What this release folds in</h2>
+            <app-async
+              [state]="commits()"
+              loadingLabel="Loading the commits"
+              errorLabel="Could not load the commits"
+              (retry)="reloadCommits()"
+            />
+            @if (foldedIn(); as fold) {
+              @if (fold.commits.length === 0) {
+                <app-empty [message]="fold.detail || 'Nothing was folded in.'" />
+              } @else {
+                <ul class="commits">
+                  @for (commit of fold.commits; track commit.hash) {
+                    <li class="commit">
+                      <span class="ref" [title]="commit.hash">{{ commit.shortHash }}</span>
+                      <span class="message">{{ commit.message }}</span>
+                      <span class="author">{{ commit.author }}</span>
+                      <span class="when" [title]="instant(commit.date)">{{
+                        ago(commit.date)
+                      }}</span>
+                    </li>
+                  }
+                </ul>
+              }
+            }
+          </section>
+
+          @if (request.state === 'RELEASED') {
+            <section class="panel">
+              <h2>What it published</h2>
+              <app-async
+                [state]="artifacts()"
+                loadingLabel="Loading the artifacts"
+                errorLabel="Could not load the artifacts"
+                (retry)="reloadArtifacts()"
+              />
+              @if (published(); as published) {
+                @if (published.detail) {
+                  <p class="detail">{{ published.detail }}</p>
+                }
+                @if (drawnArtifacts().length === 0) {
+                  @if (!published.detail) {
+                    <app-empty message="This repository publishes nothing of its own." />
+                  }
+                } @else {
+                  <ul class="artifacts">
+                    @for (drawn of drawnArtifacts(); track drawn.artifact.name) {
+                      <li class="artifact">
+                        <span class="kind">{{ drawn.artifact.type }}</span>
+                        @for (link of drawn.links; track link.label) {
+                          @if (link.href) {
+                            <a [href]="link.href">{{ link.label }}</a>
+                          } @else {
+                            <span class="unlinked">{{ link.label }}</span>
+                          }
+                        }
+                        <span class="ref">{{ drawn.artifact.version }}</span>
+                      </li>
+                    }
+                  </ul>
+                }
+              }
+            </section>
+          }
         }
 
         <!--
-          Declared once and placed twice: the gates are the same gates wherever they are drawn, and
-          only their position says which question this page is about. Two copies of the panel would
-          be two places to change the approval affordance.
+          Declared once and placed three times: the gates are the same gates wherever they are
+          drawn, and only their position says which question this page is about. Copies of the panel
+          would be as many places to change the approval affordance.
         -->
         <ng-template #gatesSection>
           <app-async
@@ -209,101 +366,6 @@ interface DrawnArtifact {
             />
           }
         </ng-template>
-
-        <app-release-conflict [request]="request" />
-
-        @if (request.state === 'RELEASED') {
-          <section class="panel released">
-            <h2>Released</h2>
-            <p class="lead">
-              <span class="version">{{ request.version || none }}</span>
-              <span class="on-main">{{ mainState(request) }}</span>
-            </p>
-            <ul class="links">
-              @if (tagHref(); as href) {
-                <li><a [href]="href">View the tag in Code</a></li>
-              }
-              @if (releasedCommitHref(); as href) {
-                <li>
-                  <a [href]="href">
-                    The released commit
-                    <span class="ref">{{ short(request.releasedSha) }}</span>
-                  </a>
-                </li>
-              }
-              @if (deploymentHref(); as href) {
-                <li><a [href]="href">The deployment of this release</a></li>
-              }
-              @if (trainHref(); as href) {
-                <li><a [href]="href">The release train of this version</a></li>
-              }
-            </ul>
-          </section>
-        }
-
-        <section class="panel">
-          <h2>What this release folds in</h2>
-          <app-async
-            [state]="commits()"
-            loadingLabel="Loading the commits"
-            errorLabel="Could not load the commits"
-            (retry)="reloadCommits()"
-          />
-          @if (foldedIn(); as fold) {
-            @if (fold.commits.length === 0) {
-              <app-empty [message]="fold.detail || 'Nothing was folded in.'" />
-            } @else {
-              <ul class="commits">
-                @for (commit of fold.commits; track commit.hash) {
-                  <li class="commit">
-                    <span class="ref" [title]="commit.hash">{{ commit.shortHash }}</span>
-                    <span class="message">{{ commit.message }}</span>
-                    <span class="author">{{ commit.author }}</span>
-                    <span class="when" [title]="instant(commit.date)">{{ ago(commit.date) }}</span>
-                  </li>
-                }
-              </ul>
-            }
-          }
-        </section>
-
-        @if (request.state === 'RELEASED') {
-          <section class="panel">
-            <h2>What it published</h2>
-            <app-async
-              [state]="artifacts()"
-              loadingLabel="Loading the artifacts"
-              errorLabel="Could not load the artifacts"
-              (retry)="reloadArtifacts()"
-            />
-            @if (published(); as published) {
-              @if (published.detail) {
-                <p class="detail">{{ published.detail }}</p>
-              }
-              @if (drawnArtifacts().length === 0) {
-                @if (!published.detail) {
-                  <app-empty message="This repository publishes nothing of its own." />
-                }
-              } @else {
-                <ul class="artifacts">
-                  @for (drawn of drawnArtifacts(); track drawn.artifact.name) {
-                    <li class="artifact">
-                      <span class="kind">{{ drawn.artifact.type }}</span>
-                      @for (link of drawn.links; track link.label) {
-                        @if (link.href) {
-                          <a [href]="link.href">{{ link.label }}</a>
-                        } @else {
-                          <span class="unlinked">{{ link.label }}</span>
-                        }
-                      }
-                      <span class="ref">{{ drawn.artifact.version }}</span>
-                    </li>
-                  }
-                </ul>
-              }
-            }
-          </section>
-        }
       }
     }
   `,
@@ -351,6 +413,27 @@ interface DrawnArtifact {
     .state {
       margin: 0.15rem 0;
       color: #6b7280;
+    }
+    .tabs {
+      display: flex;
+      gap: 0.25rem;
+      margin: 0.6rem 0 0;
+      border-bottom: 1px solid #e5e7eb;
+    }
+    .tab {
+      padding: 0.3rem 0.7rem;
+      border-bottom: 2px solid transparent;
+      color: #4b5563;
+      font-size: 0.85rem;
+      text-decoration: none;
+    }
+    .tab:hover {
+      color: #111827;
+    }
+    .tab.current {
+      border-bottom-color: #1d4ed8;
+      color: #111827;
+      font-weight: 600;
     }
     .facts {
       display: flex;
@@ -472,9 +555,22 @@ export class ReleaseRequestDetailPage {
   /** What the address says is on screen — never the route parameters, which is the platform rule. */
   private readonly scope = inject(QITS_SCOPE).scope;
 
-  private readonly params = toSignal(inject(ActivatedRoute).paramMap, {
+  private readonly route = inject(ActivatedRoute);
+
+  private readonly params = toSignal(this.route.paramMap, {
     initialValue: convertToParamMap({}),
   });
+
+  private readonly query = toSignal(this.route.queryParamMap, {
+    initialValue: convertToParamMap({}),
+  });
+
+  /**
+   * Which tab is open. Anything that is not `changes` — including the absent parameter a bare URL
+   * has — is the overview, because "no tab pinned" and "the overview" are the same screen and a
+   * word this page does not know is not worth a third one.
+   */
+  protected readonly tab = computed(() => this.query().get('tab') ?? 'overview');
 
   protected readonly none = NONE;
   protected readonly stateBadge = releaseStateBadge;
