@@ -32,6 +32,7 @@ function epic(over: Partial<EpicDto> = {}): EpicDto {
     supersededByEpicId: null,
     createdAt: AT,
     updatedAt: AT,
+    workspaces: [],
     ...over,
   };
 }

@@ -245,6 +245,8 @@ export interface EpicDto {
   readonly supersededByEpicId: string | null;
   readonly createdAt: string;
   readonly updatedAt: string;
+  /** The live workspaces implementing this epic — {@link TicketDto.workspaces}, rule for rule. */
+  readonly workspaces: readonly WorkspaceReferenceDto[];
 }
 
 /**
@@ -376,6 +378,26 @@ export type TicketStatus = 'OPEN' | 'RESOLVED';
  * Null is a row written before there was a principal to stamp, or by one the service could not
  * name; it draws as the dash, not as an empty byline.
  */
+/**
+ * A live workspace working on a ticket or an epic — the answer to "has an agent already been put on
+ * this?", derived by the service on every read and stored nowhere.
+ *
+ * <p>It is the workspace that carries the reference, never the row: a pointer on the ticket would
+ * have to be cleared when the workspace is integrated or discarded, and one that is only ever
+ * written disables its own button for ever and links to a row nobody can open. So a workspace that
+ * resolves simply stops appearing here.
+ *
+ * <p>`workspaceRowId` and `repositoryId` are the pair the link is composed from — that application
+ * routes a workspace as `repositories/{repositoryId}/workspaces/{workspaceRowId}` — and `branch` is
+ * what the link says out loud.
+ */
+export interface WorkspaceReferenceDto {
+  readonly workspaceRowId: number;
+  readonly repositoryId: string;
+  readonly workspaceId: string;
+  readonly branch: string;
+}
+
 export interface TicketDto {
   readonly id: string;
   readonly projectId: string;
@@ -391,6 +413,11 @@ export interface TicketDto {
   readonly description: string | null;
   readonly createdAt: string;
   readonly updatedAt: string;
+  /**
+   * The live workspaces working on this ticket — empty when none is, which is when the button is
+   * offered. Empty on a write's answer too: an edit is not the read that asks.
+   */
+  readonly workspaces: readonly WorkspaceReferenceDto[];
 }
 
 /**

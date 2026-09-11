@@ -18,6 +18,7 @@ const ticket = (over: Partial<TicketDto> = {}): TicketDto => ({
   description: null,
   createdAt: AT,
   updatedAt: AT,
+  workspaces: [],
   ...over,
 });
 

@@ -48,6 +48,7 @@ function ticket(id: string, over: Partial<TicketDto> = {}): TicketDto {
     description: null,
     createdAt: AT,
     updatedAt: AT,
+    workspaces: [],
     ...over,
   };
 }
@@ -430,6 +431,64 @@ describe('TicketsOverview', () => {
 
       // The list came back through the channel, and the link the press earned is still there.
       expect(workspaceLink('b')).toBeTruthy();
+    });
+  });
+
+  describe('a ticket that already has a workspace on it', () => {
+    /** What the service derives from the workspaces themselves, on every read of the ticket. */
+    const ON_IT = {
+      workspaceRowId: 41,
+      repositoryId: 'r1',
+      workspaceId: 'ticket-ticket-b',
+      branch: 'ticket/ticket-b',
+    };
+
+    async function loadWithWorkspace(
+      workspaces: readonly (typeof ON_IT)[] = [ON_IT],
+    ): Promise<void> {
+      await mount();
+      await flushTickets([ticket('a'), ticket('b', { workspaces })]);
+    }
+
+    it('closes the button and links to the workspace instead', async () => {
+      await loadWithWorkspace();
+
+      expect(assignButton('b').disabled).toBe(true);
+      const link = workspaceLink('b');
+      expect(link?.getAttribute('href')).toBe(
+        'https://workspaces.dev.example.test/repositories/r1/workspaces/41?tab=chat',
+      );
+      expect(link?.textContent?.trim()).toBe('Open ticket/ticket-b');
+    });
+
+    /** It is the ticket's own read, so it survives a reload — which is the whole point of it. */
+    it('is still there after the panel re-reads, unlike the memory of a press', async () => {
+      await loadWithWorkspace();
+      streams[0].emit('tickets');
+      await settle();
+      http
+        .expectOne('/projects/api/projects/p1/tickets')
+        .flush({ entries: [{ ticket: ticket('b', { workspaces: [ON_IT] }) }] });
+      await settle();
+
+      expect(assignButton('b').disabled).toBe(true);
+      expect(workspaceLink('b')).not.toBeNull();
+    });
+
+    it('draws one link per workspace when several name the ticket', async () => {
+      await loadWithWorkspace([
+        ON_IT,
+        { ...ON_IT, workspaceRowId: 42, branch: 'ticket/ticket-b-again' },
+      ]);
+
+      expect(row('b').querySelectorAll('a.workspace').length).toBe(2);
+    });
+
+    it('leaves a ticket nobody is on exactly as it was', async () => {
+      await loadWithWorkspace();
+
+      expect(assignButton('a').disabled).toBe(false);
+      expect(workspaceLink('a')).toBeNull();
     });
   });
 

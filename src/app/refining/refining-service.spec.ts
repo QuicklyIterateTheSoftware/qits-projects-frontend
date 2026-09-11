@@ -17,6 +17,7 @@ const EPIC = {
   supersededByEpicId: null,
   createdAt: AT,
   updatedAt: AT,
+  workspaces: [],
 };
 
 const REFINEMENT: RefinementDto = {

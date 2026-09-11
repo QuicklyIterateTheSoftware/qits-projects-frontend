@@ -42,6 +42,7 @@ function ticket(over: Partial<TicketDto> = {}): TicketDto {
     description: 'It reads as **success**.',
     createdAt: AT,
     updatedAt: AT,
+    workspaces: [],
     ...over,
   };
 }
