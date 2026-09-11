@@ -21,8 +21,6 @@ export interface RefinementDto {
   readonly parent: string;
   /** `refining-<epicSlug>`, decoration — the id above is the address. */
   readonly label: string;
-  /** The chat's opening context, computed from the epic tree at create. */
-  readonly preamble: string | null;
   readonly runtimeStatus: 'RUNNING' | 'STOPPED' | 'PROVISIONING' | 'FAILED' | null;
   readonly runtimeError: string | null;
   /** Three-valued: null is "the daemon has not vouched", which blocks a recreate. */

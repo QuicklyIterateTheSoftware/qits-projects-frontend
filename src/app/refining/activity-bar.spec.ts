@@ -16,7 +16,6 @@ const workspace = (
   branch: label,
   parent: 'main',
   label,
-  preamble: null,
   runtimeStatus: 'RUNNING',
   runtimeError: null,
   clean: true,

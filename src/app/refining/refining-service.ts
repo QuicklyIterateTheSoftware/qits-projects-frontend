@@ -10,7 +10,8 @@ import type { EpicNode } from '../project/epics-model';
  * qits-workspaces workspace the browser created against the wrapper repository, with the
  * `refining/` branch prefix as a convention only this SPA knew — which is why refining branches
  * leaked into the workspaces overview. The find/create, the branch cut, the adopt-existing dance
- * and the preamble all moved server-side, keyed by the epic: {@link open} is one idempotent POST,
+ * and the wrapper resolution all moved server-side, keyed by the epic: {@link open} is one
+ * idempotent POST,
  * and two racing opens are settled by the server's unique constraint rather than by client
  * choreography.
  *

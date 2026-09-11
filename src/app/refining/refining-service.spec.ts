@@ -27,7 +27,6 @@ const REFINEMENT: RefinementDto = {
   branch: 'refining/sharper-onboarding',
   parent: 'main',
   label: 'refining-sharper-onboarding',
-  preamble: '# Refine: Sharper onboarding',
   runtimeStatus: null,
   runtimeError: null,
   clean: null,
@@ -52,8 +51,8 @@ const settle = async () => {
 /**
  * Starting and finding the refinement an epic is refined in — and how little of it is left here.
  *
- * The 409/adopt-existing choreography, the label rule, the preamble builder and the wrapper
- * resolution all moved server-side when refinement moved into qits-projects: the open is one
+ * The 409/adopt-existing choreography, the label rule and the wrapper resolution all moved
+ * server-side when refinement moved into qits-projects: the open is one
  * idempotent POST keyed by the epic id, and the find is a list read that never creates. What is
  * worth pinning is exactly that — which requests go out, and that the find creates nothing.
  */

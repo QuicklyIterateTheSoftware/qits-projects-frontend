@@ -120,8 +120,8 @@ interface Subject {
  * 1. `GET /projects/api/projects/{id}/repositories` — the wrapper repository id **and** its default
  *    branch, from the one read that carries both (drift is the difference between the rows and the
  *    wrapper, so the service answers them together).
- * 2. `GET /projects/api/projects/{id}/epics` plus that epic's features and tasks — the header's title
- *    and, if there is no workspace, the preamble a create would need.
+ * 2. `GET /projects/api/projects/{id}/epics` plus that epic's features and tasks — the header's
+ *    title, its document, and the one line the prompt rewrite is given as context.
  * 3. `GET /workspaces/api/workspaces?repositoryId=` — the ACTIVE workspaces of the wrapper, of which
  *    the one whose `branch` matches is this page's subject. The listing rather than a read by id,
  *    because the branch is all this page has to go on.
@@ -412,6 +412,24 @@ export class RefiningPage {
   protected readonly repositoryId = computed(() => this.workspace()?.repositoryId ?? '');
   protected readonly mainBranch = computed(() => this.workspace()?.parent ?? '');
   protected readonly title = computed(() => this.resolved()?.node.epic.title ?? this.epicSlug());
+
+  /**
+   * The one line of context the prompt-rewrite helper is given — what this chat is about, and
+   * nothing more.
+   *
+   * It is **derived, never stored**. The refinement row used to carry a `preamble` column holding
+   * the epic's title, description and whole feature/task tree, rendered once when the refinement was
+   * created; that made the rewrite's context a copy of the very draft this page spends the session
+   * editing, and it went stale the moment the agent touched anything. The row names its epic in
+   * `epicId` — that is its key — so the scope is an attribute, and this computes the sentence from
+   * the epic the page has already resolved to draw its header. Rename the epic and the next rewrite
+   * is told the new name.
+   *
+   * `[preamble]` stays the binding's name down to {@link PromptPanel} because that is the daemon's
+   * word for the field on `POST /prompt-refinements`; renaming it here while the wire kept the old
+   * word would be two names for one thing.
+   */
+  protected readonly promptContext = computed(() => `# Refine: ${this.title()}`);
   protected readonly description = computed(() => this.resolved()?.node.epic.description ?? '');
 
   /**

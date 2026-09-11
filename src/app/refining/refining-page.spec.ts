@@ -9,6 +9,7 @@ import { RouterTestingHarness } from '@angular/router/testing';
 import { EVENT_SOURCE_FACTORY, type EventSourceLike } from '../api/event-source';
 import type { RefinementDto } from '../api/refinements-api';
 import { routes } from '../app.routes';
+import { ready } from '../ui/loadable';
 import { LINGER_MS, RefiningPage } from './refining-page';
 
 class FakeStream implements EventSourceLike {
@@ -45,7 +46,6 @@ const workspace = (over: Partial<RefinementDto> = {}): RefinementDto => ({
   branch: 'refining/epic-refining-workspace',
   parent: 'main',
   label: 'refining-epic-refining-workspace',
-  preamble: null,
   runtimeStatus: 'RUNNING',
   runtimeError: null,
   clean: true,
@@ -763,6 +763,32 @@ describe('RefiningPage', () => {
       expect(element().querySelector('app-agents-panel')).toBeNull();
     });
 
+    /**
+     * The context the prompt-rewrite helper is handed. It used to be `refinement.preamble` — the
+     * epic's whole tree, rendered once when the refinement was created and never again. There is no
+     * such column now, so what matters is that this is one line, that it names the epic, and that it
+     * comes from the epic the page has resolved rather than from anything on the refinement row.
+     */
+    it('derives the rewrite context from the epic, one line, not from the row', async () => {
+      await open();
+
+      expect(page()['promptContext']()).toBe('# Refine: Epic refining workspace');
+
+      // A rename during the session moves it: the row is not in the picture at all.
+      page()['subject'].set(
+        ready({
+          ...page()['resolved']()!,
+          node: {
+            ...page()['resolved']()!.node,
+            epic: { ...page()['resolved']()!.node.epic, title: 'Sharper onboarding' },
+          },
+        }),
+      );
+      harness.detectChanges();
+
+      expect(page()['promptContext']()).toBe('# Refine: Sharper onboarding');
+    });
+
     it('builds the files panel on its tab, pointed at the resolved workspace’s container', async () => {
       await open();
       expect(element().querySelector('app-files-panel')).toBeNull();
@@ -1033,7 +1059,6 @@ describe('RefiningPage', () => {
         epicId: 'e3',
         branch: 'refining/agent-configuration-system',
         label: 'refining-agent-configuration-system',
-        preamble: '# Refine: Agent Configuration System\n',
         runtimeStatus: 'RUNNING',
         clean: true,
         ahead: null,

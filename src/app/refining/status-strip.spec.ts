@@ -13,7 +13,6 @@ const refinement = (over: Partial<RefinementDto> = {}): RefinementDto => ({
   branch: 'refining/task-widgets',
   parent: 'main',
   label: 'refining-task-widgets',
-  preamble: null,
   runtimeStatus: 'RUNNING',
   runtimeError: null,
   clean: true,

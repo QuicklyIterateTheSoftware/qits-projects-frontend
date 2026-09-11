@@ -74,7 +74,7 @@
             @if (tab.slug === 'chat') {
               <app-chat-panel
                 [workspaceRowId]="ws.id"
-                [preamble]="ws.preamble"
+                [preamble]="promptContext()"
                 [visible]="selected() === 'chat'"
               />
             } @else if (tab.slug === 'files') {
