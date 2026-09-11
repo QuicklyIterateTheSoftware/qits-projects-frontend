@@ -9,7 +9,7 @@ import {
   signal,
 } from '@angular/core';
 import { QitsAppLinks, QitsButton } from '@qits/ui-components';
-import type { CommitBuildStatusDto, ReleaseRequestDto } from '../api/dto';
+import type { CommitBuildStatusDto, ReleaseGateDto, ReleaseRequestDto } from '../api/dto';
 import { ReleaseRequestsApi } from '../api/release-requests-api';
 import { NONE, formatInstant, formatRelativeTime, shortSha } from '../ui/format';
 import { describeError, serverMessage, statusOf } from '../ui/loadable';
@@ -27,11 +27,27 @@ type Decision = 'approve' | 'decline';
 /**
  * What is standing between this release request and its release, one line per gate.
  *
+ * <p><b>The gates a repository CONFIGURES, and no others.</b> A release request is held by every
+ * quality gate its repository declares — a CI recipe, `manual-review: true`, a deployments manifest —
+ * and by nothing else, so this panel draws the set the service reports rather than a fixed pair of
+ * lines. Three states a reader can now see that did not exist before: **waiting on a build**,
+ * **waiting on a person**, and **waiting on nothing**, which is a repository that configured no gate
+ * and should read as releasable rather than as unfinished.
+ *
+ * <p><b>`UNKNOWN` is drawn as "could not read this repository's configuration" and never as
+ * pending.</b> A gate quietly in progress and a configuration nobody could read are different things
+ * to whoever is looking at the page, and only one of them is anybody's to wait for. The request is
+ * held either way, so the sentence says which — and says that nothing refused it.
+ *
  * <p><b>Why one panel for two unlike things.</b> A release request is held by a build and — on a
  * repository whose releases are approved — by a person, and the two are the same question to whoever
  * is looking at the page: *why has this not gone out*. Drawing the verdicts in one place and the
  * approval in another would make a reader answer it twice, and would leave the commonest case (green
  * build, nobody has said yes) looking exactly like the one nobody has to do anything about.
+ *
+ * <p><b>The deployment gate is answered after the tag, so it is never a wait in front of one.</b> It
+ * is drawn because "released, waiting on its deployment" is a real state today that this page showed
+ * nothing for: a release is a tag, and `main` is finalized when the deployment goes live.
  *
  * <p><b>The approval line is drawn only where the service says approval is required</b>, and the ask
  * only while the decision is actually outstanding. On an ordinary repository this panel is the CI
@@ -67,6 +83,19 @@ type Decision = 'approve' | 'decline';
     <section class="panel gates">
       <h2>Gates</h2>
 
+      @if (unknown()) {
+        <p class="unknown" role="alert">
+          This repository's gate configuration could not be read, so which gates apply is not known.
+          The request is held — nothing has refused it — and the service retries on its own.
+        </p>
+      } @else if (nothingToWaitOn()) {
+        <p class="no-gates">
+          This repository configures no quality gate, so a release waits on nothing but somebody
+          pressing release.
+        </p>
+      }
+
+      @if (showCi()) {
       <div class="gate ci">
         <span class="name">CI</span>
         @if (verdicts().length === 0) {
@@ -93,6 +122,20 @@ type Decision = 'approve' | 'decline';
           </ul>
         }
       </div>
+      }
+
+      @if (deployment(); as deployment) {
+        <div class="gate deployment">
+          <span class="name">{{ deployed() ? '✓ Deployment' : 'Deployment' }}</span>
+          @if (deployed()) {
+            <span class="decided">— live, and main carries this release</span>
+          } @else if (released()) {
+            <span class="waiting">— released, waiting on its deployment to go live</span>
+          } @else {
+            <span class="waiting">— answered after the tag, never before it</span>
+          }
+        </div>
+      }
 
       @if (request().approvalRequired) {
         <div class="gate approval" [class.declined]="declined()">
@@ -186,6 +229,16 @@ type Decision = 'approve' | 'decline';
     .none,
     .waiting {
       color: #6b7280;
+    }
+    .no-gates {
+      margin: 0 0 0.35rem;
+      font-size: 0.85rem;
+      color: #6b7280;
+    }
+    .unknown {
+      margin: 0 0 0.35rem;
+      font-size: 0.85rem;
+      color: #92400e;
     }
     .verdicts {
       list-style: none;
@@ -310,6 +363,48 @@ export class ReleaseGatesPanel {
       href: this.appLinks.href('qits-ci', `runs/${encodeURIComponent(build.runId)}`),
     })),
   );
+
+  /**
+   * The gate set as the service reports it, or `undefined` from a service older than the field.
+   *
+   * <p>**`undefined` and `[]` are not the same answer and the whole panel turns on it.** An empty
+   * array is a repository that configures no gate — releasable at once, and it should read that way
+   * rather than looking unfinished. `undefined` is a service that does not report gates at all, where
+   * the only honest thing to draw is what this panel drew before the field existed: the CI line and,
+   * where `approvalRequired` says so, the approval one.
+   */
+  private readonly gates = computed(() => this.request().gates);
+
+  /** One gate of the set, or null — `undefined` from an older service answers null for every kind. */
+  private gate(kind: string): ReleaseGateDto | null {
+    return this.gates()?.find((gate) => gate.kind === kind) ?? null;
+  }
+
+  /**
+   * The configuration could not be read. Reported as every kind at `UNKNOWN`, never as an empty
+   * list, and it is deliberately **not** drawn as a gate quietly in progress: nothing is pending,
+   * because nothing is known.
+   */
+  protected readonly unknown = computed(() =>
+    (this.gates() ?? []).some((gate) => gate.state === 'UNKNOWN'),
+  );
+
+  /** A repository that configures nothing. The third of the three new states a reader can see. */
+  protected readonly nothingToWaitOn = computed(() => this.gates()?.length === 0);
+
+  /**
+   * Whether the CI line is drawn at all. An older service answers no gate set, and its requests are
+   * all CI-gated by construction, so absence keeps the line.
+   */
+  protected readonly showCi = computed(
+    () => !this.unknown() && (this.gates() === undefined || this.gate('CI') !== null),
+  );
+
+  protected readonly deployment = computed(() => (this.unknown() ? null : this.gate('DEPLOYMENT')));
+
+  protected readonly deployed = computed(() => this.deployment()?.state === 'PASSED');
+
+  protected readonly released = computed(() => this.request().state === 'RELEASED');
 
   protected readonly outstanding = computed(() => approvalOutstanding(this.request()));
 

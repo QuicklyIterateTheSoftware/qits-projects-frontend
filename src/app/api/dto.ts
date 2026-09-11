@@ -870,6 +870,18 @@ export interface ReleaseRequestDto {
   readonly approvedBy?: string | null;
   readonly approvedAt?: string | null;
   readonly approvalNote?: string | null;
+  /**
+   * **Every quality gate this repository configures, with what each says about the current fold.**
+   * A request is held by all of them and by no other; a gate the repository does not configure is
+   * simply absent from the list and is never waited on.
+   *
+   * <p>Absent where the service has none to give — an answer from a build older than the field —
+   * and that absence is **not** the same as an empty array. Empty means "this repository configures
+   * no gate", which is a request releasable at once; `undefined` means "this service does not report
+   * gates", where the approval fields above are still the whole of what is known. Readers here keep
+   * drawing the old panel for `undefined` and the new one for an array, empty included.
+   */
+  readonly gates?: readonly ReleaseGateDto[];
   readonly conflict: MergeConflictDto | null;
   readonly version: string | null;
   readonly releasedSha: string | null;
@@ -892,6 +904,24 @@ export interface ReleaseRequestDto {
   readonly priority?: string;
   readonly createdAt: string;
   readonly updatedAt: string;
+}
+
+/**
+ * One quality gate of a release request.
+ *
+ * <p>`kind` is `CI`, `APPROVAL` or `DEPLOYMENT`, and `state` is `PENDING`, `PASSED`, `FAILED` or
+ * `UNKNOWN` — both plain strings rather than unions, the honesty every open vocabulary on this file
+ * is typed with: the service owns the words, they may grow, and a word this build has never heard of
+ * is drawn as itself rather than guessed into a colour.
+ *
+ * <p>**`UNKNOWN` is not `PENDING`.** It means the repository's gate configuration could not be read
+ * at all, so neither which gates apply nor whether any has passed is known. A gate quietly in
+ * progress and a configuration nobody could read are different things to whoever is looking at the
+ * page, and only one of them is somebody's to fix.
+ */
+export interface ReleaseGateDto {
+  readonly kind: string;
+  readonly state: string;
 }
 
 /** One repository's release requests, newest first — the service sorts, this SPA does not re-sort. */

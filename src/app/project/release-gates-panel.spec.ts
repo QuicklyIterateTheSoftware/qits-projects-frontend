@@ -210,6 +210,107 @@ describe('ReleaseGatesPanel', () => {
     });
   });
 
+  describe('the gate set', () => {
+    /**
+     * The commonest repository on the platform and the one that must not change: a CI recipe and
+     * nothing else, drawn exactly as it was before there was a set to report.
+     */
+    it('draws the CI line alone for a repository gated by CI', async () => {
+      await mount(request({ gates: [{ kind: 'CI', state: 'PENDING' }] }), []);
+
+      expect(element().querySelector('.gate.ci')).not.toBeNull();
+      expect(element().querySelector('.gate.deployment')).toBeNull();
+      expect(text()).toContain('No verdict yet');
+    });
+
+    /**
+     * **Waiting on a person, with no build in front of it.** A repository whose only gate is
+     * approval must not be drawn a CI line saying no verdict has announced: no verdict is coming,
+     * and the sentence would send a reader to look for a pipeline that does not exist.
+     */
+    it('draws no CI line where the repository configures no CI gate', async () => {
+      await mount(gated({ gates: [{ kind: 'APPROVAL', state: 'PENDING' }] }), []);
+
+      expect(element().querySelector('.gate.ci')).toBeNull();
+      expect(text()).not.toContain('No verdict yet');
+      expect(text()).toContain('Approval');
+    });
+
+    /**
+     * **Waiting on nothing.** An empty set is a repository that configured no gate at all: it is
+     * releasable at once, and it has to read that way rather than looking unfinished.
+     */
+    it('says a repository configuring no gate waits on nothing', async () => {
+      await mount(request({ gates: [] }), []);
+
+      expect(text()).toContain('configures no quality gate');
+      expect(element().querySelector('.gate.ci')).toBeNull();
+      expect(buttons()).toHaveLength(0);
+    });
+
+    /**
+     * **UNKNOWN is not PENDING.** A configuration nobody could read is not a gate quietly in
+     * progress, and the panel must not offer a reader a verdict to wait for.
+     */
+    it('says the configuration could not be read, and draws no gate as pending', async () => {
+      await mount(
+        request({
+          gates: [
+            { kind: 'CI', state: 'UNKNOWN' },
+            { kind: 'APPROVAL', state: 'UNKNOWN' },
+            { kind: 'DEPLOYMENT', state: 'UNKNOWN' },
+          ],
+        }),
+        [],
+      );
+
+      expect(text()).toContain('could not be read');
+      expect(element().querySelector('.gate.ci')).toBeNull();
+      expect(element().querySelector('.gate.deployment')).toBeNull();
+      expect(text()).not.toContain('No verdict yet');
+    });
+
+    /** "Released, waiting on its deployment" — a real state today that this page showed nothing for. */
+    it('says a released request is waiting on its deployment', async () => {
+      await mount(
+        request({
+          state: 'RELEASED',
+          gates: [
+            { kind: 'CI', state: 'PASSED' },
+            { kind: 'DEPLOYMENT', state: 'PENDING' },
+          ],
+        }),
+        [build()],
+      );
+
+      expect(text()).toContain('waiting on its deployment');
+    });
+
+    it('says the deployment is live once it has reached main', async () => {
+      await mount(
+        request({
+          state: 'RELEASED',
+          mergedToMainAt: '2026-09-01T14:00:00Z',
+          gates: [
+            { kind: 'CI', state: 'PASSED' },
+            { kind: 'DEPLOYMENT', state: 'PASSED' },
+          ],
+        }),
+        [build()],
+      );
+
+      expect(text()).toContain('main carries this release');
+    });
+
+    /** A service older than the field reports no set, and the panel draws what it always drew. */
+    it('keeps the CI line where the service reports no gate set at all', async () => {
+      await mount(request(), [build()]);
+
+      expect(element().querySelector('.gate.ci')).not.toBeNull();
+      expect(text()).not.toContain('configures no quality gate');
+    });
+  });
+
   describe('the approval line', () => {
     /**
      * The whole of what an ordinary repository sees: the CI line, and no approve affordance anywhere.
