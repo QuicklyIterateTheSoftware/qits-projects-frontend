@@ -53,7 +53,7 @@ export const repositoryGroupIsKnown: CanMatchFn = (_route, segments) => {
 };
 
 /**
- * Nineteen routes, all of them inside the platform chrome.
+ * Twenty routes, all of them inside the platform chrome.
  *
  * <p><b>`agent-configuration` is the one word this application claims at the TOP level</b>, and it is
  * there because what it configures is platform-wide rather than a project's: one configuration per
@@ -152,6 +152,26 @@ export const repositoryGroupIsKnown: CanMatchFn = (_route, segments) => {
  * routes, which is where every literal below `:project` has to be; `release-requests` is already an
  * {@link OWN_PROJECT_SEGMENTS} word, so nothing about the guard changes by adding it.
  *
+ * <p><b>`:project/release-requests/:requestId` is one request on the PROJECT's own repository</b>,
+ * and it is a second address for the same page rather than a second page. The five-segment form
+ * names a repository by group and name, and the project's wrapper has neither: `PROJECT` is
+ * deliberately unplaceable — it *is* the tree, so it is in no component and in no archetype category
+ * — and every five-segment address for it would have to invent a group and say the wrapper is a
+ * service. The wrapper is the project, so the project's own address is the honest one, and what is
+ * released at it is the declaration of which commit of every component this project is made of.
+ *
+ * <p><b>The order of the two `release-requests` routes below `:project` is load-bearing</b>, and
+ * `by-release` is declared first for that reason. Angular tries this table top to bottom and a leaf
+ * route must consume the whole address, so today the four-segment `by-release/:repoId/:version` and
+ * this two-segment `:requestId` cannot be confused by segment count alone — but that is a property
+ * of both being leaves, which the first child route added under either would quietly remove, and the
+ * failure would be `by-release` resolving as a request whose id is the word `by-release`. Declaring
+ * the more specific literal above the parameter is what keeps that from depending on a coincidence.
+ * The list at `:project/release-requests` is one segment shorter again and is declared above both.
+ *
+ * <p>Nothing about {@link OWN_PROJECT_SEGMENTS} moves: the set is derived from this table's
+ * `:project/<literal>` heads, and `release-requests` was already one of them.
+ *
  * <p><b>The refining route names an epic and never a workspace.</b>
  * `:project/epics/:epicSlug/refining` is where an epic is worked out, and the workspace behind it is
  * *looked up* — the ACTIVE workspace on `refining/<epicSlug>` in the project's wrapper repository.
@@ -167,7 +187,7 @@ export const repositoryGroupIsKnown: CanMatchFn = (_route, segments) => {
  * epic's workspace. Keeping the tab in the query string leaves the path meaning "which epic", makes a
  * bare URL mean "no tab pinned" by simple absence, and keeps every tab a shareable link.
  *
- * <p>All nineteen load eagerly. There are nineteen of them, they share every component below them,
+ * <p>All twenty load eagerly. There are twenty of them, they share every component below them,
  * and a lazy chunk boundary here would be ceremony that costs a round trip.
  *
  * <p>The `**` route sits *inside* the layout: this application is served at the root of its own
@@ -196,6 +216,7 @@ export const routes: Routes = [
         path: ':project/release-requests/by-release/:repoId/:version',
         component: ReleaseRequestByReleaseResolver,
       },
+      { path: ':project/release-requests/:requestId', component: ReleaseRequestDetailPage },
       { path: ':project/epics/:epicSlug/refining', component: RefiningPage },
       { path: ':project/repositories/new', component: CreateRepositoryPage },
       {

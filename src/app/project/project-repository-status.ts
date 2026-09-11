@@ -9,6 +9,7 @@ import {
   signal,
   untracked,
 } from '@angular/core';
+import { RouterLink } from '@angular/router';
 import { QitsBadge, QitsButton, QitsCard } from '@qits/ui-components';
 import { ProjectsApi } from '../api/projects-api';
 import {
@@ -93,6 +94,13 @@ export function wrapperDrift(
  * domain-registrar port and changes nothing here, so it is a small secondary action. (Nothing
  * implements that port since qits-platform-dns left the platform, so it reports FAILED today.)
  *
+ * <p><b>It is also the door to the estate's releases.</b> Releasing this repository is releasing the
+ * project — the declaration of which commit of every component the project is made of — so the page
+ * that is about the project repository is where a link to the release requests belongs; without it
+ * the only way in was a row in a list that has to be scanned for one. It is drawn beside the wrapper
+ * it is about and only where the slug is known, because an address this application cannot spell is
+ * dropped rather than drawn dead, which is the rule everywhere here.
+ *
  * <p><b>Neither of them deletes anything.</b> A row the wrapper does not name comes back
  * `UNDECLARED` — reported and left standing — and the delete is a button on that row's own card,
  * because only the reader can say whether the missing wrapper entry or the repository is the
@@ -101,7 +109,7 @@ export function wrapperDrift(
 @Component({
   selector: 'app-project-repository-status',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [QitsBadge, QitsButton, QitsCard],
+  imports: [QitsBadge, QitsButton, QitsCard, RouterLink],
   template: `
     <qits-card heading="Project repository">
       @if (wrapper(); as wrapper) {
@@ -144,6 +152,14 @@ export function wrapperDrift(
         }
 
         <p class="remote">{{ remoteSentence() }}</p>
+
+        @if (projectSlug()) {
+          <p class="releases">
+            <a [routerLink]="['/', projectSlug(), 'release-requests']">
+              Release requests for this project
+            </a>
+          </p>
+        }
 
         <div class="actions">
           <qits-button
@@ -229,6 +245,7 @@ export function wrapperDrift(
     }
     .summary,
     .remote,
+    .releases,
     .drift,
     .domain,
     .none {
@@ -238,6 +255,12 @@ export function wrapperDrift(
     }
     .drift code {
       margin-right: 0.4rem;
+    }
+    .releases a {
+      color: #1d4ed8;
+    }
+    .releases a:hover {
+      text-decoration: underline;
     }
     .hint {
       display: block;
@@ -280,6 +303,15 @@ export class ProjectRepositoryStatus {
   private readonly api = inject(ProjectsApi);
 
   readonly projectId = input.required<string>();
+
+  /**
+   * The slug every link is spelled with, handed down rather than read here — the same shape the
+   * component cards take it in, and the same rule the whole application keeps: ids are what the API
+   * resolves, slugs are what addresses say. Empty until the shared project list has answered, and an
+   * address that cannot be spelled is not drawn at all.
+   */
+  readonly projectSlug = input.required<string>();
+
   readonly wrapper = input.required<WrapperDto | null>();
   readonly repositories = input.required<readonly RepositoryDto[]>();
 

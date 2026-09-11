@@ -24,13 +24,28 @@ import type {
 } from '../api/dto';
 import { RELEASE_REQUESTS_POLL_MS } from './release-requests-model';
 
-const REQUEST = '/projects/api/repositories/repo-ci/release-requests/r1';
-const COMMITS = `${REQUEST}/commits`;
-const ARTIFACTS = `${REQUEST}/artifacts`;
+/**
+ * Every read this page makes, for one repository ROW ID — which is the whole of what the two arms
+ * of `repoId()` produce, so addressing the expectations by id is what proves the right arm ran.
+ */
+const reads = (repoId: string) => ({
+  request: `/projects/api/repositories/${repoId}/release-requests/r1`,
+  commits: `/projects/api/repositories/${repoId}/release-requests/r1/commits`,
+  artifacts: `/projects/api/repositories/${repoId}/release-requests/r1/artifacts`,
+  /** The verdicts are addressed by the COMMIT rather than by the request — the service's shape. */
+  builds: (sha: string) => `/projects/api/repositories/${repoId}/commits/${sha}/builds`,
+});
+
+/** The repository the five-segment address names, and the project repository the short one does. */
+const REPO = 'repo-ci';
+const ESTATE = 'repo-qits';
+
+const REQUEST = reads(REPO).request;
+const COMMITS = reads(REPO).commits;
+const ARTIFACTS = reads(REPO).artifacts;
 const FOLD = '20c377ee71fabe6f32429d1506989efecec7798b';
 
-/** The verdicts are addressed by the COMMIT rather than by the request — the service's own shape. */
-const builds = (sha: string) => `/projects/api/repositories/repo-ci/commits/${sha}/builds`;
+const builds = reads(REPO).builds;
 
 /**
  * The chrome, answered from literals — and every application this page can link to is served on a
@@ -195,7 +210,19 @@ describe('ReleaseRequestDetailPage', () => {
   /** The chrome knowing the repository, which is how the page learns the row id it reads by. */
   function withRepositories(...providers: unknown[]): void {
     configure(
-      provideQitsRepositoryList([{ id: 'repo-ci', name: 'qits-ci', category: 'services' }]),
+      provideQitsRepositoryList([{ id: REPO, name: 'qits-ci', category: 'services' }]),
+      ...providers,
+    );
+  }
+
+  /**
+   * The same chrome, also naming the project's wrapper — its second argument, and deliberately not
+   * one of the rows: a wrapper is not its own submodule, so the project-scoped address has to learn
+   * the estate's id from `wrapperRepositoryId` and could not find it in the list if it tried.
+   */
+  function withEstate(...providers: unknown[]): void {
+    configure(
+      provideQitsRepositoryList([{ id: REPO, name: 'qits-ci', category: 'services' }], ESTATE),
       ...providers,
     );
   }
@@ -221,6 +248,12 @@ describe('ReleaseRequestDetailPage', () => {
    * <p>The verdicts read is skipped for a request with no `mergedSha` on purpose and not as a
    * convenience: that route is addressed by a commit hash there is nothing to put in, so the page
    * does not ask, and a helper that flushed one anyway would hide the day it started asking.
+   *
+   * <p><b>The addresses come from the ROW's own `repoId`</b>, which is what makes this helper say
+   * something about the two arms of `repoId()`: the page resolved an id from the chrome, and every
+   * read below is expected at the id the answered request belongs to. A page that resolved the
+   * wrong one — the wrapper for a named repository, or a name for the project-scoped address — has
+   * no expectation to satisfy and fails here rather than quietly reading somebody else's request.
    */
   async function answer(
     row: ReleaseRequestDto,
@@ -228,9 +261,10 @@ describe('ReleaseRequestDetailPage', () => {
     artifacts: Partial<ReleaseArtifactsResponse> | null = null,
     verdicts: readonly CommitBuildStatusDto[] = [],
   ): Promise<void> {
-    http.expectOne(REQUEST).flush({ request: row });
+    const on = reads(row.repoId);
+    http.expectOne(on.request).flush({ request: row });
     await settle();
-    http.expectOne(COMMITS).flush({
+    http.expectOne(on.commits).flush({
       mergedSha: row.mergedSha,
       commits: [],
       detail: null,
@@ -239,13 +273,13 @@ describe('ReleaseRequestDetailPage', () => {
     await settle();
     if (row.mergedSha) {
       http
-        .expectOne(builds(row.mergedSha))
+        .expectOne(on.builds(row.mergedSha))
         .flush({ builds: verdicts } satisfies ListCommitBuildsResponse);
       await settle();
     }
     if (row.state === 'RELEASED') {
       http
-        .expectOne(ARTIFACTS)
+        .expectOne(on.artifacts)
         .flush({ ...NOTHING_PUBLISHED, ...(artifacts ?? {}) } satisfies ReleaseArtifactsResponse);
       await settle();
     }
@@ -873,6 +907,103 @@ describe('ReleaseRequestDetailPage', () => {
       await answer(released());
 
       expect(page().textContent).toContain('publishes nothing of its own');
+    });
+  });
+
+  /**
+   * The project's own release request, at `/qits/release-requests/r1`.
+   *
+   * <p>Two things are under test and the markup is neither. **The second arm**: the address names no
+   * repository, so the id every read is keyed by comes from the chrome's wrapper — which is asserted
+   * by construction, because the helper expects each read at the answered row's own repository.
+   * **The framing**: the same page says what is being released when the repository is the project
+   * itself, and puts the approval above the fold, because on the estate the outstanding question is
+   * the approval and not which branches folded together.
+   */
+  describe('the project’s own release request', () => {
+    const AT = '/qits/release-requests/r1';
+
+    /** The estate's request: the row the service answers for the project repository. */
+    function estate(overrides: Partial<ReleaseRequestDto> = {}): ReleaseRequestDto {
+      return request({ repoId: ESTATE, repoName: 'qits-qits', ...overrides });
+    }
+
+    /** Where the two panels sit relative to one another, in document order. */
+    function panelOrder(): readonly string[] {
+      return [...page().querySelectorAll('app-release-gates-panel, app-release-sources')].map(
+        (element) => element.tagName.toLowerCase(),
+      );
+    }
+
+    /**
+     * No repository segment, and that is not an omission: the address is the project's, so the
+     * request it names is the project's own — and the id it is read by is the chrome's wrapper.
+     */
+    it('reads by the wrapper’s row id, which the address never spells', async () => {
+      withEstate();
+      await open(AT);
+      await answer(estate());
+
+      expect(page().textContent).toContain('A change worth releasing');
+      // The helper expected every read at `repo-qits`; nothing was asked of the named repository.
+      http.expectNone((entry) => entry.url.includes(REPO));
+    });
+
+    it('says what is being released is the project’s estate', async () => {
+      withEstate();
+      await open(AT);
+      await answer(estate());
+
+      expect(page().textContent).toContain('estate release');
+      expect(page().textContent).toContain('which commit of every component');
+    });
+
+    /** The approval first, the fold after it — the whole of the wrapper's framing. */
+    it('asks the approval before the fold', async () => {
+      withEstate();
+      await open(AT);
+      await answer(estate());
+
+      expect(panelOrder()).toEqual(['app-release-gates-panel', 'app-release-sources']);
+    });
+
+    /** One page, two addresses — and a repository's version is still a repository's version. */
+    it('frames a named repository’s request exactly as it did', async () => {
+      withEstate();
+      await open();
+      await answer(request());
+
+      expect(page().textContent).not.toContain('estate release');
+      expect(panelOrder()).toEqual(['app-release-sources', 'app-release-gates-panel']);
+    });
+
+    /**
+     * A project with no project repository has no estate to release, so its address is the 404 it
+     * is — told apart from a chrome still fetching and from one that gave up, as the three answers
+     * below always were.
+     */
+    it('draws the ordinary not-found where the chrome holds no wrapper', async () => {
+      withRepositories();
+      await open(AT);
+
+      expect(page().textContent).toContain('No such page here');
+      http.expectNone(() => true);
+    });
+
+    /** The wrapper's id arrives from the same read the names do, so the waiting arm is unchanged. */
+    it('says it is loading the repositories until that read has answered', async () => {
+      configure({
+        provide: QITS_REPOSITORIES,
+        useValue: {
+          repositories: signal(undefined),
+          wrapperRepositoryId: signal(undefined),
+          failed: signal(false),
+        } satisfies QitsRepositoriesSource,
+      });
+      await open(AT);
+
+      expect(page().textContent).toContain('Loading the repositories');
+      http.expectNone(() => true);
     });
   });
 

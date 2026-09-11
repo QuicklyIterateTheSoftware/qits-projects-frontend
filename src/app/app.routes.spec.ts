@@ -129,8 +129,33 @@ describe('routes', () => {
    */
   it('serves the project-wide release requests beside the board', async () => {
     expect(await at('/qits/release-requests')).toBe(ProjectReleaseRequestsPage);
-    // Its own word is not a group, so nothing hangs below it.
-    expect(await at('/qits/release-requests/qits-ci')).toBe(NotFound);
+    // Its own word is still not a group — what hangs below it is a request id and never a
+    // repository, which is why the segment below resolves to the detail page rather than to one.
+    expect(await at('/qits/release-requests/qits-ci/more')).toBe(NotFound);
+  });
+
+  /**
+   * **The project's own release request**, at the project's address and with no repository segment
+   * in it. The wrapper is in no component and in no archetype category — it *is* the tree — so the
+   * five-segment form could only reach it by inventing a group and calling it a service. The page is
+   * the same page; what the address says about it is what differs.
+   */
+  it('serves one project-scoped release request, which is the estate’s own', async () => {
+    expect(await at('/qits/release-requests/r1')).toBe(ReleaseRequestDetailPage);
+  });
+
+  /**
+   * The two addresses below `release-requests` are told apart by the order they are declared in and
+   * by their length. `by-release` is the literal and is declared first, so it can never be read as a
+   * request whose id is the word `by-release`; the list is shorter than both and is declared above
+   * them.
+   */
+  it('keeps the by-release resolver and the list out of the request address', async () => {
+    expect(await at('/qits/release-requests/by-release/repo-ci/2026.905.91746')).toBe(
+      ReleaseRequestByReleaseResolver,
+    );
+    expect(await at('/qits/release-requests')).toBe(ProjectReleaseRequestsPage);
+    expect(await at('/qits/release-requests/r1')).toBe(ReleaseRequestDetailPage);
   });
 
   /**

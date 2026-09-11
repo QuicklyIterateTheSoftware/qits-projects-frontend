@@ -15,6 +15,7 @@
 @if (loaded()) {
   <app-project-repository-status
     [projectId]="projectId()"
+    [projectSlug]="projectSlug()"
     [wrapper]="wrapper()"
     [repositories]="repositories()"
     (changed)="refresh()"

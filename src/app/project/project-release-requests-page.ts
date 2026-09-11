@@ -56,7 +56,10 @@ import { ReleaseSources } from './release-sources';
  * that. That list is already fetched to draw the sidebar, so reading it costs nothing, and a
  * repository it does not hold is drawn as plain text rather than as a link to nowhere. What the link
  * opens is the request's own page rather than its repository's list: the row has already found the
- * request, and a reader should not have to find it a second time.
+ * request, and a reader should not have to find it a second time. The **project repository** is the
+ * exception the middle segment cannot describe — it is in no component and in no category, being
+ * the tree the others hang in — and it links to the project-scoped `/<project>/release-requests/<id>`
+ * instead, which is the same page framed as what it is: the release of the project's whole estate.
  *
  * <p><b>A person can call an ask off and cannot make one</b>, exactly as one level down: the create
  * route is deliberately not wired up, because a release is asked for where the branch is and a
@@ -417,8 +420,19 @@ export class ProjectReleaseRequestsPage {
 
   /**
    * Where a row's repository is, as the sidebar spells it: the name from the service, and the route
-   * only when the chrome's list can supply the middle segment. A repository the list does not hold —
-   * or a list that has not arrived — is a name and no link, never a link that 404s.
+   * only when this application can spell an address for it.
+   *
+   * <p><b>The project repository has an address of its own, and it is not a five-segment one.</b>
+   * The chrome names the project's wrapper beside its repositories, and a request on that row is the
+   * project's estate release — what is being released is the declaration of which commit of every
+   * component the project is made of. So it links to `/<project>/release-requests/<id>`, the
+   * project-scoped form, which is the one address that does not have to invent a group for a
+   * repository that deliberately has none.
+   *
+   * <p><b>Anything else still needs the middle segment of `/<project>/<group>/<repository>`</b> —
+   * the repository's component, or its archetype category — and only the chrome's list knows it. A
+   * repository the list does not hold, or a list that has not arrived, is a name and no link, never
+   * a link that 404s and never a made-up group that says a repository is something it is not.
    */
   protected repositoryLink(request: ReleaseRequestDto): {
     readonly label: string;
@@ -426,6 +440,9 @@ export class ProjectReleaseRequestsPage {
   } {
     const row = this.repositories?.repositories()?.find((entry) => entry.id === request.repoId);
     const label = request.repoName ?? row?.name ?? request.repoId;
+    if (request.repoId && request.repoId === this.repositories?.wrapperRepositoryId()) {
+      return { label, route: ['/', this.projectSlug(), 'release-requests', request.id] };
+    }
     const group = row?.component ?? row?.category;
     if (!row || !group) {
       return { label, route: null };

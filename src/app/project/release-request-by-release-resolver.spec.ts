@@ -167,6 +167,25 @@ describe('ReleaseRequestByReleaseResolver', () => {
     expect(TestBed.inject(Router).url).toBe('/qits/services/qits-ci-service/release-requests/r7');
   });
 
+  /**
+   * The project repository is the one the five-segment form cannot spell — it is in no component and
+   * in no archetype category — so a release of the project's own estate goes to the project-scoped
+   * address instead of to `/qits/services/qits-qits/…`, which would say the wrapper is a service.
+   * The chrome names it beside the repositories and it is deliberately not among them: a wrapper is
+   * not its own submodule.
+   */
+  it('sends a release of the project repository to the project-scoped address', async () => {
+    configure(provideQitsRepositoryList([], 'repo ci'));
+    await open();
+
+    http.expectOne(LIST).flush({ requests: [request({ repoName: 'qits-qits' })] });
+    await settle();
+
+    expect(TestBed.inject(Router).url).toBe('/qits/release-requests/r7');
+    // The same page, reached by its other door, and reading by the same row id.
+    http.expectOne(DETAIL);
+  });
+
   it('says so when no released request matches, and offers to look again', async () => {
     configure(provideQitsRepositoryList([PLACED]));
     await open();
