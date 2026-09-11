@@ -43,12 +43,13 @@ interface Failure {
  * its cards: a resolved ticket is terminal, and a terminal row draws no actions — offering to put an
  * agent on something already answered would be offering to reopen it sideways.
  *
- * <p><b>A dispatch is not re-read, and it is not remembered past this page.</b> The door writes a
- * comment and fires the `tickets` topic, so the list refreshes itself and a manual reload here would
- * be a second read of the same change. What it answers — which workspace the agent went to — is
- * kept in memory only, because the service stores no queryable dispatch on the ticket: after a
- * reload the link is gone and the way back is another press, which lands in the same workspace
- * because the door is find-or-create.
+ * <p><b>A dispatch is not re-read, and the memory of one is now only the fast path.</b> The door
+ * writes a comment and fires the `tickets` topic, so the list refreshes itself and a manual reload
+ * here would be a second read of the same change. What a press answered is still kept in memory,
+ * because it lands before the refreshed list does — but it is no longer the only record: each ticket
+ * carries the **live workspaces working on it**, derived by the service on every read, so a reload
+ * and a second tab both show the way in and neither offers a second agent. What the in-memory copy
+ * buys is the seconds between the press and the hint.
  *
  * <p><b>Resolved opens collapsed and only when there is something in it.</b> A project that has
  * never resolved a ticket should not carry an empty disclosure explaining that; a project with two
@@ -104,6 +105,7 @@ interface Failure {
                     [busy]="running(ticket)"
                     [error]="error(ticket)"
                     [dispatch]="dispatch(ticket)"
+                    [workspaces]="ticket.workspaces"
                     (assign)="assign(ticket)"
                   />
                 </div>

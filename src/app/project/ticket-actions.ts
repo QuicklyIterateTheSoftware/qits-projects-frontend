@@ -1,6 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, inject, input, output } from '@angular/core';
 import { QitsAppLinks, QitsButton } from '@qits/ui-components';
-import type { TicketAgentDispatchDto } from '../api/dto';
+import type { TicketAgentDispatchDto, WorkspaceReferenceDto } from '../api/dto';
 
 /** The application in qits-workspaces' own vocabulary — what the platform navigation names it. */
 const WORKSPACES_APP = 'qits-workspaces';
@@ -13,6 +13,12 @@ const WORKSPACES_APP = 'qits-workspaces';
  * find-or-create, so a second press re-enters the same workspace — which is exactly the rule
  * {@link ./epic-actions#EpicActions} applies to Refine and the reason that button asks once too. A
  * confirm step here would be a question with only one honest answer.
+ *
+ * <p><b>A ticket somebody is already working on offers the way in, not the button.</b> `workspaces`
+ * comes off the ticket itself, derived by the service per read, so it survives a reload and is the
+ * same in every tab — which the memory of a press below is not. One or more of them and the button
+ * is dead and each workspace is a link; none and the button is exactly what it always was. Several
+ * is a real answer and draws several links rather than picking one.
  *
  * <p><b>The link is a full-document anchor, not a `routerLink`.</b> The workspace lives in another
  * Angular application, so a router command would compile and navigate nowhere. The address is
@@ -42,14 +48,22 @@ const WORKSPACES_APP = 'qits-workspaces';
       <qits-button
         variant="ghost"
         size="sm"
-        [disabled]="disabled()"
+        [disabled]="disabled() || taken()"
         [busy]="busy()"
         (pressed)="assign.emit()"
       >
         Assign agent
       </qits-button>
 
-      @if (dispatch()) {
+      @for (workspace of workspaces(); track workspace.workspaceRowId) {
+        @if (hrefFor(workspace); as href) {
+          <a class="workspace" [href]="href">Open {{ workspace.branch }}</a>
+        } @else {
+          <span class="note">a workspace is on {{ workspace.branch }}</span>
+        }
+      }
+
+      @if (!taken() && dispatch()) {
         @if (workspaceHref(); as href) {
           <a class="workspace" [href]="href">Open workspace</a>
         }
@@ -101,6 +115,16 @@ export class TicketActions {
    */
   readonly dispatch = input<TicketAgentDispatchDto | null>(null);
 
+  /**
+   * The live workspaces working on this ticket, off the ticket's own read. Unlike {@link dispatch}
+   * this survives a reload and is the same in two tabs, because nothing here remembers it — the
+   * service derives it from the workspaces themselves every time it is asked.
+   */
+  readonly workspaces = input<readonly WorkspaceReferenceDto[]>([]);
+
+  /** Whether somebody is already on this one, which is what closes the button. */
+  protected readonly taken = computed(() => this.workspaces().length > 0);
+
   /** The reader asked for an agent. The owner does the request; this component does not know how. */
   readonly assign = output<void>();
 
@@ -115,12 +139,20 @@ export class TicketActions {
     if (!dispatch) {
       return undefined;
     }
+    return this.address(dispatch.repositoryId, dispatch.workspaceRowId);
+  });
+
+  /** The same address for a workspace the ticket itself named — one composition, two sources. */
+  protected hrefFor(workspace: WorkspaceReferenceDto): string | undefined {
+    return this.address(workspace.repositoryId, workspace.workspaceRowId);
+  }
+
+  private address(repositoryId: string, workspaceRowId: number): string | undefined {
     return this.appLinks.href(
       WORKSPACES_APP,
-      `repositories/${encodeURIComponent(dispatch.repositoryId)}/` +
-        `workspaces/${dispatch.workspaceRowId}?tab=chat`,
+      `repositories/${encodeURIComponent(repositoryId)}/workspaces/${workspaceRowId}?tab=chat`,
     );
-  });
+  }
 
   /** What became of the press, in one clause — and the whole answer where there is no anchor. */
   protected readonly note = computed(() => {

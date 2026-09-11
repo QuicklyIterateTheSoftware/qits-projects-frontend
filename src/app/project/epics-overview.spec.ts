@@ -77,6 +77,7 @@ function epic(id: string, slug: string, over: Partial<EpicDto> = {}): EpicDto {
     supersededByEpicId: null,
     createdAt: AT,
     updatedAt: AT,
+    workspaces: [],
     ...over,
   };
 }
@@ -682,6 +683,64 @@ describe('EpicsOverview', () => {
    * *does* share are the two worth asserting — the busy state that holds every other button, and the
    * failure pinned beside the card it is about.
    */
+  describe('an epic that already has a workspace on it', () => {
+    /** Derived by the service from the workspaces themselves, on every read of the epic. */
+    const ON_IT = {
+      workspaceRowId: 41,
+      repositoryId: 'r1',
+      workspaceId: 'epic-draft',
+      branch: 'epic/draft',
+    };
+
+    async function loadDraftWithWorkspace(
+      workspaces: readonly (typeof ON_IT)[] = [ON_IT],
+    ): Promise<void> {
+      await mount();
+      await flushEpics([epic('e1', 'draft', { status: 'REFINING', workspaces })]);
+      await flushFeatures('e1', []);
+    }
+
+    it('closes Start implementation and links to the workspace instead', async () => {
+      await loadDraftWithWorkspace();
+
+      expect(buttonNamed('Start implementation').disabled).toBe(true);
+      const link = element().querySelector('#epic-e1 a.workspace');
+      expect(link?.getAttribute('href')).toBe(
+        'https://workspaces.dev.example.test/repositories/r1/workspaces/41?tab=chat',
+      );
+      expect(link?.textContent?.trim()).toBe('Open epic/draft');
+    });
+
+    /**
+     * Only the start closes. An open workspace is not a reason a person cannot abandon the epic, and
+     * Refine is a different workspace on a different branch.
+     */
+    it('leaves every other move on the card available', async () => {
+      await loadDraftWithWorkspace();
+
+      expect(buttonNamed('Refine').disabled).toBe(false);
+      expect(buttonNamed('Abandon').disabled).toBe(false);
+    });
+
+    it('draws one link per workspace when several name the epic', async () => {
+      await loadDraftWithWorkspace([
+        ON_IT,
+        { ...ON_IT, workspaceRowId: 42, branch: 'epic/draft-again' },
+      ]);
+
+      expect(element().querySelectorAll('#epic-e1 a.workspace')).toHaveLength(2);
+    });
+
+    it('leaves an epic nobody is on exactly as it was', async () => {
+      await mount();
+      await flushEpics([epic('e1', 'draft', { status: 'REFINING' })]);
+      await flushFeatures('e1', []);
+
+      expect(buttonNamed('Start implementation').disabled).toBe(false);
+      expect(element().querySelector('#epic-e1 a.workspace')).toBeNull();
+    });
+  });
+
   describe('refining a draft', () => {
     it('starts a workspace on refining/<slug> in the wrapper, then goes to the refining page', async () => {
       await loadGroups();

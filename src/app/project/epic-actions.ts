@@ -8,7 +8,7 @@ import {
   signal,
 } from '@angular/core';
 import { QitsAppLinks, QitsButton } from '@qits/ui-components';
-import type { EpicAgentDispatchDto } from '../api/dto';
+import type { EpicAgentDispatchDto, WorkspaceReferenceDto } from '../api/dto';
 import { actionKey, type EpicAction } from './epics-model';
 
 /** The application in qits-workspaces' own vocabulary — what the platform navigation names it. */
@@ -39,6 +39,14 @@ const WORKSPACES_APP = 'qits-workspaces';
  * `SKIPPED_RUNNING` is a **success**: an agent was already working on the branch, so the door
  * started no second one, and the workspace is the thing worth opening either way.
  *
+ * <p><b>An epic somebody is already implementing offers the way in, not the button.</b> `workspaces`
+ * comes off the epic itself, derived by the service per read, so unlike the memory of a press below
+ * it survives a reload and is the same in every tab — which matters more here than on a ticket,
+ * because an epic's dispatch writes nothing on the row and IMPLEMENTATION is the only other trace.
+ * **Only Start implementation closes**, never the transitions beside it: a workspace being open is
+ * not a reason somebody cannot mark the epic implemented or abandon it. Several workspaces is a real
+ * answer and draws several links rather than picking one.
+ *
  * <p>Presentational: it holds which button is waiting for a second press and nothing else. The
  * request, the busy state, the failure and the memory of what a press answered all belong to the
  * panel that owns the read — the same division the ticket pair makes.
@@ -53,7 +61,7 @@ const WORKSPACES_APP = 'qits-workspaces';
         <qits-button
           variant="ghost"
           size="sm"
-          [disabled]="disabled()"
+          [disabled]="disabled() || closed(action)"
           [busy]="running() === key(action)"
           (pressed)="press(action)"
         >
@@ -61,7 +69,15 @@ const WORKSPACES_APP = 'qits-workspaces';
         </qits-button>
       }
 
-      @if (dispatch()) {
+      @for (workspace of workspaces(); track workspace.workspaceRowId) {
+        @if (hrefFor(workspace); as href) {
+          <a class="workspace" [href]="href">Open {{ workspace.branch }}</a>
+        } @else {
+          <span class="note">a workspace is on {{ workspace.branch }}</span>
+        }
+      }
+
+      @if (!taken() && dispatch()) {
         @if (workspaceHref(); as href) {
           <a class="workspace" [href]="href">Open workspace</a>
         }
@@ -125,6 +141,20 @@ export class EpicActions {
    */
   readonly dispatch = input<EpicAgentDispatchDto | null>(null);
 
+  /**
+   * The live workspaces implementing this epic, off the epic's own read — the record that survives a
+   * reload, where {@link dispatch} is only this page's memory of a press.
+   */
+  readonly workspaces = input<readonly WorkspaceReferenceDto[]>([]);
+
+  /** Whether somebody is already implementing this one. */
+  protected readonly taken = computed(() => this.workspaces().length > 0);
+
+  /** Only the start closes when a workspace is already on it; every other move stays available. */
+  protected closed(action: EpicAction): boolean {
+    return action.kind === 'start' && this.taken();
+  }
+
   protected readonly pending = signal<string | null>(null);
 
   protected readonly key = actionKey;
@@ -150,12 +180,20 @@ export class EpicActions {
     if (!dispatch) {
       return undefined;
     }
+    return this.address(dispatch.repositoryId, dispatch.workspaceRowId);
+  });
+
+  /** The same address for a workspace the epic itself named — one composition, two sources. */
+  protected hrefFor(workspace: WorkspaceReferenceDto): string | undefined {
+    return this.address(workspace.repositoryId, workspace.workspaceRowId);
+  }
+
+  private address(repositoryId: string, workspaceRowId: number): string | undefined {
     return this.appLinks.href(
       WORKSPACES_APP,
-      `repositories/${encodeURIComponent(dispatch.repositoryId)}/` +
-        `workspaces/${dispatch.workspaceRowId}?tab=chat`,
+      `repositories/${encodeURIComponent(repositoryId)}/workspaces/${workspaceRowId}?tab=chat`,
     );
-  });
+  }
 
   /** What became of the press, in one clause — and the whole answer where there is no anchor. */
   protected readonly note = computed(() => {

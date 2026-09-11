@@ -77,9 +77,10 @@ interface Failure {
  * <p><b>Start implementation is a third kind of press, and the panel remembers what it answered.</b>
  * It goes to one door that freezes the scope *and* stands a workspace with a coding agent up on the
  * wrapper's `epic/<slug>` branch, so it moves the epic (the tree is re-read) and produces an address
- * in another application (which is drawn beside the card). That address is kept in memory only —
- * the service stores no queryable record of a dispatch — so a reload forgets it and the way back is
- * another press, which adopts the workspace already on the branch rather than making a second one.
+ * in another application (which is drawn beside the card). That memory is now only the fast path:
+ * each epic carries the **live workspaces implementing it**, derived by the service on every read,
+ * so a reload and a second tab both show the way in and neither offers a second agent. What the
+ * in-memory copy buys is the seconds between the press and the re-read.
  *
  * <p><b>One of a draft's buttons is not a transition.</b> Refine starts (or re-enters) a workspace on
  * the wrapper's `refining/<slug>` branch and navigates to it, leaving the epic exactly where it was.
@@ -134,6 +135,7 @@ interface Failure {
                     [running]="running(node)"
                     [error]="error(node)"
                     [dispatch]="dispatch(node)"
+                    [workspaces]="node.epic.workspaces"
                     (chosen)="choose(node, $event)"
                   />
                 </div>
@@ -157,6 +159,7 @@ interface Failure {
                     [running]="running(node)"
                     [error]="error(node)"
                     [dispatch]="dispatch(node)"
+                    [workspaces]="node.epic.workspaces"
                     (chosen)="choose(node, $event)"
                   />
                 </div>
@@ -178,6 +181,7 @@ interface Failure {
                     [running]="running(node)"
                     [error]="error(node)"
                     [dispatch]="dispatch(node)"
+                    [workspaces]="node.epic.workspaces"
                     (chosen)="choose(node, $event)"
                   />
                 </div>
