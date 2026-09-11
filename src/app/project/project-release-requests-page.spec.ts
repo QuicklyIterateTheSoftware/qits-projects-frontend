@@ -299,6 +299,48 @@ describe('ProjectReleaseRequestsPage', () => {
       expect(text).toContain('released');
     });
 
+    /**
+     * The project repository has an address the middle segment cannot describe. It is in no
+     * component and in no archetype category — it is the tree the components hang in — so the row
+     * links to the project-scoped `/<project>/release-requests/<id>`, which is the same page saying
+     * what is actually being released: the declaration of which commit of every component the
+     * project is made of. The chrome names the wrapper beside the repositories and not among them,
+     * because a wrapper is not its own submodule.
+     */
+    it('links the project repository’s row to the project’s own address', async () => {
+      configure(
+        provideQitsRepositoryList(
+          [{ id: 'repo-ci', name: 'qits-ci-service', component: 'qits-ci', category: 'services' }],
+          'repo-qits',
+        ),
+      );
+      await open();
+      await answer([
+        request({ id: 'estate', repoId: 'repo-qits', repoName: 'qits-qits' }),
+        request({ id: 'r1', repoId: 'repo-ci', repoName: 'qits-ci-service' }),
+      ]);
+
+      const links = [...page().querySelectorAll<HTMLAnchorElement>('a.repo')];
+      expect(links.map((link) => link.getAttribute('href'))).toEqual([
+        '/qits/release-requests/estate',
+        '/qits/qits-ci/qits-ci-service/release-requests/r1',
+      ]);
+    });
+
+    /**
+     * A row that is neither the wrapper nor placeable keeps its name and no link. Inventing a group
+     * for it would spell an address saying the repository is something it is not, which is the one
+     * thing this page has never done.
+     */
+    it('still draws an unplaceable row that is not the wrapper as text', async () => {
+      configure(provideQitsRepositoryList([], 'repo-qits'));
+      await open();
+      await answer([request({ repoId: 'repo-gone', repoName: 'qits-retired' })]);
+
+      expect(page().querySelector('a.repo')).toBeNull();
+      expect(page().textContent).toContain('qits-retired');
+    });
+
     it('draws the name without a link for a repository the chrome does not hold', async () => {
       configure(provideQitsRepositoryList([]));
       await open();

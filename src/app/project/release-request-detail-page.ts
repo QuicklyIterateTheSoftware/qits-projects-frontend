@@ -8,6 +8,7 @@ import {
   signal,
   untracked,
 } from '@angular/core';
+import { NgTemplateOutlet } from '@angular/common';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, RouterLink, convertToParamMap } from '@angular/router';
 import { QITS_REPOSITORIES, QITS_SCOPE, QitsAppLinks, QitsBadge } from '@qits/ui-components';
@@ -73,6 +74,16 @@ interface DrawnArtifact {
  * API here is keyed by its row id, and the chrome's repository list is the one place that mapping is
  * already in memory. The two alternatives cost a git fetch and a 403 respectively.
  *
+ * <p><b>Two addresses reach this page, and the project-scoped one is the project's own release.</b>
+ * `/<project>/release-requests/<id>` carries no repository segment because the repository it is
+ * about cannot be spelled as one: the project repository is in no component and in no archetype
+ * category — it is the tree the components hang in — so every group segment invented for it would
+ * say it was a service. At that address the page frames itself as the estate release it is, and the
+ * gates are drawn above the fold rather than below it, because on the estate the outstanding
+ * question is the approval and not which branches folded together. Nothing else differs: the
+ * panels are the same panels, every read is keyed by the row id either arm resolves, and the two
+ * addresses are one page because a release request is one thing.
+ *
  * <p><b>An anchor whose href this platform cannot spell is dropped, never drawn dead.</b> That is the
  * established rule (see `repository-page.ts`): `QitsAppLinks.href` answers `undefined` both for an
  * application the platform serves nowhere and for a navigation tree that has not arrived, and a link
@@ -85,6 +96,7 @@ interface DrawnArtifact {
   imports: [
     Async,
     Empty,
+    NgTemplateOutlet,
     NotFound,
     QitsBadge,
     ReleaseConflict,
@@ -133,6 +145,17 @@ interface DrawnArtifact {
           }
         </header>
 
+        @if (wrapper()) {
+          <p class="estate">
+            This is the project's own estate release. What it releases is the project repository —
+            the declaration of which commit of every component this project is made of — rather than
+            a version of any one of them.
+          </p>
+
+          <!-- On the estate the outstanding question is the approval, so it is asked first. -->
+          <ng-container [ngTemplateOutlet]="gatesSection" />
+        }
+
         <app-release-sources [request]="request" editable (changed)="prioritised($event)" />
 
         <div class="facts">
@@ -162,19 +185,30 @@ interface DrawnArtifact {
           <p class="detail">{{ sentence }}</p>
         }
 
-        <app-async
-          [state]="gates()"
-          loadingLabel="Loading the gates"
-          errorLabel="Could not load the CI verdicts"
-          (retry)="reloadGates()"
-        />
-        @if (verdicts(); as verdicts) {
-          <app-release-gates-panel
-            [request]="request"
-            [builds]="verdicts"
-            (decided)="decided($event)"
-          />
+        @if (!wrapper()) {
+          <ng-container [ngTemplateOutlet]="gatesSection" />
         }
+
+        <!--
+          Declared once and placed twice: the gates are the same gates wherever they are drawn, and
+          only their position says which question this page is about. Two copies of the panel would
+          be two places to change the approval affordance.
+        -->
+        <ng-template #gatesSection>
+          <app-async
+            [state]="gates()"
+            loadingLabel="Loading the gates"
+            errorLabel="Could not load the CI verdicts"
+            (retry)="reloadGates()"
+          />
+          @if (verdicts(); as verdicts) {
+            <app-release-gates-panel
+              [request]="request"
+              [builds]="verdicts"
+              (decided)="decided($event)"
+            />
+          }
+        </ng-template>
 
         <app-release-conflict [request]="request" />
 
@@ -342,6 +376,12 @@ interface DrawnArtifact {
       color: #374151;
       overflow-wrap: anywhere;
     }
+    .estate {
+      margin: 0.35rem 0 0;
+      font-size: 0.85rem;
+      color: #374151;
+      overflow-wrap: anywhere;
+    }
     .panel {
       margin-top: 0.9rem;
       border: 1px solid #e5e7eb;
@@ -485,12 +525,41 @@ export class ReleaseRequestDetailPage {
     () => !!this.source && !this.chromeFailed() && this.source.repositories() === undefined,
   );
 
-  /** The row id every API here is keyed by, or empty for a name this project does not hold. */
+  /**
+   * The row id every API here is keyed by, or empty for a request this project cannot place.
+   *
+   * <p><b>Two arms, because there are two addresses, and neither is a fallback for the other.</b>
+   * `/<project>/<group>/<repository>/release-requests/<id>` names a repository by NAME, and the arm
+   * that resolves it against the chrome's list is the one {@code RepositoryReleaseRequestsPage}
+   * states at length. `/<project>/release-requests/<id>` names no repository at all, and that is not
+   * an omission: it is the project's own address, and a release request asked at it is by
+   * construction about the project's estate — the project repository, which holds every component as
+   * a submodule. So the second arm reads the chrome's `wrapperRepositoryId`, which arrives from the
+   * very same read the first arm resolves names against.
+   *
+   * <p>Both arms wait for that read: an id guessed before the list has arrived would be a page
+   * drawing the ordinary not-found for half a second on every load. A chrome that has answered and
+   * names no wrapper leaves this empty, and the project-scoped address is then the 404 it is — a
+   * project with no project repository has no estate to release.
+   */
   protected readonly repoId = computed(() => {
-    const name = this.repository();
     const rows = this.source?.repositories();
-    if (!name || !rows) return '';
+    if (!rows) return '';
+    const name = this.repository();
+    if (!name) return this.source?.wrapperRepositoryId() ?? '';
     return rows.find((row) => row.name === name)?.id ?? '';
+  });
+
+  /**
+   * Whether what is being released is the project itself.
+   *
+   * <p>True of the project-scoped address by construction, and true of the five-segment one too
+   * where it happens to name the wrapper — this is a fact about the repository, not about the URL
+   * that reached it, so the page says the same thing whichever door it was opened by.
+   */
+  protected readonly wrapper = computed(() => {
+    const repoId = this.repoId();
+    return !!repoId && repoId === this.source?.wrapperRepositoryId();
   });
 
   private readonly requestId = computed(() => this.params().get('requestId') ?? '');

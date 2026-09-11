@@ -22,6 +22,16 @@ import { LOADING, failed, ready, type Loadable } from '../ui/loadable';
  * away for want of it. `services` is the first archetype the platform draws and the one a repository
  * with no component recorded already lives under, which makes it the least surprising stand-in; the
  * page it lands on is identical whichever word is here.
+ *
+ * <p><b>It is kept, and it is no longer the project repository's address.</b> The wrapper was the
+ * one repository the platform can never place — `PROJECT` is deliberately in no component and in no
+ * category — and for it the stand-in was not decoration but a falsehood, an address reading
+ * `/qits/services/qits-qits/…` for a repository that is not a service and is not a member of its own
+ * estate. That case now has a real address of its own, the project-scoped one below. What is left
+ * for this word is the case it was always honest about: the chrome's list **gave up**, so there is
+ * no row to read a component or a category off and the request's own `repoName` is the only
+ * coordinate left. Falling back to a name and a decorative word beats refusing a link the reader
+ * followed from a release.
  */
 const UNPLACED_GROUP = 'services';
 
@@ -54,7 +64,9 @@ const UNPLACED_GROUP = 'services';
  * the five-segment form names a repository by NAME and a group, and the chrome's repository list is
  * the one place both are already in memory. So nothing is navigated until that list has settled — a
  * redirect built while it was still in flight would spell {@link UNPLACED_GROUP} for a repository the
- * platform can place perfectly well.
+ * platform can place perfectly well. The same list names the project's **wrapper**, which is how a
+ * release of the project's own estate is sent to its project-scoped address instead of to a
+ * five-segment one it has no group for.
  *
  * <p>Both parameters are `encodeURIComponent`-safe in both directions: the router decodes what it
  * matched, and `ReleaseRequestsApi` encodes the repository id again into its path.
@@ -172,15 +184,23 @@ export class ReleaseRequestByReleaseResolver {
   }
 
   /**
-   * The canonical five-segment address of one request, or `null` for a match this platform cannot
-   * name.
+   * The canonical address of one request, or `null` for a match this platform cannot name.
    *
-   * <p>The name is what makes the address work: every page below `:project` resolves a repository by
-   * NAME through the chrome, so an address built from the row id would land on the ordinary
-   * not-found. With neither the request's own `repoName` nor a chrome row to supply one there is no
-   * honest address, and the reader gets the same calm sentence a miss gets.
+   * <p><b>The project repository is addressed as the project</b>, `/<project>/release-requests/<id>`,
+   * and it is asked first because it is the one repository the five-segment form cannot describe: it
+   * is in no component and in no archetype category, so any group spelled for it would be invented.
+   * The address needs no name either, which is the tell that it is the right one — the project's own
+   * release request is about the project, and the wrapper is what the project is made of.
+   *
+   * <p>For everything else the NAME is what makes the address work: every page below `:project`
+   * resolves a repository by name through the chrome, so an address built from the row id would land
+   * on the ordinary not-found. With neither the request's own `repoName` nor a chrome row to supply
+   * one there is no honest address, and the reader gets the same calm sentence a miss gets.
    */
   private addressOf(request: ReleaseRequestDto): string[] | null {
+    if (this.repoId() && this.repoId() === this.source?.wrapperRepositoryId()) {
+      return ['/', this.project(), 'release-requests', request.id];
+    }
     const row = this.row();
     const name = request.repoName ?? row?.name;
     if (!name) {
