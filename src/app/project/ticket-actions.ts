@@ -6,7 +6,7 @@ import type { TicketAgentDispatchDto, WorkspaceReferenceDto } from '../api/dto';
 const WORKSPACES_APP = 'qits-workspaces';
 
 /**
- * The one move available on an open ticket: put a workspace and a coding agent on it, then show the
+ * The one move available on an outstanding ticket: put a workspace and a coding agent on it, then show the
  * way in.
  *
  * <p><b>One action and no confirmation.</b> Assigning an agent takes nothing away — the door is

@@ -1,3 +1,4 @@
+import { HttpErrorResponse } from '@angular/common/http';
 import {
   ChangeDetectionStrategy,
   Component,
@@ -11,19 +12,29 @@ import {
 import { toSignal } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, Router, RouterLink, convertToParamMap } from '@angular/router';
 import { QitsBadge, QitsButton } from '@qits/ui-components';
-import type { TicketCommentDto, TicketDto, TicketType } from '../api/dto';
+import type { TicketCommentDto, TicketDto, TicketStatus, TicketType } from '../api/dto';
 import { ProjectEvents } from '../api/project-events';
 import { TicketsApi, type TicketEdit } from '../api/tickets-api';
 import { ProjectParam } from '../nav/project-param';
 import { Async } from '../ui/async';
 import { Empty } from '../ui/empty';
 import { NONE, relativeSince } from '../ui/format';
-import { IDLE, LOADING, describeError, failed, ready, type Loadable } from '../ui/loadable';
+import {
+  IDLE,
+  LOADING,
+  describeError,
+  failed,
+  ready,
+  serverMessage,
+  statusOf,
+  type Loadable,
+} from '../ui/loadable';
 import { MarkdownView } from '../ui/markdown-view';
 import {
   isEdited,
   ticketBySlug,
   ticketStatusBadge,
+  ticketTransitions,
   ticketTypeBadge,
   ticketsRoute,
 } from './tickets-model';
@@ -58,9 +69,21 @@ interface DrawnComment {
  * the create form has, seeded from the row, saved in one PUT — and **emptying a box clears the
  * field** rather than leaving it, which is what the request's paired `clear` flags are for.
  *
- * <p><b>Resolve and reopen are one button that swaps.</b> A ticket has two states, so an action row
- * offering both would always have one press that does nothing. The button names the move that is
- * available, and the badge above it names the state it is in.
+ * <p><b>The transition control offers the ticket's legal neighbours and nothing else.</b> The
+ * lifecycle is adjacent-only in both directions, so from any status there are one or two moves and
+ * every other target is a 409 waiting to happen. Each button is named after the claim pressing it
+ * makes — "Mark refined" says the ticket now says what to do — rather than after the column it sets.
+ * A refusal that arrives anyway is a page that has been open while somebody else moved the ticket,
+ * and it is rendered as **the service's own sentence** rather than wrapped in this page's prose: the
+ * server is the one that knows what happened, and "Could not move it — 409 …" would bury that
+ * sentence behind a status code.
+ *
+ * <p><b>The impetus is the headline and the description is the refinement.</b> They are two
+ * different statements by two different authors — what brought the ticket about, in the reporter's
+ * words and never rewritten, and what is to be done about it, written by the refine phase — so they
+ * are drawn as two things rather than as one body of text. A ticket nobody has refined yet says so
+ * where the description would be, because "not refined yet" is a fact about the pipeline and an
+ * empty panel is not.
  *
  * <p><b>A transition's answer is used directly; every other write re-reads.</b> The transition
  * answers this ticket and can change nothing else, so the row it returns *is* the new subject.
@@ -105,6 +128,10 @@ interface DrawnComment {
           <qits-badge [label]="status().label" [tone]="status().tone" />
         </span>
       </div>
+
+      @if (row.impetus; as impetus) {
+        <p class="impetus">{{ impetus }}</p>
+      }
 
       <dl class="facts">
         <dt>Assignee</dt>
@@ -181,11 +208,14 @@ interface DrawnComment {
           </div>
         </section>
       } @else {
-        @if (row.description; as text) {
-          <app-markdown class="description" [text]="text" />
-        } @else {
-          <p class="absent">This ticket has no description.</p>
-        }
+        <section class="refinement">
+          <h2>The work</h2>
+          @if (row.description; as text) {
+            <app-markdown class="description" [text]="text" />
+          } @else {
+            <p class="absent">Not refined yet — nobody has written what to do about this.</p>
+          }
+        </section>
 
         <div class="actions">
           <qits-button
@@ -195,14 +225,16 @@ interface DrawnComment {
           >
             Edit
           </qits-button>
-          <qits-button
-            variant="secondary"
-            [disabled]="action() !== null"
-            [busy]="action() === 'transition'"
-            (pressed)="transition()"
-          >
-            {{ transitionLabel() }}
-          </qits-button>
+          @for (move of transitions(); track move.target) {
+            <qits-button
+              [variant]="move.forward ? 'secondary' : 'ghost'"
+              [disabled]="action() !== null"
+              [busy]="action() === 'transition:' + move.target"
+              (pressed)="transition(move.target)"
+            >
+              {{ move.label }}
+            </qits-button>
+          }
           @if (confirmingDelete()) {
             <qits-button
               variant="secondary"
@@ -387,8 +419,20 @@ interface DrawnComment {
       color: #111827;
       overflow-wrap: anywhere;
     }
-    .description {
+    /* The reporter's sentence, drawn as the headline it is: one size up from the body, dark, and
+       directly under the title so it is read before anything the phases added. */
+    .impetus {
+      margin: 0 0 0.9rem;
+      font-size: 1rem;
+      line-height: 1.5;
+      color: #111827;
+      overflow-wrap: anywhere;
+    }
+    .refinement {
       margin: 0 0 1rem;
+    }
+    .description {
+      margin: 0;
       color: #374151;
     }
     .absent {
@@ -544,11 +588,13 @@ export class TicketDetailPage {
 
   protected readonly type = computed(() => ticketTypeBadge(this.ticket()?.type ?? 'BUG'));
 
-  protected readonly status = computed(() => ticketStatusBadge(this.ticket()?.status ?? 'OPEN'));
+  protected readonly status = computed(() =>
+    ticketStatusBadge(this.ticket()?.status ?? 'REPORTED'),
+  );
 
-  /** The move that is available, which is the one the button is named after. */
-  protected readonly transitionLabel = computed(() =>
-    this.ticket()?.status === 'RESOLVED' ? 'Reopen' : 'Resolve',
+  /** The one or two moves this ticket may make — its neighbours, forward first. Nothing else. */
+  protected readonly transitions = computed(() =>
+    ticketTransitions(this.ticket()?.status ?? 'REPORTED'),
   );
 
   protected readonly opened = computed(() => {
@@ -770,27 +816,44 @@ export class TicketDetailPage {
   }
 
   /**
-   * Resolve it, or reopen it.
+   * Move it one step, forwards or back.
    *
    * The answer is the new subject rather than the trigger for a re-read: a ticket transition can
    * change exactly one row, and that row is what came back. That is the difference from an epic's
    * transition, which can create a second epic and so cannot be spliced.
    */
-  protected async transition(): Promise<void> {
+  protected async transition(target: TicketStatus): Promise<void> {
     const row = this.ticket();
     if (!row || this.action()) {
       return;
     }
-    const target = row.status === 'RESOLVED' ? 'OPEN' : 'RESOLVED';
-    this.action.set('transition');
+    this.action.set(`transition:${target}`);
     this.actionFailure.set(null);
     try {
       this.subject.set(ready(await this.api.transition(row.id, target)));
     } catch (error) {
-      this.actionFailure.set(`Could not move it — ${describeError(error)}.`);
+      this.actionFailure.set(this.refusal(error));
     } finally {
       this.action.set(null);
     }
+  }
+
+  /**
+   * What to say about a refused move.
+   *
+   * <p>A 409 is the one failure this page has nothing to add to. The buttons offered were legal when
+   * they were drawn, so a conflict means the ticket moved underneath the reader — and the service's
+   * sentence says exactly which move was refused and why, where "Could not move it — 409 …" would
+   * put a status code in front of it and claim the page did something wrong.
+   *
+   * <p>Everything else keeps the page's own wrapper: a 500 or an unreachable service is a failure of
+   * the request rather than a statement about the ticket, and a bare sentence about it would read as
+   * though the ticket said it.
+   */
+  private refusal(error: unknown): string {
+    const body = error instanceof HttpErrorResponse ? error.error : null;
+    const stale = statusOf(error) === 409 ? serverMessage(body) : null;
+    return stale ?? `Could not move it — ${describeError(error)}.`;
   }
 
   /** Ask first. The second press is {@link remove}. */

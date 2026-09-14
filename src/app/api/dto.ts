@@ -349,14 +349,22 @@ export interface TaskEntriesResponse {
 export type TicketType = 'BUG' | 'IMPROVEMENT';
 
 /**
- * Whether a ticket is still asking for something.
+ * How far a ticket has got: **the status is what has been achieved, and the phase that runs while it
+ * holds is what happens next.**
  *
- * Deliberately two values where {@link EpicStatus} has five. An epic has a *life* — drafted,
- * frozen, shipped, replaced — and each phase changes what may be done to it. A ticket is one
- * question, so it is answered or it is not, and `RESOLVED` covers "fixed", "done" and "we are not
- * doing this" alike: what actually happened is in the comments, which is where a sentence belongs.
+ * <p>That is the whole rule, and it is what makes the five readable in either direction.
+ * `REPORTED` — somebody said what is wrong, so refining runs. `REFINED` — the ticket now says what
+ * to do, so implementing runs. `IMPLEMENTED` — the change is released and deployed, so verifying
+ * runs. `VERIFIED` — it no longer occurs on the platform, so a person closes it. `DONE` — closed.
+ * A status therefore never names work in flight; it names the last thing that finished.
+ *
+ * <p><b>Adjacent-only, in either direction, and nothing is terminal.</b> The service refuses a
+ * two-step move and answers 409 to a move to the status a ticket already holds, so a page offers a
+ * ticket's neighbours and nothing else — see {@link ../project/tickets-model#ticketTransitions}. A
+ * closed ticket that turns out not to be fixed walks back the same way it came rather than being
+ * reopened into a state it was never in.
  */
-export type TicketStatus = 'OPEN' | 'RESOLVED';
+export type TicketStatus = 'REPORTED' | 'REFINED' | 'IMPLEMENTED' | 'VERIFIED' | 'DONE';
 
 /**
  * A ticket: one small, self-contained piece of work, beside the plan rather than inside it.
@@ -409,7 +417,26 @@ export interface TicketDto {
   readonly assignee: string | null;
   /** Stamped from the session, never sent. Null for a row with no principal behind it. */
   readonly createdBy: string | null;
-  /** Markdown, like every description on this service. Null when nothing was written. */
+  /**
+   * Why the ticket exists, in the reporter's own words — one sentence, almost always: "{some error}
+   * occurs {in some context}", or "{an existing part} should be {something to introduce or
+   * improve}". A bug's steps to reproduce may ride along and do not count against that length.
+   *
+   * <p><b>This is the intake field, and no later phase rewrites it.</b> Refining answers it rather
+   * than editing it: what the reporter said is the record of what brought the ticket about, and a
+   * ticket whose impetus had been polished into a work statement has lost the only sentence that
+   * says why anybody should care.
+   *
+   * <p>Nullable only for rows written before there was an impetus to write; a create sends one.
+   */
+  readonly impetus: string | null;
+  /**
+   * **The refinement's output**, not the reporter's words: what is to be done about the impetus,
+   * written by the refine phase and markdown like every description on this service.
+   *
+   * Null until refining has run — which is an ordinary state, not a gap, and draws as the sentence
+   * saying so rather than as an empty panel.
+   */
   readonly description: string | null;
   readonly createdAt: string;
   readonly updatedAt: string;

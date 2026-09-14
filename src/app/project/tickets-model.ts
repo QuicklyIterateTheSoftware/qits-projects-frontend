@@ -17,37 +17,124 @@ export interface TicketBadge {
 }
 
 /**
- * Open is `warning`, and it is the one tone worth arguing about.
+ * The lifecycle in order, which is the only place that order is written down.
  *
- * A *task* that is open is simply not done yet, so the plan draws it `neutral` — nothing is being
- * claimed about it. A ticket that is open is a standing request from somebody: it is on the list
- * precisely because it wants attention, and drawing it in the same grey as an unstarted task would
- * make the whole Open section read as background. `danger` would be a lie in the other direction —
- * an open improvement is not an emergency — so `warning` is the honest middle.
+ * Everything else here is derived from it: the badge, the adjacency a transition control offers, and
+ * the order the outstanding section reads down. A second copy of this sequence would be a second
+ * opinion about what comes after what, and the one that was not updated would be the one drawn.
  */
-const OPEN: TicketBadge = { label: 'open', tone: 'warning' };
+export const TICKET_LIFECYCLE: readonly TicketStatus[] = [
+  'REPORTED',
+  'REFINED',
+  'IMPLEMENTED',
+  'VERIFIED',
+  'DONE',
+];
 
 /**
- * Resolved is `success`, the same word the plan uses for an implemented epic.
+ * A badge per status, and the tones say **how finished**, not how urgent.
  *
- * It is one word for three endings — fixed, done, not doing it — because the wire has one status
- * for them. What actually happened is in the comments, and a badge that guessed between them would
- * be inventing a distinction the service does not store.
+ * <p>The three in flight are the accent the palette has and the grey beside it. `REPORTED` is
+ * `warning` for the reason the old single open badge was: it is a standing request nobody has
+ * picked up, and drawing it in the same grey as a ticket already being worked would make the top of
+ * the pipeline read as background. `REFINED` and `IMPLEMENTED` are `neutral` — something is
+ * underway and nothing is being claimed about it, which is exactly what the plan's own `neutral`
+ * means one level up.
+ *
+ * <p>`VERIFIED` is `info` and not `success`, and that is the distinction worth having. Verified
+ * means the platform no longer shows the problem; done means a person agreed to close it. Toning
+ * both green would hide the one row on the desk that is waiting for a human sentence.
+ *
+ * <p>`DONE` is `success`, the same word the plan uses for an implemented epic.
+ *
+ * <p>The five tones are not five distinct colours, because {@link QitsBadgeTone} has five values for
+ * the whole application and two of them (`danger`, `info`) are already spoken for by the type badge
+ * beside this one. Labels carry the distinction; the tone carries the phase.
  */
-const RESOLVED: TicketBadge = { label: 'resolved', tone: 'success' };
+const STATUS_BADGES: Readonly<Record<TicketStatus, TicketBadge>> = {
+  REPORTED: { label: 'reported', tone: 'warning' },
+  REFINED: { label: 'refined', tone: 'neutral' },
+  IMPLEMENTED: { label: 'implemented', tone: 'neutral' },
+  VERIFIED: { label: 'verified', tone: 'info' },
+  DONE: { label: 'done', tone: 'success' },
+};
 
-/** Whether the ticket is still asking for something. */
+/** What the ticket has achieved — see {@link ../api/dto#TicketStatus} for why that is the reading. */
 export function ticketStatusBadge(status: TicketStatus): TicketBadge {
-  return status === 'RESOLVED' ? RESOLVED : OPEN;
+  return STATUS_BADGES[status] ?? STATUS_BADGES.REPORTED;
+}
+
+/** One move a ticket can make from where it is, and the claim pressing it makes. */
+export interface TicketTransition {
+  readonly target: TicketStatus;
+  readonly label: string;
+  /** Forward is the pipeline's direction; backward is a correction. */
+  readonly forward: boolean;
+}
+
+/**
+ * What each move is called, **named after the claim it makes** rather than after the state it lands
+ * in.
+ *
+ * Forward, a press asserts that a phase finished: "Mark refined" says the ticket now says what to
+ * do. `DONE` is "Close", because that is the word a person uses for it and "mark done" would be the
+ * one label on this row that described a column rather than an act. Backward, a press retracts a
+ * claim — "Back to refined" says the implementation is not there after all — and the one move out of
+ * `DONE` is "Reopen", which is what reopening has always been called.
+ */
+const FORWARD_LABELS: Readonly<Record<TicketStatus, string>> = {
+  REPORTED: 'Mark reported',
+  REFINED: 'Mark refined',
+  IMPLEMENTED: 'Mark implemented',
+  VERIFIED: 'Mark verified',
+  DONE: 'Close',
+};
+
+const BACKWARD_LABELS: Readonly<Record<TicketStatus, string>> = {
+  REPORTED: 'Back to reported',
+  REFINED: 'Back to refined',
+  IMPLEMENTED: 'Back to implemented',
+  VERIFIED: 'Reopen',
+  DONE: 'Back to done',
+};
+
+/**
+ * The moves a ticket may make: its **neighbours on the lifecycle and nothing else**, forward first.
+ *
+ * <p><b>Adjacent-only in either direction, and the current status is not among them.</b> The service
+ * refuses both a two-step move and a move to the status already held, so a control that offered
+ * either would be offering a 409 — and the reason it is computed here rather than in the page is
+ * that this is the rule the whole screen is drawn from, and a rule inside a template is one nothing
+ * can test without a browser around it.
+ *
+ * <p>Forward first because the pipeline's direction is what a reader is usually pressing, and the
+ * backward move is a correction they go looking for. The ends have one neighbour each, which is how
+ * "nothing is terminal" draws: `DONE` still offers Reopen.
+ */
+export function ticketTransitions(status: TicketStatus): readonly TicketTransition[] {
+  const at = TICKET_LIFECYCLE.indexOf(status);
+  if (at < 0) {
+    return [];
+  }
+  const moves: TicketTransition[] = [];
+  const ahead = TICKET_LIFECYCLE[at + 1];
+  const behind = TICKET_LIFECYCLE[at - 1];
+  if (ahead) {
+    moves.push({ target: ahead, label: FORWARD_LABELS[ahead], forward: true });
+  }
+  if (behind) {
+    moves.push({ target: behind, label: BACKWARD_LABELS[behind], forward: false });
+  }
+  return moves;
 }
 
 /**
  * A bug is `danger` and an improvement is `info`, which is the distinction doing the most work on
  * this screen.
  *
- * The two are read together — a reader scanning the Open section is deciding what to pick up — so
- * they have to be told apart at a glance rather than by reading. Red against blue does that; two
- * neighbouring greys would leave the type badge as decoration.
+ * The two are read together — a reader scanning the outstanding section is deciding what to pick up
+ * — so they have to be told apart at a glance rather than by reading. Red against blue does that;
+ * two neighbouring greys would leave the type badge as decoration.
  */
 const BUG: TicketBadge = { label: 'bug', tone: 'danger' };
 const IMPROVEMENT: TicketBadge = { label: 'improvement', tone: 'info' };
@@ -59,36 +146,55 @@ export function ticketTypeBadge(type: TicketType): TicketBadge {
 
 /** The two sections of the overview, in the order a reader works down them. */
 export interface TicketGroups {
-  readonly open: readonly TicketDto[];
-  readonly resolved: readonly TicketDto[];
+  readonly outstanding: readonly TicketDto[];
+  readonly done: readonly TicketDto[];
 }
 
 /**
- * The tickets split by whether they are still asking for something, **newest first inside each**.
+ * The tickets split into **what is still moving and what is closed**: outstanding is anything but
+ * `DONE`.
+ *
+ * <p><b>Two lists for five statuses, deliberately.</b> A section per status would put five headings
+ * on a desk that usually has one or two rows under each, and would make a ticket's progress a jump
+ * between boxes rather than a move down a list. The split that matters to a reader is whether
+ * anything is still owed, which is exactly `DONE` or not.
+ *
+ * <p><b>Outstanding is ordered by the lifecycle, not alphabetically and not by date</b> — reported
+ * at the top, then refined, then implemented, then verified — so the section reads as a pipeline and
+ * a reader sees where the work is piling up. Within one status it is **newest first**, which is the
+ * old rule kept: the row that just arrived is the one being talked about.
+ *
+ * <p><b>Done is newest first throughout</b>, because it is an archive and what somebody looks up in
+ * an archive is usually the most recent thing in it. A status that the lifecycle does not know
+ * sorts after the ones it does rather than vanishing: an unrecognised row belongs at the bottom of
+ * the desk, not off it.
  *
  * <p><b>Grouped and re-ordered here rather than fetched twice.</b> The overview already reads every
- * ticket, and two `?status=` reads would be two moments — enough for a ticket resolved between them
- * to appear in both sections or in neither. One read that is grouped is one moment, which is the
- * same reasoning `groupEpics` is built on.
- *
- * <p><b>Newest first, against the server's ascending order.</b> A ticket list is read from the top
- * and the top should be what just arrived: the oldest open ticket is the one least likely to be
- * picked up next, and the newest resolved one is the record somebody is most likely to be checking.
- * The order is imposed here rather than assumed of the response, so a change of sort on the service
- * cannot quietly turn this screen upside down.
- *
- * <p>Ties break on the incoming order **reversed**, which keeps two tickets stamped in the same
- * instant in the order the server would have listed them, newest of the two on top. An unparseable
- * timestamp sorts as the epoch rather than throwing: a row with a bad stamp belongs at the bottom of
- * its section, not in the way of the section.
+ * ticket, and two `?status=` reads would be two moments — enough for a ticket moved between them to
+ * appear in both sections or in neither. One read that is grouped is one moment, which is the same
+ * reasoning `groupEpics` is built on.
  */
 export function groupTickets(tickets: readonly TicketDto[]): TicketGroups {
-  const open: TicketDto[] = [];
-  const resolved: TicketDto[] = [];
+  const outstanding: TicketDto[] = [];
+  const done: TicketDto[] = [];
   for (const ticket of tickets) {
-    (ticket.status === 'RESOLVED' ? resolved : open).push(ticket);
+    (ticket.status === 'DONE' ? done : outstanding).push(ticket);
   }
-  return { open: newestFirst(open), resolved: newestFirst(resolved) };
+  return { outstanding: byLifecycle(newestFirst(outstanding)), done: newestFirst(done) };
+}
+
+/** The lifecycle's own order, ties keeping whatever order they arrived in. See {@link groupTickets}. */
+function byLifecycle(tickets: readonly TicketDto[]): readonly TicketDto[] {
+  return tickets
+    .map((ticket, index) => ({ ticket, index }))
+    .sort((left, right) => phase(left.ticket) - phase(right.ticket) || left.index - right.index)
+    .map((entry) => entry.ticket);
+}
+
+/** Where a ticket sits on the lifecycle, with an unknown status sorted past every known one. */
+function phase(ticket: TicketDto): number {
+  const at = TICKET_LIFECYCLE.indexOf(ticket.status);
+  return at < 0 ? TICKET_LIFECYCLE.length : at;
 }
 
 /** Newest first, ties keeping the incoming order reversed. See {@link groupTickets}. */

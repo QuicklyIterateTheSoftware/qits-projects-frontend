@@ -175,7 +175,12 @@ describe('TicketsPage', () => {
       http.verify();
     });
 
-    it('will not submit without a title', async () => {
+    /**
+     * A title and an impetus, and neither alone will do: a title nobody can act on is not a report,
+     * and the sentence saying what brought the ticket about is the one thing only the reporter can
+     * write. The description is refining's output, so it is not asked for here.
+     */
+    it('will not submit without both a title and an impetus', async () => {
       await openResolved();
       flushTickets();
       await settle();
@@ -186,7 +191,24 @@ describe('TicketsPage', () => {
 
       await type('input.text', 'The cancelled badge is the wrong colour');
 
+      expect(buttonNamed('Open the ticket').disabled).toBe(true);
+
+      await type('textarea.impetus', 'The badge reads as success when a run is cancelled.');
+
       expect(buttonNamed('Open the ticket').disabled).toBe(false);
+    });
+
+    /** The length rule is the field's helper text, where somebody typing can read it. */
+    it('states the one-sentence rule beside the impetus box', async () => {
+      await openResolved();
+      flushTickets();
+      await settle();
+      buttonNamed('New ticket').click();
+      await settle();
+
+      const hint = page().querySelector('#ticket-impetus-hint')?.textContent ?? '';
+      expect(hint).toContain('One sentence, almost always');
+      expect(page().querySelector('#ticket-description-hint')?.textContent).toContain('Optional');
     });
 
     it('posts the whole form and then hands the re-read back to the overview', async () => {
@@ -197,7 +219,8 @@ describe('TicketsPage', () => {
       await settle();
 
       await type('input.text', 'The cancelled badge is the wrong colour');
-      await type('textarea', 'It reads as **success**.');
+      await type('textarea.impetus', 'The badge reads as success when a run is cancelled.');
+      await type('textarea.description', 'It reads as **success**.');
       await type('.field:last-of-type input.text', 'kim');
       const select = page().querySelector<HTMLSelectElement>('.select')!;
       select.value = 'IMPROVEMENT';
@@ -211,6 +234,7 @@ describe('TicketsPage', () => {
       expect(request.request.method).toBe('POST');
       expect(request.request.body).toEqual({
         title: 'The cancelled badge is the wrong colour',
+        impetus: 'The badge reads as success when a run is cancelled.',
         type: 'IMPROVEMENT',
         description: 'It reads as **success**.',
         assignee: 'kim',
@@ -233,11 +257,16 @@ describe('TicketsPage', () => {
       await settle();
 
       await type('input.text', 'Tidy the spacing');
+      await type('textarea.impetus', 'The ticket cards should be easier to scan.');
       buttonNamed('Open the ticket').click();
       await settle();
 
       const request = http.expectOne('/projects/api/projects/p1/tickets');
-      expect(request.request.body).toEqual({ title: 'Tidy the spacing', type: 'BUG' });
+      expect(request.request.body).toEqual({
+        title: 'Tidy the spacing',
+        impetus: 'The ticket cards should be easier to scan.',
+        type: 'BUG',
+      });
       request.flush({ ticket: {} });
       await settle();
       http.expectOne('/projects/api/projects/p1/tickets').flush({ entries: [] });
@@ -253,6 +282,7 @@ describe('TicketsPage', () => {
       await settle();
 
       await type('input.text', 'Tidy the spacing');
+      await type('textarea.impetus', 'The ticket cards should be easier to scan.');
       buttonNamed('Open the ticket').click();
       await settle();
       http

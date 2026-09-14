@@ -7,7 +7,7 @@ import { MarkdownView } from '../ui/markdown-view';
 import { ticketRoute, ticketStatusBadge, ticketTypeBadge } from './tickets-model';
 
 /**
- * One open ticket, as a card: what it is, who has it, when it arrived, and what it says.
+ * One outstanding ticket, as a card: what it is, who has it, when it arrived, and what it says.
  *
  * <p><b>The title is a link, so it is in the card's body rather than its heading.</b>
  * `qits-card`'s `heading` is a string it prints itself — there is no way to project markup into it —
@@ -15,10 +15,15 @@ import { ticketRoute, ticketStatusBadge, ticketTypeBadge } from './tickets-model
  * inside the body is the smaller compromise: the badges still sit opposite the title, and the title
  * is the thing a reader clicks.
  *
- * <p><b>Two badges, and the type is the one doing the work.</b> Every card in the Open section
- * carries the same status word, so on that section the status badge is near-constant and the type is
- * what a reader actually scans by — which is why the two are toned to be told apart at a glance
- * rather than to be read in order.
+ * <p><b>Two badges, and both of them now vary.</b> The outstanding section runs through four
+ * statuses in lifecycle order, so the status badge says how far down the pipeline this row is while
+ * the type says what kind of thing it is; the two are toned to be told apart at a glance rather than
+ * to be read in order.
+ *
+ * <p><b>The impetus is the card's sentence and the description is only there once it exists.</b> A
+ * reported ticket has no description at all — refining has not run — so a card that drew only the
+ * description would be a title and two badges for exactly the rows a reader is deciding between.
+ * The reporter's sentence is what says why the ticket is on the list, and it is there from intake.
  *
  * <p><b>The dash is a fact, not blank space.</b> A ticket nobody has taken draws {@link NONE} in the
  * assignee's place; leaving the slot out would make an unassigned ticket look like a card that had
@@ -47,6 +52,10 @@ import { ticketRoute, ticketStatusBadge, ticketTypeBadge } from './tickets-model
         <span class="dot" aria-hidden="true">·</span>
         <span class="age">{{ age() }}</span>
       </p>
+
+      @if (ticket().impetus; as impetus) {
+        <p class="impetus">{{ impetus }}</p>
+      }
 
       @if (ticket().description; as text) {
         <app-markdown class="description" [text]="text" />
@@ -84,6 +93,12 @@ import { ticketRoute, ticketStatusBadge, ticketTypeBadge } from './tickets-model
       margin: 0.25rem 0 0;
       font-size: 0.8rem;
       color: #6b7280;
+    }
+    .impetus {
+      margin: 0.5rem 0 0;
+      font-size: 0.9rem;
+      color: #111827;
+      overflow-wrap: anywhere;
     }
     .description {
       margin-top: 0.5rem;

@@ -12,9 +12,10 @@ const ticket = (over: Partial<TicketDto> = {}): TicketDto => ({
   title: 'The cancelled badge is the wrong colour',
   slug: 'the-cancelled-badge-is-the-wrong-colour',
   type: 'BUG',
-  status: 'OPEN',
+  status: 'REPORTED',
   assignee: null,
   createdBy: 'kim',
+  impetus: 'The badge reads as success when a run is cancelled, on the builds page.',
   description: null,
   createdAt: AT,
   updatedAt: AT,
@@ -90,6 +91,7 @@ describe('TicketsApi', () => {
     it('posts a new ticket under its project and answers the row', async () => {
       const answer = api.create('p1', {
         title: 'The cancelled badge is the wrong colour',
+        impetus: 'The badge reads as success when a run is cancelled.',
         type: 'BUG',
         description: 'It reads as **success**.',
         assignee: 'kim',
@@ -100,6 +102,7 @@ describe('TicketsApi', () => {
       expect(request.request.method).toBe('POST');
       expect(request.request.body).toEqual({
         title: 'The cancelled badge is the wrong colour',
+        impetus: 'The badge reads as success when a run is cancelled.',
         type: 'BUG',
         description: 'It reads as **success**.',
         assignee: 'kim',
@@ -109,11 +112,19 @@ describe('TicketsApi', () => {
 
     /** Absence is what says "nothing was said" — an empty string would be a stored empty string. */
     it('leaves an unstated description and assignee off the body entirely', async () => {
-      const answer = api.create('p1', { title: 'Tidy the spacing', type: 'IMPROVEMENT' });
+      const answer = api.create('p1', {
+        title: 'Tidy the spacing',
+        impetus: 'The ticket cards should be easier to scan.',
+        type: 'IMPROVEMENT',
+      });
       const request = http.expectOne('/projects/api/projects/p1/tickets');
       request.flush({ ticket: ticket({ type: 'IMPROVEMENT' }) });
 
-      expect(request.request.body).toEqual({ title: 'Tidy the spacing', type: 'IMPROVEMENT' });
+      expect(request.request.body).toEqual({
+        title: 'Tidy the spacing',
+        impetus: 'The ticket cards should be easier to scan.',
+        type: 'IMPROVEMENT',
+      });
       await answer;
     });
 
@@ -146,23 +157,24 @@ describe('TicketsApi', () => {
       expect((await answer).assignee).toBeNull();
     });
 
-    it('resolves a ticket through the transition verb, not through a field edit', async () => {
-      const answer = api.transition('t1', 'RESOLVED');
+    it('moves a ticket along the lifecycle through the transition verb, not a field edit', async () => {
+      const answer = api.transition('t1', 'REFINED');
       const request = http.expectOne('/projects/api/tickets/t1/transition');
-      request.flush({ ticket: ticket({ status: 'RESOLVED' }) });
+      request.flush({ ticket: ticket({ status: 'REFINED' }) });
 
       expect(request.request.method).toBe('POST');
-      expect(request.request.body).toEqual({ target: 'RESOLVED' });
-      expect((await answer).status).toBe('RESOLVED');
+      expect(request.request.body).toEqual({ target: 'REFINED' });
+      expect((await answer).status).toBe('REFINED');
     });
 
-    it('reopens through the same verb, the other way', async () => {
-      const answer = api.transition('t1', 'OPEN');
+    /** Backwards is the same door: nothing is terminal, so a closed ticket walks back the way it came. */
+    it('moves it back through the same verb, the other way', async () => {
+      const answer = api.transition('t1', 'VERIFIED');
       const request = http.expectOne('/projects/api/tickets/t1/transition');
-      request.flush({ ticket: ticket() });
+      request.flush({ ticket: ticket({ status: 'VERIFIED' }) });
 
-      expect(request.request.body).toEqual({ target: 'OPEN' });
-      expect((await answer).status).toBe('OPEN');
+      expect(request.request.body).toEqual({ target: 'VERIFIED' });
+      expect((await answer).status).toBe('VERIFIED');
     });
 
     /** Nothing is sent: the ticket is in the path and the principal is in the session. */

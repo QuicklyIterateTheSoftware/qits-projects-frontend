@@ -36,9 +36,10 @@ function ticket(over: Partial<TicketDto> = {}): TicketDto {
     title: 'The cancelled badge is the wrong colour',
     slug: 'cancelled-badge',
     type: 'BUG',
-    status: 'OPEN',
+    status: 'REPORTED',
     assignee: null,
     createdBy: 'kim',
+    impetus: 'The run badge shows success when a run is cancelled, on the builds page.',
     description: 'It reads as **success**.',
     createdAt: AT,
     updatedAt: AT,
@@ -181,7 +182,7 @@ describe('TicketDetailPage', () => {
         node.textContent?.trim(),
       );
 
-      expect(badges).toEqual(['bug', 'open']);
+      expect(badges).toEqual(['bug', 'reported']);
     });
 
     /** Nothing failed — the address simply names nothing, and that reads as a not-found. */
@@ -225,11 +226,31 @@ describe('TicketDetailPage', () => {
       expect(page().querySelector('.back a')?.getAttribute('href')).toBe('/p1/tickets');
     });
 
-    /** No description is a stated fact, not an empty space where one would have been. */
-    it('says a ticket has no description rather than drawing nothing', async () => {
+    /**
+     * The impetus and the description are two statements by two authors — what brought the ticket
+     * about, and what refining decided to do about it — so the reporter's sentence is drawn first
+     * and the refinement beneath it. A page that led with the refinement would bury the only
+     * sentence saying why anybody should care.
+     */
+    it('draws the impetus above the description, as the headline it is', async () => {
+      await openTicket();
+      const impetus = page().querySelector('.impetus');
+      const description = page().querySelector('.description');
+
+      expect(impetus?.textContent?.trim()).toBe(
+        'The run badge shows success when a run is cancelled, on the builds page.',
+      );
+      expect(description).toBeTruthy();
+      expect(impetus!.compareDocumentPosition(description!)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    });
+
+    /** Not refined yet is a fact about the pipeline; an empty panel would say nothing at all. */
+    it('says the work has not been written yet rather than drawing an empty panel', async () => {
       await openTicket(ticket({ description: null }));
 
-      expect(text()).toContain('This ticket has no description.');
+      expect(text()).toContain('Not refined yet');
+      expect(page().querySelector('.impetus')).toBeTruthy();
+      expect(page().querySelector('.description')).toBeNull();
     });
   });
 
@@ -314,52 +335,95 @@ describe('TicketDetailPage', () => {
     });
   });
 
-  describe('resolving and reopening', () => {
-    /** One button that swaps: a row offering both moves would always offer one that does nothing. */
-    it('offers the move that is available and uses the answer directly', async () => {
+  /**
+   * The transition control, which is where the lifecycle is visible.
+   *
+   * The rule it is drawn from is adjacency: from any status there are one or two legal moves and
+   * every other target is a 409. So the row offers the neighbours and nothing else — including no
+   * press that would land on the status already held — and a refusal that arrives anyway is a page
+   * that was open while somebody else moved the ticket, which is the service's sentence to say.
+   */
+  describe('moving it along the lifecycle', () => {
+    it('offers only the neighbours of the status the ticket holds', async () => {
       await openTicket();
 
-      expect(buttonNamed('Resolve')).toBeTruthy();
-      buttonNamed('Resolve').click();
+      expect(buttonNamed('Mark refined')).toBeTruthy();
+      expect(
+        Array.from(page().querySelectorAll('button')).map((node) => node.textContent?.trim()),
+      ).not.toContain('Mark implemented');
+      expect(
+        Array.from(page().querySelectorAll('button')).map((node) => node.textContent?.trim()),
+      ).not.toContain('Mark reported');
+    });
+
+    it('offers both neighbours from the middle, and uses the answer directly', async () => {
+      await openTicket(ticket({ status: 'IMPLEMENTED' }));
+
+      expect(buttonNamed('Back to refined')).toBeTruthy();
+      buttonNamed('Mark verified').click();
       await settle();
 
       const request = http.expectOne('/projects/api/tickets/t1/transition');
       expect(request.request.method).toBe('POST');
-      expect(request.request.body).toEqual({ target: 'RESOLVED' });
-      request.flush({ ticket: ticket({ status: 'RESOLVED' }) });
+      expect(request.request.body).toEqual({ target: 'VERIFIED' });
+      request.flush({ ticket: ticket({ status: 'VERIFIED' }) });
       await settle();
 
-      expect(buttonNamed('Reopen')).toBeTruthy();
-      // The answer is the whole subject, so nothing is re-read.
+      // The new status brings its own pair of neighbours with it, and nothing is re-read.
+      expect(buttonNamed('Close')).toBeTruthy();
+      expect(buttonNamed('Back to implemented')).toBeTruthy();
       http.verify();
     });
 
-    it('reopens a resolved ticket through the same verb, the other way', async () => {
-      await openTicket(ticket({ status: 'RESOLVED' }));
+    /** Nothing is terminal: a closed ticket that was not fixed walks back the way it came. */
+    it('offers the way back out of done, and no way further on', async () => {
+      await openTicket(ticket({ status: 'DONE' }));
 
       buttonNamed('Reopen').click();
       await settle();
 
       const request = http.expectOne('/projects/api/tickets/t1/transition');
-      expect(request.request.body).toEqual({ target: 'OPEN' });
-      request.flush({ ticket: ticket() });
+      expect(request.request.body).toEqual({ target: 'VERIFIED' });
+      request.flush({ ticket: ticket({ status: 'VERIFIED' }) });
       await settle();
 
-      expect(buttonNamed('Resolve')).toBeTruthy();
+      expect(buttonNamed('Close')).toBeTruthy();
     });
 
-    it('reports a refused move and leaves the ticket where it was', async () => {
+    /**
+     * A 409 is the one failure this page has nothing to add to: the button was legal when it was
+     * drawn, so the conflict is news about the ticket and the service's own sentence is the news.
+     */
+    it('renders a stale page’s 409 as the service’s sentence, not as its own', async () => {
       await openTicket();
 
-      buttonNamed('Resolve').click();
+      buttonNamed('Mark refined').click();
       await settle();
       http
         .expectOne('/projects/api/tickets/t1/transition')
-        .flush({ message: 'already resolved' }, { status: 409, statusText: 'Conflict' });
+        .flush(
+          { message: 'the ticket is already REFINED' },
+          { status: 409, statusText: 'Conflict' },
+        );
       await settle();
 
-      expect(text()).toContain('Could not move it — 409 already resolved.');
-      expect(buttonNamed('Resolve')).toBeTruthy();
+      expect(text()).toContain('the ticket is already REFINED');
+      expect(text()).not.toContain('Could not move it');
+      expect(buttonNamed('Mark refined')).toBeTruthy();
+    });
+
+    /** Anything that is not a conflict is a failed request, not a statement about the ticket. */
+    it('keeps its own wrapper around a failure that is not a refusal', async () => {
+      await openTicket();
+
+      buttonNamed('Mark refined').click();
+      await settle();
+      http
+        .expectOne('/projects/api/tickets/t1/transition')
+        .flush(null, { status: 503, statusText: 'Down' });
+      await settle();
+
+      expect(text()).toContain('Could not move it — 503.');
     });
   });
 

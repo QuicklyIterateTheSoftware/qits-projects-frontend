@@ -42,9 +42,10 @@ function ticket(id: string, over: Partial<TicketDto> = {}): TicketDto {
     title: `Ticket ${id}`,
     slug: `ticket-${id}`,
     type: 'BUG',
-    status: 'OPEN',
+    status: 'REPORTED',
     assignee: null,
     createdBy: null,
+    impetus: `Something is wrong with ${id}.`,
     description: null,
     createdAt: AT,
     updatedAt: AT,
@@ -152,7 +153,7 @@ describe('TicketsOverview', () => {
     );
   }
 
-  /** Every card title, in the order the Open section draws them. */
+  /** Every card title, in the order the outstanding section draws them. */
   function cardTitles(): string[] {
     return Array.from(element().querySelectorAll('app-ticket-card .title')).map(
       (node) => node.textContent?.trim() ?? '',
@@ -193,22 +194,55 @@ describe('TicketsOverview', () => {
     await flushTickets([
       ticket('a', { createdAt: '2026-09-01T09:00:00Z', description: 'A public **status page**.' }),
       ticket('b', { createdAt: '2026-09-05T09:00:00Z', type: 'IMPROVEMENT', assignee: 'kim' }),
-      ticket('c', { status: 'RESOLVED' }),
+      ticket('c', { status: 'DONE' }),
     ]);
   }
 
-  it('draws the open tickets as cards, newest first', async () => {
+  it('draws the outstanding tickets as cards, newest first within a phase', async () => {
     await loadBoth();
 
     expect(cardTitles()).toEqual(['Ticket b', 'Ticket a']);
   });
 
-  it('badges each open card with its type and its status', async () => {
+  /**
+   * The outstanding section is a pipeline, so its order is the lifecycle's and not the clock's —
+   * reported at the top, where work is picked up from.
+   */
+  it('orders the outstanding cards by the lifecycle rather than by date', async () => {
     await mount();
-    await flushTickets([ticket('a')]);
+    await flushTickets([
+      ticket('verified', { status: 'VERIFIED', createdAt: '2026-09-08T09:00:00Z' }),
+      ticket('reported', { status: 'REPORTED', createdAt: '2026-09-01T09:00:00Z' }),
+      ticket('implemented', { status: 'IMPLEMENTED', createdAt: '2026-09-07T09:00:00Z' }),
+      ticket('refined', { status: 'REFINED', createdAt: '2026-09-02T09:00:00Z' }),
+    ]);
 
-    expect(badges()).toEqual(['bug', 'open']);
+    expect(cardTitles()).toEqual([
+      'Ticket reported',
+      'Ticket refined',
+      'Ticket implemented',
+      'Ticket verified',
+    ]);
+  });
+
+  it('badges each outstanding card with its type and the phase it has reached', async () => {
+    await mount();
+    await flushTickets([ticket('a'), ticket('b', { status: 'IMPLEMENTED' })]);
+
+    expect(badges()).toEqual(['bug', 'reported', 'bug', 'implemented']);
     expect(element().querySelector('.qits-badge')?.className).toContain('qits-badge-danger');
+  });
+
+  /** A reported ticket has no description at all, so the reporter's sentence is what the card says. */
+  it('draws the impetus on the card, description or no description', async () => {
+    await loadBoth();
+
+    expect(element().querySelector('#ticket-a app-ticket-card .impetus')?.textContent?.trim()).toBe(
+      'Something is wrong with a.',
+    );
+    expect(element().querySelector('#ticket-b app-ticket-card .impetus')?.textContent?.trim()).toBe(
+      'Something is wrong with b.',
+    );
   });
 
   /** The dash is a fact: a ticket nobody has taken must not look like a card drawn wrong. */
@@ -239,16 +273,16 @@ describe('TicketsOverview', () => {
   });
 
   /** The archive is a scannable list, and it opens closed so it cannot bury the work above it. */
-  it('draws the resolved tickets as collapsed rows, not as cards', async () => {
+  it('draws the done tickets as collapsed rows, not as cards', async () => {
     await loadBoth();
 
     expect(rowTitles()).toEqual(['Ticket c']);
     const disclosure = element().querySelector('details');
     expect(disclosure?.open).toBe(false);
-    expect(element().querySelector('summary')?.textContent).toContain('Resolved (1)');
+    expect(element().querySelector('summary')?.textContent).toContain('Done (1)');
   });
 
-  it('leaves the resolved section out of a project that has resolved nothing', async () => {
+  it('leaves the done section out of a project that has closed nothing', async () => {
     await mount();
     await flushTickets([ticket('a')]);
 
@@ -256,11 +290,11 @@ describe('TicketsOverview', () => {
   });
 
   /** An empty section is a fact, not blank space — and it is a different fact from having none. */
-  it('says the open section is empty rather than drawing nothing', async () => {
+  it('says the outstanding section is empty rather than drawing nothing', async () => {
     await mount();
-    await flushTickets([ticket('c', { status: 'RESOLVED' })]);
+    await flushTickets([ticket('c', { status: 'DONE' })]);
 
-    expect(text()).toContain('No ticket is open.');
+    expect(text()).toContain('No ticket is outstanding.');
     expect(text()).not.toContain('This project has no tickets yet.');
   });
 
@@ -304,8 +338,8 @@ describe('TicketsOverview', () => {
   /**
    * The action row, which is the one place this panel writes.
    *
-   * Three things are worth pinning. It is offered on the open cards *only* — a resolved ticket is
-   * terminal and draws no actions. A press is pinned to the ticket it was made on: the busy state,
+   * Three things are worth pinning. It is offered on the outstanding cards *only* — a closed ticket
+   * draws no actions. A press is pinned to the ticket it was made on: the busy state,
    * the failure and the link all belong to one row, and a panel that pinned them to the panel would
    * report one ticket's trouble against another. And the list is not re-read afterwards, because the
    * door's own `tickets` hint is what brings the new one in.
@@ -313,7 +347,7 @@ describe('TicketsOverview', () => {
   describe('assigning an agent', () => {
     const DISPATCH = '/projects/api/tickets/b/dispatch-agent';
 
-    it('offers the action on every open card and on no resolved row', async () => {
+    it('offers the action on every outstanding card and on no done row', async () => {
       await loadBoth();
 
       expect(element().querySelectorAll('app-ticket-actions').length).toBe(2);

@@ -18,17 +18,23 @@ import type {
 /**
  * What a POST sends to open a ticket.
  *
+ * <p>`impetus` is **required**, and it is the field that makes a ticket worth having: one sentence,
+ * in the reporter's words, saying what brought it about. The service refuses a create without one.
+ * `description` is the *refinement's* output and so is normally absent at intake — a reporter who
+ * already knows what should be done may write it, but nobody is asked to.
+ *
  * <p>`description` and `assignee` are **optional rather than nullable**: the wire's absence is what
  * means "nothing was said", and sending an explicit `null` would be a third spelling of the same
  * thing. The page leaves an empty box off the body entirely.
  *
  * <p>Neither `createdBy` nor `status` is here, and both omissions are the contract rather than an
  * oversight. The principal is stamped from the session — a client that sent one would be asserting
- * an identity it does not own — and a new ticket is `OPEN` by definition, so offering to create a
- * resolved one would be offering to skip the work.
+ * an identity it does not own — and a new ticket is `REPORTED` by definition, so offering to create
+ * one further down the lifecycle would be offering to claim phases that never ran.
  */
 export interface NewTicket {
   readonly title: string;
+  readonly impetus: string;
   readonly description?: string;
   readonly type: TicketType;
   readonly assignee?: string;
@@ -45,8 +51,12 @@ export interface NewTicket {
  * than a `null` value so that the request stays readable in a log.
  *
  * <p>`status` is not here: it moves through the transition, which is a different verb on a different
- * path. Resolving a ticket is an event, not a field edit, and keeping it out of this body is what
- * stops a retitle from quietly closing something.
+ * path. Moving a ticket down the lifecycle is an event, not a field edit, and keeping it out of this
+ * body is what stops a retitle from quietly closing something.
+ *
+ * <p>`impetus` is not here either, and that is the lifecycle's rule rather than an omission: it is
+ * the intake statement, in the reporter's words, and no later phase rewrites it. What refining
+ * produces goes in `description`.
  */
 export interface TicketEdit {
   readonly title?: string;
@@ -99,7 +109,7 @@ export class TicketsApi {
     return response.entries.map((entry) => entry.ticket);
   }
 
-  /** Open a ticket. It is `OPEN` and stamped with the session's principal by the time it answers. */
+  /** Open a ticket. It is `REPORTED` and stamped with the session's principal when it answers. */
   async create(projectId: string, ticket: NewTicket): Promise<TicketDto> {
     const response = await firstValueFrom(
       this.http.post<TicketResponse>(this.tickets(projectId), ticket),
@@ -128,10 +138,16 @@ export class TicketsApi {
   }
 
   /**
-   * Resolve a ticket, or reopen it.
+   * Move a ticket one step along the lifecycle, forwards or back.
    *
-   * A POST to a verb rather than a PUT of a field, mirroring the epic transition: this is a thing
+   * <p>A POST to a verb rather than a PUT of a field, mirroring the epic transition: this is a thing
    * that *happens* to a ticket, and the service is free to do more than set a column when it does.
+   *
+   * <p><b>The service owns adjacency.</b> A target two steps away, or the status the ticket already
+   * holds, answers 409 with the sentence saying so — which is what a page that has been open while
+   * somebody else moved the ticket renders. The caller offers only the neighbours
+   * ({@link ../project/tickets-model#ticketTransitions}), but offering correctly is not the same as
+   * being sure, and only the server is.
    */
   async transition(ticketId: string, target: TicketStatus): Promise<TicketDto> {
     const response = await firstValueFrom(

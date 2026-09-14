@@ -22,6 +22,18 @@ const TYPES: readonly { readonly value: TicketType; readonly label: string }[] =
 ];
 
 /**
+ * The impetus rule, as the form says it — **a constant rather than template text** because the two
+ * shapes it quotes are written with braces, and a `{` in an Angular template opens an ICU message.
+ * Escaping them inline would spell the sentence as three interpolations and make the one piece of
+ * prose a reporter actually reads the least readable line in this file.
+ */
+const IMPETUS_RULE =
+  'What brought this about, in your own words: “{some error} occurs {in some context}”, or ' +
+  '“{an existing part} should be {something to introduce or improve}”. One sentence, almost ' +
+  'always — rarely a paragraph, very rarely two. Steps to reproduce a bug can go here too and do ' +
+  'not count against that.';
+
+/**
  * The small work beside the plan: a project's tickets, and the form that opens one.
  *
  * <p>The shell is the shape every sub-page here has — a back link carrying the project's name, the
@@ -41,10 +53,12 @@ const TYPES: readonly { readonly value: TicketType; readonly label: string }[] =
  * always-open form would put four empty boxes above the list every time, and would make the list —
  * the thing the page is for — start below the fold.
  *
- * <p><b>Only the title is required, and the type has a default.</b> A ticket that has to be fully
- * described before it can be filed is a ticket that does not get filed; the rest can be added on its
- * own page, which is the same place it would be edited anyway. `BUG` leads because a defect is the
- * report somebody is most likely to be in a hurry with.
+ * <p><b>The title and the impetus are required, and the type has a default.</b> A ticket that has to
+ * be fully described before it can be filed is a ticket that does not get filed — but a ticket with
+ * no impetus is a title nobody can act on, and the sentence that says what brought it about is the
+ * one thing only the reporter can write. The description is what *refining* produces, so the form
+ * keeps the box and expects it empty. `BUG` leads because a defect is the report somebody is most
+ * likely to be in a hurry with.
  *
  * <p><b>An empty box is left off the request entirely.</b> The service reads an absent
  * `description` or `assignee` as "nothing was said", so sending `""` would store an empty string and
@@ -99,9 +113,23 @@ const TYPES: readonly { readonly value: TicketType; readonly label: string }[] =
         </label>
 
         <label class="field">
+          <span class="label" id="ticket-impetus-label">Impetus</span>
+          <textarea
+            class="text area impetus"
+            rows="3"
+            placeholder="The run badge shows success when a run is cancelled, on the builds page."
+            aria-labelledby="ticket-impetus-label"
+            aria-describedby="ticket-impetus-hint"
+            [value]="impetus()"
+            (input)="onImpetus($event)"
+          ></textarea>
+        </label>
+        <p class="hint" id="ticket-impetus-hint">{{ impetusRule }}</p>
+
+        <label class="field">
           <span class="label" id="ticket-description-label">Description</span>
           <textarea
-            class="text area"
+            class="text area description"
             rows="4"
             aria-labelledby="ticket-description-label"
             aria-describedby="ticket-description-hint"
@@ -110,7 +138,8 @@ const TYPES: readonly { readonly value: TicketType; readonly label: string }[] =
           ></textarea>
         </label>
         <p class="hint" id="ticket-description-hint">
-          Optional, and written in Markdown — headings, lists and code spans all render.
+          Optional, and normally left empty: this is what refining writes — what to do about the
+          impetus. Markdown, if you do write it.
         </p>
 
         <label class="field">
@@ -244,6 +273,7 @@ export class TicketsPage {
   protected readonly projectSlug = this.param.projectSlug;
 
   protected readonly types = TYPES;
+  protected readonly impetusRule = IMPETUS_RULE;
 
   /** The project's display name, once the shared list has answered. The address until then. */
   protected readonly heading = computed(() => {
@@ -254,14 +284,16 @@ export class TicketsPage {
   protected readonly open = signal(false);
   protected readonly title = signal('');
   protected readonly type = signal<TicketType>('BUG');
+  protected readonly impetus = signal('');
   protected readonly description = signal('');
   protected readonly assignee = signal('');
   protected readonly submit = signal<Loadable<unknown>>(IDLE);
 
-  /** A title and a project to file it against. Everything else is optional by design. */
+  /** A title, an impetus, and a project to file it against. Everything else is optional by design. */
   protected readonly submittable = computed(
     () =>
       this.title().trim().length > 0 &&
+      this.impetus().trim().length > 0 &&
       this.projectId().length > 0 &&
       this.submit().kind !== 'loading',
   );
@@ -288,6 +320,10 @@ export class TicketsPage {
     this.type.set((event.target as HTMLSelectElement).value as TicketType);
   }
 
+  protected onImpetus(event: Event): void {
+    this.impetus.set((event.target as HTMLTextAreaElement).value);
+  }
+
   protected onDescription(event: Event): void {
     this.description.set((event.target as HTMLTextAreaElement).value);
   }
@@ -311,6 +347,7 @@ export class TicketsPage {
     const assignee = this.assignee().trim();
     const ticket: NewTicket = {
       title: this.title().trim(),
+      impetus: this.impetus().trim(),
       type: this.type(),
       ...(description ? { description } : {}),
       ...(assignee ? { assignee } : {}),
@@ -330,6 +367,7 @@ export class TicketsPage {
   private reset(): void {
     this.title.set('');
     this.type.set('BUG');
+    this.impetus.set('');
     this.description.set('');
     this.assignee.set('');
     this.submit.set(IDLE);

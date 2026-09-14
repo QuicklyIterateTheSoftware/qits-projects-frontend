@@ -27,21 +27,27 @@ interface Failure {
 }
 
 /**
- * A project's tickets, grouped into what is still asking for something and what is not.
+ * A project's tickets: **what is still outstanding, in lifecycle order, and what is done.**
  *
  * <p><b>One read, grouped, rather than one read per section.</b> The service will filter by status,
- * but two reads would be two moments — long enough for a ticket resolved between them to be in both
+ * but two reads would be two moments — long enough for a ticket moved between them to be in both
  * sections or in neither. `groupTickets` splits the one answer, which is the same rule the epics
  * overview is built on and for the same reason.
  *
- * <p><b>Open is cards and resolved is rows.</b> The two sections are read for different things: the
- * open ones are being chosen between, so each carries its description and both badges; the resolved
- * ones are a record somebody occasionally looks something up in, so they are a scannable list with a
- * link. Drawing the archive as fully as the work would bury the work under it.
+ * <p><b>Two sections for five statuses, and the outstanding one reads as a pipeline.</b> A heading
+ * per status would be five boxes with a row or two in each; the split a reader needs is whether
+ * anything is still owed. So outstanding is everything but `DONE`, ordered reported → refined →
+ * implemented → verified, which puts the unrefined work at the top where it is being picked up from
+ * and the nearly-closed work at the bottom.
  *
- * <p><b>Only the open cards carry an action row</b>, the same shape the epics overview mounts beside
- * its cards: a resolved ticket is terminal, and a terminal row draws no actions — offering to put an
- * agent on something already answered would be offering to reopen it sideways.
+ * <p><b>Outstanding is cards and done is rows.</b> The two sections are read for different things:
+ * the outstanding ones are being chosen between, so each carries its description and both badges;
+ * the done ones are a record somebody occasionally looks something up in, so they are a scannable
+ * list with a link. Drawing the archive as fully as the work would bury the work under it.
+ *
+ * <p><b>Only the outstanding cards carry an action row</b>, the same shape the epics overview mounts
+ * beside its cards: a closed ticket draws no actions — offering to put an agent on something a
+ * person has already closed would be offering to reopen it sideways.
  *
  * <p><b>A dispatch is not re-read, and the memory of one is now only the fast path.</b> The door
  * writes a comment and fires the `tickets` topic, so the list refreshes itself and a manual reload
@@ -51,10 +57,10 @@ interface Failure {
  * and a second tab both show the way in and neither offers a second agent. What the in-memory copy
  * buys is the seconds between the press and the hint.
  *
- * <p><b>Resolved opens collapsed and only when there is something in it.</b> A project that has
- * never resolved a ticket should not carry an empty disclosure explaining that; a project with two
- * hundred should not open with them. Open is always there, because "nothing is open" is a fact worth
- * stating out loud.
+ * <p><b>Done opens collapsed and only when there is something in it.</b> A project that has never
+ * closed a ticket should not carry an empty disclosure explaining that; a project with two hundred
+ * should not open with them. Outstanding is always there, because "nothing is outstanding" is a fact
+ * worth stating out loud.
  *
  * <p><b>It listens as well as reads.</b> Another tab, another person, or this application's own
  * ticket page changes these rows without this screen doing anything, so the project's live channel
@@ -92,12 +98,12 @@ interface Failure {
         <app-empty message="This project has no tickets yet." />
       } @else {
         <section class="group">
-          <h3>Open</h3>
-          @if (groups().open.length === 0) {
-            <app-empty message="No ticket is open." />
+          <h3>Outstanding</h3>
+          @if (groups().outstanding.length === 0) {
+            <app-empty message="No ticket is outstanding." />
           } @else {
             <div class="cards">
-              @for (ticket of groups().open; track ticket.id) {
+              @for (ticket of groups().outstanding; track ticket.id) {
                 <div class="entry" [id]="anchor(ticket)">
                   <app-ticket-card [ticket]="ticket" [projectSlug]="linkSlug()" />
                   <app-ticket-actions
@@ -114,11 +120,11 @@ interface Failure {
           }
         </section>
 
-        @if (groups().resolved.length > 0) {
+        @if (groups().done.length > 0) {
           <details class="group">
-            <summary>Resolved ({{ groups().resolved.length }})</summary>
+            <summary>Done ({{ groups().done.length }})</summary>
             <div class="rows">
-              @for (ticket of groups().resolved; track ticket.id) {
+              @for (ticket of groups().done; track ticket.id) {
                 <app-ticket-summary-row
                   [id]="anchor(ticket)"
                   [ticket]="ticket"

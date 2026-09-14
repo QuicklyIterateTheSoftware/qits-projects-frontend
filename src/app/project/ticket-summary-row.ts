@@ -8,18 +8,19 @@ import { ticketRoute, ticketTypeBadge } from './tickets-model';
 /**
  * A ticket nobody has to do anything about, in one row.
  *
- * <p><b>A row rather than a card, because the description stopped being the point.</b> A resolved
- * ticket is kept as the record that the question was asked and answered, and what a reader wants
- * from it is its title and its kind — enough to recognise it and open it. Drawing every resolved
- * bug report in full would bury the Open section under the archive, which is the exact failure
+ * <p><b>A row rather than a card, because the description stopped being the point.</b> A done ticket
+ * is kept as the record that the question was asked and answered, and what a reader wants from it is
+ * its title and its kind — enough to recognise it and open it. Drawing every closed bug report in
+ * full would bury the outstanding section under the archive, which is the exact failure
  * `epic-summary-row` exists to avoid one level up.
  *
- * <p><b>No status badge.</b> Every row in this section is resolved, so the word would be printed
- * once per row and carry nothing; the section's own heading says it once. The *type* stays, because
- * that still varies from row to row.
+ * <p><b>No status badge.</b> Every row in this section is `DONE`, so the word would be printed once
+ * per row and carry nothing; the section's own heading says it once. The *type* stays, because that
+ * still varies from row to row — and it is the outstanding section, where the status now moves
+ * through four values, that needs the status badge on every card.
  *
- * <p>The title is still a link: the whole reason a resolved ticket is on screen is that somebody
- * may want to read what was decided, and that is on its page.
+ * <p>The title is still a link: the whole reason a done ticket is on screen is that somebody may
+ * want to read what was decided, and that is on its page.
  */
 @Component({
   selector: 'app-ticket-summary-row',
