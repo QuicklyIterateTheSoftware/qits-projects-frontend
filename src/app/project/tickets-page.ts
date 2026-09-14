@@ -13,6 +13,7 @@ import { TicketsApi, type NewTicket } from '../api/tickets-api';
 import { ProjectParam } from '../nav/project-param';
 import { IDLE, LOADING, ready, failed, type Loadable } from '../ui/loadable';
 import { RefinementPanel } from './agent/refinement-panel';
+import { IMPETUS_RULE } from './tickets-model';
 import { TicketsOverview } from './tickets-overview';
 
 /** The two kinds, in the order the form offers them: what is broken first, then what could be better. */
@@ -20,18 +21,6 @@ const TYPES: readonly { readonly value: TicketType; readonly label: string }[] =
   { value: 'BUG', label: 'Bug' },
   { value: 'IMPROVEMENT', label: 'Improvement' },
 ];
-
-/**
- * The impetus rule, as the form says it — **a constant rather than template text** because the two
- * shapes it quotes are written with braces, and a `{` in an Angular template opens an ICU message.
- * Escaping them inline would spell the sentence as three interpolations and make the one piece of
- * prose a reporter actually reads the least readable line in this file.
- */
-const IMPETUS_RULE =
-  'What brought this about, in your own words: “{some error} occurs {in some context}”, or ' +
-  '“{an existing part} should be {something to introduce or improve}”. One sentence, almost ' +
-  'always — rarely a paragraph, very rarely two. Steps to reproduce a bug can go here too and do ' +
-  'not count against that.';
 
 /**
  * The small work beside the plan: a project's tickets, and the form that opens one.

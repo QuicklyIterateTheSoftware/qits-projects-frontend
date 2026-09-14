@@ -425,7 +425,9 @@ export interface TicketDto {
    * <p><b>This is the intake field, and no later phase rewrites it.</b> Refining answers it rather
    * than editing it: what the reporter said is the record of what brought the ticket about, and a
    * ticket whose impetus had been polished into a work statement has lost the only sentence that
-   * says why anybody should care.
+   * says why anybody should care. That is a rule the **prompt templates** hold the phases to, not a
+   * guard — the field stays editable, because triage fixing a badly written impetus is exactly the
+   * edit it needs.
    *
    * <p>Nullable only for rows written before there was an impetus to write; a create sends one.
    */

@@ -10,6 +10,22 @@ import type { TicketCommentDto, TicketDto, TicketStatus, TicketType } from '../a
  * ticket silently falls out of, a route spelled with an id where the address grammar wants a slug.
  */
 
+/**
+ * The impetus rule, as a form says it — **a constant rather than template text** because the two
+ * shapes it quotes are written with braces, and a `{` in an Angular template opens an ICU message.
+ * Escaping them inline would spell the sentence as three interpolations and make the one piece of
+ * prose a reporter actually reads the least readable line in the file.
+ *
+ * <p>It lives here rather than beside the create form because **two** forms quote it: intake writes
+ * an impetus and triage fixes a badly written one, and a second copy of the rule would be a second
+ * opinion about what an impetus is.
+ */
+export const IMPETUS_RULE =
+  'What brought this about, in your own words: “{some error} occurs {in some context}”, or ' +
+  '“{an existing part} should be {something to introduce or improve}”. One sentence, almost ' +
+  'always — rarely a paragraph, very rarely two. Steps to reproduce a bug can go here too and do ' +
+  'not count against that.';
+
 /** What a ticket's badge says, and how loudly. The shape {@link ./epics-model#StatusBadge} has. */
 export interface TicketBadge {
   readonly label: string;

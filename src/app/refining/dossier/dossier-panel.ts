@@ -13,6 +13,7 @@ import {
 } from '@angular/core';
 import {
   DossierApi,
+  type DossierOwner,
   type DossierPageDto,
   type InlinedFigure,
   type PageConflict,
@@ -31,11 +32,21 @@ import { headingsOf, type Heading } from './heading-nav';
 const SAVE_DEBOUNCE_MS = 700;
 
 /**
- * The Dossier tab: the epic's long form.
+ * A dossier: the long form of whatever row owns it.
  *
- * The epic's description is the pitch — why the work is worth doing. The dossier is the breakdown,
+ * An epic's description is the pitch — why the work is worth doing. The dossier is the breakdown,
  * one page per part, with examples, sketches and framed designs. It is refined here, using the rest
  * of this route, but it is stored **with the epic**, so discarding the refinement leaves it standing.
+ *
+ * ## One panel, two owners
+ *
+ * A ticket owns a dossier too: where the refine phase finds a situation too tangled for the ticket's
+ * `description` — an error crossing four services, a sequence that wants a figure — it writes pages
+ * instead, over MCP, and the place a person reads them is the ticket detail page. So this takes an
+ * {@link DossierOwner} rather than an epic id, and everything below it — the page list, the derived
+ * heading nav, the version-guarded save, the conflict that keeps what was typed — is the same code
+ * on both. The **one** thing that is not is figure insertion: the service serves no assets under a
+ * ticket, so the Sketch and Design buttons are absent there rather than present and failing.
  *
  * ## Two levels, one of them stored
  *
@@ -78,19 +89,22 @@ export class DossierPanel {
   private readonly designs = inject(DesignsApi);
   private readonly events = inject(ProjectEvents);
 
-  /** Which project's live channel carries the epics hint this panel re-reads on. */
+  /** Which project's live channel carries the hint this panel re-reads on. */
   readonly projectId = input('');
 
-  /** Which epic's dossier this is. */
-  readonly epicId = input.required<string>();
+  /** Whose dossier this is: an epic's or a ticket's, and which row. */
+  readonly owner = input.required<DossierOwner>();
 
-  /** The refinement row, for the two figure sources. Zero while nothing is open. */
+  /**
+   * The refinement row, for the two figure sources. Zero while nothing is open — and always zero
+   * under a ticket owner, which has no refinement container and so no figures to insert.
+   */
   readonly workspaceRowId = input(0);
 
   /** Whether this tab is showing. It gates the listing read and nothing else. */
   readonly visible = input(false);
 
-  /** Whether the epic still takes writes. False renders the document and nothing else. */
+  /** Whether the owner still takes writes. False renders the document and nothing else. */
   readonly editable = input(true);
 
   /** The page named in the URL. An unknown or missing slug normalises to the first page. */
@@ -104,8 +118,17 @@ export class DossierPanel {
   /** The text being edited, or null when the editor is closed. */
   protected readonly draft = signal<string | null>(null);
 
-  /** A write the service refused, with what it would have overwritten. Never dropped silently. */
-  protected readonly conflict = signal<{ mine: string; current: DossierPageDto } | null>(null);
+  /**
+   * A write the service refused, with what it would have overwritten. Never dropped silently.
+   *
+   * `said` is the service's own sentence about the refusal, rendered as it stands: it is the one
+   * thing on screen that knows *why* the write was refused.
+   */
+  protected readonly conflict = signal<{
+    mine: string;
+    current: DossierPageDto;
+    said: string | null;
+  } | null>(null);
 
   protected readonly busy = signal<string | null>(null);
   protected readonly failure = signal<string | null>(null);
@@ -117,7 +140,20 @@ export class DossierPanel {
   /** The rendered page's container, which the heading walk reads and the observer watches. */
   private readonly rendered = viewChild<ElementRef<HTMLElement>>('rendered');
 
-  private readonly hints = this.events.invalidations('epics');
+  private readonly epicHints = this.events.invalidations('epics');
+  private readonly ticketHints = this.events.invalidations('tickets');
+
+  /**
+   * The topic the owner's changes arrive on.
+   *
+   * Both are subscribed and one is read, because the topic follows the owner and an input cannot be
+   * read where a field is initialised. A page written from a prompt lands as a hint on the owner's
+   * own topic either way, which is what makes the re-read arrive without anybody pressing anything.
+   */
+  private readonly hints = computed(() =>
+    this.owner().kind === 'epic' ? this.epicHints() : this.ticketHints(),
+  );
+
   private loadedFor = '';
   private seenHint = -1;
   private missedHint = false;
@@ -126,10 +162,10 @@ export class DossierPanel {
 
   constructor() {
     effect(() => {
-      const epicId = this.epicId();
+      const owner = this.owner();
       const hint = this.hints();
       const visible = this.visible();
-      untracked(() => this.decideRead(epicId, hint, visible));
+      untracked(() => this.decideRead(owner, hint, visible));
     });
 
     // The nav is rebuilt after every render, so editing a heading updates it on the next flush with
@@ -167,12 +203,29 @@ export class DossierPanel {
     return rows.find((page) => page.slug === wanted) ?? rows[0];
   });
 
-  /** The rendered page — figures resolved, so a DESIGN asset frames and everything else draws. */
+  /**
+   * The rendered page — figures resolved, so a DESIGN asset frames and everything else draws.
+   *
+   * A ticket's page is rendered with no figure table at all: nothing serves assets under a ticket,
+   * so there is no id that could legitimately frame, and every image renders as an image.
+   */
   protected readonly html = computed(() => {
     const page = this.current();
     if (!page) return '';
-    return renderMarkdown(page.body, { epicId: this.epicId(), kinds: this.figureKinds() });
+    const owner = this.owner();
+    if (owner.kind !== 'epic') return renderMarkdown(page.body);
+    return renderMarkdown(page.body, { epicId: owner.id, kinds: this.figureKinds() });
   });
+
+  /**
+   * Whether figures can be inserted here at all — an epic thing, absent under a ticket.
+   *
+   * The service serves no assets under a ticket (`DossierAssetController` has no ticket path, on
+   * purpose: a ticket's pages are prose and inlined markdown, and the sketch/design pipeline belongs
+   * to the refining route an epic has and a ticket does not). So the affordance is hidden rather
+   * than offered and then answered with a 404.
+   */
+  protected readonly figuresAvailable = computed(() => this.owner().kind === 'epic');
 
   /**
    * Which of this epic's figures are designs, read off the page's own URLs plus what the two source
@@ -225,9 +278,9 @@ export class DossierPanel {
   }
 
   protected addPage(): Promise<void> {
-    return this.act('add', async (epicId) => {
-      const page = await this.api.create(epicId, 'A new page', '');
-      await this.load(epicId);
+    return this.act('add', async (owner) => {
+      const page = await this.api.create(owner, 'A new page', '');
+      await this.load(owner);
       this.pageChosen.emit(page.slug);
     });
   }
@@ -245,28 +298,28 @@ export class DossierPanel {
     const page = this.current();
     const title = this.renameValue().trim();
     if (!page || !title) return Promise.resolve();
-    return this.act('rename', async (epicId) => {
-      await this.api.write(epicId, page.id, { title, version: page.version });
+    return this.act('rename', async (owner) => {
+      await this.api.write(owner, page, { title, version: page.version });
       this.renaming.set(false);
-      await this.load(epicId);
+      await this.load(owner);
     });
   }
 
   protected removePage(): Promise<void> {
     const page = this.current();
     if (!page) return Promise.resolve();
-    return this.act('remove', async (epicId) => {
-      await this.api.remove(epicId, page.id);
+    return this.act('remove', async (owner) => {
+      await this.api.remove(owner, page);
       this.draft.set(null);
-      await this.load(epicId);
+      await this.load(owner);
     });
   }
 
   /** Drop a page at another's position; the service closes the gap it leaves. */
   protected moveTo(page: DossierPageDto, position: number): Promise<void> {
-    return this.act('move', async (epicId) => {
-      await this.api.move(epicId, page.id, position);
-      await this.load(epicId);
+    return this.act('move', async (owner) => {
+      await this.api.move(owner, page, position);
+      await this.load(owner);
     });
   }
 
@@ -295,8 +348,8 @@ export class DossierPanel {
       );
       return Promise.resolve();
     }
-    return this.act('figure', async (epicId) => {
-      const figure: InlinedFigure = await this.api.inlineFigure(epicId, sourceId, kind);
+    return this.act('figure', async (owner) => {
+      const figure: InlinedFigure = await this.api.inlineFigure(owner.id, sourceId, kind);
       this.rememberKind(figure);
       this.insertAtCaret(figure.markdown);
     });
@@ -307,29 +360,30 @@ export class DossierPanel {
   }
 
   protected reload(): void {
-    void this.load(this.epicId());
+    void this.load(this.owner());
   }
 
   // ---- reading and writing -----------------------------------------------------------------
 
-  private decideRead(epicId: string, hint: number, visible: boolean): void {
-    if (!epicId) return;
+  private decideRead(owner: DossierOwner, hint: number, visible: boolean): void {
+    if (!owner.id) return;
     if (hint !== this.seenHint) {
       this.seenHint = hint;
       this.missedHint = true;
     }
     if (!visible) return;
-    if (this.loadedFor === epicId && !this.missedHint) return;
+    const key = `${owner.kind}/${owner.id}`;
+    if (this.loadedFor === key && !this.missedHint) return;
     this.missedHint = false;
-    this.loadedFor = epicId;
-    void this.load(epicId);
+    this.loadedFor = key;
+    void this.load(owner);
   }
 
-  private async load(epicId: string): Promise<void> {
-    if (!epicId) return;
+  private async load(owner: DossierOwner): Promise<void> {
+    if (!owner.id) return;
     this.pages.set(this.pages().kind === 'ready' ? this.pages() : LOADING);
     try {
-      const pages = await this.api.list(epicId);
+      const pages = await this.api.list(owner);
       this.pages.set(ready(pages));
       await this.learnFigureKinds(pages);
     } catch (error) {
@@ -347,16 +401,16 @@ export class DossierPanel {
     const page = this.current();
     const body = this.draft();
     if (!page || body === null || body === page.body || !this.editable()) return;
-    const epicId = this.epicId();
+    const owner = this.owner();
     try {
-      const answer = await this.api.write(epicId, page.id, { body, version: page.version });
+      const answer = await this.api.write(owner, page, { body, version: page.version });
       if (isConflict(answer)) {
-        this.conflict.set({ mine: body, current: answer.current });
-        await this.load(epicId);
+        this.conflict.set({ mine: body, current: answer.current, said: answer.message });
+        await this.load(owner);
         return;
       }
       this.conflict.set(null);
-      await this.load(epicId);
+      await this.load(owner);
     } catch (error) {
       this.failure.set(`That did not save — ${describeError(error)}.`);
     }
@@ -366,18 +420,18 @@ export class DossierPanel {
   protected retryConflicted(): Promise<void> {
     const held = this.conflict();
     if (!held) return Promise.resolve();
-    return this.act('retry', async (epicId) => {
-      const answer = await this.api.write(epicId, held.current.id, {
+    return this.act('retry', async (owner) => {
+      const answer = await this.api.write(owner, held.current, {
         body: held.mine,
         version: held.current.version,
       });
       if (isConflict(answer)) {
-        this.conflict.set({ mine: held.mine, current: answer.current });
+        this.conflict.set({ mine: held.mine, current: answer.current, said: answer.message });
         return;
       }
       this.conflict.set(null);
       this.draft.set(held.mine);
-      await this.load(epicId);
+      await this.load(owner);
     });
   }
 
@@ -388,13 +442,13 @@ export class DossierPanel {
     if (held) this.draft.set(held.current.body);
   }
 
-  private async act(action: string, write: (epicId: string) => Promise<void>): Promise<void> {
-    const epicId = this.epicId();
-    if (!epicId || this.busy()) return;
+  private async act(action: string, write: (owner: DossierOwner) => Promise<void>): Promise<void> {
+    const owner = this.owner();
+    if (!owner.id || this.busy()) return;
     this.busy.set(action);
     this.failure.set(null);
     try {
-      await write(epicId);
+      await write(owner);
     } catch (error) {
       this.failure.set(`That did not work — ${describeError(error)}.`);
     } finally {
@@ -423,7 +477,9 @@ export class DossierPanel {
    */
   private async learnFigureKinds(pages: readonly DossierPageDto[]): Promise<void> {
     const rowId = this.workspaceRowId();
-    if (rowId <= 0) return;
+    // A ticket has no refinement container and no assets, so there is nothing to look up and nothing
+    // that could be framed. See {@link figuresAvailable}.
+    if (!this.figuresAvailable() || rowId <= 0) return;
     try {
       [this.sketches, this.designRows] = await Promise.all([
         this.attachments.attachments(rowId),

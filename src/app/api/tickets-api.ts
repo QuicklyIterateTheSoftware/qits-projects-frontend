@@ -54,12 +54,19 @@ export interface NewTicket {
  * path. Moving a ticket down the lifecycle is an event, not a field edit, and keeping it out of this
  * body is what stops a retitle from quietly closing something.
  *
- * <p>`impetus` is not here either, and that is the lifecycle's rule rather than an omission: it is
- * the intake statement, in the reporter's words, and no later phase rewrites it. What refining
- * produces goes in `description`.
+ * <p><b>`impetus` is here, and nothing freezes it.</b> Triage fixes a badly written impetus — that
+ * is the one edit the field is for — and the later phases are kept off it by their **prompt
+ * templates**, which tell a refining or implementing agent to answer the impetus rather than rewrite
+ * it. Not by a guard: a guard would also refuse the correction triage is supposed to make, and the
+ * rule it would be enforcing is a matter of editorial discipline rather than of data integrity.
+ *
+ * <p>It takes no paired clear, unlike the two above it. An impetus is required at intake, so no form
+ * here can produce an empty one, and a `clearImpetus` this client never sends would be a promise
+ * about a state the product does not have. What refining produces still goes in `description`.
  */
 export interface TicketEdit {
   readonly title?: string;
+  readonly impetus?: string;
   readonly description?: string;
   readonly clearDescription?: boolean;
   readonly type?: TicketType;

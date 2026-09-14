@@ -119,6 +119,29 @@ describe('TicketDetailPage', () => {
       .flush({ entries: tickets.map((value) => ({ ticket: value })) });
   }
 
+  /**
+   * The dossier's page list — normally empty, which is what makes the section absent.
+   *
+   * Every read of the ticket asks it, because "is there a dossier" is a question about the row and
+   * not about the panel, and the panel cannot answer it before it is on screen.
+   */
+  function flushDossier(slugs: readonly string[] = []) {
+    http.expectOne('/projects/api/tickets/t1/dossier').flush({
+      pages: slugs.map((slug, index) => ({
+        id: `d${index}`,
+        epicId: null,
+        ticketId: 't1',
+        slug,
+        title: 'The claim loop',
+        position: index,
+        body: '# The claim loop\n\nHow it turns.',
+        version: 0,
+        createdAt: AT,
+        updatedAt: AT,
+      })),
+    });
+  }
+
   function flushComments(comments: readonly TicketCommentDto[]) {
     http
       .expectOne('/projects/api/tickets/t1/comments')
@@ -130,11 +153,14 @@ describe('TicketDetailPage', () => {
     row: TicketDto = ticket(),
     comments: readonly TicketCommentDto[] = [comment()],
     url = '/p1/tickets/cancelled-badge',
+    dossier: readonly string[] = [],
   ): Promise<void> {
     harness = await RouterTestingHarness.create(url);
     flushProjects();
     await settle();
     flushTickets([row]);
+    await settle();
+    flushDossier(dossier);
     await settle();
     flushComments(comments);
     await settle();
@@ -214,6 +240,8 @@ describe('TicketDetailPage', () => {
       await settle();
       flushTickets([ticket()]);
       await settle();
+      flushDossier();
+      await settle();
       flushComments([]);
       await settle();
 
@@ -273,6 +301,7 @@ describe('TicketDetailPage', () => {
       expect(request.request.method).toBe('PUT');
       expect(request.request.body).toEqual({
         title: 'The cancelled badge reads as success',
+        impetus: 'The run badge shows success when a run is cancelled, on the builds page.',
         type: 'BUG',
         description: 'It reads as **success**.',
         assignee: 'kim',
@@ -299,6 +328,7 @@ describe('TicketDetailPage', () => {
       const request = http.expectOne('/projects/api/tickets/t1');
       expect(request.request.body).toEqual({
         title: 'The cancelled badge is the wrong colour',
+        impetus: 'The run badge shows success when a run is cancelled, on the builds page.',
         type: 'BUG',
         clearDescription: true,
         clearAssignee: true,
@@ -313,6 +343,49 @@ describe('TicketDetailPage', () => {
       buttonNamed('Edit').click();
       await settle();
       await type('.edit-title', '  ');
+
+      expect(buttonNamed('Save').disabled).toBe(true);
+    });
+
+    /**
+     * The correction the lifecycle is explicit about: **nothing freezes the impetus.** Triage fixing
+     * a badly written one is the edit the field exists for, and the later phases are kept off it by
+     * their prompt templates rather than by a guard here.
+     */
+    it('edits the impetus, seeded from the row and quoting the create form’s rule', async () => {
+      await openTicket();
+
+      buttonNamed('Edit').click();
+      await settle();
+
+      expect(page().querySelector<HTMLTextAreaElement>('.edit-impetus')?.value).toBe(
+        'The run badge shows success when a run is cancelled, on the builds page.',
+      );
+      expect(text()).toContain('What brought this about, in your own words');
+
+      await type('.edit-impetus', 'A cancelled run is badged success on the builds page.');
+      buttonNamed('Save').click();
+      await settle();
+
+      const request = http.expectOne('/projects/api/tickets/t1');
+      expect(request.request.body).toMatchObject({
+        impetus: 'A cancelled run is badged success on the builds page.',
+      });
+      request.flush({
+        ticket: ticket({ impetus: 'A cancelled run is badged success on the builds page.' }),
+      });
+      await settle();
+
+      expect(page().querySelector('.impetus')?.textContent).toContain('is badged success');
+    });
+
+    /** The one box with no clear beside it: a ticket has to say what brought it about. */
+    it('will not save a ticket with its impetus emptied', async () => {
+      await openTicket();
+
+      buttonNamed('Edit').click();
+      await settle();
+      await type('.edit-impetus', '   ');
 
       expect(buttonNamed('Save').disabled).toBe(true);
     });
@@ -594,6 +667,8 @@ describe('TicketDetailPage', () => {
       await settle();
       flushTickets([ticket()]);
       await settle();
+      flushDossier();
+      await settle();
       http
         .expectOne('/projects/api/tickets/t1/comments')
         .flush(null, { status: 503, statusText: 'Down' });
@@ -601,6 +676,47 @@ describe('TicketDetailPage', () => {
 
       expect(page().querySelector('h1')?.textContent).toContain('The cancelled badge');
       expect(text()).toContain('Could not load the comments — 503');
+    });
+  });
+
+  /**
+   * The refine phase's other output.
+   *
+   * What to do about a ticket normally goes in `description`; where the situation is too tangled for
+   * prose it goes into dossier pages instead, written over MCP, and this is where they are read. The
+   * claim worth guarding is the **absence**: almost no ticket has a dossier, and an empty "Dossier"
+   * heading on every one of them would be a promise about a feature they do not use.
+   */
+  describe('the dossier', () => {
+    it('draws no section at all on a ticket with no pages', async () => {
+      await openTicket();
+
+      expect(page().querySelector('.dossier-section')).toBeNull();
+      expect(text()).not.toContain('Dossier');
+      http.verify();
+    });
+
+    it('draws the pages refining wrote, through the epic panel with a ticket owner', async () => {
+      await openTicket(ticket(), [comment()], '/p1/tickets/cancelled-badge', ['the-claim-loop']);
+      // The panel reads the list itself once it is on screen — see the page's class note.
+      flushDossier(['the-claim-loop']);
+      await settle();
+
+      expect(page().querySelector('.dossier-section')).toBeTruthy();
+      expect(page().querySelector('.dossier .rendered')?.innerHTML).toContain('How it turns.');
+    });
+
+    /** No assets under a ticket, so the affordance that would 404 is not drawn. */
+    it('offers no figure insertion on a ticket-owned page', async () => {
+      await openTicket(ticket(), [comment()], '/p1/tickets/cancelled-badge', ['the-claim-loop']);
+      flushDossier(['the-claim-loop']);
+      await settle();
+
+      const labels = Array.from(page().querySelectorAll('button')).map((node) =>
+        node.textContent?.trim(),
+      );
+      expect(labels).not.toContain('from Sketch');
+      expect(labels).not.toContain('from Design');
     });
   });
 
@@ -620,6 +736,8 @@ describe('TicketDetailPage', () => {
       expect(page().querySelector('h1')?.textContent).toContain('The cancelled badge');
 
       flushTickets([ticket({ title: 'Renamed by somebody else' })]);
+      await settle();
+      flushDossier();
       await settle();
       flushComments([comment(), comment({ id: 'c2', body: 'And again.' })]);
       await settle();

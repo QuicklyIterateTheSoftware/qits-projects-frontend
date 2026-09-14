@@ -12,10 +12,12 @@ import {
 import { toSignal } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, Router, RouterLink, convertToParamMap } from '@angular/router';
 import { QitsBadge, QitsButton } from '@qits/ui-components';
+import { DossierApi, ticketDossier, type DossierOwner } from '../api/dossier-api';
 import type { TicketCommentDto, TicketDto, TicketStatus, TicketType } from '../api/dto';
 import { ProjectEvents } from '../api/project-events';
 import { TicketsApi, type TicketEdit } from '../api/tickets-api';
 import { ProjectParam } from '../nav/project-param';
+import { DossierPanel } from '../refining/dossier/dossier-panel';
 import { Async } from '../ui/async';
 import { Empty } from '../ui/empty';
 import { NONE, relativeSince } from '../ui/format';
@@ -31,6 +33,7 @@ import {
 } from '../ui/loadable';
 import { MarkdownView } from '../ui/markdown-view';
 import {
+  IMPETUS_RULE,
   isEdited,
   ticketBySlug,
   ticketStatusBadge,
@@ -63,11 +66,26 @@ interface DrawnComment {
  * browser's cache when a reader arrives by clicking rather than by pasting. A slug the list does not
  * hold is an ordinary not-found drawn in the page's own error state, not a thrown request.
  *
- * <p><b>The edit is four plain boxes, and deliberately not a workspace.</b> An epic gets a whole
- * refining container because a plan is written over days by an agent and a person together. A ticket
- * is a paragraph somebody types once and occasionally corrects, so the edit is the same four fields
- * the create form has, seeded from the row, saved in one PUT — and **emptying a box clears the
- * field** rather than leaving it, which is what the request's paired `clear` flags are for.
+ * <p><b>The edit is the create form's boxes, and deliberately not a workspace.</b> An epic gets a
+ * whole refining container because a plan is written over days by an agent and a person together. A
+ * ticket is a paragraph somebody types once and occasionally corrects, so the edit is the same
+ * fields the create form has, seeded from the row, saved in one PUT — and **emptying a box clears
+ * the field** rather than leaving it, which is what the request's paired `clear` flags are for.
+ *
+ * <p><b>The impetus is among them, and nothing freezes it.</b> Triage fixing a badly written impetus
+ * is the edit the field exists for; the later phases are kept off it by their **prompt templates**,
+ * which tell an agent to answer the impetus rather than rewrite it, and not by a guard here. It is
+ * the one box that cannot be emptied — a ticket is required to have one at intake and has no less
+ * reason to have one afterwards — so it carries the create form's own length rule and nothing else.
+ *
+ * <p><b>The dossier is below the work, and is absent entirely when there is none.</b> Refining
+ * normally writes what to do into `description`; where the situation is too tangled for prose — an
+ * error crossing four services, a sequence that wants a figure — it writes dossier pages instead,
+ * over MCP, and this is where a person reads them. An ordinary ticket has no pages and so draws no
+ * section: an empty "Dossier" heading on every ticket in the estate would be a promise about a
+ * feature almost none of them use. The panel is the epic's, reused with a ticket owner rather than
+ * copied, and it does its own read — this page's list is asked only whether there is anything to
+ * show, which is a question the panel cannot answer before it is on screen.
  *
  * <p><b>The transition control offers the ticket's legal neighbours and nothing else.</b> The
  * lifecycle is adjacent-only in both directions, so from any status there are one or two moves and
@@ -103,7 +121,7 @@ interface DrawnComment {
 @Component({
   selector: 'app-ticket-detail-page',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [Async, Empty, MarkdownView, QitsBadge, QitsButton, RouterLink],
+  imports: [Async, DossierPanel, Empty, MarkdownView, QitsBadge, QitsButton, RouterLink],
   template: `
     <p class="back">
       <a [routerLink]="backRoute()">← Tickets</a>
@@ -157,6 +175,24 @@ interface DrawnComment {
               (input)="onDraftTitle($event)"
             />
           </label>
+
+          <!--
+            The impetus, edited where it is read: the headline. Nothing freezes it — see the class
+            note on why the later phases are kept off it by their prompt templates and not by a
+            guard — and it is the one box here that cannot be left empty.
+          -->
+          <label class="field">
+            <span class="label" id="edit-impetus-label">Impetus</span>
+            <textarea
+              class="text area edit-impetus"
+              rows="3"
+              aria-labelledby="edit-impetus-label"
+              aria-describedby="edit-impetus-hint"
+              [value]="draftImpetus()"
+              (input)="onDraftImpetus($event)"
+            ></textarea>
+          </label>
+          <p class="hint" id="edit-impetus-hint">{{ impetusRule }}</p>
 
           <label class="field">
             <span class="label" id="edit-type-label">Type</span>
@@ -250,6 +286,24 @@ interface DrawnComment {
             </qits-button>
           }
         </div>
+
+        <!--
+          Nothing at all unless refining wrote pages — see the class note. The panel is the epic's
+          one, given a ticket owner; the Sketch and Design affordances hide themselves here, because
+          nothing serves assets under a ticket.
+        -->
+        @if (hasDossier()) {
+          <section class="dossier-section" aria-label="Dossier">
+            <h2>Dossier</h2>
+            <app-dossier-panel
+              [projectId]="projectId()"
+              [owner]="dossierOwner()"
+              [visible]="true"
+              [pageSlug]="dossierPageSlug()"
+              (pageChosen)="dossierPageChosen($event)"
+            />
+          </section>
+        }
       }
 
       @if (actionFailure(); as message) {
@@ -494,6 +548,11 @@ interface DrawnComment {
       margin: 0.6rem 0 0;
       color: #b91c1c;
     }
+    .dossier-section {
+      margin-top: 1.5rem;
+      padding-top: 1rem;
+      border-top: 1px solid #e5e7eb;
+    }
     .comments {
       margin-top: 1.75rem;
       padding-top: 1rem;
@@ -538,12 +597,18 @@ interface DrawnComment {
 })
 export class TicketDetailPage {
   private readonly api = inject(TicketsApi);
+  private readonly dossier = inject(DossierApi);
   private readonly events = inject(ProjectEvents);
   private readonly param = inject(ProjectParam);
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
 
   private readonly params = toSignal(this.route.paramMap, { initialValue: convertToParamMap({}) });
+
+  /** `?page=` — the dossier page a link names, the same convention the refining route uses. */
+  private readonly query = toSignal(this.route.queryParamMap, {
+    initialValue: convertToParamMap({}),
+  });
 
   /** The id every request takes, and the slug every link is spelled with. */
   protected readonly projectId = this.param.projectId;
@@ -554,9 +619,19 @@ export class TicketDetailPage {
 
   protected readonly none = NONE;
   protected readonly types = TYPES;
+  protected readonly impetusRule = IMPETUS_RULE;
 
   protected readonly subject = signal<Loadable<TicketDto>>(LOADING);
   protected readonly comments = signal<Loadable<readonly TicketCommentDto[]>>(IDLE);
+
+  /**
+   * How many dossier pages this ticket has — a count, not a state.
+   *
+   * It has no `Loadable` and no error branch on purpose: the only question it answers is whether to
+   * draw the section, and a failed read answers "no" the same way an empty dossier does. The panel
+   * owns the real state once it is on screen, including the retry.
+   */
+  private readonly dossierPages = signal<readonly string[]>([]);
 
   /** Which ticket-level write is in flight — `save`, `transition` or `delete`. */
   protected readonly action = signal<string | null>(null);
@@ -568,6 +643,7 @@ export class TicketDetailPage {
 
   protected readonly editing = signal(false);
   protected readonly draftTitle = signal('');
+  protected readonly draftImpetus = signal('');
   protected readonly draftType = signal<TicketType>('BUG');
   protected readonly draftDescription = signal('');
   protected readonly draftAssignee = signal('');
@@ -607,9 +683,29 @@ export class TicketDetailPage {
     return row ? relativeSince(row.updatedAt) : NONE;
   });
 
+  /**
+   * A title and an impetus, which is what a create demands too.
+   *
+   * The impetus is the one box here that cannot be emptied: a ticket without the sentence saying
+   * what brought it about is a title nobody can act on, and that is as true at triage as at intake.
+   * So it is required rather than paired with a clear.
+   */
   protected readonly savable = computed(
-    () => this.draftTitle().trim().length > 0 && this.action() === null,
+    () =>
+      this.draftTitle().trim().length > 0 &&
+      this.draftImpetus().trim().length > 0 &&
+      this.action() === null,
   );
+
+  /** Whether refining wrote any dossier pages. False draws no section at all — see the class note. */
+  protected readonly hasDossier = computed(() => this.dossierPages().length > 0);
+
+  /** The owner the reused panel is given: this ticket. */
+  protected readonly dossierOwner = computed<DossierOwner>(() =>
+    ticketDossier(this.ticket()?.id ?? ''),
+  );
+
+  protected readonly dossierPageSlug = computed(() => this.query().get('page'));
 
   /** The thread as the rows draw it: the byline's two derived facts, resolved once per comment. */
   protected readonly thread = computed<readonly DrawnComment[]>(() => {
@@ -697,6 +793,7 @@ export class TicketDetailPage {
         return;
       }
       this.subject.set(ready(found));
+      await this.readDossier(found.id);
       await this.readComments(found.id, quiet);
     } catch (error) {
       if (this.newest(attempt) && !(quiet && this.ticket())) {
@@ -737,6 +834,42 @@ export class TicketDetailPage {
     }
   }
 
+  /**
+   * Ask whether there is a dossier at all.
+   *
+   * A failed read leaves the section off rather than putting an error where a ticket's pages would
+   * be: nothing here is broken by a ticket having no dossier, and almost none of them do.
+   */
+  private async readDossier(ticketId: string): Promise<void> {
+    const attempt = this.attempt;
+    try {
+      const pages = await this.dossier.list(ticketDossier(ticketId));
+      if (this.newest(attempt)) {
+        this.dossierPages.set(pages.map((page) => page.slug));
+      }
+    } catch {
+      if (this.newest(attempt)) {
+        this.dossierPages.set([]);
+      }
+    }
+  }
+
+  /**
+   * Follow the panel's choice in the URL, **replacing** rather than pushing — the same rule the
+   * refining route's `?page=` follows: the fragment, a heading, is what people step back through.
+   */
+  protected dossierPageChosen(slug: string): void {
+    if (this.query().get('page') === slug) {
+      return;
+    }
+    void this.router.navigate([], {
+      relativeTo: this.route,
+      queryParams: { page: slug },
+      queryParamsHandling: 'merge',
+      replaceUrl: true,
+    });
+  }
+
   /** Whether an answer that has just landed is still the one this page is waiting for. */
   private newest(attempt: number): boolean {
     return attempt === this.attempt;
@@ -751,6 +884,7 @@ export class TicketDetailPage {
       return;
     }
     this.draftTitle.set(row.title);
+    this.draftImpetus.set(row.impetus ?? '');
     this.draftType.set(row.type);
     this.draftDescription.set(row.description ?? '');
     this.draftAssignee.set(row.assignee ?? '');
@@ -768,6 +902,10 @@ export class TicketDetailPage {
     this.draftTitle.set((event.target as HTMLInputElement).value);
   }
 
+  protected onDraftImpetus(event: Event): void {
+    this.draftImpetus.set((event.target as HTMLTextAreaElement).value);
+  }
+
   protected onDraftType(event: Event): void {
     this.draftType.set((event.target as HTMLSelectElement).value as TicketType);
   }
@@ -781,7 +919,7 @@ export class TicketDetailPage {
   }
 
   /**
-   * Save the form as it stands: the four fields it shows, and a clear for each of the two it shows
+   * Save the form as it stands: every field it shows, and a clear for each of the two it will show
    * empty.
    *
    * The whole form is sent rather than a diff. The boxes were seeded from the row, so what is in
@@ -798,6 +936,10 @@ export class TicketDetailPage {
     const assignee = this.draftAssignee().trim();
     const edit: TicketEdit = {
       title: this.draftTitle().trim(),
+      // Sent like any other field. The rule that a refining or implementing agent leaves the impetus
+      // alone lives in those phases' prompt templates, not in a guard here — and triage correcting a
+      // badly written one is the edit this box exists for.
+      impetus: this.draftImpetus().trim(),
       type: this.draftType(),
       ...(description ? { description } : { clearDescription: true }),
       ...(assignee ? { assignee } : { clearAssignee: true }),

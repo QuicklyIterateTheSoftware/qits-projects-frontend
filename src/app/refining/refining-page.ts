@@ -12,6 +12,7 @@ import { toSignal } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, Router, convertToParamMap } from '@angular/router';
 import { QitsButton } from '@qits/ui-components';
 import { DesignsApi } from '../api/designs-api';
+import { epicDossier, type DossierOwner } from '../api/dossier-api';
 import { WorkspaceDaemonApi } from '../api/workspace-daemon-api';
 import { WorkspaceEvents, anyOf } from '../api/workspace-events';
 import { ProjectsApi } from '../api/projects-api';
@@ -886,6 +887,14 @@ export class RefiningPage {
 
   protected epicId(): string {
     return this.resolved()?.node.epic.id ?? '';
+  }
+
+  /**
+   * Whose dossier the tab shows. An epic's, here — the panel serves a ticket's too, on the ticket
+   * detail page, which is why it takes an owner rather than an epic id.
+   */
+  protected dossierOwner(): DossierOwner {
+    return epicDossier(this.epicId());
   }
 
   /** Whether the epic still takes writes. The Dossier tab renders read-only off this. */

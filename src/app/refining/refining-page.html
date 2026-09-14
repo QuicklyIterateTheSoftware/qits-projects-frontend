@@ -81,7 +81,7 @@
               <app-files-panel [workspaceRowId]="ws.id" [visible]="selected() === 'files'" />
             } @else if (tab.slug === 'dossier') {
               <app-dossier-panel
-                [epicId]="epicId()"
+                [owner]="dossierOwner()"
                 [workspaceRowId]="ws.id"
                 [visible]="selected() === 'dossier'"
                 [editable]="epicRefining()"

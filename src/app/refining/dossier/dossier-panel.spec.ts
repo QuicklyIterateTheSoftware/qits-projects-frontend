@@ -2,7 +2,13 @@ import { ChangeDetectionStrategy, Component, signal } from '@angular/core';
 import { TestBed, type ComponentFixture } from '@angular/core/testing';
 import { vi } from 'vitest';
 import { DesignsApi } from '../../api/designs-api';
-import { DossierApi, type DossierPageDto } from '../../api/dossier-api';
+import {
+  DossierApi,
+  epicDossier,
+  ticketDossier,
+  type DossierOwner,
+  type DossierPageDto,
+} from '../../api/dossier-api';
 import { ProjectEvents } from '../../api/project-events';
 import { PromptAttachmentsApi } from '../../api/prompt-attachments-api';
 import { DossierPanel } from './dossier-panel';
@@ -41,7 +47,7 @@ const settle = async () => {
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [DossierPanel],
   template: `<app-dossier-panel
-    [epicId]="epicId()"
+    [owner]="owner()"
     [workspaceRowId]="7"
     [visible]="visible()"
     [editable]="editable()"
@@ -49,7 +55,7 @@ const settle = async () => {
   />`,
 })
 class PanelHost {
-  readonly epicId = signal('e1');
+  readonly owner = signal<DossierOwner>(epicDossier('e1'));
   readonly visible = signal(true);
   readonly editable = signal(true);
   readonly slug = signal<string | null>(null);
@@ -122,9 +128,13 @@ describe('DossierPanel', () => {
     return found as HTMLButtonElement;
   }
 
-  async function open(rows: DossierPageDto[] = catalog): Promise<void> {
+  async function open(
+    rows: DossierPageDto[] = catalog,
+    owner: DossierOwner = epicDossier('e1'),
+  ): Promise<void> {
     catalog = rows;
     fixture = TestBed.createComponent(PanelHost);
+    fixture.componentInstance.owner.set(owner);
     fixture.detectChanges();
     await settle();
     fixture.detectChanges();
@@ -212,6 +222,77 @@ describe('DossierPanel', () => {
     fixture.detectChanges();
 
     expect(api.inlineFigure).toHaveBeenCalledWith('e1', 'd1', 'DESIGN');
+  });
+
+  // ---- the same panel, with a ticket owner ---------------------------------------------------
+
+  /**
+   * A ticket's dossier is the same panel, and these four claims are why it can be: the pages come
+   * from under the ticket, a save still carries the version, a refusal still shows the service's own
+   * sentence beside what was typed, and the one affordance the ticket routes cannot serve — figure
+   * insertion — is gone rather than present and failing.
+   */
+  it("lists a ticket's pages from under the ticket and renders one", async () => {
+    await open([page({ epicId: null, ticketId: 't1' })], ticketDossier('t1'));
+
+    expect(api.list).toHaveBeenCalledWith({ kind: 'ticket', id: 't1' });
+    expect(pageButtons().map((node) => node.textContent?.trim())).toEqual(['The claim loop']);
+    expect(rendered()?.innerHTML).toContain('How it turns.');
+  });
+
+  it("saves a ticket's page against the version it was read at", async () => {
+    await open([page({ epicId: null, ticketId: 't1', version: 2 })], ticketDossier('t1'));
+
+    buttonNamed('Edit').click();
+    fixture.detectChanges();
+    const area = element().querySelector<HTMLTextAreaElement>('.dossier-editor textarea')!;
+    area.value = 'the root cause';
+    area.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+    area.dispatchEvent(new Event('blur'));
+    await settle();
+
+    expect(api.write).toHaveBeenCalledWith(
+      { kind: 'ticket', id: 't1' },
+      expect.objectContaining({ slug: 'the-claim-loop' }),
+      { body: 'the root cause', version: 2 },
+    );
+  });
+
+  it("shows the service's own sentence when a ticket's page moved underneath it", async () => {
+    await open([page({ epicId: null, ticketId: 't1' })], ticketDossier('t1'));
+    api.write.mockResolvedValueOnce({
+      conflict: true,
+      current: page({ body: 'the agent wrote this', version: 1 }),
+      message: 'The page was written since you read it.',
+    });
+
+    buttonNamed('Edit').click();
+    fixture.detectChanges();
+    const area = element().querySelector<HTMLTextAreaElement>('.dossier-editor textarea')!;
+    area.value = 'what I typed';
+    area.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+    area.dispatchEvent(new Event('blur'));
+    await settle();
+    fixture.detectChanges();
+
+    expect(text()).toContain('The page was written since you read it.');
+    expect(text()).toContain('what I typed');
+    expect(text()).toContain('the agent wrote this');
+  });
+
+  it('offers no figure insertion under a ticket, because nothing serves assets there', async () => {
+    await open([page({ epicId: null, ticketId: 't1' })], ticketDossier('t1'));
+    buttonNamed('Edit').click();
+    fixture.detectChanges();
+
+    const labels = Array.from(element().querySelectorAll('button')).map((node) =>
+      node.textContent?.trim(),
+    );
+    expect(labels).not.toContain('from Sketch');
+    expect(labels).not.toContain('from Design');
+    expect(api.inlineFigure).not.toHaveBeenCalled();
   });
 
   it('re-reads on an epics hint while the tab is showing, and not behind another tab', async () => {

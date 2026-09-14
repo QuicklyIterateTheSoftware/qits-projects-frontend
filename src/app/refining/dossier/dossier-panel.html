@@ -85,18 +85,24 @@
                 <qits-button variant="ghost" (pressed)="startRename()">Rename</qits-button>
                 @if (editing()) {
                   <qits-button variant="ghost" (pressed)="stopEditing()">Done</qits-button>
-                  <qits-button
-                    variant="ghost"
-                    [busy]="busy() === 'figure'"
-                    (pressed)="insertFigure('IMAGE')"
-                    >from Sketch</qits-button
-                  >
-                  <qits-button
-                    variant="ghost"
-                    [busy]="busy() === 'figure'"
-                    (pressed)="insertFigure('DESIGN')"
-                    >from Design</qits-button
-                  >
+                  <!--
+                    Figures are an epic's. Nothing serves assets under a ticket, so the two insert
+                    buttons are absent there rather than offered and answered with a 404.
+                  -->
+                  @if (figuresAvailable()) {
+                    <qits-button
+                      variant="ghost"
+                      [busy]="busy() === 'figure'"
+                      (pressed)="insertFigure('IMAGE')"
+                      >from Sketch</qits-button
+                    >
+                    <qits-button
+                      variant="ghost"
+                      [busy]="busy() === 'figure'"
+                      (pressed)="insertFigure('DESIGN')"
+                      >from Design</qits-button
+                    >
+                  }
                 } @else {
                   <qits-button variant="ghost" (pressed)="startEditing()">Edit</qits-button>
                 }
@@ -118,6 +124,10 @@
           -->
           @if (conflict(); as clash) {
             <section class="clash" role="alert">
+              <!-- The service's own sentence first: it is the only thing here that knows why. -->
+              @if (clash.said; as said) {
+                <p class="said">{{ said }}</p>
+              }
               <p>
                 This page moved underneath you. Nothing of yours was written — here is what you
                 typed, beside what the page says now.
