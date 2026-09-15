@@ -281,8 +281,9 @@ export class ReleaseRequestsApi {
    * <p>Nothing is re-folded and nothing is announced by this: the fold did not move, so the request
    * is the same release it was — only the signal on it changed.
    *
-   * <p>A request the service calls finished — FINALIZED, WITHDRAWN or OBSOLETE — answers **409**,
-   * exactly as the withdraw does; a RELEASED one is still open and still takes this. The
+   * <p>A request whose tag is already cut — RELEASED, FINALIZED, WITHDRAWN or OBSOLETE — answers
+   * **409**, exactly as the withdraw does: the mutating doors are guarded by the service's
+   * `UNRELEASED` set, which is its open set minus the released ones. The
    * control is disabled in those states rather than hidden, and the refusal is still rendered where
    * it happens, because the usual cause is a page that went stale under the reader.
    */
@@ -305,10 +306,11 @@ export class ReleaseRequestsApi {
    * Call an ask off. The reason is recorded on the request as its `detail`; blank leaves the
    * service to name the caller instead, which is why it is optional rather than sent empty.
    *
-   * <p>A request the service calls finished — FINALIZED, WITHDRAWN or OBSOLETE — answers **409**,
-   * and a RELEASED one does not, because a tag is not the end of a request. The page renders the
-   * refusal as a sentence rather than hiding it, because the usual cause is a list that has gone
-   * stale under the reader and the refusal is the truthful answer to what they pressed.
+   * <p>A request whose tag is already cut — RELEASED, FINALIZED, WITHDRAWN or OBSOLETE — answers
+   * **409**: a released request is open, and is still past the point where calling the ask off
+   * could mean anything. The page renders the refusal as a sentence rather than hiding it, because
+   * the usual cause is a list that has gone stale under the reader and the refusal is the truthful
+   * answer to what they pressed.
    */
   async withdraw(repoId: string, requestId: string, reason?: string): Promise<ReleaseRequestDto> {
     const body = reason && reason.trim() ? { reason: reason.trim() } : {};

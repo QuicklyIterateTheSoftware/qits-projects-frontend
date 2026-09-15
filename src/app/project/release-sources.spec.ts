@@ -218,12 +218,12 @@ describe('ReleaseSources', () => {
     });
 
     /**
-     * The three states the service refuses every change in — the finished ones. The control is drawn
-     * and inert rather than removed: what each branch was worth is part of what shipped, and taking
-     * it off the page would lose that.
+     * The four states the service refuses every change in — every one whose tag is cut, plus the two
+     * that will never have one. The control is drawn and inert rather than removed: what each branch
+     * was worth is part of what shipped, and taking it off the page would lose that.
      */
     it('is inert on a request the service would refuse, and still says what was chosen', async () => {
-      for (const state of ['FINALIZED', 'WITHDRAWN', 'OBSOLETE']) {
+      for (const state of ['RELEASED', 'FINALIZED', 'WITHDRAWN', 'OBSOLETE']) {
         await mount(request({ state, sources: [source({ priority: 'HIGH' })] }), true);
 
         expect(selects()[0].disabled).toBe(true);
@@ -232,8 +232,9 @@ describe('ReleaseSources', () => {
     });
 
     it('stays live on every state the service still takes a change in', async () => {
-      // RELEASED is one of them now: a cut tag is the middle of the lifecycle, not the end of it.
-      for (const state of ['PENDING', 'READY', 'RELEASED', 'REJECTED', 'CONFLICTED', 'FAILED']) {
+      // Not RELEASED: the row is open, but its tag is cut and a re-pricing would change a release
+      // that has already gone out. Open and changeable are two questions.
+      for (const state of ['PENDING', 'READY', 'REJECTED', 'CONFLICTED', 'FAILED']) {
         await mount(request({ state }), true);
 
         expect(selects()[0].disabled).toBe(false);

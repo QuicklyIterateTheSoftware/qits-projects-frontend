@@ -560,6 +560,8 @@ describe('RepositoryReleaseRequestsPage', () => {
           mergedToMainAt: '2026-09-01T14:02:11Z',
         }),
         request({ id: 'b', state: 'WITHDRAWN' }),
+        // Open, and past the point where calling the ask off could mean anything.
+        request({ id: 'c', state: 'RELEASED', version: '2026.901.2' }),
       ]);
 
       expect(

@@ -8,6 +8,7 @@ import {
   canWithdraw,
   hasOpenRequests,
   hasReleased,
+  isChangeable,
   isFinished,
   isOpen,
   isSettled,
@@ -313,8 +314,9 @@ describe('release-requests-model', () => {
 
   /**
    * The service's own word, and the whole of it: **open is not finalized**. It is a different
-   * question from {@link isSettled}, which is about what is worth polling, and the two deliberately
-   * disagree about CONFLICTED, REJECTED and RELEASED.
+   * question from {@link isSettled}, which is about what is worth polling, and a different one
+   * again from {@link isChangeable}, which is about what may be done to the row — the three
+   * deliberately disagree, and RELEASED is where all three part company.
    */
   describe('isFinished and isOpen', () => {
     it('is finished in the three that have concluded, and in nothing else', () => {
@@ -358,9 +360,11 @@ describe('release-requests-model', () => {
   });
 
   /**
-   * Stated as the negative on purpose: the service refuses a finished request and nothing else, so
-   * spelling that one rule here is what keeps the button and the 409 from drifting apart — and
-   * keeps a state added on the service side offerable with no edit.
+   * **Visibility and mutability are two questions**, and this is the second one. The service reads
+   * with its open set and mutates with `UNRELEASED` — open minus released — so a released request
+   * is listed, toned and polled and is still refused every change: its tag is cut, and nothing
+   * could honour a withdrawal of a release that has gone out. Stating the refusal as the negative
+   * keeps a state added on the service side offerable here with no edit.
    */
   describe('canWithdraw', () => {
     it('offers everything the service does not refuse', () => {
@@ -369,15 +373,29 @@ describe('release-requests-model', () => {
       }
     });
 
-    /** A tag is not the end of a request, so the remainder can still be called off. */
-    it('offers it on a released request that has not finalized', () => {
-      expect(canWithdraw(request({ state: 'RELEASED', version: '2026.903.1' }))).toBe(true);
+    /** The one row where open and changeable part company, and the whole of this correction. */
+    it('does not offer it on a released request, although the request is open', () => {
+      const released = request({ state: 'RELEASED', version: '2026.903.1' });
+      expect(isOpen(released)).toBe(true);
+      expect(canWithdraw(released)).toBe(false);
     });
 
     it('does not offer what would answer 409', () => {
       expect(canWithdraw(request({ state: 'FINALIZED' }))).toBe(false);
       expect(canWithdraw(request({ state: 'WITHDRAWN' }))).toBe(false);
       expect(canWithdraw(request({ state: 'OBSOLETE' }))).toBe(false);
+    });
+  });
+
+  /** The one reading behind both verbs — the service's `UNRELEASED`, the CLI's `CLOSED` inverted. */
+  describe('isChangeable', () => {
+    it('is the open states minus the released one', () => {
+      for (const state of ['PENDING', 'READY', 'REJECTED', 'CONFLICTED', 'FAILED', 'RELEASING']) {
+        expect(isChangeable(request({ state }))).toBe(true);
+      }
+      for (const state of ['RELEASED', 'FINALIZED', 'WITHDRAWN', 'OBSOLETE']) {
+        expect(isChangeable(request({ state }))).toBe(false);
+      }
     });
   });
 
@@ -438,25 +456,19 @@ describe('release-requests-model', () => {
   });
 
   /**
-   * The same negative as {@link canWithdraw}, from the same set, because the service has one rule:
-   * a finished request refuses every change, and everything else — a cut tag included — is open.
+   * The same reading as {@link canWithdraw}, from the same set, because the service guards both
+   * verbs with the one `requireOpenForChange`: a tag that is cut cannot be un-cut, so re-pricing one
+   * of its branches is refused for exactly the reason withdrawing it is.
    */
   describe('canSetPriority', () => {
     it('offers everything the service does not refuse', () => {
-      for (const state of [
-        'PENDING',
-        'READY',
-        'RELEASED',
-        'REJECTED',
-        'CONFLICTED',
-        'FAILED',
-        'RELEASING',
-      ]) {
+      for (const state of ['PENDING', 'READY', 'REJECTED', 'CONFLICTED', 'FAILED', 'RELEASING']) {
         expect(canSetPriority(request({ state }))).toBe(true);
       }
     });
 
     it('does not offer what would answer 409', () => {
+      expect(canSetPriority(request({ state: 'RELEASED', version: '2026.903.1' }))).toBe(false);
       expect(canSetPriority(request({ state: 'FINALIZED' }))).toBe(false);
       expect(canSetPriority(request({ state: 'WITHDRAWN' }))).toBe(false);
       expect(canSetPriority(request({ state: 'OBSOLETE' }))).toBe(false);

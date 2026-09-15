@@ -110,26 +110,51 @@ const SETTLED_STATES: ReadonlySet<string> = new Set([
 ]);
 
 /**
- * The states a request is **finished** in — the whole of what "not open" means, and the whole of
- * what the service refuses a change in.
+ * The states a request is **finished** in — the whole of what "not open" means.
  *
- * <p>One set for three questions, because the service has one rule: open is *not finalized*, and
- * withdrawing an ask and re-declaring what one of its branches is worth are both changes to a
- * request answered by the same `requireOpenForChange`. Spelling it once here is what keeps the two
- * buttons and the 409 from drifting apart, and what keeps a state added on the service side
- * offerable with no edit on this side.
+ * <p>This is the service's `OPEN` set said as its negative: a request is open until its release is
+ * finalized, and `WITHDRAWN` and `OBSOLETE` are the two other ways of never getting there. It is
+ * what decides whether a row belongs on a worklist, how it is toned, and what an empty list says —
+ * every **visibility** question on these pages.
  *
  * <p><b>`RELEASED` is not in it, and that is the change.</b> A tag is cut in the middle of the
- * lifecycle, so a released request is still somebody's to withdraw and still somebody's to
- * re-prioritise — the sources are still on it, and it can still be superseded. `OBSOLETE` joins
- * `FINALIZED` and `WITHDRAWN` instead: a request a later one took over has nothing left to change.
+ * lifecycle, so a released request is still going somewhere and still belongs in front of a reader
+ * until it lands. `OBSOLETE` joins `FINALIZED` and `WITHDRAWN` instead: a request a later one took
+ * over is going nowhere.
  */
 const FINISHED_STATES: ReadonlySet<string> = new Set(['FINALIZED', 'WITHDRAWN', 'OBSOLETE']);
+
+/**
+ * The states the service refuses to **change** a request in — the whole of what it refuses, and
+ * deliberately **not** the same set as {@link FINISHED_STATES}.
+ *
+ * <p><b>Visibility and mutability are two questions and this ticket is exactly where they came
+ * apart.</b> The service keeps both sets side by side for the same reason: its `OPEN` is what a
+ * read returns — RELEASED included, because a released request is still going somewhere and a
+ * worklist that hid it would hide the rows that get stuck — while `UNRELEASED`, which is `OPEN`
+ * minus `RELEASED`, is what every mutating door is guarded by. A tag that is already cut cannot be
+ * un-cut: withdrawing the ask or re-pricing one of its branches would be a change to a release that
+ * has already gone out, and there is nothing the platform could do to honour it. So
+ * `requireOpenForChange` refuses a RELEASED request, and the CLI's own `CLOSED` set spells these
+ * same four words for its join and its withdraw.
+ *
+ * <p>Spelling that once here is what keeps the two buttons and the 409 from drifting apart, and
+ * what keeps a state added on the service side offerable with no edit on this side.
+ */
+const CLOSED_TO_CHANGE: ReadonlySet<string> = new Set([
+  'RELEASED',
+  'FINALIZED',
+  'WITHDRAWN',
+  'OBSOLETE',
+]);
 
 /**
  * Whether this request is **finished**: finalized, withdrawn, or obsoleted by a later one. Its
  * negation is the service's own "open", which is every other word — `RELEASED` included, and an
  * unknown word included, on the same reasoning {@link isSettled} states.
+ *
+ * <p>It is a question about **visibility**, never about what may be done to the row: a released
+ * request is open and is still refused every change. See {@link canWithdraw}.
  */
 export function isFinished(request: ReleaseRequestDto): boolean {
   return FINISHED_STATES.has(request.state);
@@ -138,6 +163,17 @@ export function isFinished(request: ReleaseRequestDto): boolean {
 /** The positive form, for the readers that ask it that way round. Open is *not finalized*. */
 export function isOpen(request: ReleaseRequestDto): boolean {
   return !isFinished(request);
+}
+
+/**
+ * Whether the service would take a change to this request at all — **open and not yet released**,
+ * which is its `UNRELEASED` set and the CLI's `CLOSED` said the other way round.
+ *
+ * <p>The one reading behind both verbs, so a control offered anywhere is offered exactly where the
+ * service will take it, and so the two cannot drift apart from each other either.
+ */
+export function isChangeable(request: ReleaseRequestDto): boolean {
+  return !CLOSED_TO_CHANGE.has(request.state);
 }
 
 /**
@@ -336,14 +372,13 @@ export function priorityOptions(current: string | null | undefined): readonly st
 /**
  * Whether a source's priority can still be re-declared on this request.
  *
- * <p>The same negative as {@link canWithdraw} and the same reason: the service refuses to change a
- * request that is finished and nothing else, so a control offered on anything else is offered
- * exactly where the service will take it. A request whose release is finalized keeps its priority
- * visible — the control is drawn and disabled rather than removed, because what a branch was worth
- * is part of the record.
+ * <p>The same reading as {@link canWithdraw} and the same reason: the service guards both verbs
+ * with the one `requireOpenForChange`, so a control offered on anything it takes is offered exactly
+ * where it will be taken. A request whose tag is cut keeps its priorities visible — the control is
+ * drawn and disabled rather than removed, because what a branch was worth is part of what shipped.
  */
 export function canSetPriority(request: ReleaseRequestDto): boolean {
-  return isOpen(request);
+  return isChangeable(request);
 }
 
 /**
@@ -393,18 +428,20 @@ export function hasOpenRequests(requests: readonly ReleaseRequestDto[]): boolean
 /**
  * Whether the Withdraw button is offered.
  *
- * <p>It mirrors the service's own refusal exactly — a finished request and nothing else — rather
- * than listing the states that *are* withdrawable. Stating it as the negative is what keeps a state
- * added on the service side offerable here without an edit, and it is the same rule the 409
- * enforces, so the button and the answer cannot drift apart.
+ * <p>It mirrors the service's own refusal exactly — {@link isChangeable}, which is its `UNRELEASED`
+ * set — rather than listing the states that *are* withdrawable. Stating it as the negative is what
+ * keeps a state added on the service side offerable here without an edit, and it is the same rule
+ * the 409 enforces, so the button and the answer cannot drift apart.
  *
- * <p><b>A `RELEASED` request is offered it now.</b> That reads oddly for a second and is right: the
- * tag is cut, the release is not finished, and calling the remainder off — before the deployment,
- * before `main` — is a thing the service takes. What it is not offered on is a release that reached
- * `main`, which is what `FINALIZED` says.
+ * <p><b>A `RELEASED` request is open and is still offered nothing.</b> That is the one place the
+ * two sets this ticket introduced have to be kept apart: the row is open, so it is listed, toned as
+ * in flight and polled — but its tag is already cut, and withdrawing an ask whose release has gone
+ * out is not something the platform could honour whatever it answered. The verb comes back for
+ * nobody; what happens to a released request now is that its remaining gates go green, or somebody
+ * fixes them.
  */
 export function canWithdraw(request: ReleaseRequestDto): boolean {
-  return isOpen(request);
+  return isChangeable(request);
 }
 
 /**

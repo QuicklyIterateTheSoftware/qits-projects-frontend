@@ -760,13 +760,17 @@ describe('ReleaseRequestDetailPage', () => {
       expect(pickers().every((picker) => picker.disabled)).toBe(true);
     });
 
-    /** A cut tag is not the end of the request, so its branches are still somebody's to re-declare. */
-    it('keeps the selects live on a released request that has not finalized', async () => {
+    /**
+     * A released request is **open and not changeable**, which is the one place the two sets this
+     * ticket introduced have to be kept apart: the row is listed, toned as in flight and polled, and
+     * its selects are inert all the same, because its tag is already cut.
+     */
+    it('leaves the selects inert on a released request too, open though it is', async () => {
       withRepositories();
       await open();
       await answer(released({ sources: BRANCHES }));
 
-      expect(pickers().every((picker) => picker.disabled)).toBe(false);
+      expect(pickers().every((picker) => picker.disabled)).toBe(true);
     });
 
     it('leaves them inert on a withdrawn request too', async () => {

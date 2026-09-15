@@ -535,6 +535,22 @@ describe('ProjectReleaseRequestsPage', () => {
       ).not.toContain('Withdraw');
     });
 
+    /**
+     * A released row is one of the open ones — it is listed, it is toned as in flight and the page
+     * polls it — and it is offered no verb all the same: the tag is cut, and a withdrawal of a
+     * release that has gone out is not something anything could honour.
+     */
+    it('offers no verb on a released row, listed and watched though it is', async () => {
+      configure();
+      await open();
+      await answer([request({ state: 'RELEASED', version: '2026.904.161524' })]);
+
+      expect(page().textContent).toContain('Watching for changes');
+      expect(
+        [...page().querySelectorAll('button')].map((b) => b.textContent?.trim()),
+      ).not.toContain('Withdraw');
+    });
+
     it('shows the refusal when the list has gone stale under the reader', async () => {
       configure();
       await open();
