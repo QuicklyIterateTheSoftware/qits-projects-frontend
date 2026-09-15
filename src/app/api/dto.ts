@@ -714,21 +714,33 @@ export interface SyncStatusDto {
 /**
  * Where a release request has got to — the service's stored word, **as a plain string**.
  *
- * <p>The seven below are what it stores today, and its own DTO says the vocabulary may grow. That is
- * why this is not a union: a closed one would make a platform that added an eighth state fail to
+ * <p>The nine below are what it stores today, and its own DTO says the vocabulary may grow. That is
+ * why this is not a union: a closed one would make a platform that added a tenth state fail to
  * type against a build of this SPA that is otherwise perfectly able to draw it. Every reader here
  * therefore decides what an unknown word means for itself, the way {@link RepositoryDto}'s
  * archetype is handled — and each of those decisions is stated where it is made.
  *
  * - `PENDING` — created, waiting on the gates for the fold's sha.
  * - `READY` — the gates passed; the worker is about to call the release door.
- * - `RELEASED` — landed, and `version` is the calver it landed as.
+ * - `RELEASED` — **the tag is cut, and the request is still open.** `version` is the calver it
+ *   landed as, and what remains is everything the release promised: the publish run going green,
+ *   the deployment going live, the tag reaching `main`.
  * - `REJECTED` — a gating build went red. The refusal stands until a push re-arms the request.
  * - `CONFLICTED` — the sources cannot be folded; `conflict` says which paths and whose head. The
  *   service does *not* re-fold one on its sweep, so it stands until a push changes the content.
  * - `FAILED` — the release itself did not go through; `retryable` says whether the sweep keeps
  *   trying it or the refusal stands.
+ * - `FINALIZED` — **the done state.** The tag is merged into `main` and everything the release
+ *   promised has happened; `mergedToMainAt` says when.
  * - `WITHDRAWN` — the ask is moot. Terminal, and it frees the sources for a fresh request.
+ * - `OBSOLETE` — a later release request for the same repository superseded this unfinished one;
+ *   `supersededBy` names it. Terminal, and nothing here is anybody's to answer.
+ *
+ * <p><b>"Open" means "not finalized", and it is a wider set than it used to be.</b> A request is
+ * finished in exactly three of the words above — `FINALIZED`, `WITHDRAWN` and `OBSOLETE` — and open
+ * in every other, `RELEASED` included. A tag is the middle of the lifecycle rather than the end of
+ * it, so a reader asking "what is still going on here" is asked to see the released-and-unfinalized
+ * rows, which are precisely the ones that can still get stuck.
  */
 export type ReleaseRequestState = string;
 
@@ -820,10 +832,11 @@ export interface MergeConflictDto {
  * released, and null on a release made before the service recorded the column — a link built from it
  * is therefore dropped rather than drawn, while the one built from `version` still works.
  *
- * <p>`mergedToMainAt` is the end of the lifecycle and the only place it is visible: a release is a
- * tag and `main` is finalized after the deployment succeeds, so a `RELEASED` request with a
- * `version` and no `mergedToMainAt` shipped and has not reached `main` yet. Null on everything that
- * has not released, where there is nothing to have reached `main`.
+ * <p>`mergedToMainAt` is the end of the lifecycle, and it is what `FINALIZED` means: a release is a
+ * tag, the tag is merged into `main` once everything the release promised has happened, and only
+ * then is the request finished. A `RELEASED` request with a `version` and no `mergedToMainAt`
+ * shipped and is still open — waiting on its publish run, its deployment, or somebody. Null on
+ * everything that has not released, where there is nothing to have reached `main`.
  */
 export interface ReleaseRequestDto {
   readonly id: string;
@@ -912,6 +925,17 @@ export interface ReleaseRequestDto {
    */
   readonly gates?: readonly ReleaseGateDto[];
   readonly conflict: MergeConflictDto | null;
+  /**
+   * The request that **obsoleted this one** — the later ask for the same repository that took over
+   * the work this one never finished — or null everywhere else.
+   *
+   * <p>It is an id and nothing else, which is all the address needs: a request's page is a sibling
+   * of this one's, so the link is spelled without asking anything further of the service. Optional
+   * for the ordinary reason every field here is: an answer from a service build older than the
+   * field must read as "nothing superseded this", which is exactly what `undefined` means to the
+   * one reader that draws it.
+   */
+  readonly supersededBy?: string | null;
   readonly version: string | null;
   readonly releasedSha: string | null;
   readonly mergedToMainAt: string | null;
@@ -938,10 +962,16 @@ export interface ReleaseRequestDto {
 /**
  * One quality gate of a release request.
  *
- * <p>`kind` is `CI`, `APPROVAL` or `DEPLOYMENT`, and `state` is `PENDING`, `PASSED`, `FAILED` or
- * `UNKNOWN` — both plain strings rather than unions, the honesty every open vocabulary on this file
- * is typed with: the service owns the words, they may grow, and a word this build has never heard of
- * is drawn as itself rather than guessed into a colour.
+ * <p>`kind` is `CI`, `APPROVAL`, `PUBLISH` or `DEPLOYMENT`, and `state` is `PENDING`, `PASSED`,
+ * `FAILED` or `UNKNOWN` — both plain strings rather than unions, the honesty every open vocabulary
+ * on this file is typed with: the service owns the words, they may grow, and a word this build has
+ * never heard of is drawn as itself rather than guessed into a colour.
+ *
+ * <p><b>`PUBLISH` is the tag's own release pipeline</b> — the run that builds what the tag says and
+ * pushes it wherever it goes. Like `DEPLOYMENT` it is answered *after* the tag rather than in front
+ * of it, and it is the reason a `RELEASED` request is still open. A `FAILED` publish is the one gate
+ * on this list whose cure is neither a push nor a person's decision: it is an environmental failure,
+ * and it is retried on the run itself with `qits ci retry`.
  *
  * <p>**`UNKNOWN` is not `PENDING`.** It means the repository's gate configuration could not be read
  * at all, so neither which gates apply nor whether any has passed is known. A gate quietly in

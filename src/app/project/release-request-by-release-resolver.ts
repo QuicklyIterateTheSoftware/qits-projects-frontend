@@ -13,6 +13,7 @@ import type { ReleaseRequestDto } from '../api/dto';
 import { ReleaseRequestsApi } from '../api/release-requests-api';
 import { Async } from '../ui/async';
 import { LOADING, failed, ready, type Loadable } from '../ui/loadable';
+import { hasReleased } from './release-requests-model';
 
 /**
  * The middle segment for a repository the chrome's list cannot place.
@@ -50,7 +51,7 @@ const UNPLACED_GROUP = 'services';
  * reason this is a component and not a plain route redirect: the answer needs a request.
  *
  * <p><b>One read, and the state is filtered here.</b> The repository route answers the open requests
- * plus the last ten released when nobody names a state, and that window is exactly what a by-release
+ * plus the last ten finalized when nobody names a state, and that window is exactly what a by-release
  * link means — the release somebody is looking at right now. Asking for `state=all` to be certain
  * would fetch a year of history to find a row that, if it is not in the last ten, is not what the
  * link is about.
@@ -159,17 +160,20 @@ export class ReleaseRequestByReleaseResolver {
    *
    * <p>More than one is an ordinary answer — a version can only be released once, but a withdrawn
    * ask and the one that succeeded both name the repository — and the service sends them newest
-   * first, so the first RELEASED row carrying this version is the one a reader following a link
-   * means.
+   * first, so the first row that cut this version's tag is the one a reader following a link means.
+   *
+   * <p><b>Both released states match, and matching only `RELEASED` would be a bug that healed
+   * itself.</b> A tag is cut at `RELEASED` and the request finalizes minutes or hours later without
+   * the tag changing, so a link followed after the release completed — which is most of them —
+   * would find nothing and be answered with the "it may predate release requests" sentence about a
+   * release that happened this morning.
    */
   protected async resolve(): Promise<void> {
     this.state.set(LOADING);
     try {
       const requests = await this.api.list(this.repoId());
       const version = this.version();
-      const match = requests.find(
-        (request) => request.state === 'RELEASED' && request.version === version,
-      );
+      const match = requests.find((request) => hasReleased(request) && request.version === version);
       const address = match ? this.addressOf(match) : null;
       this.state.set(ready(address ? 1 : 0));
       if (address) {

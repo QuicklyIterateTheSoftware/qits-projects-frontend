@@ -258,6 +258,7 @@ describe('ReleaseGatesPanel', () => {
           gates: [
             { kind: 'CI', state: 'UNKNOWN' },
             { kind: 'APPROVAL', state: 'UNKNOWN' },
+            { kind: 'PUBLISH', state: 'UNKNOWN' },
             { kind: 'DEPLOYMENT', state: 'UNKNOWN' },
           ],
         }),
@@ -266,6 +267,7 @@ describe('ReleaseGatesPanel', () => {
 
       expect(text()).toContain('could not be read');
       expect(element().querySelector('.gate.ci')).toBeNull();
+      expect(element().querySelector('.gate.publish')).toBeNull();
       expect(element().querySelector('.gate.deployment')).toBeNull();
       expect(text()).not.toContain('No verdict yet');
     });
@@ -300,6 +302,112 @@ describe('ReleaseGatesPanel', () => {
       );
 
       expect(text()).toContain('main carries this release');
+    });
+
+    /**
+     * The publish gate is the other one answered after the tag, and it is the reason a RELEASED
+     * request is still open: the tag is cut and its release pipeline has not gone green yet.
+     */
+    it('says a released request is waiting on the release pipeline of its tag', async () => {
+      await mount(
+        request({
+          state: 'RELEASED',
+          version: '2026.903.1',
+          gates: [
+            { kind: 'CI', state: 'PASSED' },
+            { kind: 'PUBLISH', state: 'PENDING' },
+          ],
+        }),
+        [build()],
+      );
+
+      expect(text()).toContain('waiting on the release pipeline of this tag');
+    });
+
+    /**
+     * **The actionable one.** A red publish run is the environment rather than content, so the
+     * sentence names the retry — and says the request stays open until it goes green, which is the
+     * fact a reader who thinks a tag ends a release will not otherwise have.
+     */
+    it('tells a person to retry a failed publish run, and says the request stays open', async () => {
+      await mount(
+        request({
+          state: 'RELEASED',
+          version: '2026.903.1',
+          gates: [
+            { kind: 'CI', state: 'PASSED' },
+            { kind: 'PUBLISH', state: 'FAILED' },
+          ],
+        }),
+        [build()],
+      );
+
+      expect(element().querySelector('.gate.publish')?.classList).toContain('blocked');
+      expect(text()).toContain('✗ Publish');
+      expect(text()).toContain('qits ci retry');
+      expect(text()).toContain('stays open until it goes green');
+    });
+
+    it('marks the publish gate answered once its run is green', async () => {
+      await mount(
+        request({
+          state: 'RELEASED',
+          version: '2026.903.1',
+          gates: [
+            { kind: 'CI', state: 'PASSED' },
+            { kind: 'PUBLISH', state: 'PASSED' },
+          ],
+        }),
+        [build()],
+      );
+
+      expect(text()).toContain('✓ Publish');
+      expect(element().querySelector('.gate.publish')?.classList).not.toContain('blocked');
+    });
+
+    /** Drawn only where the repository configures it, exactly as the deployment line is. */
+    it('draws no publish line for a repository that configures none', async () => {
+      await mount(request({ gates: [{ kind: 'CI', state: 'PENDING' }] }), []);
+
+      expect(element().querySelector('.gate.publish')).toBeNull();
+    });
+
+    /** Before the tag there is nothing to publish, and the line says that rather than "waiting". */
+    it('says the publish gate is answered after the tag while the request is pending', async () => {
+      await mount(
+        request({
+          gates: [
+            { kind: 'CI', state: 'PENDING' },
+            { kind: 'PUBLISH', state: 'PENDING' },
+          ],
+        }),
+        [],
+      );
+
+      expect(text()).toContain('answered after the tag');
+    });
+
+    /**
+     * A finalized request has its tag as much as a released one does, so the two after-the-tag
+     * lines must not fall back to "answered after the tag, never before it" at the very moment the
+     * release completed.
+     */
+    it('keeps reading a finalized request as one whose tag is cut', async () => {
+      await mount(
+        request({
+          state: 'FINALIZED',
+          version: '2026.903.1',
+          mergedToMainAt: '2026-09-01T14:00:00Z',
+          gates: [
+            { kind: 'CI', state: 'PASSED' },
+            { kind: 'PUBLISH', state: 'PENDING' },
+          ],
+        }),
+        [build()],
+      );
+
+      expect(text()).toContain('waiting on the release pipeline of this tag');
+      expect(text()).not.toContain('answered after the tag');
     });
 
     /** A service older than the field reports no set, and the panel draws what it always drew. */

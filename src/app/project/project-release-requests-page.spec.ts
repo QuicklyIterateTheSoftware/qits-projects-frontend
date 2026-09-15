@@ -56,7 +56,7 @@ function request(overrides: Partial<ReleaseRequestDto> = {}): ReleaseRequestDto 
  * <p>What is worth pinning here is what makes this page different from the repository's, not the
  * markup they share. **The scope**: one read, keyed on the project id the address does not carry —
  * so nothing is asked for until the shared project list has resolved the slug. **The filter**: the
- * read names no state, because the route's own default is the open ones plus the last ten released;
+ * read names no state, because the route's own default is the open ones plus the last ten finalized;
  * asking for `state=all` here would turn a worklist into a history. **The naming**: every row says
  * which repository it belongs to, and links to the request itself only when the chrome can spell the
  * address. **The withdraw**: it is addressed by the row's own `repoId`, which is why a project-wide
@@ -156,7 +156,7 @@ describe('ProjectReleaseRequestsPage', () => {
     });
 
     /**
-     * The whole design of the route: no `state` means the open ones plus the last ten released. A
+     * The whole design of the route: no `state` means the open ones plus the last ten finalized. A
      * project with a year of releases behind it must not answer "is anything waiting" with a year of
      * history, and a page that dropped a release the instant it landed would never show one.
      */
@@ -200,13 +200,13 @@ describe('ProjectReleaseRequestsPage', () => {
       expect(page().textContent).toContain('Watching for changes');
 
       await vi.advanceTimersByTimeAsync(RELEASE_REQUESTS_POLL_MS);
-      // It released, so it is no longer open and the service stops answering with it at all.
+      // It finalized, so it is no longer open and the service stops answering with it at all.
       await answer([]);
 
       await vi.advanceTimersByTimeAsync(RELEASE_REQUESTS_POLL_MS * 3);
       http.expectNone(() => true);
-      expect(page().textContent).toContain('Nothing is waiting to be released');
-      expect(page().textContent).toContain('nothing has been released recently');
+      expect(page().textContent).toContain('Nothing is open in this project');
+      expect(page().textContent).toContain('no release has been finalized recently');
     });
   });
 
@@ -286,17 +286,38 @@ describe('ProjectReleaseRequestsPage', () => {
         request({ id: 'open', state: 'PENDING', summary: 'Still going' }),
         request({
           id: 'done',
-          state: 'RELEASED',
+          state: 'FINALIZED',
           summary: 'Just landed',
           version: '2026.904.161524',
           releasedSha: '9f1c2b3d4e5f60718293a4b5c6d7e8f901234567',
+          mergedToMainAt: '2026-09-04T17:02:11Z',
         }),
       ]);
 
       const text = page().textContent ?? '';
       expect(text).toContain('Still going');
       expect(text).toContain('Just landed');
-      expect(text).toContain('released');
+      expect(text).toContain('finalized');
+    });
+
+    /**
+     * A cut tag is the middle of the lifecycle, not the end of it: the publish run, the deployment
+     * and the merge to main are all still to come, so the row is one of the open ones and the page
+     * keeps following it. A worklist that greyed it out is how a release stuck behind a red publish
+     * run goes unnoticed for a morning.
+     */
+    it('keeps watching a released request until it finalizes', async () => {
+      configure();
+      await open();
+      await answer([request({ state: 'RELEASED', version: '2026.904.161524' })]);
+
+      expect(page().textContent).toContain('Watching for changes');
+      await vi.advanceTimersByTimeAsync(RELEASE_REQUESTS_POLL_MS);
+      await answer([request({ state: 'FINALIZED', version: '2026.904.161524' })]);
+
+      await vi.advanceTimersByTimeAsync(RELEASE_REQUESTS_POLL_MS * 3);
+      http.expectNone(() => true);
+      expect(page().textContent).not.toContain('Watching for changes');
     });
 
     /**
@@ -456,8 +477,8 @@ describe('ProjectReleaseRequestsPage', () => {
       await open();
       await answer([]);
 
-      expect(page().textContent).toContain('Nothing is waiting to be released');
-      expect(page().textContent).toContain('nothing has been released recently');
+      expect(page().textContent).toContain('Nothing is open in this project');
+      expect(page().textContent).toContain('no release has been finalized recently');
     });
 
     it('offers a way back when the read fails', async () => {

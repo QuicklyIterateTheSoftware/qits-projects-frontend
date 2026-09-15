@@ -52,6 +52,17 @@ export interface ReleaseStateBadge {
  * content is not the platform breaking, and the thing that clears it is a push. The conflict panel
  * under the row is what makes it actionable, so the badge does not have to shout.
  *
+ * <p><b>`RELEASED` is `info` and `FINALIZED` is the `success` it used to be.</b> The tag being cut
+ * is the platform working and not the end of anything — the publish run, the deployment and the
+ * merge to `main` are all still in front of it — so it draws like `PENDING` and `READY` do: in
+ * flight, nothing wanted from anybody. Colouring it green would tell a scanning reader that a
+ * release that may yet be stuck was done, which is the one mistake this whole lifecycle change
+ * exists to stop.
+ *
+ * <p>`OBSOLETE` is `neutral` beside `WITHDRAWN`, and for the same reason: nothing went wrong. A
+ * later request for the same repository took the work over, so the row is a record rather than
+ * news, and the detail page says which request to look at instead.
+ *
  * <p>A state this build has never heard of is **not** in the table, and {@link releaseStateBadge}
  * draws it as itself rather than guessing a tone — the service's DTO says the vocabulary may grow,
  * and a wrong colour is worse than no colour.
@@ -59,11 +70,13 @@ export interface ReleaseStateBadge {
 const STATE_TONES: Readonly<Record<string, QitsBadgeTone>> = {
   PENDING: 'info',
   READY: 'info',
-  RELEASED: 'success',
+  RELEASED: 'info',
+  FINALIZED: 'success',
   REJECTED: 'warning',
   CONFLICTED: 'warning',
   FAILED: 'danger',
   WITHDRAWN: 'neutral',
+  OBSOLETE: 'neutral',
 };
 
 /**
@@ -81,24 +94,64 @@ const STATE_TONES: Readonly<Record<string, QitsBadgeTone>> = {
  * for, and the service's own sweep deliberately does not re-fold a conflicted request: a conflict is
  * a fact about content that answers the same on every knock, so nothing but a push can change it —
  * exactly the `REJECTED` argument. The row is shown and not watched.
+ *
+ * <p><b>`RELEASED` left this set when the tag stopped being the end.</b> A released request is
+ * waiting on its publish run and its deployment, both of which land on threads of their own and
+ * move the row to `FINALIZED` with nothing for anybody to press — which is the definition of worth
+ * watching. `FINALIZED` and `OBSOLETE` are what took its place: the first has finished, and the
+ * second was finished *for* it by a later request and will never move again.
  */
 const SETTLED_STATES: ReadonlySet<string> = new Set([
-  'RELEASED',
+  'FINALIZED',
   'REJECTED',
   'CONFLICTED',
   'WITHDRAWN',
+  'OBSOLETE',
 ]);
 
 /**
- * The states the service refuses to change a request in, and the whole of what it refuses.
+ * The states a request is **finished** in — the whole of what "not open" means, and the whole of
+ * what the service refuses a change in.
  *
- * <p>One set for both verbs, because the service has one rule: withdrawing an ask and re-declaring
- * what one of its branches is worth are both changes to a request, and both are answered by the same
- * `requireOpenForChange` — RELEASED and WITHDRAWN are done and everything else is still open.
- * Spelling the refusal once here is what keeps the two buttons and the 409 from drifting apart, and
- * what keeps a state added on the service side offerable with no edit on this side.
+ * <p>One set for three questions, because the service has one rule: open is *not finalized*, and
+ * withdrawing an ask and re-declaring what one of its branches is worth are both changes to a
+ * request answered by the same `requireOpenForChange`. Spelling it once here is what keeps the two
+ * buttons and the 409 from drifting apart, and what keeps a state added on the service side
+ * offerable with no edit on this side.
+ *
+ * <p><b>`RELEASED` is not in it, and that is the change.</b> A tag is cut in the middle of the
+ * lifecycle, so a released request is still somebody's to withdraw and still somebody's to
+ * re-prioritise — the sources are still on it, and it can still be superseded. `OBSOLETE` joins
+ * `FINALIZED` and `WITHDRAWN` instead: a request a later one took over has nothing left to change.
  */
-const CLOSED_TO_CHANGE: ReadonlySet<string> = new Set(['RELEASED', 'WITHDRAWN']);
+const FINISHED_STATES: ReadonlySet<string> = new Set(['FINALIZED', 'WITHDRAWN', 'OBSOLETE']);
+
+/**
+ * Whether this request is **finished**: finalized, withdrawn, or obsoleted by a later one. Its
+ * negation is the service's own "open", which is every other word — `RELEASED` included, and an
+ * unknown word included, on the same reasoning {@link isSettled} states.
+ */
+export function isFinished(request: ReleaseRequestDto): boolean {
+  return FINISHED_STATES.has(request.state);
+}
+
+/** The positive form, for the readers that ask it that way round. Open is *not finalized*. */
+export function isOpen(request: ReleaseRequestDto): boolean {
+  return !isFinished(request);
+}
+
+/**
+ * Whether a tag has been cut for this request — the condition every "what did it publish" reading
+ * on the detail page turns on.
+ *
+ * <p>Two states answer yes and it must be both: the tag is cut at `RELEASED` and it is still there
+ * at `FINALIZED`, so a panel keyed on `RELEASED` alone would draw the version, the artifacts and
+ * the tag link for the minutes a release is in flight and then take them all away at the moment the
+ * release is actually complete.
+ */
+export function hasReleased(request: ReleaseRequestDto): boolean {
+  return request.state === 'RELEASED' || request.state === 'FINALIZED';
+}
 
 /**
  * How urgent a participating branch is, **lowest first** — the service's own order, which is the
@@ -284,13 +337,13 @@ export function priorityOptions(current: string | null | undefined): readonly st
  * Whether a source's priority can still be re-declared on this request.
  *
  * <p>The same negative as {@link canWithdraw} and the same reason: the service refuses to change a
- * RELEASED or WITHDRAWN request and nothing else, so a control offered on anything else is offered
- * exactly where the service will take it. A release that has already gone out keeps its priority
+ * request that is finished and nothing else, so a control offered on anything else is offered
+ * exactly where the service will take it. A request whose release is finalized keeps its priority
  * visible — the control is drawn and disabled rather than removed, because what a branch was worth
  * is part of the record.
  */
 export function canSetPriority(request: ReleaseRequestDto): boolean {
-  return !CLOSED_TO_CHANGE.has(request.state);
+  return isOpen(request);
 }
 
 /**
@@ -304,6 +357,11 @@ export function canPrioritiseSource(source: ReleaseRequestSourceDto): boolean {
 
 /**
  * Whether this request has finished moving by itself.
+ *
+ * <p>It is not the same question as {@link isOpen}, and the two now differ on two words rather than
+ * one. `CONFLICTED` and `REJECTED` are open by the service's reckoning and are not watched here,
+ * because only a push moves them; `RELEASED` is watched, because the publish run and the deployment
+ * move it to `FINALIZED` with nobody pressing anything.
  *
  * <p>A `FAILED` request is settled only when it is **not** retryable: the sweep keeps retrying the
  * retryable ones, so that row really is still in flight. An unknown state counts as *unsettled* on
@@ -322,6 +380,11 @@ export function isSettled(request: ReleaseRequestDto): boolean {
  * Whether anything on screen is still moving — the page polls while this is true and stops when it
  * is not, which is what keeps a repository whose requests all landed weeks ago costing exactly one
  * read for as long as the page is open.
+ *
+ * <p>The name is about the poll and not about the service's "open": it asks {@link isSettled} of
+ * every row, so a list of nothing but conflicted requests — open, and unmovable without a push —
+ * is watched no harder than an empty one, while a single released-and-unfinalized row keeps the
+ * timer armed until it finalizes.
  */
 export function hasOpenRequests(requests: readonly ReleaseRequestDto[]): boolean {
   return requests.some((request) => !isSettled(request));
@@ -330,13 +393,18 @@ export function hasOpenRequests(requests: readonly ReleaseRequestDto[]): boolean
 /**
  * Whether the Withdraw button is offered.
  *
- * <p>It mirrors the service's own refusal exactly — RELEASED and WITHDRAWN and nothing else —
- * rather than listing the states that *are* withdrawable. Stating it as the negative is what keeps
- * a state added on the service side offerable here without an edit, and it is the same rule the
- * 409 enforces, so the button and the answer cannot drift apart.
+ * <p>It mirrors the service's own refusal exactly — a finished request and nothing else — rather
+ * than listing the states that *are* withdrawable. Stating it as the negative is what keeps a state
+ * added on the service side offerable here without an edit, and it is the same rule the 409
+ * enforces, so the button and the answer cannot drift apart.
+ *
+ * <p><b>A `RELEASED` request is offered it now.</b> That reads oddly for a second and is right: the
+ * tag is cut, the release is not finished, and calling the remainder off — before the deployment,
+ * before `main` — is a thing the service takes. What it is not offered on is a release that reached
+ * `main`, which is what `FINALIZED` says.
  */
 export function canWithdraw(request: ReleaseRequestDto): boolean {
-  return !CLOSED_TO_CHANGE.has(request.state);
+  return isOpen(request);
 }
 
 /**

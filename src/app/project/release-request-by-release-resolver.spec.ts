@@ -76,8 +76,9 @@ function request(overrides: Partial<ReleaseRequestDto> = {}): ReleaseRequestDto 
  * to show, which is an ordinary answer and not a broken link.
  *
  * The state is filtered HERE. The repository route answers the open requests plus the last ten
- * released, so a row carrying the version but not RELEASED — a withdrawn ask, a failed one — is in
- * the answer and is not what a by-release link means.
+ * finalized, so a row carrying the version whose tag was never cut — a withdrawn ask, a failed one —
+ * is in the answer and is not what a by-release link means. Both released states match: the tag is
+ * cut at RELEASED and is still there at FINALIZED, and most links are followed after the second.
  */
 describe('ReleaseRequestByReleaseResolver', () => {
   let harness: RouterTestingHarness;
@@ -133,7 +134,7 @@ describe('ReleaseRequestByReleaseResolver', () => {
    * The window the route answers holds more than the one row, and the version alone does not pick
    * it out: a withdrawn ask for the same version is in that answer, and so is every other release.
    */
-  it('takes the newest RELEASED row carrying the version, and skips the rest', async () => {
+  it('takes the newest row that cut this version’s tag, and skips the rest', async () => {
     configure(provideQitsRepositoryList([PLACED]));
     await open();
 
@@ -183,6 +184,20 @@ describe('ReleaseRequestByReleaseResolver', () => {
 
     expect(TestBed.inject(Router).url).toBe('/qits/release-requests/r7');
     // The same page, reached by its other door, and reading by the same row id.
+    http.expectOne(DETAIL);
+  });
+
+  /** The tag does not move when the request finalizes, so a link followed later still lands. */
+  it('matches a finalized release, not only one still in flight', async () => {
+    configure(provideQitsRepositoryList([PLACED]));
+    await open();
+
+    http.expectOne(LIST).flush({
+      requests: [request({ state: 'FINALIZED', mergedToMainAt: '2026-09-05T10:00:00Z' })],
+    });
+    await settle();
+
+    expect(TestBed.inject(Router).url).toBe(LANDED);
     http.expectOne(DETAIL);
   });
 

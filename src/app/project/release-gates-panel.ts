@@ -13,7 +13,7 @@ import type { CommitBuildStatusDto, ReleaseGateDto, ReleaseRequestDto } from '..
 import { ReleaseRequestsApi } from '../api/release-requests-api';
 import { NONE, formatInstant, formatRelativeTime, shortSha } from '../ui/format';
 import { describeError, serverMessage, statusOf } from '../ui/loadable';
-import { approvalOutstanding, awaitingApproval } from './release-requests-model';
+import { approvalOutstanding, awaitingApproval, hasReleased } from './release-requests-model';
 
 /** One verdict with the address this platform can actually spell for it, or none. */
 interface DrawnVerdict {
@@ -45,9 +45,17 @@ type Decision = 'approve' | 'decline';
  * approval in another would make a reader answer it twice, and would leave the commonest case (green
  * build, nobody has said yes) looking exactly like the one nobody has to do anything about.
  *
- * <p><b>The deployment gate is answered after the tag, so it is never a wait in front of one.</b> It
- * is drawn because "released, waiting on its deployment" is a real state today that this page showed
- * nothing for: a release is a tag, and `main` is finalized when the deployment goes live.
+ * <p><b>Two of the gates are answered AFTER the tag, so neither is ever a wait in front of one.</b>
+ * The publish run and the deployment are what a `RELEASED` request is still open on: a release is a
+ * tag, and the tag is merged into `main` — the request finalized — only once everything the release
+ * promised has actually happened. "Released, waiting on its publish run" and "released, waiting on
+ * its deployment" are the two states this page would otherwise show nothing for.
+ *
+ * <p><b>A failed publish run is the actionable one, and its cure is a retry rather than a push.</b>
+ * A red CI verdict is content and a decline is a decision; a red publish run is the environment, so
+ * the line says to retry the run with `qits ci retry` and says that the request stays open until it
+ * goes green. It gets no button here because the retry is qits-ci's door, keyed on a run id this
+ * DTO does not carry.
  *
  * <p><b>The approval line is drawn only where the service says approval is required</b>, and the ask
  * only while the decision is actually outstanding. On an ordinary repository this panel is the CI
@@ -96,32 +104,51 @@ type Decision = 'approve' | 'decline';
       }
 
       @if (showCi()) {
-      <div class="gate ci">
-        <span class="name">CI</span>
-        @if (verdicts().length === 0) {
-          <span class="none">No verdict yet — no build of this fold has announced one.</span>
-        } @else {
-          <ul class="verdicts">
-            @for (drawn of verdicts(); track drawn.build.runId) {
-              <li class="verdict" [class.red]="!passed(drawn.build)">
-                <span class="status">{{ word(drawn.build) }}</span>
-                @if (drawn.build.gating) {
-                  <span class="gating">gating</span>
-                } @else {
-                  <span class="not-gating">not gating — does not block this release</span>
-                }
-                <span class="branch">{{ drawn.build.branch }}</span>
-                <span class="when" [title]="instant(drawn.build.finishedAt)">
-                  {{ ago(drawn.build.finishedAt) }}
-                </span>
-                @if (drawn.href) {
-                  <a class="run" [href]="drawn.href">the run in CI</a>
-                }
-              </li>
-            }
-          </ul>
-        }
-      </div>
+        <div class="gate ci">
+          <span class="name">CI</span>
+          @if (verdicts().length === 0) {
+            <span class="none">No verdict yet — no build of this fold has announced one.</span>
+          } @else {
+            <ul class="verdicts">
+              @for (drawn of verdicts(); track drawn.build.runId) {
+                <li class="verdict" [class.red]="!passed(drawn.build)">
+                  <span class="status">{{ word(drawn.build) }}</span>
+                  @if (drawn.build.gating) {
+                    <span class="gating">gating</span>
+                  } @else {
+                    <span class="not-gating">not gating — does not block this release</span>
+                  }
+                  <span class="branch">{{ drawn.build.branch }}</span>
+                  <span class="when" [title]="instant(drawn.build.finishedAt)">
+                    {{ ago(drawn.build.finishedAt) }}
+                  </span>
+                  @if (drawn.href) {
+                    <a class="run" [href]="drawn.href">the run in CI</a>
+                  }
+                </li>
+              }
+            </ul>
+          }
+        </div>
+      }
+
+      @if (publish(); as publish) {
+        <div class="gate publish" [class.blocked]="publishFailed()">
+          <span class="name">{{ publishName() }}</span>
+          @if (publishFailed()) {
+            <span class="retry"
+              >— the release pipeline of this tag failed. That is the environment rather than a
+              refusal: retry the run with <code class="cmd">qits ci retry</code>, and this request
+              stays open until it goes green.</span
+            >
+          } @else if (publishPassed()) {
+            <span class="decided">— the release pipeline of this tag is green</span>
+          } @else if (released()) {
+            <span class="waiting">— released, waiting on the release pipeline of this tag</span>
+          } @else {
+            <span class="waiting">— answered after the tag, never before it</span>
+          }
+        </div>
       }
 
       @if (deployment(); as deployment) {
@@ -293,11 +320,21 @@ type Decision = 'approve' | 'decline';
       color: #374151;
       overflow-wrap: anywhere;
     }
-    .approval.declined {
+    .approval.declined,
+    .publish.blocked {
       border-radius: 0.3rem;
       border: 1px solid #fcd34d;
       background: #fffbeb;
       padding: 0.3rem 0.45rem;
+    }
+    .retry {
+      flex: 1;
+      min-width: 14rem;
+      color: #92400e;
+    }
+    .cmd {
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      overflow-wrap: anywhere;
     }
     .ask {
       display: flex;
@@ -404,7 +441,47 @@ export class ReleaseGatesPanel {
 
   protected readonly deployed = computed(() => this.deployment()?.state === 'PASSED');
 
-  protected readonly released = computed(() => this.request().state === 'RELEASED');
+  /**
+   * The tag's own release pipeline — the run that builds what the tag says and pushes it wherever
+   * it goes. Drawn only where the repository configures it, exactly as the deployment line is, and
+   * never while the configuration could not be read.
+   */
+  protected readonly publish = computed(() => (this.unknown() ? null : this.gate('PUBLISH')));
+
+  protected readonly publishPassed = computed(() => this.publish()?.state === 'PASSED');
+
+  /**
+   * The one gate on this panel whose cure is neither a push nor a decision.
+   *
+   * <p>A red CI verdict is content: somebody fixes the code and the push re-arms the request. A red
+   * publish run is the environment — a registry that would not answer, a runner that died — so the
+   * act is to retry *the run*, and the sentence says so with the command that does it. There is no
+   * button for it here on purpose: the retry is qits-ci's door, keyed on a run id this DTO does not
+   * carry, and a button that could only be drawn for some requests would teach a reader that its
+   * absence means something.
+   *
+   * <p>The request stays **open** through all of it, which is the whole reason the line matters:
+   * the tag is cut, the release is not finished, and nothing finalizes until this goes green.
+   */
+  protected readonly publishFailed = computed(() => this.publish()?.state === 'FAILED');
+
+  /**
+   * The gate's own name, marked the way the approval's is: a tick once it is green, a cross once
+   * the run has failed, and the bare word while it is still to be answered.
+   */
+  protected readonly publishName = computed(() => {
+    if (this.publishFailed()) {
+      return '✗ Publish';
+    }
+    return this.publishPassed() ? '✓ Publish' : 'Publish';
+  });
+
+  /**
+   * The tag has been cut, which is what turns the two after-the-tag gates from "answered later"
+   * into "waiting on now". Both released states count: the tag is there at `RELEASED` and it is
+   * still there at `FINALIZED`.
+   */
+  protected readonly released = computed(() => hasReleased(this.request()));
 
   protected readonly outstanding = computed(() => approvalOutstanding(this.request()));
 

@@ -179,8 +179,9 @@ export class ReleaseSources {
   protected readonly sources = computed(() => releaseSources(this.request()));
 
   /**
-   * Whether the service would take a change to this request at all. A RELEASED or WITHDRAWN request
-   * keeps its selects — what each branch was worth is part of what shipped — but they are inert.
+   * Whether the service would take a change to this request at all. A finished request — finalized,
+   * withdrawn or superseded — keeps its selects, because what each branch was worth is part of what
+   * shipped, but they are inert. A released one is still open and still settable.
    */
   protected readonly settable = computed(() => canSetPriority(this.request()));
 

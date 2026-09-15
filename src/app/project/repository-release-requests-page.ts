@@ -63,10 +63,15 @@ import { ReleaseSources } from './release-sources';
  * three services, and none of them belongs behind a poll.
  *
  * <p><b>The list is no longer the whole history.</b> The service's default is the open requests plus
- * the last 10 released, so a release stops vanishing off the page the moment it lands — and a
+ * the last 10 finalized, so a release stops vanishing off the page the moment it lands — and a
  * WITHDRAWN request, which used to appear here only because this route had no filter at all, now
  * needs `state=all`. This page does not offer that filter, because the question it exists to answer
  * is what is happening rather than what has ever happened.
+ *
+ * <p><b>A RELEASED row is one of the open ones.</b> The tag is cut in the middle of the lifecycle
+ * and the request is finished only once it is merged into `main`, so the row that shipped an hour
+ * ago and is stuck on a red publish run is exactly the row this page exists to put in front of
+ * somebody. `version` and the line beside it say how far past the tag it has got.
  */
 @Component({
   selector: 'app-repository-release-requests-page',
@@ -104,9 +109,10 @@ import { ReleaseSources } from './release-sources';
       </header>
 
       <p class="lead">
-        The open requests plus the last 10 released on {{ repository() }}, newest first. A request
+        The open requests plus the last 10 finalized on {{ repository() }}, newest first. A request
         folds its sources together, is gated on the builds of that fold, and lands by itself when
-        they pass. Open one to see what is in it and what it published.
+        they pass — and it stays open past its tag until the release is finalized on main. Open one
+        to see what is in it and what it published.
       </p>
 
       <app-async
@@ -119,7 +125,7 @@ import { ReleaseSources } from './release-sources';
       @if (rows(); as rows) {
         @if (rows.length === 0) {
           <app-empty
-            message="Nothing is open on this repository, and nothing has been released recently."
+            message="Nothing is open on this repository, and no release has been finalized recently."
           />
         } @else {
           <ul class="requests">
@@ -393,10 +399,11 @@ export class RepositoryReleaseRequestsPage {
   }
 
   /**
-   * Where a released request stands against `main`. A release is a tag and `main` is finalized after
-   * the deployment succeeds, so the gap between the two is a real state and not a lag to hide: a
-   * version that shipped and has not reached `main` is either mid-deployment or stuck, and this line
-   * is the only place either is visible.
+   * Where a released request stands against `main`. A release is a tag and the tag reaches `main`
+   * only once everything the release promised has happened, so the gap between the two is a real
+   * state and not a lag to hide — it is the gap the request stays **open** across. A version that
+   * shipped and has not reached `main` is mid-publish, mid-deployment or stuck, and this line is the
+   * only place any of the three is visible on a list.
    */
   protected mainState(request: ReleaseRequestDto): string {
     return request.mergedToMainAt ? 'on main' : 'not on main yet';

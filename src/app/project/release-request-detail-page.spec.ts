@@ -150,6 +150,19 @@ function released(overrides: Partial<ReleaseRequestDto> = {}): ReleaseRequestDto
   });
 }
 
+/**
+ * The same release, **finished**: the tag merged into main once everything it promised happened.
+ * The tag does not move between the two, which is the whole reason every release panel is keyed on
+ * "a tag has been cut" rather than on the word `RELEASED`.
+ */
+function finalized(overrides: Partial<ReleaseRequestDto> = {}): ReleaseRequestDto {
+  return released({
+    state: 'FINALIZED',
+    mergedToMainAt: '2026-09-04T17:02:11Z',
+    ...overrides,
+  });
+}
+
 const NOTHING_FOLDED: ReleaseRequestCommitsResponse = {
   mergedSha: null,
   commits: [],
@@ -242,8 +255,8 @@ describe('ReleaseRequestDetailPage', () => {
 
   /**
    * Answer the request read, and then whatever it triggered: the commits always, the CI verdicts
-   * wherever there is a fold to ask about, the artifacts only once the answer says RELEASED — which
-   * is the read budget itself, asserted by construction.
+   * wherever there is a fold to ask about, the artifacts only once the answer says a tag has been
+   * cut — RELEASED or FINALIZED, which is the read budget itself, asserted by construction.
    *
    * <p>The verdicts read is skipped for a request with no `mergedSha` on purpose and not as a
    * convenience: that route is addressed by a commit hash there is nothing to put in, so the page
@@ -277,7 +290,7 @@ describe('ReleaseRequestDetailPage', () => {
         .flush({ builds: verdicts } satisfies ListCommitBuildsResponse);
       await settle();
     }
-    if (row.state === 'RELEASED') {
+    if (row.state === 'RELEASED' || row.state === 'FINALIZED') {
       http
         .expectOne(on.artifacts)
         .flush({ ...NOTHING_PUBLISHED, ...(artifacts ?? {}) } satisfies ReleaseArtifactsResponse);
@@ -384,9 +397,31 @@ describe('ReleaseRequestDetailPage', () => {
     it('arms no timer once the request has settled', async () => {
       withRepositories();
       await open();
-      await answer(released());
+      await answer(finalized());
 
       expect(vi.getTimerCount()).toBe(0);
+      await vi.advanceTimersByTimeAsync(RELEASE_REQUESTS_POLL_MS * 3);
+      http.expectNone(() => true);
+      expect(page().textContent).not.toContain('Watching for changes');
+    });
+
+    /**
+     * A cut tag is the middle of the lifecycle. The publish run, the deployment and the merge to
+     * main all follow it with nobody pressing anything, so the page follows them — and stops at the
+     * state that actually means done.
+     */
+    it('keeps watching a released request until it finalizes', async () => {
+      withRepositories();
+      await open();
+      await answer(released());
+
+      expect(page().textContent).toContain('Watching for changes');
+      await vi.advanceTimersByTimeAsync(RELEASE_REQUESTS_POLL_MS);
+      http.expectOne(REQUEST).flush({ request: finalized() });
+      await settle();
+      harness.fixture.detectChanges();
+
+      // The artifacts were read at the tag and the fold has not moved, so the poll costs one read.
       await vi.advanceTimersByTimeAsync(RELEASE_REQUESTS_POLL_MS * 3);
       http.expectNone(() => true);
       expect(page().textContent).not.toContain('Watching for changes');
@@ -475,6 +510,38 @@ describe('ReleaseRequestDetailPage', () => {
 
       expect(page().textContent).toContain('Withdrawn: the branch was deleted');
       expect(page().textContent).toContain('no longer in the repository');
+    });
+
+    /**
+     * An obsoleted request is the one row whose whole meaning lives somewhere else: a later ask for
+     * the same repository took the work over, and the only useful thing this page can do is say so
+     * and point at it. The address is a sibling of this one's, so the id is all the link needs.
+     */
+    it('says what superseded an obsoleted request, and links to it', async () => {
+      withRepositories();
+      await open();
+      await answer(request({ state: 'OBSOLETE', supersededBy: 'r9' }));
+
+      const banner = page().querySelector('.superseded');
+      expect(banner?.textContent).toContain('took this one over');
+      expect(banner?.querySelector('a')?.getAttribute('href')).toBe(
+        '/qits/services/qits-ci/release-requests/r9',
+      );
+      // Nothing on it can be changed any more, which is the service's own rule.
+      expect(page().querySelector('.withdraw')).toBeNull();
+    });
+
+    /**
+     * A service build older than the field names no successor, and the sentence stands without the
+     * link rather than pointing at an address built from an empty id.
+     */
+    it('says an obsoleted request was superseded even where it cannot name by what', async () => {
+      withRepositories();
+      await open();
+      await answer(request({ state: 'OBSOLETE' }));
+
+      expect(page().querySelector('.superseded')?.textContent).toContain('took this one over');
+      expect(page().querySelector('.successor')).toBeNull();
     });
 
     /** The request's own badge is the highest of its branches, and it says so on hover. */
@@ -681,16 +748,25 @@ describe('ReleaseRequestDetailPage', () => {
     });
 
     /**
-     * A released request refuses every change, and the service would answer 409. The control stays
+     * A finished request refuses every change, and the service would answer 409. The control stays
      * on the page and goes inert: what each branch was worth is part of what shipped.
      */
-    it('leaves the selects inert once the request is released', async () => {
+    it('leaves the selects inert once the request is finalized', async () => {
+      withRepositories();
+      await open();
+      await answer(finalized({ sources: BRANCHES }));
+
+      expect(pickers()).toHaveLength(2);
+      expect(pickers().every((picker) => picker.disabled)).toBe(true);
+    });
+
+    /** A cut tag is not the end of the request, so its branches are still somebody's to re-declare. */
+    it('keeps the selects live on a released request that has not finalized', async () => {
       withRepositories();
       await open();
       await answer(released({ sources: BRANCHES }));
 
-      expect(pickers()).toHaveLength(2);
-      expect(pickers().every((picker) => picker.disabled)).toBe(true);
+      expect(pickers().every((picker) => picker.disabled)).toBe(false);
     });
 
     it('leaves them inert on a withdrawn request too', async () => {
@@ -794,6 +870,25 @@ describe('ReleaseRequestDetailPage', () => {
 
       expect(page().textContent).toContain('on main');
       expect(page().textContent).not.toContain('not on main yet');
+    });
+
+    /**
+     * The panel must survive the request finishing. A tag does not move when the request finalizes,
+     * so a panel keyed on the word `RELEASED` would take the version, the links and the artifacts
+     * away at the exact moment the release completed — the one reading nobody would believe.
+     */
+    it('keeps the panel, its links and its heading once the request is finalized', async () => {
+      withRepositories();
+      await open();
+      await answer(finalized());
+
+      expect(page().textContent).toContain('Released and finalized');
+      expect(page().textContent).toContain('2026.904.161524');
+      expect(page().textContent).toContain('on main');
+      expect(hrefs()).toContain(
+        'https://githost.dev.example.test/qits/services/qits-ci/tags/2026.904.161524',
+      );
+      expect(page().textContent).toContain('The release train of this version');
     });
   });
 

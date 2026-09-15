@@ -32,6 +32,7 @@ import { ReleaseGatesPanel } from './release-gates-panel';
 import { releaseArtifactLinks, type ReleaseArtifactLink } from './release-artifact-links';
 import {
   RELEASE_REQUESTS_POLL_MS,
+  hasReleased,
   isSettled,
   mergedShaLabel,
   releaseDetail,
@@ -61,8 +62,15 @@ interface DrawnArtifact {
  * request itself is polled while it is unsettled, exactly as the lists poll. The commits and the CI
  * verdicts are keyed on the fold: both are facts about the folded commit, so they change only when
  * the request re-folds onto a new sha and a new `mergedSha` is the whole trigger for either. The
- * artifacts are read once, when the request is RELEASED — before that the service answers an honest
- * "not released yet" and there is nothing to draw.
+ * artifacts are read once, as soon as a tag has been cut — before that the service answers an honest
+ * "not released yet" and there is nothing to draw. That is both released states and not the word
+ * `RELEASED`: the tag is still there once the request finalizes, and a panel that vanished at the
+ * moment the release completed would be the one reading nobody would believe.
+ *
+ * <p><b>A released request is still open, and this page keeps polling it.</b> The tag is the middle
+ * of the lifecycle: the publish run and the deployment are answered after it and the request is
+ * finished only when the tag reaches `main`, so the poll runs until the row says `FINALIZED` rather
+ * than stopping the moment a version appeared.
  *
  * <p><b>Why the verdicts are read here rather than by the panel that draws them.</b> The gates panel
  * is redrawn by every poll, and a component that fetched on its own would have to re-derive the
@@ -177,6 +185,18 @@ interface DrawnArtifact {
           <ng-container [ngTemplateOutlet]="gatesSection" />
         }
 
+        @if (obsolete(request)) {
+          <p class="superseded" role="status">
+            A later release request for this repository took this one over before it finished, so
+            nothing here is waiting on anybody and nothing on it can be changed.
+            @if (supersedingId(request); as replacement) {
+              <a class="successor" [routerLink]="['..', replacement]">
+                Open the request that superseded it
+              </a>
+            }
+          </p>
+        }
+
         <!--
           The tab strip. Both links address the path this page is already at and change only
           ?tab=, merging the rest of the query string so the open file survives a switch away and
@@ -250,9 +270,9 @@ interface DrawnArtifact {
 
           <app-release-conflict [request]="request" />
 
-          @if (request.state === 'RELEASED') {
+          @if (released(request)) {
             <section class="panel released">
-              <h2>Released</h2>
+              <h2>{{ request.state === 'FINALIZED' ? 'Released and finalized' : 'Released' }}</h2>
               <p class="lead">
                 <span class="version">{{ request.version || none }}</span>
                 <span class="on-main">{{ mainState(request) }}</span>
@@ -307,7 +327,7 @@ interface DrawnArtifact {
             }
           </section>
 
-          @if (request.state === 'RELEASED') {
+          @if (released(request)) {
             <section class="panel">
               <h2>What it published</h2>
               <app-async
@@ -464,6 +484,22 @@ interface DrawnArtifact {
       font-size: 0.85rem;
       color: #374151;
       overflow-wrap: anywhere;
+    }
+    .superseded {
+      margin: 0.5rem 0 0;
+      border-radius: 0.3rem;
+      border: 1px solid #e5e7eb;
+      background: #f9fafb;
+      padding: 0.35rem 0.5rem;
+      font-size: 0.85rem;
+      color: #374151;
+      overflow-wrap: anywhere;
+    }
+    .successor {
+      color: #1d4ed8;
+    }
+    .successor:hover {
+      text-decoration: underline;
     }
     .panel {
       margin-top: 0.9rem;
@@ -765,7 +801,7 @@ export class ReleaseRequestDetailPage {
    */
   protected readonly trainHref = computed(() => {
     const request = this.row();
-    if (!request?.version || request.state !== 'RELEASED' || !request.repoName) {
+    if (!request?.version || !hasReleased(request) || !request.repoName) {
       return undefined;
     }
     return this.appLinks.href(
@@ -816,9 +852,34 @@ export class ReleaseRequestDetailPage {
       : `Nothing has been folded onto ${request.backingBranch} yet`;
   }
 
-  /** Where a released request stands against `main` — the gap the whole flow is arranged around. */
+  /**
+   * Where a released request stands against `main` — the gap the whole flow is arranged around, and
+   * the gap the request stays **open** across. The tag is cut first and merged once everything the
+   * release promised has happened, which is the moment the request finalizes.
+   */
   protected mainState(request: ReleaseRequestDto): string {
     return request.mergedToMainAt ? 'on main' : 'not on main yet';
+  }
+
+  /**
+   * Whether a tag has been cut, which is what the release panels are about — both released states,
+   * for the reason the model states: a panel keyed on `RELEASED` alone would take the version, the
+   * artifacts and the tag link away at the moment the release actually completed.
+   */
+  protected readonly released = hasReleased;
+
+  /** A request a later one took over. The page says so rather than leaving a reader to wonder. */
+  protected obsolete(request: ReleaseRequestDto): boolean {
+    return request.state === 'OBSOLETE';
+  }
+
+  /**
+   * The request that superseded this one, or nothing — a service build older than the field says
+   * nothing, and the sentence stands without the link rather than pointing at an address built from
+   * an empty id.
+   */
+  protected supersedingId(request: ReleaseRequestDto): string | null {
+    return request.supersededBy?.trim() || null;
   }
 
   constructor() {
@@ -979,9 +1040,9 @@ export class ReleaseRequestDetailPage {
     }
   }
 
-  /** The artifacts, once, and only once the request has released. */
+  /** The artifacts, once, and only once a tag has been cut — released or finalized. */
   private async loadArtifacts(repoId: string, request: ReleaseRequestDto): Promise<void> {
-    if (this.loadedArtifacts || request.state !== 'RELEASED') {
+    if (this.loadedArtifacts || !hasReleased(request)) {
       return;
     }
     this.loadedArtifacts = true;

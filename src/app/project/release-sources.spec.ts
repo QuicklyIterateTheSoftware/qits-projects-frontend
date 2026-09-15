@@ -218,12 +218,12 @@ describe('ReleaseSources', () => {
     });
 
     /**
-     * The two states the service refuses every change in. The control is drawn and inert rather than
-     * removed: what each branch was worth is part of what shipped, and taking it off the page would
-     * lose that.
+     * The three states the service refuses every change in — the finished ones. The control is drawn
+     * and inert rather than removed: what each branch was worth is part of what shipped, and taking
+     * it off the page would lose that.
      */
     it('is inert on a request the service would refuse, and still says what was chosen', async () => {
-      for (const state of ['RELEASED', 'WITHDRAWN']) {
+      for (const state of ['FINALIZED', 'WITHDRAWN', 'OBSOLETE']) {
         await mount(request({ state, sources: [source({ priority: 'HIGH' })] }), true);
 
         expect(selects()[0].disabled).toBe(true);
@@ -232,7 +232,8 @@ describe('ReleaseSources', () => {
     });
 
     it('stays live on every state the service still takes a change in', async () => {
-      for (const state of ['PENDING', 'READY', 'REJECTED', 'CONFLICTED', 'FAILED']) {
+      // RELEASED is one of them now: a cut tag is the middle of the lifecycle, not the end of it.
+      for (const state of ['PENDING', 'READY', 'RELEASED', 'REJECTED', 'CONFLICTED', 'FAILED']) {
         await mount(request({ state }), true);
 
         expect(selects()[0].disabled).toBe(false);
@@ -288,7 +289,7 @@ describe('ReleaseSources', () => {
       http
         .expectOne(PRIORITY)
         .flush(
-          { detail: 'the request has already been released' },
+          { detail: 'the request has already been finalized' },
           { status: 409, statusText: 'Conflict' },
         );
       await settle();

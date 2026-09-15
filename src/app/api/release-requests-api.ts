@@ -50,7 +50,7 @@ export class ReleaseRequestsApi {
    * One repository's release requests, newest first — the service's order, kept as it arrives.
    *
    * <p><b>The state is left off here too</b>: with none named the route answers the open requests
-   * plus the last ten released, which is the page's whole question — what is happening on this
+   * plus the last ten finalized, which is the page's whole question — what is happening on this
    * repository — and not the history a `state=all` would fetch.
    */
   async list(repoId: string): Promise<readonly ReleaseRequestDto[]> {
@@ -67,10 +67,11 @@ export class ReleaseRequestsApi {
    * first, which is the service's order and not this SPA's.
    *
    * <p><b>The state is left off, and that is the call.</b> The route answers the open requests
-   * (PENDING, READY, FAILED, REJECTED, CONFLICTED) plus the last ten released when nobody names one,
-   * and that is exactly what a project-wide list is for: the question it exists to answer is "is
-   * anything here waiting on me — and what has just gone out", and a project with a year of releases
-   * behind it would otherwise answer it with a year of history. `state=all` is the route's other
+   * (PENDING, READY, RELEASED, FAILED, REJECTED, CONFLICTED — everything not yet finalized) plus the
+   * last ten finalized when nobody names one, and that is exactly what a project-wide list is for:
+   * the question it exists to answer is "is anything here waiting on me — and what has just gone
+   * out", and a project with a year of releases behind it would otherwise answer it with a year of
+   * history. `state=all` is the route's other
    * half and this SPA has no page that wants it yet.
    */
   async listByProject(projectId: string): Promise<readonly ReleaseRequestDto[]> {
@@ -161,8 +162,9 @@ export class ReleaseRequestsApi {
    * What this release published, and whether anything deploys it — read out of the released tag's
    * own tree, so it is answerable for a release whose CI announced nothing at all.
    *
-   * <p>Worth asking only once a request has RELEASED: before that the service answers the honest
-   * "not released yet" and the page has nothing to draw from it.
+   * <p>Worth asking only once a tag has been cut — RELEASED or FINALIZED. Before that the service
+   * answers the honest "not released yet" and the page has nothing to draw from it; after it the
+   * tag does not move again, so the answer is the same at either end of the lifecycle.
    */
   async artifacts(repoId: string, requestId: string): Promise<ReleaseArtifactsResponse> {
     return firstValueFrom(
@@ -279,7 +281,8 @@ export class ReleaseRequestsApi {
    * <p>Nothing is re-folded and nothing is announced by this: the fold did not move, so the request
    * is the same release it was — only the signal on it changed.
    *
-   * <p>A request already RELEASED or WITHDRAWN answers **409**, exactly as the withdraw does. The
+   * <p>A request the service calls finished — FINALIZED, WITHDRAWN or OBSOLETE — answers **409**,
+   * exactly as the withdraw does; a RELEASED one is still open and still takes this. The
    * control is disabled in those states rather than hidden, and the refusal is still rendered where
    * it happens, because the usual cause is a page that went stale under the reader.
    */
@@ -302,9 +305,10 @@ export class ReleaseRequestsApi {
    * Call an ask off. The reason is recorded on the request as its `detail`; blank leaves the
    * service to name the caller instead, which is why it is optional rather than sent empty.
    *
-   * <p>A request already RELEASED or WITHDRAWN answers **409** — the page renders that sentence
-   * rather than hiding it, because the usual cause is a list that has gone stale under the reader
-   * and the refusal is the truthful answer to what they pressed.
+   * <p>A request the service calls finished — FINALIZED, WITHDRAWN or OBSOLETE — answers **409**,
+   * and a RELEASED one does not, because a tag is not the end of a request. The page renders the
+   * refusal as a sentence rather than hiding it, because the usual cause is a list that has gone
+   * stale under the reader and the refusal is the truthful answer to what they pressed.
    */
   async withdraw(repoId: string, requestId: string, reason?: string): Promise<ReleaseRequestDto> {
     const body = reason && reason.trim() ? { reason: reason.trim() } : {};

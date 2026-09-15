@@ -42,12 +42,18 @@ import { ReleaseSources } from './release-sources';
  * One read, one screen, one answer.
  *
  * <p><b>The open work plus what has just landed, and that is the service's default rather than a
- * filter here.</b> The route answers PENDING, READY, FAILED, REJECTED and CONFLICTED when nobody
- * names a state — everything that can still move — followed by the last 10 released. A project with
- * a year of releases behind it has a year of RELEASED rows and a worklist that led with them would
- * be a history, the thing this page is *not*; but a release dropping off the moment it landed made
- * the one event people come here to check the one thing this page never showed. Ten is the tail that
- * answers both.
+ * filter here.</b> The route answers every state but the three that are finished when nobody names
+ * one — PENDING, READY, RELEASED, FAILED, REJECTED and CONFLICTED, everything that has not reached
+ * `main` — followed by the last 10 finalized. A project with a year of releases behind it has a
+ * year of FINALIZED rows and a worklist that led with them would be a history, the thing this page
+ * is *not*; but a release dropping off the moment it landed made the one event people come here to
+ * check the one thing this page never showed. Ten is the tail that answers both.
+ *
+ * <p><b>A released row is a row that is still working, and that is the point of the list.</b> The
+ * tag being cut used to close a request; it no longer does, because the publish run, the deployment
+ * and the merge to `main` all come after it and any of them can stick. So the released rows sit
+ * here in the `info` tone beside the pending ones, and the page keeps polling them until they
+ * finalize.
  *
  * <p><b>Each row names its repository, and links to the REQUEST where the chrome can spell the
  * address.</b> The name comes from the service (the DTO carries it, resolved live, so a rename is
@@ -92,8 +98,10 @@ import { ReleaseSources } from './release-sources';
     </header>
 
     <p class="lead">
-      The open requests plus the last 10 released, across all of this project's repositories, most
-      recently moved first. Open one to see what is in it and what it published.
+      The open requests plus the last 10 finalized, across all of this project's repositories, most
+      recently moved first. A request is open until its release is finalized — the tag merged into
+      main once everything it promised has happened — so a released row here is still in flight.
+      Open one to see what is in it and what it published.
     </p>
 
     <app-async
@@ -106,7 +114,7 @@ import { ReleaseSources } from './release-sources';
     @if (rows(); as rows) {
       @if (rows.length === 0) {
         <app-empty
-          message="Nothing is waiting to be released in this project, and nothing has been released recently."
+          message="Nothing is open in this project, and no release has been finalized recently."
         />
       } @else {
         <ul class="requests">

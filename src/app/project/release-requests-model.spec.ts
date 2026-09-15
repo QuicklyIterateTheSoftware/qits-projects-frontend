@@ -7,6 +7,9 @@ import {
   canSetPriority,
   canWithdraw,
   hasOpenRequests,
+  hasReleased,
+  isFinished,
+  isOpen,
   isSettled,
   mergedShaLabel,
   priorityOptions,
@@ -104,12 +107,26 @@ describe('release-requests-model', () => {
     it('gives each stored state a tone, and tells the two refusals apart', () => {
       expect(badge('PENDING')).toEqual({ label: 'pending', tone: 'info' });
       expect(badge('READY')).toEqual({ label: 'ready', tone: 'info' });
-      expect(badge('RELEASED')).toEqual({ label: 'released', tone: 'success' });
       // A red build is the platform working and the request re-arms itself; a failed release is
       // the one a person has to do something about.
       expect(badge('REJECTED').tone).toBe('warning');
       expect(badge('FAILED').tone).toBe('danger');
       expect(badge('WITHDRAWN').tone).toBe('neutral');
+    });
+
+    /**
+     * The whole of the lifecycle change in one reading. Green is *done*, and a cut tag is not done:
+     * the publish run, the deployment and the merge to main are all still in front of it, so a
+     * released row draws like the pending ones it is scanned beside.
+     */
+    it('keeps the green for the finalized release, and draws a released one as in flight', () => {
+      expect(badge('RELEASED')).toEqual({ label: 'released', tone: 'info' });
+      expect(badge('FINALIZED')).toEqual({ label: 'finalized', tone: 'success' });
+    });
+
+    /** Nothing went wrong: a later request took the work over, which is the WITHDRAWN argument. */
+    it('draws an obsoleted request in no colour at all', () => {
+      expect(badge('OBSOLETE')).toEqual({ label: 'obsolete', tone: 'neutral' });
     });
 
     /** Sources disagreeing about content is not the platform breaking, and a push clears it. */
@@ -215,8 +232,9 @@ describe('release-requests-model', () => {
 
   describe('isSettled', () => {
     it('counts the three that have stopped moving, and rejected is one of them', () => {
-      expect(isSettled(request({ state: 'RELEASED' }))).toBe(true);
+      expect(isSettled(request({ state: 'FINALIZED' }))).toBe(true);
       expect(isSettled(request({ state: 'WITHDRAWN' }))).toBe(true);
+      expect(isSettled(request({ state: 'OBSOLETE' }))).toBe(true);
       // A rejection re-arms on a push, not on the passage of time — so waiting for it is waiting
       // for a person elsewhere, which is not something to spend requests on.
       expect(isSettled(request({ state: 'REJECTED' }))).toBe(true);
@@ -234,6 +252,16 @@ describe('release-requests-model', () => {
     it('counts the two the gates and the worker are still working on', () => {
       expect(isSettled(request({ state: 'PENDING' }))).toBe(false);
       expect(isSettled(request({ state: 'READY' }))).toBe(false);
+    });
+
+    /**
+     * The row the whole lifecycle change is about. A tag is cut and the publish run and the
+     * deployment carry the request to FINALIZED with nobody pressing anything — which is precisely
+     * what is worth spending a poll on, and precisely what a page that stopped at the tag showed a
+     * reader nothing of.
+     */
+    it('watches a released request, because it finalizes on its own', () => {
+      expect(isSettled(request({ state: 'RELEASED', version: '2026.903.1' }))).toBe(false);
     });
 
     it('splits FAILED on retryable, because the sweep is still trying one of them', () => {
@@ -256,9 +284,10 @@ describe('release-requests-model', () => {
     it('is false for a repository whose asks have all concluded — the whole point of the gate', () => {
       expect(
         hasOpenRequests([
-          request({ id: 'a', state: 'RELEASED' }),
+          request({ id: 'a', state: 'FINALIZED' }),
           request({ id: 'b', state: 'REJECTED' }),
           request({ id: 'c', state: 'WITHDRAWN' }),
+          request({ id: 'd', state: 'OBSOLETE' }),
         ]),
       ).toBe(false);
     });
@@ -270,17 +299,68 @@ describe('release-requests-model', () => {
     it('is true when one row of many is still in flight', () => {
       expect(
         hasOpenRequests([
-          request({ id: 'a', state: 'RELEASED' }),
+          request({ id: 'a', state: 'FINALIZED' }),
           request({ id: 'b', state: 'PENDING' }),
         ]),
       ).toBe(true);
     });
+
+    /** One released row is enough: it is going somewhere, and the page should follow it there. */
+    it('is true for a list of nothing but released rows', () => {
+      expect(hasOpenRequests([request({ state: 'RELEASED' })])).toBe(true);
+    });
   });
 
   /**
-   * Stated as the negative on purpose: the service refuses RELEASED and WITHDRAWN and nothing
-   * else, so spelling the same two words here is what keeps the button and the 409 from drifting
-   * apart — and keeps a state added on the service side offerable with no edit.
+   * The service's own word, and the whole of it: **open is not finalized**. It is a different
+   * question from {@link isSettled}, which is about what is worth polling, and the two deliberately
+   * disagree about CONFLICTED, REJECTED and RELEASED.
+   */
+  describe('isFinished and isOpen', () => {
+    it('is finished in the three that have concluded, and in nothing else', () => {
+      for (const state of ['FINALIZED', 'WITHDRAWN', 'OBSOLETE']) {
+        expect(isFinished(request({ state }))).toBe(true);
+        expect(isOpen(request({ state }))).toBe(false);
+      }
+    });
+
+    it('is open in everything else, a cut tag included', () => {
+      for (const state of [
+        'PENDING',
+        'READY',
+        'RELEASED',
+        'REJECTED',
+        'CONFLICTED',
+        'FAILED',
+        'RELEASING',
+      ]) {
+        expect(isOpen(request({ state }))).toBe(true);
+      }
+    });
+  });
+
+  /**
+   * Both released states, because the tag does not move when the request finalizes. Keying the
+   * release panels on the word `RELEASED` would draw the version, the artifacts and the tag link
+   * for as long as a release was in flight and take them all away the moment it completed.
+   */
+  describe('hasReleased', () => {
+    it('is true from the tag being cut until for ever after', () => {
+      expect(hasReleased(request({ state: 'RELEASED' }))).toBe(true);
+      expect(hasReleased(request({ state: 'FINALIZED' }))).toBe(true);
+    });
+
+    it('is false everywhere there is no tag', () => {
+      for (const state of ['PENDING', 'READY', 'REJECTED', 'CONFLICTED', 'FAILED', 'WITHDRAWN']) {
+        expect(hasReleased(request({ state }))).toBe(false);
+      }
+    });
+  });
+
+  /**
+   * Stated as the negative on purpose: the service refuses a finished request and nothing else, so
+   * spelling that one rule here is what keeps the button and the 409 from drifting apart — and
+   * keeps a state added on the service side offerable with no edit.
    */
   describe('canWithdraw', () => {
     it('offers everything the service does not refuse', () => {
@@ -289,9 +369,15 @@ describe('release-requests-model', () => {
       }
     });
 
+    /** A tag is not the end of a request, so the remainder can still be called off. */
+    it('offers it on a released request that has not finalized', () => {
+      expect(canWithdraw(request({ state: 'RELEASED', version: '2026.903.1' }))).toBe(true);
+    });
+
     it('does not offer what would answer 409', () => {
-      expect(canWithdraw(request({ state: 'RELEASED' }))).toBe(false);
+      expect(canWithdraw(request({ state: 'FINALIZED' }))).toBe(false);
       expect(canWithdraw(request({ state: 'WITHDRAWN' }))).toBe(false);
+      expect(canWithdraw(request({ state: 'OBSOLETE' }))).toBe(false);
     });
   });
 
@@ -353,18 +439,27 @@ describe('release-requests-model', () => {
 
   /**
    * The same negative as {@link canWithdraw}, from the same set, because the service has one rule:
-   * a RELEASED or WITHDRAWN request refuses every change, and everything else is open.
+   * a finished request refuses every change, and everything else — a cut tag included — is open.
    */
   describe('canSetPriority', () => {
     it('offers everything the service does not refuse', () => {
-      for (const state of ['PENDING', 'READY', 'REJECTED', 'CONFLICTED', 'FAILED', 'RELEASING']) {
+      for (const state of [
+        'PENDING',
+        'READY',
+        'RELEASED',
+        'REJECTED',
+        'CONFLICTED',
+        'FAILED',
+        'RELEASING',
+      ]) {
         expect(canSetPriority(request({ state }))).toBe(true);
       }
     });
 
     it('does not offer what would answer 409', () => {
-      expect(canSetPriority(request({ state: 'RELEASED' }))).toBe(false);
+      expect(canSetPriority(request({ state: 'FINALIZED' }))).toBe(false);
       expect(canSetPriority(request({ state: 'WITHDRAWN' }))).toBe(false);
+      expect(canSetPriority(request({ state: 'OBSOLETE' }))).toBe(false);
     });
   });
 

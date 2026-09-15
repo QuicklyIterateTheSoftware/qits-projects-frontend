@@ -174,7 +174,13 @@ describe('RepositoryReleaseRequestsPage', () => {
     it('arms no timer for a repository whose requests have all concluded', async () => {
       withRepositories();
       await open();
-      await answer([request({ state: 'RELEASED', version: '2026.901.134748' })]);
+      await answer([
+        request({
+          state: 'FINALIZED',
+          version: '2026.901.134748',
+          mergedToMainAt: '2026-09-01T14:02:11Z',
+        }),
+      ]);
 
       expect(vi.getTimerCount()).toBe(0);
       await vi.advanceTimersByTimeAsync(RELEASE_REQUESTS_POLL_MS * 3);
@@ -189,12 +195,43 @@ describe('RepositoryReleaseRequestsPage', () => {
       expect(page().textContent).toContain('Watching for changes');
 
       await vi.advanceTimersByTimeAsync(RELEASE_REQUESTS_POLL_MS);
-      await answer([request({ state: 'RELEASED', version: '2026.901.134748' })]);
+      await answer([
+        request({
+          state: 'FINALIZED',
+          version: '2026.901.134748',
+          mergedToMainAt: '2026-09-01T14:02:11Z',
+        }),
+      ]);
 
       // The state that arrived is terminal, so the page stops asking of its own accord.
       await vi.advanceTimersByTimeAsync(RELEASE_REQUESTS_POLL_MS * 3);
       http.expectNone(() => true);
-      expect(page().textContent).toContain('released');
+      expect(page().textContent).toContain('finalized');
+    });
+
+    /**
+     * A cut tag no longer stops anything: the publish run and the deployment come after it and the
+     * request is finished only once the tag reaches `main`, so the row that shipped an hour ago and
+     * is stuck is exactly the one this page has to keep following.
+     */
+    it('keeps reading while a released request has not finalized', async () => {
+      withRepositories();
+      await open();
+      await answer([request({ state: 'RELEASED', version: '2026.901.134748' })]);
+
+      expect(page().textContent).toContain('Watching for changes');
+      await vi.advanceTimersByTimeAsync(RELEASE_REQUESTS_POLL_MS);
+      await answer([
+        request({
+          state: 'FINALIZED',
+          version: '2026.901.134748',
+          mergedToMainAt: '2026-09-01T14:02:11Z',
+        }),
+      ]);
+
+      await vi.advanceTimersByTimeAsync(RELEASE_REQUESTS_POLL_MS * 3);
+      http.expectNone(() => true);
+      expect(page().textContent).not.toContain('Watching for changes');
     });
 
     it('keeps the rows on screen while a poll is in flight, so nothing flickers', async () => {
@@ -304,9 +341,9 @@ describe('RepositoryReleaseRequestsPage', () => {
     });
 
     /**
-     * A release is a tag and `main` is finalized after the deployment succeeds, so a version that
-     * shipped and has not reached `main` is a real state — mid-deployment, or stuck — and this row
-     * is the only place either is visible.
+     * A release is a tag and the tag reaches `main` only once everything the release promised has
+     * happened, so a version that shipped and has not reached `main` is a real state — mid-publish,
+     * mid-deployment, or stuck — and this row is the only place any of them is visible.
      */
     it('names the version a released request landed as, and says it is not on main yet', async () => {
       withRepositories();
@@ -322,7 +359,7 @@ describe('RepositoryReleaseRequestsPage', () => {
       await open();
       await answer([
         request({
-          state: 'RELEASED',
+          state: 'FINALIZED',
           version: '2026.901.134748',
           mergedToMainAt: '2026-09-01T14:02:11Z',
         }),
@@ -398,7 +435,7 @@ describe('RepositoryReleaseRequestsPage', () => {
       expect(link?.getAttribute('href')).toBe('/qits/services/qits-ci/release-requests/r7');
     });
 
-    /** The tail the route's default carries: a release stays on the page after it lands. */
+    /** The tail the route's default carries: a release stays on the page after it finalizes. */
     it('draws a landed release beside the open work', async () => {
       withRepositories();
       await open();
@@ -406,9 +443,10 @@ describe('RepositoryReleaseRequestsPage', () => {
         request({ id: 'open', state: 'PENDING', summary: 'Still going' }),
         request({
           id: 'done',
-          state: 'RELEASED',
+          state: 'FINALIZED',
           summary: 'Just landed',
           version: '2026.904.161524',
+          mergedToMainAt: '2026-09-04T17:02:11Z',
         }),
       ]);
 
@@ -432,7 +470,7 @@ describe('RepositoryReleaseRequestsPage', () => {
       await answer([]);
 
       expect(page().textContent).toContain('Nothing is open on this repository');
-      expect(page().textContent).toContain('nothing has been released recently');
+      expect(page().textContent).toContain('no release has been finalized recently');
     });
 
     it('offers a way back when the read fails', async () => {
@@ -515,7 +553,12 @@ describe('RepositoryReleaseRequestsPage', () => {
       withRepositories();
       await open();
       await answer([
-        request({ id: 'a', state: 'RELEASED', version: '2026.901.1' }),
+        request({
+          id: 'a',
+          state: 'FINALIZED',
+          version: '2026.901.1',
+          mergedToMainAt: '2026-09-01T14:02:11Z',
+        }),
         request({ id: 'b', state: 'WITHDRAWN' }),
       ]);
 
@@ -534,14 +577,14 @@ describe('RepositoryReleaseRequestsPage', () => {
       http
         .expectOne(`${LIST}/r1/withdraw`)
         .flush(
-          { message: 'Release request r1 is already RELEASED' },
+          { message: 'Release request r1 is already FINALIZED' },
           { status: 409, statusText: 'Conflict' },
         );
       await settle();
       harness.fixture.detectChanges();
 
       expect(page().textContent).toContain('Could not withdraw this request');
-      expect(page().textContent).toContain('already RELEASED');
+      expect(page().textContent).toContain('already FINALIZED');
     });
   });
 
