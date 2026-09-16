@@ -12,6 +12,7 @@ import type {
   ReleaseRequestDto,
   ReleaseRequestResponse,
   ReleaseRequestsResponse,
+  SubmoduleChangesDto,
 } from './dto';
 
 /**
@@ -155,6 +156,65 @@ export class ReleaseRequestsApi {
       this.http.get<CommitFileDiffDto>(`${this.requestBase(repoId, requestId)}/changes/diff`, {
         params: { path },
       }),
+    );
+  }
+
+  /**
+   * One gitlink of this fold, expanded into the sibling repository's own commits and changed files
+   * between the two pins — what a wrapper release actually *is*.
+   *
+   * <p><b>There is no repository parameter, and that absence is the authorisation.</b> `path`
+   * addresses a gitlink of *this* fold; the service re-diffs the fold at that one path, demands a
+   * `160000`-to-`160000` modification and resolves the sibling through the fold's own
+   * `.gitmodules`. So the only repositories reachable here are the ones the request under review
+   * pins, and a client that could name one would be a second, unchecked way in.
+   *
+   * <p>Keyed on the fold by its caller like every other read on that page, with the gitlink path as
+   * the second coordinate: it is a fact about the pair of pins, so a poll that moved nothing must
+   * not cost it. This one reaches a *second* repository's git mirror, which is exactly why it is
+   * asked per expanded row and never for the whole change set at once.
+   *
+   * <p>**Nothing here is ever an error.** A path the fold does not move, a name no repository of
+   * this project answers to, an added or removed gitlink with only one pin, a sibling that could
+   * not be read — all answer 200 with the reason in `detail`, and the page draws the sentence.
+   */
+  async submoduleChanges(
+    repoId: string,
+    requestId: string,
+    path: string,
+  ): Promise<SubmoduleChangesDto> {
+    return firstValueFrom(
+      this.http.get<SubmoduleChangesDto>(
+        `${this.requestBase(repoId, requestId)}/changes/submodule`,
+        { params: { path } },
+      ),
+    );
+  }
+
+  /**
+   * The patch of one file *inside* a submodule this fold moves, taken in the sibling between the
+   * two pins — the patch {@link submoduleChanges} listed as a changed file.
+   *
+   * <p><b>Two parameters, because the address is two halves.</b> `path` selects the gitlink of this
+   * fold and `file` selects a path within it, both in the query string for the reason every path on
+   * this platform rides there: a path holds slashes. The pair cannot reach a repository the fold
+   * does not pin, which is the same authorisation {@link submoduleChanges} has and the same reason
+   * neither takes a repository id.
+   *
+   * <p>An empty `diff` is an answer here too — binary, a pure rename, a chain that stopped, or a
+   * patch the service declined to send for its size.
+   */
+  async submoduleFileDiff(
+    repoId: string,
+    requestId: string,
+    path: string,
+    file: string,
+  ): Promise<CommitFileDiffDto> {
+    return firstValueFrom(
+      this.http.get<CommitFileDiffDto>(
+        `${this.requestBase(repoId, requestId)}/changes/submodule/diff`,
+        { params: { path, file } },
+      ),
     );
   }
 

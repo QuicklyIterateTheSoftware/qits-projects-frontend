@@ -1115,6 +1115,79 @@ export interface CommitFileChangeDto {
   readonly path: string;
   readonly oldPath: string | null;
   readonly changeType: 'ADDED' | 'MODIFIED' | 'DELETED' | 'RENAMED' | 'COPIED' | 'TYPE_CHANGED';
+  /** The base side's tree mode — `100644`, `160000`, … — null where the entry did not exist. */
+  readonly oldMode: string | null;
+  /** The fold side's tree mode, on the same terms. */
+  readonly newMode: string | null;
+  /**
+   * The base side's object id, null where the entry did not exist. Git's all-zero id for an absent
+   * side is normalised away by the service rather than handed on.
+   */
+  readonly oldSha: string | null;
+  /** The fold side's object id, on the same terms. */
+  readonly newSha: string | null;
+  /**
+   * What the gitlink resolves to, non-null exactly where either mode is `160000`. Null for every
+   * ordinary file — which is what the page routes on, rather than parsing the modes itself.
+   */
+  readonly submodule: SubmoduleRefDto | null;
+}
+
+/**
+ * What a `160000` tree entry actually names: the sibling repository the fold's own `.gitmodules`
+ * resolves the path to, and the two commits of *that* repository the release moves between.
+ *
+ * <p>Without it a wrapper's release reads as a wall of opaque `Subproject commit` pairs in
+ * repositories the diff never names. Labelling a row costs nothing — every field here comes out of
+ * the wrapper's own fold plus one row lookup — which is why the whole change set arrives labelled
+ * and expanding *one* row into its commits is the separate, more expensive read.
+ *
+ * <p><b>`detail` is the whole of whether this row can be expanded.</b> Null means the gitlink
+ * resolved and both pins are there to ask about; a sentence — "Added by this release", "This
+ * submodule is not a repository of this project" — is what the page draws *instead* of an
+ * expansion, because each of those is a fact about one submodule and not an error about the fold.
+ */
+export interface SubmoduleRefDto {
+  readonly repositoryId: string | null;
+  /** The sibling's addressable name, null when the manifest declared nothing usable. */
+  readonly name: string | null;
+  /** The pin on the base side, null when this release adds the gitlink. */
+  readonly oldSha: string | null;
+  /** The pin on the fold side, null when this release removes it. */
+  readonly newSha: string | null;
+  /** Why this cannot be expanded, in a sentence. Null exactly when it can. */
+  readonly detail: string | null;
+}
+
+/**
+ * One gitlink of a fold, **expanded**: the sibling repository's own commits and changed files
+ * between the two pins.
+ *
+ * <p>This is the answer a wrapper release actually poses. The wrapper's diff says one forty-
+ * character string became another; what the release *is* lives entirely in the sibling.
+ *
+ * <p><b>`files` paths are relative to the SUBMODULE</b>, not to the wrapper. The page joins them
+ * under the gitlink's path to splice them into one tree, and splits them apart again to ask for a
+ * patch — the two halves are the address of that read.
+ *
+ * <p>Every failure is a sentence on `detail` rather than a status code, for the same reason
+ * {@link SubmoduleRefDto} carries one: a wrapper fold is twenty-seven of these rows, and one
+ * unreachable sibling must not take the other twenty-six down with it.
+ */
+export interface SubmoduleChangesDto {
+  /** The gitlink's path in the wrapper — the address asked by, echoed back. */
+  readonly path: string;
+  readonly repositoryId: string | null;
+  readonly name: string | null;
+  readonly oldSha: string | null;
+  readonly newSha: string | null;
+  /** The sibling's commits in `oldSha..newSha`, newest first. Empty is a real answer. */
+  readonly commits: readonly ReleaseRequestCommitDto[];
+  /** The sibling's changed files between the pins, capped like every other change list here. */
+  readonly files: readonly CommitFileChangeDto[];
+  readonly truncated: boolean;
+  /** Why this is all there is. Null only when the expansion is complete and unremarkable. */
+  readonly detail: string | null;
 }
 
 /**
