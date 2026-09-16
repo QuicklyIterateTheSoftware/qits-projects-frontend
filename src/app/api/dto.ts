@@ -953,6 +953,24 @@ export interface ReleaseRequestDto {
    * drawing the old panel for `undefined` and the new one for an array, empty included.
    */
   readonly gates?: readonly ReleaseGateDto[];
+  /**
+   * **The one release pipeline, as phases with the gates between them** — the same facts
+   * {@link gates} carries, arranged as the sequence they actually happen in.
+   *
+   * <p><b>Optional and nullable, and both spellings mean one thing: draw today's gate lines,
+   * unchanged.</b> `undefined` is an answer from a service build older than the field, which is the
+   * ordinary case on the day this SPA ships — it is released ahead of the service that grew it — and
+   * `null` is a build that has the field and had no pipeline to report for this request. Neither is a
+   * pipeline with nothing in it, and neither is anything a reader should be shown a new, empty panel
+   * for: the request is exactly as gated as it was, `gates` still says by what, and the panel that
+   * draws it is still there. That is why the pipeline panel *delegates* to the gate panel rather than
+   * re-deriving the old view — the legacy rendering is the same component it always was, so
+   * "unchanged" is guaranteed rather than asserted.
+   *
+   * <p>A present pipeline does **not** make {@link gates} stale or redundant: the two are answered
+   * from the same state and the gate set remains what a caller asks when it wants the flat list.
+   */
+  readonly pipeline?: ReleasePipelineDto | null;
   readonly conflict: MergeConflictDto | null;
   /**
    * The request that **obsoleted this one** — the later ask for the same repository that took over
@@ -1010,6 +1028,111 @@ export interface ReleaseRequestDto {
 export interface ReleaseGateDto {
   readonly kind: string;
   readonly state: string;
+}
+
+/**
+ * Which phase of the one release pipeline a row is about.
+ *
+ * <p><b>Closed where {@link ReleaseGateDto}'s `kind` and `state` are open, and the asymmetry is the
+ * argument {@link ReleaseRequestSourceKind} makes.</b> A gate's vocabulary is the service's to grow —
+ * a repository may configure a kind of check nobody has thought of yet, and a state may gain a fifth
+ * word — so a build of this SPA that could not type one would fail to draw a request it is otherwise
+ * perfectly able to show. The phases are the opposite kind of fact: the service enumerates exactly
+ * these three, they are the *shape* of the pipeline rather than an entry in it, and a fourth would be
+ * a new release lifecycle rather than a new word for the old one. The panel switches on this value to
+ * decide what a row is called and where it sits in the tree, so a phase it has never heard of has no
+ * position to be drawn at — which is precisely the case worth failing to type.
+ *
+ * <p>It is exported on its own because the rerun door takes one as a path segment: the enumeration is
+ * the whole of what makes that segment safe to spell into an address.
+ */
+export type ReleasePipelinePhase = 'QA' | 'PUBLISH' | 'DEPLOY';
+
+/**
+ * One phase of the release pipeline, as the service reports it right now.
+ *
+ * <p><b>`state` is a closed union here and that is not a contradiction of the rule above.</b> These
+ * six are qits-ci's own run states forwarded whole, `UNKNOWN` included, and `UNKNOWN` is what a word
+ * nobody could resolve already arrives as — the service normalises rather than passing an unfamiliar
+ * word through, so there is no seventh value to be surprised by. Where an open vocabulary genuinely
+ * survives to this client it is typed as a plain string, which is what
+ * {@link ReleasePipelineGateDto} does.
+ *
+ * <p><b>`runId` is one field naming two different things, and the service's own record is the reason.</b>
+ * For `QA` and `PUBLISH` it is a qits-ci run id; for `DEPLOY` it is a deployment request id in
+ * qits-deployments. They are not interchangeable and nothing here composes an address out of one
+ * without knowing which phase it came off — which is exactly why the panel reruns by *phase* rather
+ * than by run id, and why this field is carried for the record rather than for the door.
+ *
+ * <p>`startedAt` and `finishedAt` are ISO-8601 instants and are **null together on a phase that has
+ * not begun**, which is the ordinary state of every phase in front of the one that is running. A
+ * finished instant with no start is a phase whose beginning was never recorded, not a phase that
+ * finished before it started.
+ */
+export interface ReleasePhaseDto {
+  readonly phase: ReleasePipelinePhase;
+  readonly state: 'PENDING' | 'RUNNING' | 'SUCCESS' | 'FAILED' | 'CANCELLED' | 'UNKNOWN';
+  /** A qits-ci run id, or — on `DEPLOY` — a deployment request id. Null until something started. */
+  readonly runId: string | null;
+  readonly startedAt: string | null;
+  readonly finishedAt: string | null;
+}
+
+/**
+ * One gate of the release pipeline, and **the pair of phases it stands between**.
+ *
+ * <p>`between` is what makes this a pipeline rather than a list: a gate is not a property of a phase,
+ * it is the condition on the step from one phase to the next, and `DEPLOY_FINALIZED` is the step out
+ * of the pipeline altogether. Drawing a gate under the phase it follows — which is what the panel
+ * does — is a rendering decision made from this field, and a gate whose `between` this build has
+ * never heard of therefore has no edge to be drawn on. It is nonetheless a closed union for the same
+ * reason {@link ReleasePipelinePhase} is: the edges are the shape of the pipeline, and three phases
+ * plus a terminus admit exactly these three steps.
+ *
+ * <p><b>`kind` and `state` are plain strings, kept open exactly as {@link ReleaseGateDto}'s are.</b>
+ * `CI`, `APPROVAL`, `PUBLISH` and `DEPLOYMENT` are what the service sends today and `PENDING`,
+ * `PASSED`, `FAILED` and `UNKNOWN` are what it says about them, but a repository's gate configuration
+ * is the one thing on this surface that genuinely grows: the whole point of the gate set was that a
+ * repository is held by what it *configures*, so a kind this build cannot name is a repository doing
+ * something new and not an error. It is drawn as itself, uncoloured, rather than guessed into a
+ * verdict — the rule every open vocabulary on this file is typed with.
+ *
+ * <p><b>A `PENDING` gate is a wait, never a refusal.</b> That is the single most load-bearing
+ * sentence about this shape: the gate has not answered yet, the pipeline is holding in front of it,
+ * and nothing has said no. Only `FAILED` is a refusal, and only `UNKNOWN` is "nobody could read
+ * this". A renderer that coloured the three alike would report half the healthy pipelines on the
+ * platform as broken.
+ *
+ * <p>`detail` is the service's own sentence about this gate — which run, which deployment, which
+ * person — or null where it has nothing to add beyond the state.
+ */
+export interface ReleasePipelineGateDto {
+  readonly between: 'QA_PUBLISH' | 'PUBLISH_DEPLOY' | 'DEPLOY_FINALIZED';
+  /** `CI`, `APPROVAL`, `PUBLISH`, `DEPLOYMENT` — open, and drawn as itself where it is none of them. */
+  readonly kind: string;
+  /** `PENDING`, `PASSED`, `FAILED`, `UNKNOWN` — open, and `PENDING` is a wait rather than a no. */
+  readonly state: string;
+  readonly detail: string | null;
+}
+
+/**
+ * The one release pipeline of a request: its phases, and the gates between them.
+ *
+ * <p><b>It replaces two pipelines that were never one picture.</b> What a reader had before was a
+ * pre-tag gate list and a pair of after-the-tag gates drawn beside it, with nothing saying that the
+ * second only happens because the first passed. The phases say it: QA, then publish, then deploy, in
+ * that order, each held by the gates on the edge in front of it.
+ *
+ * <p><b>`phases` is not required to be complete, and the panel does not treat it as though it were.</b>
+ * A phase the pipeline has not reached may simply be absent, which is the same fact as present-and-
+ * `PENDING` and must draw identically — a reader who saw two rows before the tag and three after it
+ * would read the third as something that had just been added rather than as something that had always
+ * been coming. What a *missing* phase does not tell apart is a repository that deploys nothing, which
+ * is why the deployment row is drawn on the evidence of a `DEPLOYMENT` gate as well as on the phase.
+ */
+export interface ReleasePipelineDto {
+  readonly phases: readonly ReleasePhaseDto[];
+  readonly gates: readonly ReleasePipelineGateDto[];
 }
 
 /** One repository's release requests, newest first — the service sorts, this SPA does not re-sort. */

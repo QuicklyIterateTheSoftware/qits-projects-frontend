@@ -28,7 +28,7 @@ import { NONE, formatInstant, formatRelativeTime, shortSha } from '../ui/format'
 import { LOADING, failed, ready, type Loadable } from '../ui/loadable';
 import { ReleaseConflict } from './release-conflict';
 import { ReleaseRequestChanges } from './release-request-changes';
-import { ReleaseGatesPanel } from './release-gates-panel';
+import { ReleasePipelinePanel } from './release-pipeline-panel';
 import { releaseArtifactLinks, type ReleaseArtifactLink } from './release-artifact-links';
 import {
   RELEASE_REQUESTS_POLL_MS,
@@ -128,7 +128,7 @@ interface DrawnArtifact {
     NotFound,
     QitsBadge,
     ReleaseConflict,
-    ReleaseGatesPanel,
+    ReleasePipelinePanel,
     ReleaseRequestChanges,
     ReleaseSources,
     RouterLink,
@@ -379,7 +379,7 @@ interface DrawnArtifact {
             (retry)="reloadGates()"
           />
           @if (verdicts(); as verdicts) {
-            <app-release-gates-panel
+            <app-release-pipeline-panel
               [request]="request"
               [builds]="verdicts"
               (decided)="decided($event)"

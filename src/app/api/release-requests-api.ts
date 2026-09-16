@@ -8,6 +8,7 @@ import type {
   ListCommitBuildsResponse,
   ReleaseRequestChangesResponse,
   ReleaseArtifactsResponse,
+  ReleasePipelinePhase,
   ReleaseRequestCommitsResponse,
   ReleaseRequestDto,
   ReleaseRequestResponse,
@@ -319,6 +320,44 @@ export class ReleaseRequestsApi {
         mergedSha,
         ...(trimmed ? { note: trimmed } : {}),
       }),
+    );
+    return response.request;
+  }
+
+  /**
+   * Run one phase of this request's release pipeline again — the third verb on this surface, beside
+   * the two decisions, and the only one that is about the *machinery* rather than about the content.
+   *
+   * <p><b>The phase rides in the PATH, where the branch of {@link setSourcePriority} rides in the
+   * body, and the difference is not a preference.</b> A branch name is user text: it holds slashes, so
+   * a path segment would have to be escaped identically by both sides or would address the wrong row.
+   * A phase is an enumerated segment — `QA`, `PUBLISH` or `DEPLOY`, and the type says so — so there is
+   * nothing to escape away and the address reads as what it is: a sub-resource of the request. It is
+   * still encoded on the way out, because every path segment on this client is, and a caller reaching
+   * this method from untyped data must not be able to compose a second route out of it.
+   *
+   * <p><b>The whole request comes back, and it is worth putting in place of the row</b> — the same
+   * replacement {@link approve} answers with, for the same reason. A rerun moves the phase to
+   * `RUNNING` and clears whatever it failed with, so the pipeline on the answer is already the
+   * pipeline to draw; asking again would be a second round trip for bytes the page is holding.
+   *
+   * <p><b>What a refusal means.</b> 409 is the service saying the request is not in the shape the
+   * reader thought: the phase has already succeeded and there is nothing to run again, the pipeline
+   * has not reached it, the request has concluded, or a run of it is in flight this moment. None of
+   * those is an error — each is a sentence about a page that went stale under its reader — so they are
+   * drawn calmly in the row that was pressed rather than reported. 404 is a request, or a pipeline,
+   * that is not there at all; anything else really is a failure and reads as one.
+   */
+  async rerun(
+    repoId: string,
+    requestId: string,
+    phase: ReleasePipelinePhase,
+  ): Promise<ReleaseRequestDto> {
+    const response = await firstValueFrom(
+      this.http.post<ReleaseRequestResponse>(
+        `${this.requestBase(repoId, requestId)}/pipeline/${encodeURIComponent(phase)}/rerun`,
+        {},
+      ),
     );
     return response.request;
   }

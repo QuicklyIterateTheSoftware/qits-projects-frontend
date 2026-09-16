@@ -19,6 +19,7 @@ import type {
   CommitBuildStatusDto,
   ListCommitBuildsResponse,
   ReleaseArtifactsResponse,
+  ReleasePipelineDto,
   ReleaseRequestCommitsResponse,
   ReleaseRequestDto,
 } from '../api/dto';
@@ -673,6 +674,63 @@ describe('ReleaseRequestDetailPage', () => {
       // The fold did not move, so neither read behind it is asked for again.
       http.expectNone(COMMITS);
       http.expectNone(builds(FOLD));
+    });
+
+    /**
+     * **One element and one wiring, whichever service build answered.** The page mounts the pipeline
+     * panel and nothing else, and what gets drawn inside it is decided by whether the answer carries
+     * a `pipeline` — which is the whole reason the new panel delegates to the old one rather than the
+     * page choosing between two components. These two tests pin both halves of that from the page's
+     * side: a request with a pipeline draws the phase rows, and one without draws yesterday's gate
+     * lines, with no change to how the page wires either.
+     */
+    it('draws the phase rows for a request whose answer carries a pipeline', async () => {
+      withRepositories();
+      await open();
+      await answer(
+        request({
+          state: 'RELEASED',
+          version: '2026.904.161524',
+          pipeline: {
+            phases: [
+              { phase: 'QA', state: 'SUCCESS', runId: 'run-9', startedAt: null, finishedAt: null },
+              {
+                phase: 'PUBLISH',
+                state: 'RUNNING',
+                runId: 'run-11',
+                startedAt: '2026-09-04T16:20:00Z',
+                finishedAt: null,
+              },
+            ],
+            gates: [
+              { between: 'QA_PUBLISH', kind: 'CI', state: 'PASSED', detail: null },
+              { between: 'PUBLISH_DEPLOY', kind: 'PUBLISH', state: 'PENDING', detail: null },
+            ],
+          } satisfies ReleasePipelineDto,
+        }),
+        {},
+        null,
+        [VERDICT],
+      );
+
+      const phases = [...page().querySelectorAll('.pipeline .phase')].map(
+        (row) => row.textContent ?? '',
+      );
+      expect(phases).toHaveLength(2);
+      expect(phases[0]).toContain('✓ SUCCESS');
+      expect(phases[1]).toContain('● RUNNING');
+      expect(page().textContent).toContain('Release pipeline');
+    });
+
+    /** A service build older than the field: the gate lines, exactly as they were. */
+    it('keeps drawing the gate lines for a request that carries no pipeline', async () => {
+      withRepositories();
+      await open();
+      await answer(request({ state: 'PENDING' }), {}, null, []);
+
+      expect(page().querySelector('.pipeline')).toBeNull();
+      expect(page().querySelector('.gates')).not.toBeNull();
+      expect(page().textContent).toContain('No verdict yet');
     });
   });
 
