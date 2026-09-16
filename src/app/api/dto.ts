@@ -797,6 +797,35 @@ export interface ConflictedPathDto {
   readonly headSha: string;
   /** The git host's own word for the kind of conflict (`content`, and the merger's own reasons). */
   readonly reason: string;
+  /**
+   * What the conflicting entry **is** — `gitlink` for a submodule pin, `file` for everything else.
+   *
+   * <p>Worth its own field because the two read nothing alike: a file conflict is text somebody
+   * merges, a gitlink conflict is two shas one of which is usually simply newer. Without it both
+   * draw as a path with the word `content` beside them, which is true of the file and useless about
+   * the submodule.
+   *
+   * <p>A plain string rather than a union, for the reason every vocabulary field on these DTOs is:
+   * the service's answer may grow a third word and a build that cannot type it should still draw
+   * the row.
+   */
+  readonly kind?: string | null;
+  /**
+   * The three sides of the conflicting entry — the merge base, the target's and the head's — as
+   * 40-hex, or null where that side has none (a gitlink added on both sides has no base).
+   *
+   * <p>On a `gitlink` these are the **submodule's** commits, which is what makes them worth drawing:
+   * `headSha` above is the commit in *this* repository that introduced the row and says nothing
+   * about which pin is being asked for.
+   *
+   * <p>Optional, and all four fields above can be absent together: a conflict recorded before the
+   * service grew them has only the original four, and this SPA is routinely ahead of the service
+   * build serving it. Absent means "not said", never "none" — a row without them draws exactly as it
+   * did before.
+   */
+  readonly base?: string | null;
+  readonly ours?: string | null;
+  readonly theirs?: string | null;
 }
 
 /**
