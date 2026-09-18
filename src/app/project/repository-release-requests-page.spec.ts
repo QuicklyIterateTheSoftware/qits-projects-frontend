@@ -255,7 +255,7 @@ describe('RepositoryReleaseRequestsPage', () => {
         request({
           state: 'REJECTED',
           requester: 'dyn-workspace-601',
-          detail: 'A gating build went red',
+          detail: 'A build went red',
         }),
       ]);
 
@@ -266,7 +266,7 @@ describe('RepositoryReleaseRequestsPage', () => {
       expect(text).toContain('20c377e');
       expect(text).not.toContain('20c377ee71fabe');
       expect(text).toContain('dyn-workspace-601');
-      expect(text).toContain('A gating build went red');
+      expect(text).toContain('A build went red');
     });
 
     /**

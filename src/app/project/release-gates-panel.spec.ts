@@ -69,7 +69,6 @@ function build(overrides: Partial<CommitBuildStatusDto> = {}): CommitBuildStatus
     runId: 'run-9',
     status: 'SUCCESS',
     branch: 'release/r1',
-    gating: true,
     finishedAt: '2026-09-01T13:40:00Z',
     ...overrides,
   };
@@ -161,7 +160,6 @@ describe('ReleaseGatesPanel', () => {
 
       const verdict = element().querySelector('.verdict');
       expect(verdict?.textContent).toContain('success');
-      expect(verdict?.textContent).toContain('gating');
       expect(verdict?.textContent).toContain('release/r1');
       expect(verdict?.querySelector('a')?.getAttribute('href')).toBe(
         'https://ci.dev.example.test/runs/run-9',
@@ -180,16 +178,17 @@ describe('ReleaseGatesPanel', () => {
     });
 
     /**
-     * A repository runs pipelines that have nothing to do with releasing. A red one of those is
-     * worth showing and is *not* why the release is stuck, and saying so is the whole line.
+     * Every verdict of the fold is one the gate waits on, so a red one is drawn as a red one and
+     * nothing qualifies it. There used to be a badge here saying a verdict did not block the
+     * release; that flag is gone (ticket 9441bc6e) and so is the badge.
      */
-    it('shows a red non-gating verdict and says it does not block', async () => {
-      await mount(request(), [build({ status: 'FAILED', gating: false, runId: 'run-3' })]);
+    it('draws a red verdict as a refusal, with nothing qualifying it', async () => {
+      await mount(request(), [build({ status: 'FAILED', runId: 'run-3' })]);
 
       const verdict = element().querySelector('.verdict');
       expect(verdict?.classList).toContain('red');
       expect(verdict?.textContent).toContain('failed');
-      expect(verdict?.textContent).toContain('does not block this release');
+      expect(verdict?.textContent).not.toContain('does not block this release');
     });
 
     /** qits-ci owns the vocabulary: an unknown word is drawn as itself and read as a refusal. */

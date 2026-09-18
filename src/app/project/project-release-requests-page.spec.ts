@@ -185,7 +185,7 @@ describe('ProjectReleaseRequestsPage', () => {
       // REJECTED is open on the service (a push revives it) and settled on screen: it changes on a
       // person's action elsewhere, never on the passage of time, so watching it would be a poll
       // waiting for something no clock causes.
-      await answer([request({ state: 'REJECTED', detail: 'A gating build went red' })]);
+      await answer([request({ state: 'REJECTED', detail: 'A build went red' })]);
 
       expect(vi.getTimerCount()).toBe(0);
       await vi.advanceTimersByTimeAsync(RELEASE_REQUESTS_POLL_MS * 3);

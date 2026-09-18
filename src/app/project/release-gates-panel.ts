@@ -68,10 +68,6 @@ type Decision = 'approve' | 'decline';
  * — no terminal run has announced this fold — and it is a different fact from a red build and from a
  * fold nothing gates. A panel that drew nothing there would be read as "fine".
  *
- * <p><b>A non-gating verdict is shown and said to be non-gating.</b> A repository runs pipelines that
- * have nothing to do with releasing; a red one of those is worth seeing and is not why the release is
- * stuck, and hiding it would be as wrong as letting it look like the blocker.
- *
  * <p><b>The decision names the fold this panel was RENDERED with.</b> An approval is a statement
  * about content, so the sha travels with it, and a push that landed while the page was open is
  * answered 409 naming the fold the request is on now. That refusal is drawn here, calmly, as what it
@@ -113,11 +109,6 @@ type Decision = 'approve' | 'decline';
               @for (drawn of verdicts(); track drawn.build.runId) {
                 <li class="verdict" [class.red]="!passed(drawn.build)">
                   <span class="status">{{ word(drawn.build) }}</span>
-                  @if (drawn.build.gating) {
-                    <span class="gating">gating</span>
-                  } @else {
-                    <span class="not-gating">not gating — does not block this release</span>
-                  }
                   <span class="branch">{{ drawn.build.branch }}</span>
                   <span class="when" [title]="instant(drawn.build.finishedAt)">
                     {{ ago(drawn.build.finishedAt) }}
@@ -290,8 +281,6 @@ type Decision = 'approve' | 'decline';
     .verdict.red .status {
       color: #b91c1c;
     }
-    .gating,
-    .not-gating,
     .branch,
     .when {
       font-size: 0.8rem;

@@ -725,7 +725,7 @@ export interface SyncStatusDto {
  * - `RELEASED` — **the tag is cut, and the request is still open.** `version` is the calver it
  *   landed as, and what remains is everything the release promised: the publish run going green,
  *   the deployment going live, the tag reaching `main`.
- * - `REJECTED` — a gating build went red. The refusal stands until a push re-arms the request.
+ * - `REJECTED` — a build went red. The refusal stands until a push re-arms the request.
  * - `CONFLICTED` — the sources cannot be folded; `conflict` says which paths and whose head. The
  *   service does *not* re-fold one on its sweep, so it stands until a push changes the content.
  * - `FAILED` — the release itself did not go through; `retryable` says whether the sweep keeps
@@ -1155,10 +1155,10 @@ export interface ReleaseRequestResponse {
  * anywhere in this SPA; everything else is drawn as a refusal, which is the safe direction for a
  * word nobody here knows.
  *
- * <p>`gating` is whether this run's verdict is one the release gate actually waits on. It is not
- * decoration: a repository runs pipelines that have nothing to do with releasing, and a red one of
- * those is a fact worth showing and **not** a reason a release is stuck. A panel that drew the two
- * alike would send somebody to fix a build that was never blocking anything.
+ * <p>Every verdict here is one the release gate waits on. There used to be a `gating` flag saying
+ * otherwise — a red verdict the gate read and ignored — and it is gone (ticket 9441bc6e): a verdict
+ * that is not a verdict about the commit is not a thing any more, so a red line on this list is
+ * always a reason a release is stuck and is drawn as one.
  *
  * <p>`finishedAt` is always set, because only terminal runs are answered here — a queued or running
  * build does not appear at all, which is why an empty list means "no verdict yet" and never "no
@@ -1170,7 +1170,6 @@ export interface CommitBuildStatusDto {
   readonly status: string;
   /** The branch the run was made on, which for a release request is its backing branch. */
   readonly branch: string;
-  readonly gating: boolean;
   readonly finishedAt: string;
 }
 
@@ -1179,8 +1178,8 @@ export interface CommitBuildStatusDto {
  * keeps rather than re-sorts.
  *
  * <p>The list is deliberately not reduced to a single word on the service side, and this SPA does
- * not reduce it either: a fold can be built more than once (a re-run, a second pipeline, a gating
- * and a non-gating recipe over the same sha), and "the" status of a commit is a summary that hides
+ * not reduce it either: a fold can be built more than once (a re-run, a second pipeline, two recipes
+ * over the same sha), and "the" status of a commit is a summary that hides
  * exactly the run somebody is looking for. Each verdict is drawn as its own line, with its own link
  * into qits-ci.
  */

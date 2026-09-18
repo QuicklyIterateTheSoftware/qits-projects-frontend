@@ -740,8 +740,8 @@ export class ReleasePipelinePanel {
         return waiting
           ? '— waiting on a build of this fold'
           : tone === 'passed'
-            ? '— every gating build of this fold is green'
-            : '— a gating build of this fold went red. That is content: a push onto a ' +
+            ? '— every build of this fold is green'
+            : '— a build of this fold went red. That is content: a push onto a ' +
               'participating branch re-folds the request and asks again.';
       case 'APPROVAL':
         return '— waiting for a person';

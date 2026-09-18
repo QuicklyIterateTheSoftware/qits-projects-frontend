@@ -73,7 +73,6 @@ const VERDICT: CommitBuildStatusDto = {
   runId: 'run-9',
   status: 'SUCCESS',
   branch: 'release/r1',
-  gating: true,
   finishedAt: '2026-09-01T13:40:00Z',
 };
 
