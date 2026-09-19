@@ -41,6 +41,8 @@ function ticket(id: string, over: Partial<TicketDto> = {}): TicketDto {
     projectId: 'p1',
     title: `Ticket ${id}`,
     slug: `ticket-${id}`,
+    number: 7,
+    qualifiedId: `qits-${id}`,
     type: 'BUG',
     status: 'REPORTED',
     assignee: null,
@@ -155,20 +157,20 @@ describe('TicketsOverview', () => {
 
   /** Every card title, in the order the outstanding section draws them. */
   function cardTitles(): string[] {
-    return Array.from(element().querySelectorAll('app-ticket-card .title')).map(
+    return Array.from(element().querySelectorAll('app-entity-card .title')).map(
       (node) => node.textContent?.trim() ?? '',
     );
   }
 
   function rowTitles(): string[] {
-    return Array.from(element().querySelectorAll('app-ticket-summary-row .title')).map(
+    return Array.from(element().querySelectorAll('app-entity-summary-row .title')).map(
       (node) => node.textContent?.trim() ?? '',
     );
   }
 
   /** The action row of one ticket, addressed through the entry's own anchor. */
   function row(id: string): HTMLElement {
-    const found = element().querySelector(`#ticket-${id} app-ticket-actions`);
+    const found = element().querySelector(`#ticket-${id} app-entity-actions`);
     expect(found, `no action row on ticket ${id}`).toBeTruthy();
     return found as HTMLElement;
   }
@@ -237,18 +239,45 @@ describe('TicketsOverview', () => {
   it('draws the impetus on the card, description or no description', async () => {
     await loadBoth();
 
-    expect(element().querySelector('#ticket-a app-ticket-card .impetus')?.textContent?.trim()).toBe(
+    expect(element().querySelector('#ticket-a app-entity-card .impetus')?.textContent?.trim()).toBe(
       'Something is wrong with a.',
     );
-    expect(element().querySelector('#ticket-b app-ticket-card .impetus')?.textContent?.trim()).toBe(
+    expect(element().querySelector('#ticket-b app-entity-card .impetus')?.textContent?.trim()).toBe(
       'Something is wrong with b.',
+    );
+  });
+
+  /**
+   * The identifier is the point of the unified entity: it is what somebody writes into a commit
+   * subject, so it has to be on screen to be written. Null is the service saying it could not
+   * resolve the project, and a card that drew `null-41` would be offering something to copy that
+   * resolves to nothing.
+   */
+  it('shows the qualified id on the card, and nothing at all where there is none', async () => {
+    await mount();
+    await flushTickets([ticket('a'), ticket('b', { qualifiedId: null })]);
+
+    expect(
+      element().querySelector('#ticket-a app-entity-card .qualified')?.textContent?.trim(),
+    ).toBe('qits-a');
+    expect(element().querySelector('#ticket-b app-entity-card .qualified')).toBeNull();
+    expect(element().querySelector('#ticket-b app-entity-card')?.textContent).not.toContain('null');
+  });
+
+  /** A done ticket is in the archive, which is exactly where somebody looks a number up. */
+  it('shows the qualified id on a done row too', async () => {
+    await mount();
+    await flushTickets([ticket('z', { status: 'DONE' })]);
+
+    expect(element().querySelector('app-entity-summary-row .qualified')?.textContent?.trim()).toBe(
+      'qits-z',
     );
   });
 
   /** The dash is a fact: a ticket nobody has taken must not look like a card drawn wrong. */
   it('draws the assignee, and a dash where there is none', async () => {
     await loadBoth();
-    const assignees = Array.from(element().querySelectorAll('app-ticket-card .assignee')).map(
+    const assignees = Array.from(element().querySelectorAll('app-entity-card .assignee')).map(
       (node) => node.textContent?.trim(),
     );
 
@@ -258,7 +287,7 @@ describe('TicketsOverview', () => {
   it('renders a ticket’s description as the markdown it is written in', async () => {
     await loadBoth();
     // Addressed through the card's own anchor, which is also what an in-page link points at.
-    const card = element().querySelector('#ticket-a app-ticket-card');
+    const card = element().querySelector('#ticket-a app-entity-card');
 
     expect(card?.querySelector('.description strong')?.textContent).toBe('status page');
     expect(card?.textContent).not.toContain('**');
@@ -267,7 +296,7 @@ describe('TicketsOverview', () => {
   it('links each card at the ticket’s own address, spelled with both slugs', async () => {
     await loadBoth();
 
-    expect(element().querySelector('app-ticket-card .title')?.getAttribute('href')).toBe(
+    expect(element().querySelector('app-entity-card .title')?.getAttribute('href')).toBe(
       '/qits/tickets/ticket-b',
     );
   });
@@ -303,7 +332,7 @@ describe('TicketsOverview', () => {
     await flushTickets([]);
 
     expect(text()).toContain('This project has no tickets yet.');
-    expect(element().querySelector('app-ticket-card')).toBeNull();
+    expect(element().querySelector('app-entity-card')).toBeNull();
     expect(element().querySelector('.group')).toBeNull();
   });
 
@@ -350,9 +379,9 @@ describe('TicketsOverview', () => {
     it('offers the action on every outstanding card and on no done row', async () => {
       await loadBoth();
 
-      expect(element().querySelectorAll('app-ticket-actions').length).toBe(2);
-      expect(element().querySelector('details app-ticket-actions')).toBeNull();
-      expect(element().querySelector('app-ticket-summary-row button')).toBeNull();
+      expect(element().querySelectorAll('app-entity-actions').length).toBe(2);
+      expect(element().querySelector('details app-entity-actions')).toBeNull();
+      expect(element().querySelector('app-entity-summary-row button')).toBeNull();
     });
 
     it('posts the dispatch for the ticket pressed, with nothing in the body', async () => {
@@ -612,7 +641,7 @@ describe('TicketsOverview', () => {
       await settle();
 
       expect(text()).toContain('Could not load the tickets — 503');
-      expect(element().querySelector('app-ticket-card')).toBeNull();
+      expect(element().querySelector('app-entity-card')).toBeNull();
     });
 
     it('says it is behind only once it has been current', async () => {

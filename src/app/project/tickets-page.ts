@@ -9,11 +9,11 @@ import {
 import { RouterLink } from '@angular/router';
 import { QitsButton } from '@qits/ui-components';
 import type { TicketType } from '../api/dto';
-import { TicketsApi, type NewTicket } from '../api/tickets-api';
+import { EntitiesApi, type NewTicket } from '../api/entities-api';
 import { ProjectParam } from '../nav/project-param';
 import { IDLE, LOADING, ready, failed, type Loadable } from '../ui/loadable';
 import { RefinementPanel } from './agent/refinement-panel';
-import { IMPETUS_RULE } from './tickets-model';
+import { IMPETUS_RULE } from './entities-model';
 import { TicketsOverview } from './tickets-overview';
 
 /** The two kinds, in the order the form offers them: what is broken first, then what could be better. */
@@ -52,7 +52,7 @@ const TYPES: readonly { readonly value: TicketType; readonly label: string }[] =
  * <p><b>An empty box is left off the request entirely.</b> The service reads an absent
  * `description` or `assignee` as "nothing was said", so sending `""` would store an empty string and
  * make a ticket nobody has assigned look subtly different from one nobody has assigned. See
- * {@link ../api/tickets-api#NewTicket}.
+ * {@link ../api/entities-api#NewTicket}.
  *
  * <p><b>A create re-reads rather than splicing the new row in.</b> The server stamps the slug, the
  * principal and both timestamps, so the answer is not the row this page would have guessed — and the
@@ -245,7 +245,7 @@ const TYPES: readonly { readonly value: TicketType; readonly label: string }[] =
   `,
 })
 export class TicketsPage {
-  private readonly api = inject(TicketsApi);
+  private readonly api = inject(EntitiesApi);
   private readonly param = inject(ProjectParam);
 
   /**

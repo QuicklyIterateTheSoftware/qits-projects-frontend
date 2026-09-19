@@ -13,9 +13,9 @@ import { toSignal } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, Router, RouterLink, convertToParamMap } from '@angular/router';
 import { QitsBadge, QitsButton } from '@qits/ui-components';
 import { DossierApi, ticketDossier, type DossierOwner } from '../api/dossier-api';
-import type { TicketCommentDto, TicketDto, TicketStatus, TicketType } from '../api/dto';
+import type { TicketCommentDto, TicketStatus, TicketType } from '../api/dto';
 import { ProjectEvents } from '../api/project-events';
-import { TicketsApi, type TicketEdit } from '../api/tickets-api';
+import { EntitiesApi, type TicketEdit } from '../api/entities-api';
 import { ProjectParam } from '../nav/project-param';
 import { DossierPanel } from '../refining/dossier/dossier-panel';
 import { Async } from '../ui/async';
@@ -34,13 +34,14 @@ import {
 import { MarkdownView } from '../ui/markdown-view';
 import {
   IMPETUS_RULE,
+  entityBySlug,
   isEdited,
-  ticketBySlug,
   ticketStatusBadge,
   ticketTransitions,
   ticketTypeBadge,
   ticketsRoute,
-} from './tickets-model';
+  type TicketEntity,
+} from './entities-model';
 
 /** The two kinds, in the order the edit form offers them — the same order the create form uses. */
 const TYPES: readonly { readonly value: TicketType; readonly label: string }[] = [
@@ -142,6 +143,9 @@ interface DrawnComment {
       <div class="title-row">
         <h1>{{ row.title }}</h1>
         <span class="badges">
+          @if (row.qualifiedId; as qualified) {
+            <span class="qualified">{{ qualified }}</span>
+          }
           <qits-badge [label]="type().label" [tone]="type().tone" />
           <qits-badge [label]="status().label" [tone]="status().tone" />
         </span>
@@ -444,6 +448,15 @@ interface DrawnComment {
       font-weight: 600;
       overflow-wrap: anywhere;
     }
+    /* The one identifier a person copies off this page — into a commit subject, into a message to
+       somebody else. Selecting all of it on one click is the point; a null draws nothing at all
+       rather than a half-spelled name somebody might copy anyway. */
+    .qualified {
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 0.85rem;
+      color: #6b7280;
+      user-select: all;
+    }
     .badges {
       display: flex;
       align-items: baseline;
@@ -596,7 +609,7 @@ interface DrawnComment {
   `,
 })
 export class TicketDetailPage {
-  private readonly api = inject(TicketsApi);
+  private readonly api = inject(EntitiesApi);
   private readonly dossier = inject(DossierApi);
   private readonly events = inject(ProjectEvents);
   private readonly param = inject(ProjectParam);
@@ -621,7 +634,7 @@ export class TicketDetailPage {
   protected readonly types = TYPES;
   protected readonly impetusRule = IMPETUS_RULE;
 
-  protected readonly subject = signal<Loadable<TicketDto>>(LOADING);
+  protected readonly subject = signal<Loadable<TicketEntity>>(LOADING);
   protected readonly comments = signal<Loadable<readonly TicketCommentDto[]>>(IDLE);
 
   /**
@@ -655,7 +668,7 @@ export class TicketDetailPage {
   protected readonly commentDraft = signal('');
   protected readonly composed = signal('');
 
-  protected readonly ticket = computed<TicketDto | null>(() => {
+  protected readonly ticket = computed<TicketEntity | null>(() => {
     const state = this.subject();
     return state.kind === 'ready' ? state.value : null;
   });
@@ -783,7 +796,7 @@ export class TicketDetailPage {
     this.attempt += 1;
     const attempt = this.attempt;
     try {
-      const found = ticketBySlug(await this.api.list(projectId), slug);
+      const found = entityBySlug(await this.api.list(projectId, 'TICKET'), 'TICKET', slug);
       if (!this.newest(attempt)) {
         return;
       }

@@ -1,14 +1,22 @@
 import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
+import {
+  epicEntity,
+  ticketEntity,
+  type Archetype,
+  type Entity,
+  type FeatureNode,
+  type TicketEntity,
+} from '../project/entities-model';
 import { QITS_API_BASE } from './api-base';
+import { ProjectsApi } from './projects-api';
 import type {
   TicketAgentDispatchDto,
   TicketAgentDispatchResponse,
   TicketCommentDto,
   TicketCommentEntriesResponse,
   TicketCommentResponse,
-  TicketDto,
   TicketEntriesResponse,
   TicketResponse,
   TicketStatus,
@@ -31,6 +39,10 @@ import type {
  * oversight. The principal is stamped from the session — a client that sent one would be asserting
  * an identity it does not own — and a new ticket is `REPORTED` by definition, so offering to create
  * one further down the lifecycle would be offering to claim phases that never ran.
+ *
+ * <p><b>No `archetype` either, and that is the shape of this whole migration.</b> The route says
+ * which archetype is being opened, because the route is still `projects/{id}/tickets` — the service
+ * unified the storage and deliberately did not move the contract.
  */
 export interface NewTicket {
   readonly title: string;
@@ -75,53 +87,74 @@ export interface TicketEdit {
 }
 
 /**
- * The tickets on a project, and the conversations on them.
+ * **A project's entities**, of either archetype — and the writes that belong to the ticket one.
  *
- * <p><b>A service of its own rather than more methods on {@link ./projects-api#ProjectsApi}</b>, for
- * the reason {@link ./designs-api#DesignsApi} is one: tickets are a whole subject with ten calls and
- * two row types, and folding them into the class that already carries projects, repositories, the
- * wrapper and three levels of the plan would make that file the place everything goes. The
- * conventions are shared and nothing else is — `HttpClient` on the fetch backend, `firstValueFrom`
- * immediately, ids escaped rather than pasted, and the envelope unwrapped here so no page ever sees
- * an `entries` array.
+ * <p>This is what `TicketsApi` became. The service merged epics and tickets into one entity with an
+ * archetype and left every route, DTO field and JSON name byte-identical, so that the SPA was not
+ * forced to move in the deployment that migrated the data. That decision is the whole reason this
+ * class looks the way it does: **there is no unified list endpoint to call.** `GET …/epics` and
+ * `GET …/tickets` are still the two reads, and the unification is done here, once, on the way in.
  *
- * <p><b>Two path families, and the split is the service's.</b> A list and a create are addressed
- * under their parent — `projects/{id}/tickets`, `tickets/{id}/comments` — because that is the only
- * place the parent is known. Everything about one existing row is addressed by that row's own id at
- * the top level, `tickets/{id}` and `ticket-comments/{id}`, because an id is already unique and
- * repeating its parent in the path would be a second copy of a fact the id carries. That is the same
- * grammar the epics use (`projects/{id}/epics`, then `epics/{id}`), mirrored rather than reinvented.
+ * <p><b>{@link list} is the one read surface, and the archetype is a filter on it.</b> That is what
+ * lets both desks — and anything that comes after them — ask the same question of a project and get
+ * one collection of one type back. It is also what keeps the cost honest: a filter that names an
+ * archetype reads exactly that archetype's endpoint, so the tickets desk pays for one request the
+ * way it always did and the epics desk pays for its fan-out and nobody pays for the other's. Asking
+ * for both is two requests **in parallel**, not a request per row — the thing a "unified" read is
+ * easiest to get catastrophically wrong.
+ *
+ * <p><b>The epic fan-out lives here rather than in the panel that used to own it.</b> An epic's
+ * features and its tasks are part of the entity — a card cannot say how far along an epic is without
+ * them — so assembling one is transport's job and not a screen's. It is delegated to
+ * {@link ProjectsApi}, which already owns those three routes; duplicating them here would be a second
+ * copy of an address.
+ *
+ * <p><b>Two path families for the ticket writes, and the split is the service's.</b> A list and a
+ * create are addressed under their parent — `projects/{id}/tickets`, `tickets/{id}/comments` —
+ * because that is the only place the parent is known. Everything about one existing row is addressed
+ * by that row's own id at the top level, `tickets/{id}` and `ticket-comments/{id}`, because an id is
+ * already unique and repeating its parent in the path would be a second copy of a fact the id
+ * carries. The epics use the same grammar, mirrored rather than reinvented.
  *
  * <p><b>The deletes drop their bodies.</b> Both answer `{"success": true}`, which adds nothing a 200
- * has not already said. The callers re-read instead of splicing the row out, exactly as the
- * repository delete does: the server's list is the truth about what a project holds, and this
- * client's is a copy.
+ * has not already said. The callers re-read instead of splicing the row out: the server's list is the
+ * truth about what a project holds, and this client's is a copy.
  */
 @Injectable({ providedIn: 'root' })
-export class TicketsApi {
+export class EntitiesApi {
   private readonly http = inject(HttpClient);
   private readonly base = inject(QITS_API_BASE);
+  private readonly projects = inject(ProjectsApi);
 
   /**
-   * Every ticket in a project, in the server's order — createdAt ascending.
+   * Every entity in a project, of one archetype or of both.
    *
-   * A project with no tickets answers an empty list rather than a 404, so absence is an ordinary
-   * state and needs no translation. The grouping and the newest-first ordering are the overview's,
-   * not this method's: transport does not decide how a screen reads.
+   * <p>The filter is optional and omitting it means "everything", which is the honest default for a
+   * collection: a caller that wants one desk's rows says so, and a caller that wants the project's
+   * whole body of work does not have to name the archetypes that exist today.
+   *
+   * <p>Both reads keep the server's order — createdAt ascending — and neither is re-sorted here. The
+   * grouping and the newest-first ordering belong to the desks: transport does not decide how a
+   * screen reads. A project with no rows of an archetype answers an empty list rather than a 404, so
+   * absence needs no translation.
    */
-  async list(projectId: string): Promise<readonly TicketDto[]> {
-    const response = await firstValueFrom(
-      this.http.get<TicketEntriesResponse>(this.tickets(projectId)),
-    );
-    return response.entries.map((entry) => entry.ticket);
+  async list(projectId: string, archetype?: Archetype): Promise<readonly Entity[]> {
+    if (archetype === 'EPIC') {
+      return this.epics(projectId);
+    }
+    if (archetype === 'TICKET') {
+      return this.tickets(projectId);
+    }
+    const [epics, tickets] = await Promise.all([this.epics(projectId), this.tickets(projectId)]);
+    return [...epics, ...tickets];
   }
 
   /** Open a ticket. It is `REPORTED` and stamped with the session's principal when it answers. */
-  async create(projectId: string, ticket: NewTicket): Promise<TicketDto> {
+  async create(projectId: string, ticket: NewTicket): Promise<TicketEntity> {
     const response = await firstValueFrom(
-      this.http.post<TicketResponse>(this.tickets(projectId), ticket),
+      this.http.post<TicketResponse>(this.ticketsPath(projectId), ticket),
     );
-    return response.ticket;
+    return ticketEntity(response.ticket);
   }
 
   /**
@@ -129,19 +162,19 @@ export class TicketsApi {
    *
    * Not by slug, and there is no by-slug read on the service: the slug is the *address* grammar and
    * the id is the API's, which is the same division {@link ../nav/project-param#ProjectParam} makes
-   * one segment up. The detail page resolves the one to the other through the project's list.
+   * one segment up. The detail page resolves the one to the other through the project's collection.
    */
-  async get(ticketId: string): Promise<TicketDto> {
+  async get(ticketId: string): Promise<TicketEntity> {
     const response = await firstValueFrom(this.http.get<TicketResponse>(this.ticket(ticketId)));
-    return response.ticket;
+    return ticketEntity(response.ticket);
   }
 
   /** Change a ticket's words, its kind or who has it. See {@link TicketEdit} for the clears. */
-  async update(ticketId: string, edit: TicketEdit): Promise<TicketDto> {
+  async update(ticketId: string, edit: TicketEdit): Promise<TicketEntity> {
     const response = await firstValueFrom(
       this.http.put<TicketResponse>(this.ticket(ticketId), edit),
     );
-    return response.ticket;
+    return ticketEntity(response.ticket);
   }
 
   /**
@@ -153,14 +186,19 @@ export class TicketsApi {
    * <p><b>The service owns adjacency.</b> A target two steps away, or the status the ticket already
    * holds, answers 409 with the sentence saying so — which is what a page that has been open while
    * somebody else moved the ticket renders. The caller offers only the neighbours
-   * ({@link ../project/tickets-model#ticketTransitions}), but offering correctly is not the same as
+   * ({@link ../project/entities-model#ticketTransitions}), but offering correctly is not the same as
    * being sure, and only the server is.
+   *
+   * <p><b>This is still the single-row door.</b> The unified entity brought a multi-entity write with
+   * it — `POST /projects/api/entities/transition`, taking a map of id to target state — and nothing
+   * in this client calls it yet. It is what a "move these four" affordance will be built on; a
+   * one-row move has no business paying for a map.
    */
-  async transition(ticketId: string, target: TicketStatus): Promise<TicketDto> {
+  async transition(ticketId: string, target: TicketStatus): Promise<TicketEntity> {
     const response = await firstValueFrom(
       this.http.post<TicketResponse>(`${this.ticket(ticketId)}/transition`, { target }),
     );
-    return response.ticket;
+    return ticketEntity(response.ticket);
   }
 
   /**
@@ -224,7 +262,37 @@ export class TicketsApi {
     await firstValueFrom(this.http.delete<unknown>(this.comment(commentId)));
   }
 
-  private tickets(projectId: string): string {
+  /** The tickets of a project, as entities. One request, the envelope unwrapped here. */
+  private async tickets(projectId: string): Promise<readonly Entity[]> {
+    const response = await firstValueFrom(
+      this.http.get<TicketEntriesResponse>(this.ticketsPath(projectId)),
+    );
+    return response.entries.map((entry) => ticketEntity(entry.ticket));
+  }
+
+  /**
+   * The epics of a project, as entities, each with its features and their tasks.
+   *
+   * <p>The epics, then their features, then their tasks — each level in parallel across its parents,
+   * which is what keeps a project with twenty epics three round trips deep rather than sixty. It is
+   * a fan-out and it is the price of an archetype the service answers as three lists; the alternative
+   * is a card that claims an epic is smaller than it is.
+   */
+  private async epics(projectId: string): Promise<readonly Entity[]> {
+    const epics = await this.projects.epics(projectId);
+    return Promise.all(
+      epics.map(async (epic) => epicEntity(epic, await this.features(epic.id))),
+    );
+  }
+
+  private async features(epicId: string): Promise<readonly FeatureNode[]> {
+    const features = await this.projects.features(epicId);
+    return Promise.all(
+      features.map(async (feature) => ({ feature, tasks: await this.projects.tasks(feature.id) })),
+    );
+  }
+
+  private ticketsPath(projectId: string): string {
     return `${this.base}/projects/api/projects/${encodeURIComponent(projectId)}/tickets`;
   }
 

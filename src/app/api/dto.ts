@@ -240,6 +240,29 @@ export interface EpicDto {
   readonly title: string;
   readonly slug: string;
   readonly description: string | null;
+  /**
+   * The per-project counter the unified entity gained: 1, 2, 3… within one project, never reused.
+   *
+   * <p>It is on the wire beside `id` rather than instead of it, because the two answer different
+   * questions. The id is what an API call is addressed with and is a uuid nobody reads out loud; the
+   * number is what a person *writes* — in a commit subject, in a branch name, in a sentence to
+   * somebody else — and a counter that restarts per project is short enough to be worth writing.
+   */
+  readonly number: number;
+  /**
+   * The number as a person spells it: `<projectKey>-<number>`, so `qits-1337`.
+   *
+   * <p><b>Nullable, and null means exactly one thing</b> — the service could not resolve the owning
+   * project row, so it has no key to compose the prefix from. A client draws **nothing** for that
+   * rather than falling back to the number alone or, worse, printing `null-1337`: a half-spelled
+   * identifier is one somebody may copy, and a copied identifier that resolves to nothing is worse
+   * than an absent one.
+   *
+   * <p>Composed server-side and not here, unlike the branch names one level up. The project key is
+   * not on this row, so a client composing it would need a second read and would be free to disagree
+   * with the service about a row's own name.
+   */
+  readonly qualifiedId: string | null;
   readonly status: EpicStatus;
   /** The draft that replaced this one. Set only on a `SUPERSEDED` epic; null on every other. */
   readonly supersededByEpicId: string | null;
@@ -272,9 +295,21 @@ export interface EpicTransitionResponse {
 export interface FeatureDto {
   readonly id: string;
   readonly epicId: string;
+  /**
+   * The project this feature belongs to, carried on the row rather than reached through its epic.
+   *
+   * It arrived with the unified entity: a feature is now numbered within a project, so the project
+   * has to be on the row for the number to mean anything — and a reader that had to walk up to the
+   * epic to find out which project a feature is in would be walking a link the wire already answers.
+   */
+  readonly projectId: string;
   readonly title: string;
   readonly slug: string;
   readonly description: string | null;
+  /** The per-project counter — {@link EpicDto.number}, rule for rule. */
+  readonly number: number;
+  /** `<projectKey>-<number>`, or null. See {@link EpicDto.qualifiedId}, including why null draws nothing. */
+  readonly qualifiedId: string | null;
   readonly dependsOnFeatureId: string | null;
   /** ISO-8601 instant, or null while the feature is open. The task's twin is `implementedAt`. */
   readonly implementedOn: string | null;
@@ -287,9 +322,15 @@ export interface TaskDto {
   readonly id: string;
   readonly featureId: string;
   readonly repositoryId: string;
+  /** The project this task belongs to — {@link FeatureDto.projectId}, for the same reason. */
+  readonly projectId: string;
   readonly title: string;
   readonly slug: string;
   readonly description: string | null;
+  /** The per-project counter — {@link EpicDto.number}, rule for rule. */
+  readonly number: number;
+  /** `<projectKey>-<number>`, or null. See {@link EpicDto.qualifiedId}. */
+  readonly qualifiedId: string | null;
   readonly dependsOnTaskId: string | null;
   /** ISO-8601 instant, or null while the task is open. The feature's twin is `implementedOn`. */
   readonly implementedAt: string | null;
@@ -360,7 +401,7 @@ export type TicketType = 'BUG' | 'IMPROVEMENT';
  *
  * <p><b>Adjacent-only, in either direction, and nothing is terminal.</b> The service refuses a
  * two-step move and answers 409 to a move to the status a ticket already holds, so a page offers a
- * ticket's neighbours and nothing else — see {@link ../project/tickets-model#ticketTransitions}. A
+ * ticket's neighbours and nothing else — see {@link ../project/entities-model#ticketTransitions}. A
  * closed ticket that turns out not to be fixed walks back the same way it came rather than being
  * reopened into a state it was never in.
  */
@@ -411,6 +452,10 @@ export interface TicketDto {
   readonly projectId: string;
   readonly title: string;
   readonly slug: string;
+  /** The per-project counter — {@link EpicDto.number}. One sequence, shared with the epics. */
+  readonly number: number;
+  /** `<projectKey>-<number>`, or null. See {@link EpicDto.qualifiedId}, including why null draws nothing. */
+  readonly qualifiedId: string | null;
   readonly type: TicketType;
   readonly status: TicketStatus;
   /** Free text — whoever is looking at it. Null when nobody has said. */

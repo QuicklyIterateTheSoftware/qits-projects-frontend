@@ -73,6 +73,8 @@ function epic(id: string, slug: string, over: Partial<EpicDto> = {}): EpicDto {
     title: `Epic ${slug}`,
     slug,
     description: null,
+    number: 1,
+    qualifiedId: `qits-${id}`,
     status: 'IMPLEMENTATION',
     supersededByEpicId: null,
     createdAt: AT,
@@ -86,9 +88,12 @@ function feature(id: string, slug: string, over: Partial<FeatureDto> = {}): Feat
   return {
     id,
     epicId: 'e1',
+    projectId: 'p1',
     title: `Feature ${slug}`,
     slug,
     description: null,
+    number: 2,
+    qualifiedId: `qits-${id}`,
     dependsOnFeatureId: null,
     implementedOn: null,
     createdAt: AT,
@@ -102,9 +107,12 @@ function task(id: string, slug: string, over: Partial<TaskDto> = {}): TaskDto {
     id,
     featureId: 'f1',
     repositoryId: 'r1',
+    projectId: 'p1',
     title: `Task ${slug}`,
     slug,
     description: null,
+    number: 3,
+    qualifiedId: `qits-${id}`,
     dependsOnTaskId: null,
     implementedAt: null,
     createdAt: AT,
@@ -151,7 +159,7 @@ describe('EpicsOverview', () => {
   }
 
   async function settle(): Promise<void> {
-    for (let round = 0; round < 4; round += 1) {
+    for (let round = 0; round < 12; round += 1) {
       await Promise.resolve();
       await fixture.whenStable();
     }
@@ -296,10 +304,22 @@ describe('EpicsOverview', () => {
     await mount();
     await flushEpics([epic('e1', 'shipping', { description: 'A public **status page**.' })]);
     await flushFeatures('e1', []);
-    const card = element().querySelector('app-epic-card');
+    const card = element().querySelector('app-entity-card');
 
     expect(card?.querySelector('.summary strong')?.textContent).toBe('status page');
     expect(card?.textContent).not.toContain('**');
+  });
+
+  /** The same identifier rule one archetype over: drawn where there is one, absent where there is not. */
+  it('shows the qualified id on an epic’s card, and nothing where there is none', async () => {
+    await mount();
+    await flushEpics([epic('e1', 'shipping'), epic('e2', 'other', { qualifiedId: null })]);
+    await flushFeatures('e1', []);
+    await flushFeatures('e2', []);
+
+    expect(element().querySelector('#epic-e1 .qualified')?.textContent?.trim()).toBe('qits-e1');
+    expect(element().querySelector('#epic-e2 .qualified')).toBeNull();
+    expect(element().querySelector('#epic-e2')?.textContent).not.toContain('null');
   });
 
   it('says so plainly when the project has no epics', async () => {
@@ -307,7 +327,7 @@ describe('EpicsOverview', () => {
     await flushEpics([]);
 
     expect(text()).toContain('This project has no epics yet.');
-    expect(element().querySelector('app-epic-card')).toBeNull();
+    expect(element().querySelector('app-entity-card')).toBeNull();
   });
 
   /** One state for the whole fan-out, so one failure and one retry that starts it again. */
@@ -335,7 +355,7 @@ describe('EpicsOverview', () => {
     await settle();
 
     expect(text()).toContain('Could not load the epics — 500');
-    expect(element().querySelector('app-epic-card')).toBeNull();
+    expect(element().querySelector('app-entity-card')).toBeNull();
   });
 
   /** The instance is re-used across a project hop, so the read has to follow the input. */
@@ -372,10 +392,13 @@ describe('EpicsOverview', () => {
     it('puts every epic in exactly one section', async () => {
       await loadGroups();
 
-      expect(element().querySelectorAll('app-epic-draft-card')).toHaveLength(1);
-      // The implementation card is drawn for the running epic and the finished one.
-      expect(element().querySelectorAll('app-epic-card')).toHaveLength(2);
-      expect(element().querySelectorAll('app-epic-summary-row')).toHaveLength(2);
+      expect(element().querySelectorAll('app-entity-card app-epic-draft-card')).toHaveLength(1);
+      // One card per epic, drafts included — the archetype decides the component and the phase
+      // decides which of its renderings is drawn, so the draft is inside a card rather than beside
+      // one. The rows-and-branches body is the running epic's and the finished one's.
+      expect(element().querySelectorAll('app-entity-card')).toHaveLength(3);
+      expect(element().querySelectorAll('app-entity-card .rows')).toHaveLength(2);
+      expect(element().querySelectorAll('app-entity-summary-row')).toHaveLength(2);
     });
 
     /** The record is collapsed; the work is not, so neither is behind a click. */
@@ -414,7 +437,7 @@ describe('EpicsOverview', () => {
   describe('the draft card', () => {
     it('leads with the description and outlines the features and tasks', async () => {
       await loadGroups();
-      const draft = element().querySelector('app-epic-draft-card');
+      const draft = element().querySelector('app-entity-card app-epic-draft-card');
 
       expect(draft?.textContent).toContain('a plan still being written');
       expect(draft?.textContent).toContain('Feature draft-feature');
@@ -440,7 +463,7 @@ describe('EpicsOverview', () => {
         feature('f1', 'draft-feature', { description: 'ships **daily**' }),
       ]);
       await flushTasks('f1', []);
-      const draft = element().querySelector('app-epic-draft-card');
+      const draft = element().querySelector('app-entity-card app-epic-draft-card');
 
       expect(draft?.querySelector('h2')?.textContent).toBe('Status page');
       expect(draft?.querySelector('.description strong')?.textContent).toBe('status page');
@@ -453,7 +476,7 @@ describe('EpicsOverview', () => {
     /** Nothing is frozen and nothing is implemented, so there is no branch and no row status. */
     it('names no branches and badges no rows', async () => {
       await loadGroups();
-      const draft = element().querySelector('app-epic-draft-card');
+      const draft = element().querySelector('app-entity-card app-epic-draft-card');
 
       expect(draft?.querySelectorAll('.branch')).toHaveLength(0);
       expect(draft?.querySelectorAll('.qits-badge')).toHaveLength(1);
@@ -464,7 +487,7 @@ describe('EpicsOverview', () => {
   describe('the terminal rows', () => {
     it('draws a dropped epic as one row with a tone of its own', async () => {
       await loadGroups();
-      const rows = Array.from(element().querySelectorAll('app-epic-summary-row'));
+      const rows = Array.from(element().querySelectorAll('app-entity-summary-row'));
 
       expect(rows[1].textContent).toContain('Epic dropped');
       expect(rows[1].querySelector('.qits-badge')?.textContent?.trim()).toBe('abandoned');
@@ -569,7 +592,7 @@ describe('EpicsOverview', () => {
         'Could not move this epic — 409 an epic with no features cannot be abandoned.',
       );
       http.expectNone('/projects/api/projects/p1/epics');
-      expect(element().querySelector('app-epic-draft-card')).not.toBeNull();
+      expect(element().querySelector('app-entity-card app-epic-draft-card')).not.toBeNull();
     });
   });
 
@@ -602,7 +625,7 @@ describe('EpicsOverview', () => {
       await flushFeatures('e1', []);
 
       expect(branches()).toEqual(['epic/draft']);
-      expect(element().querySelector('app-epic-draft-card')).toBeNull();
+      expect(element().querySelector('app-entity-card app-epic-draft-card')).toBeNull();
     });
 
     it('swaps in a full-document link to the workspace the agent went to', async () => {
@@ -670,7 +693,7 @@ describe('EpicsOverview', () => {
         'Could not move this epic — 409 the project has no wrapper repository.',
       );
       http.expectNone('/projects/api/projects/p1/epics');
-      expect(element().querySelector('app-epic-draft-card')).not.toBeNull();
+      expect(element().querySelector('app-entity-card app-epic-draft-card')).not.toBeNull();
       expect(element().querySelector('#epic-e1 a.workspace')).toBeNull();
       // A second press is an ordinary one — the door adopts the workspace already on the branch.
       expect(buttonNamed('Start implementation').disabled).toBe(false);
@@ -799,7 +822,7 @@ describe('EpicsOverview', () => {
       await settle();
 
       expect(element().querySelector('#epic-e1')?.textContent).toContain('no wrapper repository');
-      expect(element().querySelector('app-epic-draft-card')).not.toBeNull();
+      expect(element().querySelector('app-entity-card app-epic-draft-card')).not.toBeNull();
     });
   });
 
@@ -899,7 +922,7 @@ describe('EpicsOverview', () => {
       await settle();
 
       expect(text()).toContain('Could not load the epics — 503');
-      expect(element().querySelector('app-epic-card')).toBeNull();
+      expect(element().querySelector('app-entity-card')).toBeNull();
     });
 
     it('says it is behind only once it has been current', async () => {

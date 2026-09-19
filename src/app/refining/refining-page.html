@@ -47,14 +47,17 @@
               (editImage)="editSketch($event)"
             />
           }
-          <app-epic-actions
-            class="resolution-actions"
-            [actions]="resolutionActions"
-            [disabled]="resolutionPending() !== null"
-            [running]="resolutionPending()"
-            [error]="resolutionFailure()"
-            (chosen)="resolveEpic($event)"
-          />
+          @if (epic(); as subject) {
+            <app-entity-actions
+              class="resolution-actions"
+              [entity]="subject"
+              [actions]="resolutionActions()"
+              [disabled]="resolutionPending() !== null"
+              [running]="resolutionPending()"
+              [error]="resolutionFailure()"
+              (chosen)="resolveEpic($event)"
+            />
+          }
         </header>
 
         <app-activity-bar

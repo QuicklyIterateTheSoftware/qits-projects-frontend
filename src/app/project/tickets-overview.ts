@@ -9,16 +9,22 @@ import {
   signal,
   untracked,
 } from '@angular/core';
-import type { TicketAgentDispatchDto, TicketDto } from '../api/dto';
+import type { TicketAgentDispatchDto } from '../api/dto';
+import { EntitiesApi } from '../api/entities-api';
 import { ProjectEvents } from '../api/project-events';
-import { TicketsApi } from '../api/tickets-api';
 import { Async } from '../ui/async';
 import { Empty } from '../ui/empty';
 import { LOADING, describeError, failed, ready, type Loadable } from '../ui/loadable';
-import { TicketActions } from './ticket-actions';
-import { TicketCard } from './ticket-card';
-import { TicketSummaryRow } from './ticket-summary-row';
-import { groupTickets, ticketAnchor } from './tickets-model';
+import { EntityActions } from './entity-actions';
+import { EntityCard } from './entity-card';
+import { EntitySummaryRow } from './entity-summary-row';
+import {
+  entityAnchor,
+  groupTickets,
+  type Entity,
+  type EntityAction,
+  type TicketEntity,
+} from './entities-model';
 
 /** Why the last dispatch on one ticket did not happen, kept beside the ticket it is about. */
 interface Failure {
@@ -28,6 +34,16 @@ interface Failure {
 
 /**
  * A project's tickets: **what is still outstanding, in lifecycle order, and what is done.**
+ *
+ * <p><b>A view over the project's entities, filtered to one archetype</b> — the epics desk's twin,
+ * and now literally so. Same {@link EntitiesApi}, same {@link Entity} type, same card, row and action
+ * components; what makes it the tickets desk is the archetype it asks for and the two sections
+ * {@link groupTickets} splits the answer into. The two desks keep their own routes and their own
+ * presence, and they stopped being backed by two models to do it.
+ *
+ * <p><b>One fetch, and still exactly one.</b> The archetype is passed to the read, so this desk asks
+ * for the tickets and pays for the tickets — it does not pay for the epics' fan-out because the
+ * collection is a shared *shape*, not a shared eager read.
  *
  * <p><b>One read, grouped, rather than one read per section.</b> The service will filter by status,
  * but two reads would be two moments — long enough for a ticket moved between them to be in both
@@ -45,17 +61,17 @@ interface Failure {
  * the done ones are a record somebody occasionally looks something up in, so they are a scannable
  * list with a link. Drawing the archive as fully as the work would bury the work under it.
  *
- * <p><b>Only the outstanding cards carry an action row</b>, the same shape the epics overview mounts
- * beside its cards: a closed ticket draws no actions — offering to put an agent on something a
- * person has already closed would be offering to reopen it sideways.
+ * <p><b>Only the outstanding cards carry an action row.</b> A closed ticket is offered nothing —
+ * that is {@link actionsFor}'s answer for a `DONE` ticket rather than this template's, because
+ * offering to put an agent on something a person has already closed would be offering to reopen it
+ * sideways, and that is a rule about tickets rather than about this screen.
  *
  * <p><b>A dispatch is not re-read, and the memory of one is now only the fast path.</b> The door
  * writes a comment and fires the `tickets` topic, so the list refreshes itself and a manual reload
  * here would be a second read of the same change. What a press answered is still kept in memory,
  * because it lands before the refreshed list does — but it is no longer the only record: each ticket
  * carries the **live workspaces working on it**, derived by the service on every read, so a reload
- * and a second tab both show the way in and neither offers a second agent. What the in-memory copy
- * buys is the seconds between the press and the hint.
+ * and a second tab both show the way in and neither offers a second agent.
  *
  * <p><b>Done opens collapsed and only when there is something in it.</b> A project that has never
  * closed a ticket should not carry an empty disclosure explaining that; a project with two hundred
@@ -80,7 +96,7 @@ interface Failure {
 @Component({
   selector: 'app-tickets-overview',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [Async, Empty, TicketActions, TicketCard, TicketSummaryRow],
+  imports: [Async, Empty, EntityActions, EntityCard, EntitySummaryRow],
   template: `
     @if (behind()) {
       <p class="behind" role="status">Live updates are reconnecting — briefly behind.</p>
@@ -94,7 +110,7 @@ interface Failure {
     />
 
     @if (loaded()) {
-      @if (rows().length === 0) {
+      @if (entities().length === 0) {
         <app-empty message="This project has no tickets yet." />
       } @else {
         <section class="group">
@@ -103,16 +119,16 @@ interface Failure {
             <app-empty message="No ticket is outstanding." />
           } @else {
             <div class="cards">
-              @for (ticket of groups().outstanding; track ticket.id) {
-                <div class="entry" [id]="anchor(ticket)">
-                  <app-ticket-card [ticket]="ticket" [projectSlug]="linkSlug()" />
-                  <app-ticket-actions
+              @for (entity of groups().outstanding; track entity.id) {
+                <div class="entry" [id]="anchor(entity)">
+                  <app-entity-card [entity]="entity" [projectSlug]="linkSlug()" />
+                  <app-entity-actions
+                    [entity]="entity"
                     [disabled]="inFlight() !== null"
-                    [busy]="running(ticket)"
-                    [error]="error(ticket)"
-                    [dispatch]="dispatch(ticket)"
-                    [workspaces]="ticket.workspaces"
-                    (assign)="assign(ticket)"
+                    [running]="running(entity)"
+                    [error]="error(entity)"
+                    [dispatch]="dispatch(entity)"
+                    (chosen)="choose(entity, $event)"
                   />
                 </div>
               }
@@ -124,10 +140,10 @@ interface Failure {
           <details class="group">
             <summary>Done ({{ groups().done.length }})</summary>
             <div class="rows">
-              @for (ticket of groups().done; track ticket.id) {
-                <app-ticket-summary-row
-                  [id]="anchor(ticket)"
-                  [ticket]="ticket"
+              @for (entity of groups().done; track entity.id) {
+                <app-entity-summary-row
+                  [id]="anchor(entity)"
+                  [entity]="entity"
                   [projectSlug]="linkSlug()"
                 />
               }
@@ -177,7 +193,7 @@ interface Failure {
   `,
 })
 export class TicketsOverview {
-  private readonly api = inject(TicketsApi);
+  private readonly api = inject(EntitiesApi);
   private readonly events = inject(ProjectEvents);
 
   readonly projectId = input.required<string>();
@@ -191,7 +207,7 @@ export class TicketsOverview {
    */
   readonly projectSlug = input<string>('');
 
-  protected readonly tickets = signal<Loadable<readonly TicketDto[]>>(LOADING);
+  protected readonly tickets = signal<Loadable<readonly Entity[]>>(LOADING);
 
   /** Which ticket a dispatch is running against, or null. One at a time, as the epics panel has it. */
   protected readonly inFlight = signal<string | null>(null);
@@ -206,12 +222,12 @@ export class TicketsOverview {
 
   protected readonly loaded = computed(() => this.tickets().kind === 'ready');
 
-  protected readonly rows = computed<readonly TicketDto[]>(() => {
+  protected readonly entities = computed<readonly Entity[]>(() => {
     const state = this.tickets();
     return state.kind === 'ready' ? state.value : [];
   });
 
-  protected readonly groups = computed(() => groupTickets(this.rows()));
+  protected readonly groups = computed(() => groupTickets(this.entities()));
 
   /** What the links are spelled with: the slug where there is one, the id until then. */
   protected readonly linkSlug = computed(() => this.projectSlug() || this.projectId());
@@ -261,21 +277,33 @@ export class TicketsOverview {
     inject(DestroyRef).onDestroy(() => this.events.close());
   }
 
-  protected anchor(ticket: TicketDto): string {
-    return ticketAnchor(ticket.id);
+  protected anchor(entity: Entity): string {
+    return entityAnchor(entity.archetype, entity.id);
   }
 
-  protected running(ticket: TicketDto): boolean {
-    return this.inFlight() === ticket.id;
+  protected running(entity: Entity): string | null {
+    return this.inFlight() === entity.id ? 'assign' : null;
   }
 
-  protected error(ticket: TicketDto): string | null {
+  protected error(entity: Entity): string | null {
     const failure = this.failure();
-    return failure?.id === ticket.id ? failure.message : null;
+    return failure?.id === entity.id ? failure.message : null;
   }
 
-  protected dispatch(ticket: TicketDto): TicketAgentDispatchDto | null {
-    return this.dispatches().get(ticket.id) ?? null;
+  protected dispatch(entity: Entity): TicketAgentDispatchDto | null {
+    return this.dispatches().get(entity.id) ?? null;
+  }
+
+  /**
+   * Do what the button asked for. A ticket has one move, so this is one branch — and it is still
+   * written as a branch on the action's discriminant rather than as an unconditional call, because
+   * the row it is wired to is the row the epics desk uses and what it emits is an
+   * {@link EntityAction}.
+   */
+  protected async choose(entity: TicketEntity, action: EntityAction): Promise<void> {
+    if (action.kind === 'assign') {
+      await this.assign(entity);
+    }
   }
 
   /**
@@ -285,8 +313,8 @@ export class TicketsOverview {
    * `tickets` topic, so the panel's own live channel brings the new list in — asking for it here as
    * well would be two reads of one change, and the second would land first as often as not.
    */
-  protected async assign(ticket: TicketDto): Promise<void> {
-    const id = ticket.id;
+  private async assign(entity: TicketEntity): Promise<void> {
+    const id = entity.id;
     this.inFlight.set(id);
     this.failure.set(null);
     try {
@@ -313,7 +341,7 @@ export class TicketsOverview {
     this.attempt += 1;
     const attempt = this.attempt;
     try {
-      const rows = await this.api.list(projectId);
+      const rows = await this.api.list(projectId, 'TICKET');
       if (this.newest(projectId, attempt)) {
         this.tickets.set(ready(rows));
       }

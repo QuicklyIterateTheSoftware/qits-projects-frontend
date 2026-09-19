@@ -11,27 +11,27 @@ import {
 } from '@angular/core';
 import { Router } from '@angular/router';
 import type { EpicAgentDispatchDto } from '../api/dto';
+import { EntitiesApi } from '../api/entities-api';
 import { ProjectEvents } from '../api/project-events';
 import { ProjectsApi } from '../api/projects-api';
 import { RefiningService } from '../refining/refining-service';
 import { Async } from '../ui/async';
 import { Empty } from '../ui/empty';
 import { LOADING, describeError, failed, ready, type Loadable } from '../ui/loadable';
-import { EpicActions } from './epic-actions';
-import { EpicCard } from './epic-card';
-import { EpicDraftCard } from './epic-draft-card';
-import { EpicSummaryRow } from './epic-summary-row';
+import { EntityActions } from './entity-actions';
+import { EntityCard } from './entity-card';
+import { EntitySummaryRow } from './entity-summary-row';
 import {
   actionKey,
-  actionsFor,
-  epicAnchor,
-  epicTitles,
+  entityAnchor,
+  entityTitles,
   groupEpics,
-  type EpicAction,
-  type EpicNode,
-} from './epics-model';
+  type Entity,
+  type EntityAction,
+  type EpicEntity,
+} from './entities-model';
 
-/** Which epic an action is running against, and which of its buttons it is. */
+/** Which entity an action is running against, and which of its buttons it is. */
 interface InFlight {
   readonly id: string;
   /**
@@ -50,11 +50,22 @@ interface Failure {
 /**
  * The epics a project is being changed by, grouped by where each one stands.
  *
- * <p><b>One state for the whole fan-out.</b> The service answers the three levels separately, so a
- * full tree is one read plus one per epic plus one per feature — but a card holding a feature whose
- * tasks are still in flight is a card that says an epic is smaller than it is. So the panel waits
- * for all of it and shows one loading state, and a failure anywhere is a failure of the panel with
- * one retry, rather than a page of half-drawn cards each offering its own.
+ * <p><b>A view over the project's entities, filtered to one archetype.</b> It reads the same
+ * {@link EntitiesApi} the tickets desk reads, holds the same {@link Entity} type, and draws the same
+ * card, row and action components — what makes it the *epics* desk is the archetype it asks for and
+ * the sections {@link groupEpics} splits the answer into. It used to be half of a parallel pair of
+ * models; the pair is gone and what is left is a filter.
+ *
+ * <p><b>One fetch, not one per entity.</b> The archetype is passed to the read, so this desk asks for
+ * the epics and pays for exactly the epics — the fan-out over features and tasks that an epic's tree
+ * needs, and nothing of the tickets desk's. A unified collection that fetched everything everywhere
+ * would have made both desks pay for both, which is the failure worth naming out loud.
+ *
+ * <p><b>One state for the whole fan-out.</b> The service answers the three levels of a plan
+ * separately, so a full tree is one read plus one per epic plus one per feature — but a card holding
+ * a feature whose tasks are still in flight is a card that says an epic is smaller than it is. So the
+ * panel waits for all of it and shows one loading state, and a failure anywhere is a failure of the
+ * panel with one retry, rather than a page of half-drawn cards each offering its own.
  *
  * <p>The read is keyed on the project id in an effect, because the sub-navigation re-uses this
  * instance across a project hop. **A late answer is dropped** rather than rendered: the fan-out is
@@ -63,8 +74,7 @@ interface Failure {
  *
  * <p><b>Grouped from the one read, never from `?status=`.</b> The filter exists on the server, but
  * asking it five times would be five moments, and one of the five groups cannot be asked for at all
- * — done is a shape of the tree rather than a value on the row. So the fan-out stays single and
- * `groupEpics` does the splitting.
+ * — done is a shape of the tree rather than a value on the row.
  *
  * <p><b>Two sections are always there, three appear only when they hold something.</b> Refining and
  * implementation are the work, so an empty one is a fact worth stating; done, superseded and
@@ -77,10 +87,10 @@ interface Failure {
  * <p><b>Start implementation is a third kind of press, and the panel remembers what it answered.</b>
  * It goes to one door that freezes the scope *and* stands a workspace with a coding agent up on the
  * wrapper's `epic/<slug>` branch, so it moves the epic (the tree is re-read) and produces an address
- * in another application (which is drawn beside the card). That memory is now only the fast path:
- * each epic carries the **live workspaces implementing it**, derived by the service on every read,
- * so a reload and a second tab both show the way in and neither offers a second agent. What the
- * in-memory copy buys is the seconds between the press and the re-read.
+ * in another application (which is drawn beside the card). That memory is only the fast path: each
+ * epic carries the **live workspaces implementing it**, derived by the service on every read, so a
+ * reload and a second tab both show the way in and neither offers a second agent. What the in-memory
+ * copy buys is the seconds between the press and the re-read.
  *
  * <p><b>One of a draft's buttons is not a transition.</b> Refine starts (or re-enters) a workspace on
  * the wrapper's `refining/<slug>` branch and navigates to it, leaving the epic exactly where it was.
@@ -103,7 +113,7 @@ interface Failure {
 @Component({
   selector: 'app-epics-overview',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [Async, Empty, EpicActions, EpicCard, EpicDraftCard, EpicSummaryRow],
+  imports: [Async, Empty, EntityActions, EntityCard, EntitySummaryRow],
   template: `
     @if (behind()) {
       <p class="behind" role="status">Live updates are reconnecting — briefly behind.</p>
@@ -117,7 +127,7 @@ interface Failure {
     />
 
     @if (loaded()) {
-      @if (nodes().length === 0) {
+      @if (entities().length === 0) {
         <app-empty message="This project has no epics yet." />
       } @else {
         <section class="group">
@@ -126,17 +136,16 @@ interface Failure {
             <app-empty message="No epic is being drafted." />
           } @else {
             <div class="cards">
-              @for (node of groups().refining; track node.epic.id) {
-                <div class="entry" [id]="anchor(node)">
-                  <app-epic-draft-card [node]="node" />
-                  <app-epic-actions
-                    [actions]="actions(node)"
+              @for (entity of groups().refining; track entity.id) {
+                <div class="entry" [id]="anchor(entity)">
+                  <app-entity-card [entity]="entity" />
+                  <app-entity-actions
+                    [entity]="entity"
                     [disabled]="inFlight() !== null"
-                    [running]="running(node)"
-                    [error]="error(node)"
-                    [dispatch]="dispatch(node)"
-                    [workspaces]="node.epic.workspaces"
-                    (chosen)="choose(node, $event)"
+                    [running]="running(entity)"
+                    [error]="error(entity)"
+                    [dispatch]="dispatch(entity)"
+                    (chosen)="choose(entity, $event)"
                   />
                 </div>
               }
@@ -150,17 +159,16 @@ interface Failure {
             <app-empty message="No epic is being implemented." />
           } @else {
             <div class="cards">
-              @for (node of groups().implementation; track node.epic.id) {
-                <div class="entry" [id]="anchor(node)">
-                  <app-epic-card [node]="node" />
-                  <app-epic-actions
-                    [actions]="actions(node)"
+              @for (entity of groups().implementation; track entity.id) {
+                <div class="entry" [id]="anchor(entity)">
+                  <app-entity-card [entity]="entity" />
+                  <app-entity-actions
+                    [entity]="entity"
                     [disabled]="inFlight() !== null"
-                    [running]="running(node)"
-                    [error]="error(node)"
-                    [dispatch]="dispatch(node)"
-                    [workspaces]="node.epic.workspaces"
-                    (chosen)="choose(node, $event)"
+                    [running]="running(entity)"
+                    [error]="error(entity)"
+                    [dispatch]="dispatch(entity)"
+                    (chosen)="choose(entity, $event)"
                   />
                 </div>
               }
@@ -172,17 +180,16 @@ interface Failure {
           <details class="group">
             <summary>Done ({{ groups().done.length }})</summary>
             <div class="cards">
-              @for (node of groups().done; track node.epic.id) {
-                <div class="entry" [id]="anchor(node)">
-                  <app-epic-card [node]="node" />
-                  <app-epic-actions
-                    [actions]="actions(node)"
+              @for (entity of groups().done; track entity.id) {
+                <div class="entry" [id]="anchor(entity)">
+                  <app-entity-card [entity]="entity" />
+                  <app-entity-actions
+                    [entity]="entity"
                     [disabled]="inFlight() !== null"
-                    [running]="running(node)"
-                    [error]="error(node)"
-                    [dispatch]="dispatch(node)"
-                    [workspaces]="node.epic.workspaces"
-                    (chosen)="choose(node, $event)"
+                    [running]="running(entity)"
+                    [error]="error(entity)"
+                    [dispatch]="dispatch(entity)"
+                    (chosen)="choose(entity, $event)"
                   />
                 </div>
               }
@@ -194,8 +201,11 @@ interface Failure {
           <details class="group">
             <summary>Superseded ({{ groups().superseded.length }})</summary>
             <div class="rows">
-              @for (node of groups().superseded; track node.epic.id) {
-                <app-epic-summary-row [node]="node" [successorTitle]="successorTitle(node)" />
+              @for (entity of groups().superseded; track entity.id) {
+                <app-entity-summary-row
+                  [entity]="entity"
+                  [successorTitle]="successorTitle(entity)"
+                />
               }
             </div>
           </details>
@@ -205,8 +215,8 @@ interface Failure {
           <details class="group">
             <summary>Abandoned ({{ groups().abandoned.length }})</summary>
             <div class="rows">
-              @for (node of groups().abandoned; track node.epic.id) {
-                <app-epic-summary-row [node]="node" />
+              @for (entity of groups().abandoned; track entity.id) {
+                <app-entity-summary-row [entity]="entity" />
               }
             </div>
           </details>
@@ -256,7 +266,8 @@ interface Failure {
   `,
 })
 export class EpicsOverview {
-  private readonly api = inject(ProjectsApi);
+  private readonly api = inject(EntitiesApi);
+  private readonly projects = inject(ProjectsApi);
   private readonly events = inject(ProjectEvents);
   private readonly refining = inject(RefiningService);
   private readonly router = inject(Router);
@@ -272,7 +283,7 @@ export class EpicsOverview {
    */
   readonly projectSlug = input<string>('');
 
-  protected readonly epics = signal<Loadable<readonly EpicNode[]>>(LOADING);
+  protected readonly epics = signal<Loadable<readonly Entity[]>>(LOADING);
 
   protected readonly inFlight = signal<InFlight | null>(null);
 
@@ -286,14 +297,14 @@ export class EpicsOverview {
 
   protected readonly loaded = computed(() => this.epics().kind === 'ready');
 
-  protected readonly nodes = computed<readonly EpicNode[]>(() => {
+  protected readonly entities = computed<readonly Entity[]>(() => {
     const state = this.epics();
     return state.kind === 'ready' ? state.value : [];
   });
 
-  protected readonly groups = computed(() => groupEpics(this.nodes()));
+  protected readonly groups = computed(() => groupEpics(this.entities()));
 
-  private readonly titles = computed(() => epicTitles(this.nodes()));
+  private readonly titles = computed(() => entityTitles(this.entities()));
 
   /** Whether the channel has ever been up. Nothing is "behind" before it has ever been current. */
   private readonly wasLive = signal(false);
@@ -340,22 +351,18 @@ export class EpicsOverview {
     inject(DestroyRef).onDestroy(() => this.events.close());
   }
 
-  protected anchor(node: EpicNode): string {
-    return epicAnchor(node.epic.id);
+  protected anchor(entity: Entity): string {
+    return entityAnchor(entity.archetype, entity.id);
   }
 
-  protected actions(node: EpicNode) {
-    return actionsFor(node.epic.status);
-  }
-
-  protected running(node: EpicNode): string | null {
+  protected running(entity: Entity): string | null {
     const flight = this.inFlight();
-    return flight?.id === node.epic.id ? flight.key : null;
+    return flight?.id === entity.id ? flight.key : null;
   }
 
-  protected error(node: EpicNode): string | null {
+  protected error(entity: Entity): string | null {
     const failure = this.failure();
-    return failure?.id === node.epic.id ? failure.message : null;
+    return failure?.id === entity.id ? failure.message : null;
   }
 
   /**
@@ -366,13 +373,13 @@ export class EpicsOverview {
    * section, and pinning the link to the refining section would make it vanish at the exact moment
    * it became useful.
    */
-  protected dispatch(node: EpicNode): EpicAgentDispatchDto | null {
-    return this.dispatches().get(node.epic.id) ?? null;
+  protected dispatch(entity: Entity): EpicAgentDispatchDto | null {
+    return this.dispatches().get(entity.id) ?? null;
   }
 
   /** The successor's title when this list holds it; null draws no link — see the row component. */
-  protected successorTitle(node: EpicNode): string | null {
-    const id = node.epic.supersededByEpicId;
+  protected successorTitle(entity: EpicEntity): string | null {
+    const id = entity.supersededByEpicId;
     return id ? (this.titles().get(id) ?? null) : null;
   }
 
@@ -384,17 +391,17 @@ export class EpicsOverview {
    * and re-reads the tree, refining leaves the epic exactly where it was and navigates away, and
    * starting implementation moves the epic *and* stands a workspace up somewhere else.
    */
-  protected async choose(node: EpicNode, action: EpicAction): Promise<void> {
-    const id = node.epic.id;
+  protected async choose(entity: EpicEntity, action: EntityAction): Promise<void> {
+    const id = entity.id;
     this.inFlight.set({ id, key: actionKey(action) });
     this.failure.set(null);
     try {
       if (action.kind === 'refine') {
-        await this.refine(node);
+        await this.refine(entity);
       } else if (action.kind === 'start') {
-        await this.start(node);
-      } else {
-        await this.api.transitionEpic(id, action.target);
+        await this.start(entity);
+      } else if (action.kind === 'transition') {
+        await this.projects.transitionEpic(id, action.target);
         await this.load();
       }
     } catch (error) {
@@ -417,9 +424,9 @@ export class EpicsOverview {
    * <p>The answer is remembered *before* the read, so the link is drawn against whichever section the
    * card lands in.
    */
-  private async start(node: EpicNode): Promise<void> {
-    const id = node.epic.id;
-    const dispatch = await this.api.dispatchEpicAgent(id);
+  private async start(entity: EpicEntity): Promise<void> {
+    const id = entity.id;
+    const dispatch = await this.projects.dispatchEpicAgent(id);
     this.dispatches.update((known) => new Map(known).set(id, dispatch));
     await this.load();
   }
@@ -433,18 +440,18 @@ export class EpicsOverview {
    * page is about to leave anyway. That is the difference from a transition, and it is why the two
    * share only the busy state and the failure.
    */
-  private async refine(node: EpicNode): Promise<void> {
-    await this.refining.open(node);
+  private async refine(entity: EpicEntity): Promise<void> {
+    await this.refining.open(entity);
     await this.router.navigate([
       this.projectSlug() || this.projectId(),
       'epics',
-      node.epic.slug,
+      entity.slug,
       'refining',
     ]);
   }
 
   /**
-   * Read the whole tree.
+   * Read the project's epics.
    *
    * A loud read blanks what is on screen first — arrival, a project hop, a retry, a transition. A
    * quiet one leaves the tree up and swaps it when the new one arrives, and leaves it up when the
@@ -458,7 +465,7 @@ export class EpicsOverview {
     this.attempt += 1;
     const attempt = this.attempt;
     try {
-      const tree = await this.read(projectId);
+      const tree = await this.api.list(projectId, 'EPIC');
       if (this.newest(projectId, attempt)) {
         this.epics.set(ready(tree));
       }
@@ -479,21 +486,5 @@ export class EpicsOverview {
    */
   private newest(projectId: string, attempt: number): boolean {
     return attempt === this.attempt && projectId === this.projectId();
-  }
-
-  /** The epics, then their features, then their tasks — each level in parallel across its parents. */
-  private async read(projectId: string): Promise<readonly EpicNode[]> {
-    const epics = await this.api.epics(projectId);
-    return Promise.all(
-      epics.map(async (epic) => ({
-        epic,
-        features: await Promise.all(
-          (await this.api.features(epic.id)).map(async (feature) => ({
-            feature,
-            tasks: await this.api.tasks(feature.id),
-          })),
-        ),
-      })),
-    );
   }
 }
