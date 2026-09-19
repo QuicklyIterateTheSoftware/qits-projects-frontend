@@ -21,6 +21,7 @@ import { LOADING, describeError, failed, ready, type Loadable } from '../ui/load
 import { EntityActions } from './entity-actions';
 import { EntityCard } from './entity-card';
 import { EntitySummaryRow } from './entity-summary-row';
+import { EntityTransitionPanel } from './entity-transition-panel';
 import {
   actionKey,
   entityAnchor,
@@ -113,7 +114,7 @@ interface Failure {
 @Component({
   selector: 'app-epics-overview',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [Async, Empty, EntityActions, EntityCard, EntitySummaryRow],
+  imports: [Async, Empty, EntityActions, EntityCard, EntitySummaryRow, EntityTransitionPanel],
   template: `
     @if (behind()) {
       <p class="behind" role="status">Live updates are reconnecting — briefly behind.</p>
@@ -147,6 +148,14 @@ interface Failure {
                     [dispatch]="dispatch(entity)"
                     (chosen)="choose(entity, $event)"
                   />
+                  @if (reshaping() === entity.id) {
+                    <app-entity-transition-panel
+                      [projectId]="projectId()"
+                      [entityId]="entity.id"
+                      (done)="reshaped()"
+                      (cancelled)="reshaping.set(null)"
+                    />
+                  }
                 </div>
               }
             </div>
@@ -170,6 +179,14 @@ interface Failure {
                     [dispatch]="dispatch(entity)"
                     (chosen)="choose(entity, $event)"
                   />
+                  @if (reshaping() === entity.id) {
+                    <app-entity-transition-panel
+                      [projectId]="projectId()"
+                      [entityId]="entity.id"
+                      (done)="reshaped()"
+                      (cancelled)="reshaping.set(null)"
+                    />
+                  }
                 </div>
               }
             </div>
@@ -191,6 +208,14 @@ interface Failure {
                     [dispatch]="dispatch(entity)"
                     (chosen)="choose(entity, $event)"
                   />
+                  @if (reshaping() === entity.id) {
+                    <app-entity-transition-panel
+                      [projectId]="projectId()"
+                      [entityId]="entity.id"
+                      (done)="reshaped()"
+                      (cancelled)="reshaping.set(null)"
+                    />
+                  }
                 </div>
               }
             </div>
@@ -288,6 +313,17 @@ export class EpicsOverview {
   protected readonly inFlight = signal<InFlight | null>(null);
 
   protected readonly failure = signal<Failure | null>(null);
+
+  /**
+   * Which epic has its reshape form open, or null — one at a time, keyed by id.
+   *
+   * <p><b>It is not the busy state and deliberately not part of it.</b> Opening the form makes no
+   * request and moves nothing, so the other cards' buttons stay live: a reader who opened the wrong
+   * one presses Cancel rather than finding the desk frozen. The panel below owns everything about the
+   * write, and this desk learns no transition rule at all — it holds an id and re-reads when it is
+   * told the write landed.
+   */
+  protected readonly reshaping = signal<string | null>(null);
 
   /**
    * Where a "Start implementation" sent an agent, by epic id — the only record there is, and it
@@ -393,6 +429,11 @@ export class EpicsOverview {
    */
   protected async choose(entity: EpicEntity, action: EntityAction): Promise<void> {
     const id = entity.id;
+    if (action.kind === 'reshape') {
+      // It opens a form and sends nothing, so it takes no busy state and clears no failure.
+      this.reshaping.set(id);
+      return;
+    }
     this.inFlight.set({ id, key: actionKey(action) });
     this.failure.set(null);
     try {
@@ -409,6 +450,19 @@ export class EpicsOverview {
     } finally {
       this.inFlight.set(null);
     }
+  }
+
+  /**
+   * A reshape landed: close the form and read the project again.
+   *
+   * <p>A full re-read rather than a splice, for a stronger version of the transition's reason. One
+   * request can promote a feature to an epic and re-shape the tasks under it, so what changed is the
+   * *shape of the tree* and not a row's status — there is no patch a panel could apply that would be
+   * anything other than a second, worse implementation of the read it is about to do anyway.
+   */
+  protected reshaped(): void {
+    this.reshaping.set(null);
+    void this.load();
   }
 
   /**

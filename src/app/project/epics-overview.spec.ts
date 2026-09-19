@@ -568,8 +568,18 @@ describe('EpicsOverview', () => {
           node.textContent?.trim(),
         );
 
-      expect(labels('#epic-e1')).toEqual(['Refine', 'Start implementation', 'Abandon']);
-      expect(labels('#epic-e2')).toEqual(['Mark implemented', 'Supersede', 'Abandon']);
+      expect(labels('#epic-e1')).toEqual([
+        'Refine',
+        'Start implementation',
+        'Abandon',
+        'Reshape',
+      ]);
+      expect(labels('#epic-e2')).toEqual([
+        'Mark implemented',
+        'Supersede',
+        'Abandon',
+        'Reshape',
+      ]);
     });
 
     /** A refused move changed nothing, so the tree stays and the server's sentence sits beside it. */

@@ -619,7 +619,7 @@ describe('entities model', () => {
      * Refine leads, and the order is the order of the work: refining is what a draft is *for*, and
      * freezing the scope is what you do when the refining is finished.
      */
-    it('offers a draft the refine, then the freeze, then the drop', () => {
+    it('offers a draft the refine, then the freeze, then the drop, then the reshape', () => {
       expect(actionsFor(epic([], { status: 'REFINING' }))).toEqual([
         { kind: 'refine', label: 'Refine', confirmLabel: null },
         { kind: 'start', label: 'Start implementation', confirmLabel: null },
@@ -629,22 +629,30 @@ describe('entities model', () => {
           label: 'Abandon',
           confirmLabel: 'Confirm abandon?',
         },
+        { kind: 'reshape', label: 'Reshape', confirmLabel: null },
       ]);
     });
 
     /**
-     * The discriminant, not the status. Refine leaves the epic exactly where it was, and starting
+     * The discriminant, not the status. Refine leaves the epic exactly where it was, starting
      * implementation does more than move it — one door freezes the scope *and* dispatches an agent —
-     * so neither carries a `target` a transition endpoint could be called with.
+     * and reshaping changes what the row *is* rather than where it stands on its own lifecycle. None
+     * of the three carries a `target` a transition endpoint could be called with.
      */
-    it('marks refine and the start as the two actions that are not transitions', () => {
-      const [refine, start, ...transitions] = actionsFor(epic([], { status: 'REFINING' }));
+    it('marks refine, the start and the reshape as the actions that are not transitions', () => {
+      const actions = actionsFor(epic([], { status: 'REFINING' }));
+      const [refine, start] = actions;
 
       expect(refine.kind).toBe('refine');
       expect(refine).not.toHaveProperty('target');
       expect(start.kind).toBe('start');
       expect(start).not.toHaveProperty('target');
-      expect(transitions.every((action) => action.kind === 'transition')).toBe(true);
+      for (const action of actions.filter((candidate) => candidate.kind !== 'transition')) {
+        expect(action).not.toHaveProperty('target');
+      }
+      expect(actions.filter((action) => action.kind === 'transition').map(actionKey)).toEqual([
+        'ABANDONED',
+      ]);
     });
 
     it('offers implementation the declaration, the supersede and the drop, and no refine', () => {
@@ -652,12 +660,16 @@ describe('entities model', () => {
         'IMPLEMENTED',
         'SUPERSEDED',
         'ABANDONED',
+        'reshape',
       ]);
     });
 
     /** A shipped epic can still be revisited — superseding is its one remaining move. */
-    it('offers an implemented epic only the supersede', () => {
-      expect(actionsFor(epic([], { status: 'IMPLEMENTED' })).map(actionKey)).toEqual(['SUPERSEDED']);
+    it('offers an implemented epic the supersede and the reshape', () => {
+      expect(actionsFor(epic([], { status: 'IMPLEMENTED' })).map(actionKey)).toEqual([
+        'SUPERSEDED',
+        'reshape',
+      ]);
     });
 
     /**
@@ -679,25 +691,60 @@ describe('entities model', () => {
       ).toBe(null);
     });
 
-    it('offers nothing on a terminal epic', () => {
-      expect(actionsFor(epic([], { status: 'SUPERSEDED' }))).toEqual([]);
-      expect(actionsFor(epic([], { status: 'ABANDONED' }))).toEqual([]);
+    /**
+     * A terminal epic has no lifecycle move left and still has a shape. A superseded plan is exactly
+     * the one somebody folds into another, and an abandoned one is the one somebody salvages a
+     * feature out of — so the one press that is about the *tree* survives the ones that are about the
+     * lifecycle.
+     */
+    it('offers a terminal epic the reshape and nothing else', () => {
+      expect(actionsFor(epic([], { status: 'SUPERSEDED' }))).toEqual([
+        { kind: 'reshape', label: 'Reshape', confirmLabel: null },
+      ]);
+      expect(actionsFor(epic([], { status: 'ABANDONED' })).map(actionKey)).toEqual(['reshape']);
     });
 
     /**
      * A ticket's one press, and it asks once: the door is find-or-create, so a second press
      * re-enters the workspace the first one made.
      */
-    it('offers an outstanding ticket the one press it has, unconfirmed', () => {
+    it('offers an outstanding ticket the dispatch and the reshape, both unconfirmed', () => {
       expect(actionsFor(ticket({ status: 'REPORTED' }))).toEqual([
         { kind: 'assign', label: 'Assign agent', confirmLabel: null },
+        { kind: 'reshape', label: 'Reshape', confirmLabel: null },
       ]);
-      expect(actionsFor(ticket({ status: 'VERIFIED' })).map(actionKey)).toEqual(['assign']);
+      expect(actionsFor(ticket({ status: 'VERIFIED' })).map(actionKey)).toEqual([
+        'assign',
+        'reshape',
+      ]);
     });
 
-    /** Putting an agent on something a person has closed would be reopening it sideways. */
-    it('offers a closed ticket nothing at all', () => {
-      expect(actionsFor(ticket({ status: 'DONE' }))).toEqual([]);
+    /**
+     * Putting an agent on something a person has closed would be reopening it sideways — so the
+     * dispatch goes and the reshape stays. Being closed says the work is finished, not that the row
+     * is the right kind of thing or in the right place.
+     */
+    it('offers a closed ticket the reshape and not the dispatch', () => {
+      expect(actionsFor(ticket({ status: 'DONE' })).map(actionKey)).toEqual(['reshape']);
+    });
+
+    /** Nothing is un-reshapeable, which is the one thing every phase of both archetypes now shares. */
+    it('offers the reshape in every phase of both archetypes', () => {
+      const phases: readonly Entity[] = [
+        epic([], { status: 'REFINING' }),
+        epic([], { status: 'IMPLEMENTATION' }),
+        epic([], { status: 'IMPLEMENTED' }),
+        epic([], { status: 'SUPERSEDED' }),
+        epic([], { status: 'ABANDONED' }),
+        ...TICKET_LIFECYCLE.map((status) => ticket({ status })),
+      ];
+
+      for (const entity of phases) {
+        const actions = actionsFor(entity);
+
+        expect(actions.map(actionKey)).toContain('reshape');
+        expect(actions[actions.length - 1].kind).toBe('reshape');
+      }
     });
   });
 
@@ -708,8 +755,9 @@ describe('entities model', () => {
         'refine',
         'start',
         'ABANDONED',
+        'reshape',
       ]);
-      expect(actionsFor(ticket()).map(actionKey)).toEqual(['assign']);
+      expect(actionsFor(ticket()).map(actionKey)).toEqual(['assign', 'reshape']);
     });
 
     /**

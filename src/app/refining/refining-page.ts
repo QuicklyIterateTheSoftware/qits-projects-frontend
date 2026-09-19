@@ -280,20 +280,34 @@ export class RefiningPage {
   private readonly transient = signal(false);
 
   /**
-   * The same moves offered on a refining epic in the project overview, minus Refine.
+   * The same moves offered on a refining epic in the project overview, minus Refine and minus
+   * Reshape.
    *
-   * <p>Refine is the one that is excluded and the filter says so directly, rather than keeping only
-   * the transitions: this page **is** the refining workspace, so offering to open it would be a
-   * button that goes where the reader already is. Start implementation stopped being a transition on
-   * 2026-09-08 without stopping being an ending, and a keep-the-transitions filter would have
-   * dropped it here silently.
+   * <p>Refine is excluded and the filter says so directly, rather than keeping only the transitions:
+   * this page **is** the refining workspace, so offering to open it would be a button that goes where
+   * the reader already is. Start implementation stopped being a transition on 2026-09-08 without
+   * stopping being an ending, and a keep-the-transitions filter would have dropped it here silently.
+   *
+   * <p>Reshape is excluded for a different reason, and it is about this room rather than about the
+   * press. Reshaping is a claim on the *project's tree* — it needs every epic, feature, task and
+   * ticket in the project as a candidate pool, because a promotion is only meaningful next to what it
+   * could sit under. This room holds one epic and nothing else, so the form would open with a parent
+   * picker that could offer nothing, and the reader would be told it was impossible when it is merely
+   * elsewhere. The two desks are where the whole project is on screen, and that is where the press
+   * lives. Named in the filter rather than folded into a "keep only the endings" rule, for exactly
+   * the reason above: a rule about which kinds end a refinement would drop the next new kind by
+   * accident, where a named exclusion has to be thought about.
    */
   /** The epic this room is about, once it has resolved — the subject the action row is drawn for. */
   protected readonly epic = computed<EpicEntity | null>(() => this.resolved()?.node ?? null);
 
   protected readonly resolutionActions = computed(() => {
     const epic = this.epic();
-    return epic ? actionsFor(epic).filter((action) => action.kind !== 'refine') : [];
+    return epic
+      ? actionsFor(epic).filter(
+          (action) => action.kind !== 'refine' && action.kind !== 'reshape',
+        )
+      : [];
   });
   protected readonly resolutionPending = signal<string | null>(null);
   protected readonly resolutionFailure = signal<string | null>(null);

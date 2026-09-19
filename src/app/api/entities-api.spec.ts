@@ -1,6 +1,7 @@
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
+import type { EntityTransitionRequest } from '../project/entity-transition-model';
 import { EntitiesApi } from './entities-api';
 import type { EpicDto, FeatureDto, TaskDto, TicketCommentDto, TicketDto } from './dto';
 
@@ -210,6 +211,63 @@ describe('EntitiesApi', () => {
 
       const rows = await answer;
       expect(rows.map((row) => row.archetype)).toEqual(['EPIC', 'TICKET']);
+    });
+  });
+
+  /**
+   * The map-shaped door, and the thing that makes it worth having beside the one-row transition: one
+   * request, one atomicity, one refusal.
+   */
+  describe('the multi-entity transition', () => {
+    const request = new Map<string, EntityTransitionRequest>([
+      ['f1', { archetype: 'EPIC', membership: { parent: null }, title: 'The transition form' }],
+      [
+        'k1',
+        { archetype: 'FEATURE', membership: { parent: 'f1' }, title: 'Draw the parent picker' },
+      ],
+    ]);
+
+    it('posts the map as an object keyed by entity id, at the entities path', async () => {
+      const answer = api.transitionEntities(request);
+      const posted = http.expectOne('/projects/api/entities/transition');
+      posted.flush({ f1: { id: 'f1', archetype: 'EPIC' }, k1: { id: 'k1', archetype: 'FEATURE' } });
+
+      expect(posted.request.method).toBe('POST');
+      expect(posted.request.body).toEqual({
+        f1: { archetype: 'EPIC', membership: { parent: null }, title: 'The transition form' },
+        k1: {
+          archetype: 'FEATURE',
+          membership: { parent: 'f1' },
+          title: 'Draw the parent picker',
+        },
+      });
+      expect([...(await answer).keys()]).toEqual(['f1', 'k1']);
+    });
+
+    /** The post-state is the answer, keyed the way the request was — the ids are the only linkage. */
+    it('answers the written post-state by id', async () => {
+      const answer = api.transitionEntities(request);
+      http
+        .expectOne('/projects/api/entities/transition')
+        .flush({ f1: { id: 'f1', archetype: 'EPIC', parent: null } });
+
+      expect((await answer).get('f1')?.archetype).toBe('EPIC');
+    });
+
+    /** A refusal is one 400 carrying every violation, and it reaches the caller unmangled. */
+    it('rejects with the service’s whole sentence when the request is refused', async () => {
+      const answer = api.transitionEntities(request);
+      http
+        .expectOne('/projects/api/entities/transition')
+        .flush(
+          { message: 'a TASK requires repository id; a EPIC has no impetus' },
+          { status: 400, statusText: 'Bad Request' },
+        );
+
+      await expect(answer).rejects.toMatchObject({
+        status: 400,
+        error: { message: 'a TASK requires repository id; a EPIC has no impetus' },
+      });
     });
   });
 

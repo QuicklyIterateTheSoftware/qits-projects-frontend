@@ -338,6 +338,52 @@ export interface TaskDto {
   readonly updatedAt: string;
 }
 
+/**
+ * **One entity as it stands after a transition wrote it** — the unified row, every archetype's fields
+ * on one record.
+ *
+ * <p>This is the only place the merged entity appears on the wire as itself. Every *read* is still
+ * archetype-shaped — `EpicDto`, `TicketDto`, `FeatureDto`, `TaskDto`, on the four routes they always
+ * had — because the service migrated the data and deliberately left the read contract byte-identical.
+ * The transition door is the one endpoint that came *after* the merge, so it answers the merged shape,
+ * and a client that flattened it back into four records would be undoing the only honest statement the
+ * wire makes about what an entity now is.
+ *
+ * <p><b>Nearly everything is nullable, and that is the archetype talking.</b> A feature has no status
+ * and a ticket has no `implementedAt`; an epic has no repository. Rather than four partial types, the
+ * record carries every property and answers null for the ones this row's archetype does not permit —
+ * which is the same statement `permitted` makes in the archetype registry, seen from the data's side.
+ *
+ * <p>`parent` and `position` are the membership as it was written. A root answers a null parent.
+ */
+export interface EntityStateDto {
+  readonly id: string;
+  readonly archetype: string;
+  readonly projectId: string;
+  /** The per-project counter — {@link EpicDto.number}. */
+  readonly number: number;
+  /** `<projectKey>-<number>`, or null. See {@link EpicDto.qualifiedId}: a null draws nothing. */
+  readonly qualifiedId: string | null;
+  readonly title: string;
+  readonly slug: string;
+  /** What the slug is unique *within* — which is why a reparent can collide on one. */
+  readonly slugScope: string | null;
+  readonly description: string | null;
+  readonly status: string | null;
+  readonly ticketType: string | null;
+  readonly impetus: string | null;
+  readonly assignee: string | null;
+  readonly createdBy: string | null;
+  readonly supersededBy: string | null;
+  readonly repositoryId: string | null;
+  readonly implementedAt: string | null;
+  readonly dependsOn: string | null;
+  readonly parent: string | null;
+  readonly position: number | null;
+  readonly createdAt: string;
+  readonly updatedAt: string;
+}
+
 /** projects' list envelope: entries, each wrapping the thing it lists. */
 export interface ProjectEntriesResponse {
   readonly entries: readonly { readonly project: ProjectDto }[];

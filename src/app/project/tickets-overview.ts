@@ -18,6 +18,7 @@ import { LOADING, describeError, failed, ready, type Loadable } from '../ui/load
 import { EntityActions } from './entity-actions';
 import { EntityCard } from './entity-card';
 import { EntitySummaryRow } from './entity-summary-row';
+import { EntityTransitionPanel } from './entity-transition-panel';
 import {
   entityAnchor,
   groupTickets,
@@ -96,7 +97,7 @@ interface Failure {
 @Component({
   selector: 'app-tickets-overview',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [Async, Empty, EntityActions, EntityCard, EntitySummaryRow],
+  imports: [Async, Empty, EntityActions, EntityCard, EntitySummaryRow, EntityTransitionPanel],
   template: `
     @if (behind()) {
       <p class="behind" role="status">Live updates are reconnecting — briefly behind.</p>
@@ -130,6 +131,14 @@ interface Failure {
                     [dispatch]="dispatch(entity)"
                     (chosen)="choose(entity, $event)"
                   />
+                  @if (reshaping() === entity.id) {
+                    <app-entity-transition-panel
+                      [projectId]="projectId()"
+                      [entityId]="entity.id"
+                      (done)="reshaped()"
+                      (cancelled)="reshaping.set(null)"
+                    />
+                  }
                 </div>
               }
             </div>
@@ -213,6 +222,15 @@ export class TicketsOverview {
   protected readonly inFlight = signal<string | null>(null);
 
   protected readonly failure = signal<Failure | null>(null);
+
+  /**
+   * Which ticket has its reshape form open, or null — one at a time, keyed by id.
+   *
+   * <p>Not part of {@link inFlight}, because opening the form sends nothing: the rest of the desk
+   * stays live, and a reader who opened the wrong card presses Cancel. Everything about the write
+   * belongs to the panel, so this desk learns no transition rule — it holds an id and re-reads.
+   */
+  protected readonly reshaping = signal<string | null>(null);
 
   /**
    * Where a press sent an agent, by ticket id — the only record there is, and it lives no longer
@@ -303,7 +321,23 @@ export class TicketsOverview {
   protected async choose(entity: TicketEntity, action: EntityAction): Promise<void> {
     if (action.kind === 'assign') {
       await this.assign(entity);
+    } else if (action.kind === 'reshape') {
+      // It opens a form and sends nothing, so it takes no busy state and clears no failure.
+      this.reshaping.set(entity.id);
     }
+  }
+
+  /**
+   * A reshape landed: close the form and read the project again.
+   *
+   * <p>The one write on this desk that **is** re-read here. A dispatch is left to the live channel
+   * because the door fires the project's `tickets` hint itself; the transition door moves rows of
+   * every archetype at once and makes no such promise about this desk's topic — and what it changed
+   * may be that the ticket is no longer a ticket, which is a row this list must stop drawing.
+   */
+  protected reshaped(): void {
+    this.reshaping.set(null);
+    void this.load();
   }
 
   /**

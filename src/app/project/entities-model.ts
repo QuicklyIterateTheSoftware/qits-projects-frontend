@@ -594,10 +594,45 @@ export interface AssignAction {
   readonly confirmLabel: null;
 }
 
+/**
+ * Change what this entity **is**, where it **sits**, or both: promote, demote, reparent.
+ *
+ * <p><b>Not a transition, and this is the furthest of the four from being one.</b> A transition moves
+ * a row along its own lifecycle and leaves it the same kind of thing in the same place. This press
+ * opens a form that may turn an epic into a ticket, a ticket into a feature, or a feature into an epic
+ * of its own with its tasks re-shaped beneath it — and it may do all of that to several rows in one
+ * atomic request. There is no `target` it could carry, because what it lands on is the whole of a
+ * form's answer rather than one status.
+ *
+ * <p><b>No confirmation, because the form *is* the confirmation.</b> Every other destructive press
+ * here asks in the button, since there is nowhere else to ask; this one opens a panel that names, per
+ * entity, exactly which properties the write will discard, and asks for a submit after that. A
+ * "Confirm reshape?" in front of it would be asking a person to agree to something they have not been
+ * shown yet.
+ *
+ * <p><b>Offered on every entity, in every phase — including the terminal ones.</b> A superseded epic
+ * is precisely the plan somebody wants to fold into another; an abandoned one is the plan somebody
+ * wants to salvage a feature out of. Reshaping does not claim the work is live, only that the tree is
+ * wrong, and that stays true after a row stops moving. It is last in every list for the same reason it
+ * is unconfirmed: it is not what a reader came to the desk to press, and putting it first would push
+ * the lifecycle moves away from the hand that is reaching for them.
+ */
+export interface ReshapeAction {
+  readonly kind: 'reshape';
+  readonly label: string;
+  readonly confirmLabel: null;
+}
+
 /** One move a reader can make on an entity, of whichever archetype. */
-export type EntityAction = TransitionAction | RefineAction | StartAction | AssignAction;
+export type EntityAction =
+  | TransitionAction
+  | RefineAction
+  | StartAction
+  | AssignAction
+  | ReshapeAction;
 
 const REFINE: RefineAction = { kind: 'refine', label: 'Refine', confirmLabel: null };
+const RESHAPE: ReshapeAction = { kind: 'reshape', label: 'Reshape', confirmLabel: null };
 const START: StartAction = {
   kind: 'start',
   label: 'Start implementation',
@@ -638,40 +673,48 @@ const ABANDON: TransitionAction = {
  * is finished. Putting the ordinary next step at the front and the ending second would make the
  * destructive-adjacent press the closest one to hand.
  *
- * <p>A ticket gets the one press it has, and a closed ticket gets none: offering to put an agent on
- * something a person has already closed would be offering to reopen it sideways. The ticket's
- * lifecycle moves are not here — they live on its detail page, where there is room to say what each
- * one claims ({@link ticketTransitions}).
+ * <p>A ticket gets the one press it has, and a closed ticket gets none of the lifecycle ones:
+ * offering to put an agent on something a person has already closed would be offering to reopen it
+ * sideways. The ticket's lifecycle moves are not here — they live on its detail page, where there is
+ * room to say what each one claims ({@link ticketTransitions}).
+ *
+ * <p><b>{@link ReshapeAction} is the one press every entity has, in every phase, and it is always
+ * last.</b> It is not a lifecycle move at all — it says the row is the wrong *kind* of thing or in the
+ * wrong place — so no status can disqualify it, and a terminal epic is exactly the one somebody wants
+ * to salvage a feature out of. No phase returns an empty list any more, which is the visible change:
+ * a superseded epic used to offer nothing, and now offers the one thing that is still true about it.
  */
 export function actionsFor(entity: Entity): readonly EntityAction[] {
   if (entity.archetype === 'TICKET') {
-    return entity.status === 'DONE' ? [] : [ASSIGN];
+    return entity.status === 'DONE' ? [RESHAPE] : [ASSIGN, RESHAPE];
   }
   switch (entity.status) {
     case 'REFINING':
-      return [REFINE, START, ABANDON];
+      return [REFINE, START, ABANDON, RESHAPE];
     case 'IMPLEMENTATION':
-      return [MARK_IMPLEMENTED, SUPERSEDE, ABANDON];
+      return [MARK_IMPLEMENTED, SUPERSEDE, ABANDON, RESHAPE];
     case 'IMPLEMENTED':
-      return [SUPERSEDE];
+      return [SUPERSEDE, RESHAPE];
     default:
-      return [];
+      return [RESHAPE];
   }
 }
 
 /**
  * What identifies one action among the row — for `track`, and for saying which button is busy.
  *
- * A transition is identified by where it goes, which is unique within a phase; the three that are not
- * transitions are identified by their own discriminant, so the key is `refine`, `start` or `assign`.
+ * A transition is identified by where it goes, which is unique within a phase; the four that are not
+ * transitions are identified by their own discriminant, so the key is `refine`, `start`, `assign` or
+ * `reshape`.
  *
- * <p><b>Total and collision-free over all four kinds, and both halves are structural rather than
+ * <p><b>Total and collision-free over all five kinds, and both halves are structural rather than
  * lucky.</b> Total: the union is discriminated, so the one branch that is not a transition covers the
- * other three together and TypeScript narrows the remaining one to something with a `target` — a fifth
- * kind would have to widen `action.kind` and would land in that same branch as its own literal, never
- * as `undefined`. Collision-free: the non-transition keys are the discriminants themselves, which are
- * lower-case, while every transition key is an `EpicStatus`, a closed screaming-case set — so no value
- * of one can ever spell a value of the other.
+ * other four together and TypeScript narrows the remaining one to something with a `target` — the
+ * fifth kind this argument predicted, {@link ReshapeAction}, widened `action.kind` and landed in that
+ * same branch as its own literal, never as `undefined`, without a line here changing. Collision-free:
+ * the non-transition keys are the discriminants themselves, which are lower-case, while every
+ * transition key is an `EpicStatus`, a closed screaming-case set — so no value of one can ever spell a
+ * value of the other, however many more of either are added.
  */
 export function actionKey(action: EntityAction): string {
   return action.kind === 'transition' ? action.target : action.kind;

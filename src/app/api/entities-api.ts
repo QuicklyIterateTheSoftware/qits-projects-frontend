@@ -9,9 +9,11 @@ import {
   type FeatureNode,
   type TicketEntity,
 } from '../project/entities-model';
+import type { EntityTransitionRequest } from '../project/entity-transition-model';
 import { QITS_API_BASE } from './api-base';
 import { ProjectsApi } from './projects-api';
 import type {
+  EntityStateDto,
   TicketAgentDispatchDto,
   TicketAgentDispatchResponse,
   TicketCommentDto,
@@ -189,16 +191,61 @@ export class EntitiesApi {
    * ({@link ../project/entities-model#ticketTransitions}), but offering correctly is not the same as
    * being sure, and only the server is.
    *
-   * <p><b>This is still the single-row door.</b> The unified entity brought a multi-entity write with
-   * it — `POST /projects/api/entities/transition`, taking a map of id to target state — and nothing
-   * in this client calls it yet. It is what a "move these four" affordance will be built on; a
-   * one-row move has no business paying for a map.
+   * <p><b>This is still the single-row door, and it stays that way.</b> The unified entity brought a
+   * multi-entity write with it — {@link transitionEntities}, taking a map of id to full target state —
+   * and the reshape panel is what calls it. A one-row lifecycle step has no business paying for a map:
+   * this door takes a target and nothing else, where that one restates every property of every row it
+   * touches. Routing a "mark verified" through the map form would make a page that only meant to move
+   * a status responsible for resending the ticket's impetus, its assignee and its kind, and would
+   * clear whichever of them it got wrong.
    */
   async transition(ticketId: string, target: TicketStatus): Promise<TicketEntity> {
     const response = await firstValueFrom(
       this.http.post<TicketResponse>(`${this.ticket(ticketId)}/transition`, { target }),
     );
     return ticketEntity(response.ticket);
+  }
+
+  /**
+   * **Restate several entities at once**, and have the service take all of it or none of it.
+   *
+   * <p><b>A map of id to that entity's whole target state, applied atomically.</b> The shape is the
+   * contract and it is the reason this exists beside {@link transition} rather than instead of it. A
+   * person splitting a feature out of an epic is promoting the feature *and* re-shaping the tasks
+   * under it, and those two writes are not independent: sent separately, one of the two orders is
+   * refused outright — a feature cannot hold a feature, so promoting the tasks first is illegal while
+   * their parent is still one — and the other order walks the plan through an arrangement nobody asked
+   * for and leaves it there if the second call fails. One request is the only expression of one
+   * intention.
+   *
+   * <p><b>PUT semantics per entry: a property the body does not carry is cleared.</b> There is no
+   * partial spelling and no paired `clear…` boolean the way {@link TicketEdit} has one, because the
+   * entry is not an edit — it is the row as it is to be. That is what makes the form's "what will be
+   * lost" warning load-bearing rather than decorative: demoting a ticket to a feature discards its
+   * status, its kind, its impetus and its assignee by *omission*, and the only place that can be
+   * noticed is before the press.
+   *
+   * <p><b>A refusal is one 400 carrying every violation, joined with `"; "`.</b> Not the first
+   * violation and not one 400 per entry — the whole request failed, so the whole reason is answered,
+   * and a reader fixing one field at a time across four round trips is a reader who gives up. The
+   * panel splits that sentence and points the fragments at the fields they name.
+   *
+   * <p>The answer is the post-state of every row written, keyed the same way the request was. It is
+   * returned rather than dropped — unlike the deletes above — because the ids are the only thing
+   * linking a reshaped row back to the entry that asked for it, and the caller re-reads the project
+   * anyway.
+   */
+  async transitionEntities(
+    request: ReadonlyMap<string, EntityTransitionRequest>,
+  ): Promise<ReadonlyMap<string, EntityStateDto>> {
+    const body = Object.fromEntries(request);
+    const response = await firstValueFrom(
+      this.http.post<Record<string, EntityStateDto>>(
+        `${this.base}/projects/api/entities/transition`,
+        body,
+      ),
+    );
+    return new Map(Object.entries(response ?? {}));
   }
 
   /**
