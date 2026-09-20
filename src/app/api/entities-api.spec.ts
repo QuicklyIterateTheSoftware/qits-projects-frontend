@@ -1,8 +1,9 @@
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
-import type { TicketCommentDto, TicketDto } from './dto';
-import { TicketsApi } from './tickets-api';
+import type { EntityTransitionRequest } from '../project/entity-transition-model';
+import { EntitiesApi } from './entities-api';
+import type { EpicDto, FeatureDto, TaskDto, TicketCommentDto, TicketDto } from './dto';
 
 const AT = '2026-09-07T09:00:00Z';
 
@@ -11,6 +12,8 @@ const ticket = (over: Partial<TicketDto> = {}): TicketDto => ({
   projectId: 'p1',
   title: 'The cancelled badge is the wrong colour',
   slug: 'the-cancelled-badge-is-the-wrong-colour',
+  number: 41,
+  qualifiedId: 'qits-41',
   type: 'BUG',
   status: 'REPORTED',
   assignee: null,
@@ -20,6 +23,55 @@ const ticket = (over: Partial<TicketDto> = {}): TicketDto => ({
   createdAt: AT,
   updatedAt: AT,
   workspaces: [],
+  ...over,
+});
+
+const epic = (over: Partial<EpicDto> = {}): EpicDto => ({
+  id: 'e1',
+  projectId: 'p1',
+  title: 'Epics on the project page',
+  slug: 'epics-overview',
+  description: null,
+  number: 12,
+  qualifiedId: 'qits-12',
+  status: 'IMPLEMENTATION',
+  supersededByEpicId: null,
+  createdAt: AT,
+  updatedAt: AT,
+  workspaces: [],
+  ...over,
+});
+
+const feature = (over: Partial<FeatureDto> = {}): FeatureDto => ({
+  id: 'f1',
+  epicId: 'e1',
+  projectId: 'p1',
+  title: 'Read the epics',
+  slug: 'read-the-epics',
+  description: null,
+  number: 13,
+  qualifiedId: 'qits-13',
+  dependsOnFeatureId: null,
+  implementedOn: null,
+  createdAt: AT,
+  updatedAt: AT,
+  ...over,
+});
+
+const task = (over: Partial<TaskDto> = {}): TaskDto => ({
+  id: 'k1',
+  featureId: 'f1',
+  repositoryId: 'r1',
+  projectId: 'p1',
+  title: 'Add the endpoints',
+  slug: 'add-the-endpoints',
+  description: null,
+  number: 14,
+  qualifiedId: 'qits-14',
+  dependsOnTaskId: null,
+  implementedAt: null,
+  createdAt: AT,
+  updatedAt: AT,
   ...over,
 });
 
@@ -33,8 +85,21 @@ const comment = (over: Partial<TicketCommentDto> = {}): TicketCommentDto => ({
   ...over,
 });
 
+/** Let the fan-out's `async` frames land between one level of the plan and the next. */
+const settle = async () => {
+  for (let turn = 0; turn < 12; turn += 1) {
+    await Promise.resolve();
+  }
+};
+
 /**
- * The tickets' transport, and the three things about it that are easy to get wrong.
+ * The entities' transport, and the four things about it that are easy to get wrong.
+ *
+ * **The archetype is a filter on one read, and it decides which endpoints are called at all.** There
+ * is no unified list on the wire — the service kept the contract byte-identical through the
+ * migration — so this class is where "the project's entities" is assembled out of `…/epics` and
+ * `…/tickets`. A filter that read both regardless would make each desk pay for the other's fan-out,
+ * and a fan-out issued per row rather than per level would turn one screen into dozens of requests.
  *
  * **Two path families.** A list and a create hang under their parent, because that is the only place
  * the parent is known; everything about an existing row is addressed by that row's own id at the top
@@ -49,32 +114,44 @@ const comment = (over: Partial<TicketCommentDto> = {}): TicketCommentDto => ({
  * absent field as untouched, so "empty this" needs a spelling of its own; a body that sent
  * `description: ''` would store an empty string where the reader meant nothing.
  */
-describe('TicketsApi', () => {
-  let api: TicketsApi;
+describe('EntitiesApi', () => {
+  let api: EntitiesApi;
   let http: HttpTestingController;
 
   beforeEach(() => {
     TestBed.configureTestingModule({
       providers: [provideHttpClient(), provideHttpClientTesting()],
     });
-    api = TestBed.inject(TicketsApi);
+    api = TestBed.inject(EntitiesApi);
     http = TestBed.inject(HttpTestingController);
   });
 
   afterEach(() => http.verify());
 
-  describe('the tickets', () => {
-    it('lists a project’s tickets, unwrapped out of the entries envelope', async () => {
-      const answer = api.list('p1');
+  describe('the one read, filtered by archetype', () => {
+    it('lists a project’s tickets as entities, unwrapped and stamped TICKET', async () => {
+      const answer = api.list('p1', 'TICKET');
       const request = http.expectOne('/projects/api/projects/p1/tickets');
       request.flush({ entries: [{ ticket: ticket() }, { ticket: ticket({ id: 't2' }) }] });
 
       expect(request.request.method).toBe('GET');
-      expect(await answer).toEqual([ticket(), ticket({ id: 't2' })]);
+      const rows = await answer;
+      expect(rows.map((row) => row.archetype)).toEqual(['TICKET', 'TICKET']);
+      expect(rows.map((row) => row.id)).toEqual(['t1', 't2']);
+      expect(rows[0].qualifiedId).toBe('qits-41');
     });
 
-    it('answers an empty list for a project with no tickets, rather than translating a 404', async () => {
-      const answer = api.list('p1');
+    /** Asking for tickets must not touch the epics' three routes. `http.verify()` is the assertion. */
+    it('reads nothing but the tickets when the tickets are what was asked for', async () => {
+      const answer = api.list('p1', 'TICKET');
+      http.expectOne('/projects/api/projects/p1/tickets').flush({ entries: [] });
+
+      expect(await answer).toEqual([]);
+      expect(http.match('/projects/api/projects/p1/epics')).toEqual([]);
+    });
+
+    it('answers an empty list for a project with none, rather than translating a 404', async () => {
+      const answer = api.list('p1', 'TICKET');
       http.expectOne('/projects/api/projects/p1/tickets').flush({ entries: [] });
 
       expect(await answer).toEqual([]);
@@ -82,13 +159,120 @@ describe('TicketsApi', () => {
 
     /** Project ids reach this from a URL, so one that needs escaping has to survive the trip. */
     it('escapes the project id rather than pasting it into the path', async () => {
-      const answer = api.list('a/b');
+      const answer = api.list('a/b', 'TICKET');
       http.expectOne('/projects/api/projects/a%2Fb/tickets').flush({ entries: [] });
 
       await answer;
     });
 
-    it('posts a new ticket under its project and answers the row', async () => {
+    /**
+     * An epic is a tree, so its entity carries the whole fan-out — and the fan-out is a request per
+     * *level*, in parallel across the parents, rather than a request per row in series.
+     */
+    it('assembles an epic with its features and their tasks, as one entity', async () => {
+      const answer = api.list('p1', 'EPIC');
+      http.expectOne('/projects/api/projects/p1/epics').flush({ entries: [{ epic: epic() }] });
+      await settle();
+      http
+        .expectOne('/projects/api/epics/e1/features')
+        .flush({ entries: [{ feature: feature() }] });
+      await settle();
+      http.expectOne('/projects/api/features/f1/tasks').flush({ entries: [{ task: task() }] });
+
+      const [entity] = await answer;
+      expect(entity.archetype).toBe('EPIC');
+      expect(entity.id).toBe('e1');
+      expect(entity.qualifiedId).toBe('qits-12');
+      expect(entity.archetype === 'EPIC' && entity.features).toHaveLength(1);
+      expect(entity.archetype === 'EPIC' && entity.features[0].tasks[0].id).toBe('k1');
+    });
+
+    /** Asking for epics must not read the tickets either — the filter cuts both ways. */
+    it('reads nothing but the plan when the epics are what was asked for', async () => {
+      const answer = api.list('p1', 'EPIC');
+      http.expectOne('/projects/api/projects/p1/epics').flush({ entries: [] });
+
+      expect(await answer).toEqual([]);
+      expect(http.match('/projects/api/projects/p1/tickets')).toEqual([]);
+    });
+
+    /**
+     * No filter means everything, and the two reads go out **together**: a caller asking for the
+     * project's whole body of work pays two round trips, not one per row and not one after the other.
+     */
+    it('reads both archetypes in parallel when no archetype is named', async () => {
+      const answer = api.list('p1');
+      const epics = http.expectOne('/projects/api/projects/p1/epics');
+      const tickets = http.expectOne('/projects/api/projects/p1/tickets');
+      epics.flush({ entries: [{ epic: epic() }] });
+      tickets.flush({ entries: [{ ticket: ticket() }] });
+      await settle();
+      http.expectOne('/projects/api/epics/e1/features').flush({ entries: [] });
+
+      const rows = await answer;
+      expect(rows.map((row) => row.archetype)).toEqual(['EPIC', 'TICKET']);
+    });
+  });
+
+  /**
+   * The map-shaped door, and the thing that makes it worth having beside the one-row transition: one
+   * request, one atomicity, one refusal.
+   */
+  describe('the multi-entity transition', () => {
+    const request = new Map<string, EntityTransitionRequest>([
+      ['f1', { archetype: 'EPIC', membership: { parent: null }, title: 'The transition form' }],
+      [
+        'k1',
+        { archetype: 'FEATURE', membership: { parent: 'f1' }, title: 'Draw the parent picker' },
+      ],
+    ]);
+
+    it('posts the map as an object keyed by entity id, at the entities path', async () => {
+      const answer = api.transitionEntities(request);
+      const posted = http.expectOne('/projects/api/entities/transition');
+      posted.flush({ f1: { id: 'f1', archetype: 'EPIC' }, k1: { id: 'k1', archetype: 'FEATURE' } });
+
+      expect(posted.request.method).toBe('POST');
+      expect(posted.request.body).toEqual({
+        f1: { archetype: 'EPIC', membership: { parent: null }, title: 'The transition form' },
+        k1: {
+          archetype: 'FEATURE',
+          membership: { parent: 'f1' },
+          title: 'Draw the parent picker',
+        },
+      });
+      expect([...(await answer).keys()]).toEqual(['f1', 'k1']);
+    });
+
+    /** The post-state is the answer, keyed the way the request was — the ids are the only linkage. */
+    it('answers the written post-state by id', async () => {
+      const answer = api.transitionEntities(request);
+      http
+        .expectOne('/projects/api/entities/transition')
+        .flush({ f1: { id: 'f1', archetype: 'EPIC', parent: null } });
+
+      expect((await answer).get('f1')?.archetype).toBe('EPIC');
+    });
+
+    /** A refusal is one 400 carrying every violation, and it reaches the caller unmangled. */
+    it('rejects with the service’s whole sentence when the request is refused', async () => {
+      const answer = api.transitionEntities(request);
+      http
+        .expectOne('/projects/api/entities/transition')
+        .flush(
+          { message: 'a TASK requires repository id; a EPIC has no impetus' },
+          { status: 400, statusText: 'Bad Request' },
+        );
+
+      await expect(answer).rejects.toMatchObject({
+        status: 400,
+        error: { message: 'a TASK requires repository id; a EPIC has no impetus' },
+      });
+    });
+  });
+
+  describe('the ticket writes', () => {
+    it('posts a new ticket under its project and answers the entity', async () => {
       const answer = api.create('p1', {
         title: 'The cancelled badge is the wrong colour',
         impetus: 'The badge reads as success when a run is cancelled.',
@@ -108,6 +292,7 @@ describe('TicketsApi', () => {
         assignee: 'kim',
       });
       expect((await answer).id).toBe('t1');
+      expect((await answer).archetype).toBe('TICKET');
     });
 
     /** Absence is what says "nothing was said" — an empty string would be a stored empty string. */
@@ -137,7 +322,7 @@ describe('TicketsApi', () => {
       expect((await answer).slug).toBe('the-cancelled-badge-is-the-wrong-colour');
     });
 
-    it('puts an edit and answers the row it came back as', async () => {
+    it('puts an edit and answers the entity it came back as', async () => {
       const answer = api.update('t1', { title: 'Renamed', type: 'IMPROVEMENT' });
       const request = http.expectOne('/projects/api/tickets/t1');
       request.flush({ ticket: ticket({ title: 'Renamed', type: 'IMPROVEMENT' }) });
@@ -175,6 +360,19 @@ describe('TicketsApi', () => {
 
       expect(request.request.body).toEqual({ target: 'VERIFIED' });
       expect((await answer).status).toBe('VERIFIED');
+    });
+
+    /**
+     * The single-row door, and it stays single. The unified entity brought
+     * `POST /projects/api/entities/transition` with it — a map of id to target state — and nothing in
+     * this client calls it yet: a one-row move has no business paying for a map.
+     */
+    it('addresses one ticket rather than the multi-entity transition', async () => {
+      const answer = api.transition('t1', 'REFINED');
+      http.expectOne('/projects/api/tickets/t1/transition').flush({ ticket: ticket() });
+
+      await answer;
+      expect(http.match('/projects/api/entities/transition')).toEqual([]);
     });
 
     /** Nothing is sent: the ticket is in the path and the principal is in the session. */

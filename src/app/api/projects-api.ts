@@ -202,7 +202,7 @@ export class ProjectsApi {
    * Start implementing an epic: freeze the scope **and** stand a workspace and a coding agent up on
    * the wrapper's `epic/<slug>` branch, in one press. Answers where they went.
    *
-   * <p>A POST to a verb with **no body at all**, the same shape {@link ./tickets-api#TicketsApi}'s
+   * <p>A POST to a verb with **no body at all**, the same shape {@link ./entities-api#EntitiesApi}'s
    * `dispatchAgent` has: everything the door needs is the epic, which the path already names, and
    * the principal, which the session stamps. The `{}` is Angular's way of spelling an empty POST.
    *

@@ -1,7 +1,7 @@
 import { Injectable, inject } from '@angular/core';
 import { ProjectsApi } from '../api/projects-api';
 import { RefinementsApi, type RefinementDto } from '../api/refinements-api';
-import type { EpicNode } from '../project/epics-model';
+import { epicEntity, type EpicEntity, type FeatureNode } from '../project/entities-model';
 
 /**
  * Starting and finding the refinement an epic is refined in.
@@ -30,8 +30,8 @@ export class RefiningService {
   }
 
   /** Find the epic's refinement or make one — the server cuts or adopts the branch either way. */
-  async open(node: EpicNode): Promise<RefinementDto> {
-    return this.refinements.open(node.epic.id);
+  async open(entity: EpicEntity): Promise<RefinementDto> {
+    return this.refinements.open(entity.id);
   }
 
   /** The same flow, from a slug alone — what the refining page's own create offer presses. */
@@ -46,21 +46,19 @@ export class RefiningService {
    * identity the branch name is composed from, so a refining page addressed by it names the same
    * branch the epics overview would.
    */
-  async node(projectId: string, epicSlug: string): Promise<EpicNode> {
+  async node(projectId: string, epicSlug: string): Promise<EpicEntity> {
     const epics = await this.projects.epics(projectId);
     const epic = epics.find((candidate) => candidate.slug === epicSlug);
     if (!epic) {
       throw new Error(`this project has no epic called “${epicSlug}”`);
     }
     const features = await this.projects.features(epic.id);
-    return {
-      epic,
-      features: await Promise.all(
-        features.map(async (feature) => ({
-          feature,
-          tasks: await this.projects.tasks(feature.id),
-        })),
-      ),
-    };
+    const children: readonly FeatureNode[] = await Promise.all(
+      features.map(async (feature) => ({
+        feature,
+        tasks: await this.projects.tasks(feature.id),
+      })),
+    );
+    return epicEntity(epic, children);
   }
 }

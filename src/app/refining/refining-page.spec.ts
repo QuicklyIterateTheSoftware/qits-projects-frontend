@@ -32,10 +32,13 @@ const EPIC = {
   title: 'Epic refining workspace',
   slug: 'epic-refining-workspace',
   description: 'a third action on a **draft**',
+  number: 5,
+  qualifiedId: 'qits-5',
   status: 'REFINING',
   supersededByEpicId: null,
   createdAt: AT,
   updatedAt: AT,
+  workspaces: [],
 };
 
 const workspace = (over: Partial<RefinementDto> = {}): RefinementDto => ({
@@ -322,7 +325,7 @@ describe('RefiningPage', () => {
     it('puts the implementation and abandonment decisions directly below the epic', async () => {
       await open();
 
-      const actions = element().querySelector('.head app-epic-actions');
+      const actions = element().querySelector('.head app-entity-actions');
       expect(actions).not.toBeNull();
       expect(actions?.textContent).toContain('Start implementation');
       expect(actions?.textContent).toContain('Abandon');
@@ -778,10 +781,7 @@ describe('RefiningPage', () => {
       page()['subject'].set(
         ready({
           ...page()['resolved']()!,
-          node: {
-            ...page()['resolved']()!.node,
-            epic: { ...page()['resolved']()!.node.epic, title: 'Sharper onboarding' },
-          },
+          node: { ...page()['resolved']()!.node, title: 'Sharper onboarding' },
         }),
       );
       harness.detectChanges();

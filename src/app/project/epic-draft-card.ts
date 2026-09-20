@@ -1,7 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, input } from '@angular/core';
 import { QitsBadge, QitsCard } from '@qits/ui-components';
 import { MarkdownView } from '../ui/markdown-view';
-import { epicBadge, type EpicNode } from './epics-model';
+import { entityBadge, type EpicEntity } from './entities-model';
 
 /** What a draft with nothing written in it says, rather than leaving the space blank. */
 const NO_DESCRIPTION = 'This draft has no description yet.';
@@ -41,22 +41,25 @@ const NO_FEATURES = 'No features drafted yet.';
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [MarkdownView, QitsBadge, QitsCard],
   template: `
-    <qits-card [heading]="node().epic.title">
+    <qits-card [heading]="entity().title">
       <span qitsCardActions>
+        @if (entity().qualifiedId; as qualified) {
+          <span class="qualified">{{ qualified }}</span>
+        }
         <qits-badge [label]="badge().label" [tone]="badge().tone" />
       </span>
 
-      @if (node().epic.description; as text) {
+      @if (entity().description; as text) {
         <app-markdown class="description" [text]="text" />
       } @else {
         <p class="description absent">{{ noDescription }}</p>
       }
 
-      @if (node().features.length === 0) {
+      @if (entity().features.length === 0) {
         <p class="absent">{{ noFeatures }}</p>
       } @else {
         <ul class="outline">
-          @for (child of node().features; track child.feature.id) {
+          @for (child of entity().features; track child.feature.id) {
             <li class="feature">
               <span class="title">{{ child.feature.title }}</span>
               @if (child.feature.description; as note) {
@@ -88,6 +91,13 @@ const NO_FEATURES = 'No features drafted yet.';
       border: 1px dashed #c4b5fd;
       border-radius: 13px;
       background: #faf5ff;
+    }
+    /* The one identifier a person copies — see {@link ./entity-card#EntityCard}. */
+    .qualified {
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 0.8rem;
+      color: #6b7280;
+      user-select: all;
     }
     .description {
       margin: 0 0 0.6rem;
@@ -130,11 +140,11 @@ const NO_FEATURES = 'No features drafted yet.';
   `,
 })
 export class EpicDraftCard {
-  readonly node = input.required<EpicNode>();
+  readonly entity = input.required<EpicEntity>();
 
   protected readonly noFeatures = NO_FEATURES;
   protected readonly noDescription = NO_DESCRIPTION;
 
   /** Always the lifecycle here — a draft has nothing implemented to derive a badge from. */
-  protected readonly badge = computed(() => epicBadge(this.node()));
+  protected readonly badge = computed(() => entityBadge(this.entity()));
 }

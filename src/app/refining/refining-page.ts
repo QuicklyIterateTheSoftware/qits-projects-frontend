@@ -18,15 +18,16 @@ import { WorkspaceEvents, anyOf } from '../api/workspace-events';
 import { ProjectsApi } from '../api/projects-api';
 import { RefinementsApi, type RefinementDto } from '../api/refinements-api';
 import { ProjectParam } from '../nav/project-param';
-import { EpicActions } from '../project/epic-actions';
+import { EntityActions } from '../project/entity-actions';
 import {
   actionKey,
   actionsFor,
+  epicEntity,
   refiningBranch,
   refiningEpicSlug,
-  type EpicAction,
-  type EpicNode,
-} from '../project/epics-model';
+  type EntityAction,
+  type EpicEntity,
+} from '../project/entities-model';
 import { Async } from '../ui/async';
 import {
   IDLE,
@@ -94,7 +95,7 @@ function speaking(state: Loadable<unknown>): boolean {
 /** What the page had to resolve before it could show anything: the epic. */
 interface Subject {
   /** The epic, so the header can name it and the refining route can address its refinement. */
-  readonly node: EpicNode;
+  readonly node: EpicEntity;
 }
 
 /**
@@ -178,7 +179,7 @@ interface Subject {
     ChatPanel,
     DesignPanel,
     DossierPanel,
-    EpicActions,
+    EntityActions,
     EpicDocument,
     FilesPanel,
     PanelPlaceholder,
@@ -279,17 +280,35 @@ export class RefiningPage {
   private readonly transient = signal(false);
 
   /**
-   * The same moves offered on a refining epic in the project overview, minus Refine.
+   * The same moves offered on a refining epic in the project overview, minus Refine and minus
+   * Reshape.
    *
-   * <p>Refine is the one that is excluded and the filter says so directly, rather than keeping only
-   * the transitions: this page **is** the refining workspace, so offering to open it would be a
-   * button that goes where the reader already is. Start implementation stopped being a transition on
-   * 2026-09-08 without stopping being an ending, and a keep-the-transitions filter would have
-   * dropped it here silently.
+   * <p>Refine is excluded and the filter says so directly, rather than keeping only the transitions:
+   * this page **is** the refining workspace, so offering to open it would be a button that goes where
+   * the reader already is. Start implementation stopped being a transition on 2026-09-08 without
+   * stopping being an ending, and a keep-the-transitions filter would have dropped it here silently.
+   *
+   * <p>Reshape is excluded for a different reason, and it is about this room rather than about the
+   * press. Reshaping is a claim on the *project's tree* — it needs every epic, feature, task and
+   * ticket in the project as a candidate pool, because a promotion is only meaningful next to what it
+   * could sit under. This room holds one epic and nothing else, so the form would open with a parent
+   * picker that could offer nothing, and the reader would be told it was impossible when it is merely
+   * elsewhere. The two desks are where the whole project is on screen, and that is where the press
+   * lives. Named in the filter rather than folded into a "keep only the endings" rule, for exactly
+   * the reason above: a rule about which kinds end a refinement would drop the next new kind by
+   * accident, where a named exclusion has to be thought about.
    */
-  protected readonly resolutionActions = actionsFor('REFINING').filter(
-    (action) => action.kind !== 'refine',
-  );
+  /** The epic this room is about, once it has resolved — the subject the action row is drawn for. */
+  protected readonly epic = computed<EpicEntity | null>(() => this.resolved()?.node ?? null);
+
+  protected readonly resolutionActions = computed(() => {
+    const epic = this.epic();
+    return epic
+      ? actionsFor(epic).filter(
+          (action) => action.kind !== 'refine' && action.kind !== 'reshape',
+        )
+      : [];
+  });
   protected readonly resolutionPending = signal<string | null>(null);
   protected readonly resolutionFailure = signal<string | null>(null);
 
@@ -355,8 +374,8 @@ export class RefiningPage {
       }
       const subject = this.resolved();
       const belongsToRoute =
-        subject?.node.epic.projectId === this.projectId() &&
-        subject.node.epic.slug === this.epicSlug();
+        subject?.node.projectId === this.projectId() &&
+        subject.node.slug === this.epicSlug();
       const workspace = belongsToRoute ? this.workspace() : null;
       if (!workspace || this.autoContainerWorkspaceId === workspace.id) return;
       this.autoContainerWorkspaceId = workspace.id;
@@ -412,7 +431,7 @@ export class RefiningPage {
   /** Both live on the refinement row now — the wrapper is the server's business. */
   protected readonly repositoryId = computed(() => this.workspace()?.repositoryId ?? '');
   protected readonly mainBranch = computed(() => this.workspace()?.parent ?? '');
-  protected readonly title = computed(() => this.resolved()?.node.epic.title ?? this.epicSlug());
+  protected readonly title = computed(() => this.resolved()?.node.title ?? this.epicSlug());
 
   /**
    * The one line of context the prompt-rewrite helper is given — what this chat is about, and
@@ -431,7 +450,7 @@ export class RefiningPage {
    * word would be two names for one thing.
    */
   protected readonly promptContext = computed(() => `# Refine: ${this.title()}`);
-  protected readonly description = computed(() => this.resolved()?.node.epic.description ?? '');
+  protected readonly description = computed(() => this.resolved()?.node.description ?? '');
 
   /**
    * The workspace this page is about: the one whose branch is `refining/<epicSlug>`.
@@ -743,17 +762,20 @@ export class RefiningPage {
     const current = this.resolved();
     if (!current) return;
     const description = insertImageAt(
-      current.node.epic.description ?? '',
+      current.node.description ?? '',
       insertion.line,
       this.workspaceRowId(),
       insertion.attachment,
     );
     const epic = await this.projects.updateEpic(
-      current.node.epic.id,
-      current.node.epic.title,
+      current.node.id,
+      current.node.title,
       description,
     );
-    this.subject.set(ready({ ...current, node: { ...current.node, epic } }));
+    // The answer is the wire row; the subject is an entity, so it is stamped back through the model
+    // rather than spread in. The features the page already has stay — an epic update never touches
+    // them, and re-reading the fan-out to redraw one image would be three round trips for a string.
+    this.subject.set(ready({ ...current, node: epicEntity(epic, current.node.features) }));
   }
 
   /**
@@ -834,20 +856,20 @@ export class RefiningPage {
    * the board draws: this screen is about to stop existing. A reader who wants the address presses
    * Start implementation again there, which adopts the workspace this press just made.
    */
-  protected async resolveEpic(action: EpicAction): Promise<void> {
+  protected async resolveEpic(action: EntityAction): Promise<void> {
     if (action.kind === 'refine' || this.resolutionPending()) return;
     const current = this.resolved();
     // The refinement row is no longer needed to resolve — the service finds it by epic — so a page
     // whose row has already gone can still take the epic to its terminal status.
     if (!current) return;
 
-    const epicId = current.node.epic.id;
+    const epicId = current.node.id;
     this.resolutionPending.set(actionKey(action));
     this.resolutionFailure.set(null);
     try {
       if (action.kind === 'start') {
         await this.projects.dispatchEpicAgent(epicId);
-      } else {
+      } else if (action.kind === 'transition') {
         await this.projects.transitionEpic(epicId, action.target);
       }
       await this.router.navigate([this.projectSlug(), 'epics'], {
@@ -886,7 +908,7 @@ export class RefiningPage {
   }
 
   protected epicId(): string {
-    return this.resolved()?.node.epic.id ?? '';
+    return this.resolved()?.node.id ?? '';
   }
 
   /**
@@ -899,7 +921,7 @@ export class RefiningPage {
 
   /** Whether the epic still takes writes. The Dossier tab renders read-only off this. */
   protected epicRefining(): boolean {
-    return this.resolved()?.node.epic.status === 'REFINING';
+    return this.resolved()?.node.status === 'REFINING';
   }
 
   /**

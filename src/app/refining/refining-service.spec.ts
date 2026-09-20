@@ -2,7 +2,7 @@ import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
 import type { RefinementDto } from '../api/refinements-api';
-import type { EpicNode } from '../project/epics-model';
+import { epicEntity, type EpicEntity } from '../project/entities-model';
 import { RefiningService } from './refining-service';
 
 const AT = '2026-08-08T09:00:00Z';
@@ -13,6 +13,8 @@ const EPIC = {
   title: 'Sharper onboarding',
   slug: 'sharper-onboarding',
   description: 'a draft',
+  number: 3,
+  qualifiedId: 'qits-3',
   status: 'REFINING' as const,
   supersededByEpicId: null,
   createdAt: AT,
@@ -41,7 +43,7 @@ const REFINEMENT: RefinementDto = {
   createdAt: AT,
 };
 
-const node = (): EpicNode => ({ epic: EPIC, features: [] });
+const node = (): EpicEntity => epicEntity(EPIC, []);
 
 const settle = async () => {
   for (let turn = 0; turn < 8; turn++) {
@@ -115,11 +117,12 @@ describe('RefiningService', () => {
       await settle();
       http
         .expectOne('/projects/api/epics/e1/features')
-        .flush({ entries: [{ feature: { id: 'f1', epicId: 'e1', title: 'F', slug: 'f', description: null, dependsOnFeatureId: null, implementedOn: null, createdAt: AT, updatedAt: AT } }] });
+        .flush({ entries: [{ feature: { id: 'f1', epicId: 'e1', projectId: 'p1', title: 'F', slug: 'f', description: null, number: 4, qualifiedId: 'qits-4', dependsOnFeatureId: null, implementedOn: null, createdAt: AT, updatedAt: AT } }] });
       await settle();
       http.expectOne('/projects/api/features/f1/tasks').flush({ entries: [] });
       const resolved = await answer;
-      expect(resolved.epic.id).toBe('e1');
+      expect(resolved.id).toBe('e1');
+      expect(resolved.archetype).toBe('EPIC');
       expect(resolved.features).toHaveLength(1);
     });
 

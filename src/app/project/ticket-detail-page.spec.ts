@@ -35,6 +35,8 @@ function ticket(over: Partial<TicketDto> = {}): TicketDto {
     projectId: 'p1',
     title: 'The cancelled badge is the wrong colour',
     slug: 'cancelled-badge',
+    number: 41,
+    qualifiedId: 'qits-41',
     type: 'BUG',
     status: 'REPORTED',
     assignee: null,
@@ -200,6 +202,24 @@ describe('TicketDetailPage', () => {
       expect(page().querySelector('.description strong')?.textContent).toBe('success');
       expect(text()).not.toContain('**');
       http.verify();
+    });
+
+    /**
+     * The detail page is where somebody reads a ticket before writing about it, so it is where the
+     * identifier has to be legible and copyable. Null is the service saying it could not resolve the
+     * project, and `null-41` is worse than nothing because it looks copyable.
+     */
+    it('shows the qualified id beside the title, and nothing where there is none', async () => {
+      await openTicket();
+
+      expect(page().querySelector('.title-row .qualified')?.textContent?.trim()).toBe('qits-41');
+    });
+
+    it('draws no identifier at all where the service could not resolve one', async () => {
+      await openTicket(ticket({ qualifiedId: null }));
+
+      expect(page().querySelector('.title-row .qualified')).toBeNull();
+      expect(page().querySelector('.title-row')?.textContent).not.toContain('null');
     });
 
     it('badges the type and the status', async () => {
