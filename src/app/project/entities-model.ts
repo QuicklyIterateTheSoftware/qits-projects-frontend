@@ -75,7 +75,11 @@ interface EntityFields {
   readonly qualifiedId: string | null;
   readonly createdAt: string;
   readonly updatedAt: string;
-  /** The live workspaces working on this entity, derived by the service on every read. */
+  /**
+   * Every workspace cut for this entity, live and resolved, derived by the service on every read —
+   * so the entity keeps a link to where its work happened after the work is over. Only the `ACTIVE`
+   * ones bear on whether a dispatching button is offered; see {@link WorkspaceReferenceDto.status}.
+   */
   readonly workspaces: readonly WorkspaceReferenceDto[];
 }
 

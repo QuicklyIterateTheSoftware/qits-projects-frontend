@@ -268,7 +268,7 @@ export interface EpicDto {
   readonly supersededByEpicId: string | null;
   readonly createdAt: string;
   readonly updatedAt: string;
-  /** The live workspaces implementing this epic — {@link TicketDto.workspaces}, rule for rule. */
+  /** Every workspace cut for this epic — {@link TicketDto.workspaces}, rule for rule. */
   readonly workspaces: readonly WorkspaceReferenceDto[];
 }
 
@@ -474,13 +474,16 @@ export type TicketStatus = 'REPORTED' | 'REFINED' | 'IMPLEMENTED' | 'VERIFIED' |
  * name; it draws as the dash, not as an empty byline.
  */
 /**
- * A live workspace working on a ticket or an epic — the answer to "has an agent already been put on
- * this?", derived by the service on every read and stored nowhere.
+ * A workspace cut for a ticket or an epic — every one of them, live and resolved alike, derived by
+ * the service on every read and stored nowhere.
  *
  * <p>It is the workspace that carries the reference, never the row: a pointer on the ticket would
  * have to be cleared when the workspace is integrated or discarded, and one that is only ever
- * written disables its own button for ever and links to a row nobody can open. So a workspace that
- * resolves simply stops appearing here.
+ * written links to a row nobody can open. But a resolved workspace **keeps appearing here**,
+ * carrying its {@link status}, because it is the only record of where the work actually happened:
+ * the branch that was cut, the sessions on it, the conversation that produced the change. A ticket
+ * that dropped its workspaces the moment they resolved would answer "who did this, and where?" with
+ * nothing, on exactly the tickets that have an answer.
  *
  * <p>`workspaceRowId` and `repositoryId` are the pair the link is composed from — that application
  * routes a workspace as `repositories/{repositoryId}/workspaces/{workspaceRowId}` — and `branch` is
@@ -491,6 +494,20 @@ export interface WorkspaceReferenceDto {
   readonly repositoryId: string;
   readonly workspaceId: string;
   readonly branch: string;
+  /**
+   * `ACTIVE`, `INTEGRATED` or `ABANDONED` — and **absent means `ACTIVE`**.
+   *
+   * <p>Optional rather than required because it arrived after the reference did, and a required
+   * field would rewrite every fixture in this repository that builds the four-field literal to
+   * restate the default. A reader has one rule to remember and the compiler enforces none of it, so
+   * nothing here tests `status === 'ACTIVE'`: the question is always asked as "is this one live",
+   * with a missing value answering yes.
+   *
+   * <p>A bare `string` rather than a union, because the service owns the vocabulary and a word this
+   * build has never seen should read as "not live" rather than fail to compile against a list that
+   * moved.
+   */
+  readonly status?: string;
 }
 
 export interface TicketDto {
@@ -534,8 +551,11 @@ export interface TicketDto {
   readonly createdAt: string;
   readonly updatedAt: string;
   /**
-   * The live workspaces working on this ticket — empty when none is, which is when the button is
-   * offered. Empty on a write's answer too: an edit is not the read that asks.
+   * Every workspace cut for this ticket, live and resolved — the record of where its work happened,
+   * which outlives the work. **Only the `ACTIVE` ones bear on whether a dispatching button is
+   * offered**; an integrated or abandoned one is a link and nothing more, and reading the list's
+   * length as "somebody is on it" would close that button for ever. Empty on a write's answer too:
+   * an edit is not the read that asks.
    */
   readonly workspaces: readonly WorkspaceReferenceDto[];
 }

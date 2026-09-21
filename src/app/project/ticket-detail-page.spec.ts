@@ -4,7 +4,7 @@ import { provideLocationMocks } from '@angular/common/testing';
 import { TestBed } from '@angular/core/testing';
 import { Router, provideRouter } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
-import { provideQitsNavigationTree } from '@qits/ui-components';
+import { provideQitsNavigationTree, type QitsNavigation } from '@qits/ui-components';
 import { routes } from '../app.routes';
 import { EVENT_SOURCE_FACTORY, type EventSourceLike } from '../api/event-source';
 import type { TicketCommentDto, TicketDto } from '../api/dto';
@@ -26,6 +26,30 @@ class FakeStream implements EventSourceLike {
     this.onmessage?.(new MessageEvent<string>('message', { data: topic }));
   }
 }
+
+/**
+ * The platform as the edge states it, with **qits-workspaces served on a host of its own**.
+ *
+ * <p>This page draws anchors into that application now, and `QitsAppLinks.href` answers `undefined`
+ * for one the navigation tree does not place — which is an ordinary state the markup has its own
+ * sentence for, and therefore one a spec can sit in without noticing. The slot is declared here so
+ * the workspace assertions below are about the address that gets composed rather than about the
+ * fallback. It is the same tree `tickets-overview.spec.ts` uses, for the same reason.
+ */
+const PLATFORM: QitsNavigation = {
+  environment: 'dev',
+  origin: 'https://dev.example.test',
+  slots: {
+    'services.details': [
+      {
+        app: 'qits-workspaces',
+        label: 'Workspaces',
+        host: 'workspaces.dev.example.test',
+        origin: 'https://workspaces.dev.example.test',
+      },
+    ],
+  },
+};
 
 const AT = '2026-09-07T09:00:00Z';
 
@@ -96,7 +120,7 @@ describe('TicketDetailPage', () => {
             return stream;
           },
         },
-        provideQitsNavigationTree({ environment: 'dev', origin: 'https://dev.example.test' }),
+        provideQitsNavigationTree(PLATFORM),
       ],
     });
     http = TestBed.inject(HttpTestingController);
@@ -737,6 +761,98 @@ describe('TicketDetailPage', () => {
       );
       expect(labels).not.toContain('from Sketch');
       expect(labels).not.toContain('from Design');
+    });
+  });
+
+  /**
+   * Where the ticket's work happened.
+   *
+   * <p>The chain a reader follows is ticket → the workspace → its sessions → the conversation, and
+   * it used to break at the first hop the moment the workspace was integrated. The service reports
+   * the resolved ones now, so the claims worth guarding are that the link **survives resolution**,
+   * that it is drawn as the record it is rather than as a chat that no longer exists, and that a
+   * ticket nobody ever dispatched an agent onto still draws nothing at all.
+   */
+  describe('the workspaces on it', () => {
+    const ON_IT = {
+      workspaceRowId: 41,
+      repositoryId: 'r1',
+      workspaceId: 'ticket-cancelled-badge',
+      branch: 'ticket/cancelled-badge',
+    };
+
+    function workspaceLinks(): HTMLAnchorElement[] {
+      return Array.from(page().querySelectorAll('.workspaces-section a.workspace'));
+    }
+
+    it('links a live workspace to its chat', async () => {
+      await openTicket(ticket({ workspaces: [ON_IT] }));
+
+      expect(page().querySelector('.workspaces-section')).toBeTruthy();
+      expect(workspaceLinks()).toHaveLength(1);
+      expect(workspaceLinks()[0].getAttribute('href')).toBe(
+        'https://workspaces.dev.example.test/repositories/r1/workspaces/41?tab=chat',
+      );
+      expect(workspaceLinks()[0].textContent?.trim()).toBe('Open ticket/cancelled-badge');
+    });
+
+    /**
+     * The point of the whole change: an integrated workspace is still linked, said to be resolved,
+     * and addressed without the chat tab — the resolved page renders no tabs at all.
+     */
+    it('keeps an integrated workspace, as a record rather than as a chat', async () => {
+      await openTicket(ticket({ workspaces: [{ ...ON_IT, status: 'INTEGRATED' }] }));
+
+      expect(workspaceLinks()[0].getAttribute('href')).toBe(
+        'https://workspaces.dev.example.test/repositories/r1/workspaces/41',
+      );
+      expect(workspaceLinks()[0].textContent?.trim()).toBe(
+        'Open ticket/cancelled-badge (integrated)',
+      );
+    });
+
+    it('keeps an abandoned one the same way', async () => {
+      await openTicket(ticket({ workspaces: [{ ...ON_IT, status: 'ABANDONED' }] }));
+
+      expect(workspaceLinks()[0].getAttribute('href')).not.toContain('tab=chat');
+      expect(workspaceLinks()[0].textContent?.trim()).toBe(
+        'Open ticket/cancelled-badge (abandoned)',
+      );
+    });
+
+    it('draws live and resolved together when the ticket has been round twice', async () => {
+      await openTicket(
+        ticket({
+          workspaces: [
+            { ...ON_IT, status: 'ABANDONED' },
+            { ...ON_IT, workspaceRowId: 42, branch: 'ticket/cancelled-badge-again' },
+          ],
+        }),
+      );
+
+      expect(workspaceLinks().map((node) => node.textContent?.trim())).toEqual([
+        'Open ticket/cancelled-badge (abandoned)',
+        'Open ticket/cancelled-badge-again',
+      ]);
+    });
+
+    /** Most tickets never had an agent on them; a "Workspaces" heading on all of them says nothing. */
+    it('draws no section at all on a ticket nobody was ever dispatched onto', async () => {
+      await openTicket();
+
+      expect(page().querySelector('.workspaces-section')).toBeNull();
+      expect(text()).not.toContain('Workspaces');
+      http.verify();
+    });
+
+    /** It belongs to the reading view; editing the ticket is not the moment to follow a link out. */
+    it('is not drawn while the ticket is being edited', async () => {
+      await openTicket(ticket({ workspaces: [ON_IT] }));
+
+      buttonNamed('Edit').click();
+      await settle();
+
+      expect(page().querySelector('.workspaces-section')).toBeNull();
     });
   });
 

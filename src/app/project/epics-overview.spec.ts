@@ -3,7 +3,13 @@ import { HttpTestingController, provideHttpClientTesting } from '@angular/common
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { Router, provideRouter } from '@angular/router';
 import { provideQitsNavigationTree, type QitsNavigation } from '@qits/ui-components';
-import type { EpicAgentDispatchDto, EpicDto, FeatureDto, TaskDto } from '../api/dto';
+import type {
+  EpicAgentDispatchDto,
+  EpicDto,
+  FeatureDto,
+  TaskDto,
+  WorkspaceReferenceDto,
+} from '../api/dto';
 import { EVENT_SOURCE_FACTORY, type EventSourceLike } from '../api/event-source';
 import { EpicsOverview } from './epics-overview';
 
@@ -718,15 +724,18 @@ describe('EpicsOverview', () => {
    */
   describe('an epic that already has a workspace on it', () => {
     /** Derived by the service from the workspaces themselves, on every read of the epic. */
-    const ON_IT = {
+    const ON_IT: WorkspaceReferenceDto = {
       workspaceRowId: 41,
       repositoryId: 'r1',
       workspaceId: 'epic-draft',
       branch: 'epic/draft',
     };
 
+    /** The same workspace once its branch has landed — kept, so the epic still links to it. */
+    const DONE: WorkspaceReferenceDto = { ...ON_IT, status: 'INTEGRATED' };
+
     async function loadDraftWithWorkspace(
-      workspaces: readonly (typeof ON_IT)[] = [ON_IT],
+      workspaces: readonly WorkspaceReferenceDto[] = [ON_IT],
     ): Promise<void> {
       await mount();
       await flushEpics([epic('e1', 'draft', { status: 'REFINING', workspaces })]);
@@ -753,6 +762,33 @@ describe('EpicsOverview', () => {
 
       expect(buttonNamed('Refine').disabled).toBe(false);
       expect(buttonNamed('Abandon').disabled).toBe(false);
+    });
+
+    /**
+     * **The regression this filter exists for.** The service reports resolved workspaces now, so the
+     * epic keeps a link to where its work happened — and if the button were closed by the *presence*
+     * of a workspace rather than by a live one, every epic that had ever been implemented once would
+     * have "Start implementation" dead for ever, with no way back. A finished workspace is no reason
+     * not to start another; a running one is.
+     */
+    it('leaves Start implementation open when the only workspace has resolved', async () => {
+      await loadDraftWithWorkspace([DONE]);
+
+      expect(buttonNamed('Start implementation').disabled).toBe(false);
+      // Still linked, and still saying which one it was — the whole reason it is reported at all.
+      const link = element().querySelector('#epic-e1 a.workspace');
+      expect(link?.textContent?.trim()).toBe('Open epic/draft (integrated)');
+      // The resolved page has no tabs on it, so the parameter naming one is dropped.
+      expect(link?.getAttribute('href')).toBe(
+        'https://workspaces.dev.example.test/repositories/r1/workspaces/41',
+      );
+    });
+
+    /** One live workspace among resolved ones is still somebody working on it. */
+    it('closes it again when a live workspace sits beside the resolved one', async () => {
+      await loadDraftWithWorkspace([DONE, { ...ON_IT, workspaceRowId: 42, branch: 'epic/again' }]);
+
+      expect(buttonNamed('Start implementation').disabled).toBe(true);
     });
 
     it('draws one link per workspace when several name the epic', async () => {

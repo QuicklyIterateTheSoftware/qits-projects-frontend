@@ -14,9 +14,7 @@ import type {
   WorkspaceReferenceDto,
 } from '../api/dto';
 import { actionKey, actionsFor, type Entity, type EntityAction } from './entities-model';
-
-/** The application in qits-workspaces' own vocabulary — what the platform navigation names it. */
-const WORKSPACES_APP = 'qits-workspaces';
+import { WorkspaceLinks, isLiveWorkspace, workspaceAddress } from './workspace-links';
 
 /**
  * A dispatch answer, of either archetype's shape.
@@ -52,16 +50,20 @@ type DispatchAnswer = EpicAgentDispatchDto | TicketAgentDispatchDto;
  *
  * <p><b>An entity somebody is already working on offers the way in, not the button.</b> `workspaces`
  * comes off the entity itself, derived by the service per read, so unlike the memory of a press below
- * it survives a reload and is the same in every tab. **Only the two dispatching presses close** —
- * `start` and `assign` — never the transitions beside them: a workspace being open is not a reason
- * somebody cannot mark an epic implemented or abandon it. Several workspaces is a real answer and
- * draws several links rather than picking one.
+ * it survives a reload and is the same in every tab. **The list is not a list of live workspaces** —
+ * it holds every workspace ever cut for the entity, each saying whether it is still being worked in
+ * — so it is drawn whole and counted filtered; see {@link EntityActions.taken}. **Only the two
+ * dispatching presses close** — `start` and `assign` — never the transitions beside them: a
+ * workspace being open is not a reason somebody cannot mark an epic implemented or abandon it.
+ * Several workspaces is a real answer and draws several links rather than picking one.
  *
  * <p><b>The link is a full-document anchor, never a `routerLink`.</b> The workspace lives in another
  * Angular application, so a router command would compile and navigate nowhere. An address this
  * platform cannot spell draws **no anchor at all** — `QitsAppLinks.href` answers `undefined` for an
  * application served nowhere and for a navigation tree that has not arrived — while the sentence
- * beside it still says what happened, so a press never appears to have done nothing. And
+ * beside it still says what happened, so a press never appears to have done nothing. The entity's
+ * own workspaces are drawn by {@link WorkspaceLinks}, which the ticket's detail page shares; the
+ * anchor below is this row's alone, because a dispatch answer is not a workspace reference. And
  * `SKIPPED_RUNNING` is a **success**: an agent was already working on the branch, so the door started
  * no second one, and the workspace is the thing worth opening either way.
  *
@@ -76,7 +78,7 @@ type DispatchAnswer = EpicAgentDispatchDto | TicketAgentDispatchDto;
 @Component({
   selector: 'app-entity-actions',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [QitsButton],
+  imports: [QitsButton, WorkspaceLinks],
   template: `
     <div class="actions">
       @for (action of moves(); track key(action)) {
@@ -91,13 +93,7 @@ type DispatchAnswer = EpicAgentDispatchDto | TicketAgentDispatchDto;
         </qits-button>
       }
 
-      @for (workspace of workspaces(); track workspace.workspaceRowId) {
-        @if (hrefFor(workspace); as href) {
-          <a class="workspace" [href]="href">Open {{ workspace.branch }}</a>
-        } @else {
-          <span class="note">a workspace is on {{ workspace.branch }}</span>
-        }
-      }
+      <app-workspace-links [workspaces]="workspaces()" />
 
       @if (!taken() && dispatch()) {
         @if (workspaceHref(); as href) {
@@ -183,15 +179,28 @@ export class EntityActions {
   protected readonly moves = computed(() => this.actions() ?? actionsFor(this.entity()));
 
   /**
-   * The live workspaces working on this entity, off its own read — the record that survives a
-   * reload, where {@link dispatch} is only this page's memory of a press.
+   * Every workspace the entity names, off its own read — the record that survives a reload, where
+   * {@link dispatch} is only this page's memory of a press. Live and resolved both, drawn whole.
    */
   protected readonly workspaces = computed<readonly WorkspaceReferenceDto[]>(
     () => this.entity().workspaces,
   );
 
-  /** Whether somebody is already working on this one. */
-  protected readonly taken = computed(() => this.workspaces().length > 0);
+  /**
+   * Whether somebody is **currently** working on this one — the live ones only, never the count.
+   *
+   * <p><b>The filter is the whole point and must not be simplified away.</b> `workspaces` now holds
+   * every workspace ever cut for the entity, including the integrated and abandoned ones the ticket
+   * keeps so it can still say where its work happened. Reading that list's length instead would mean
+   * "Assign agent" and "Start implementation" were dead on every entity that has *ever* had an agent
+   * on it — permanently, with no way back, and worst on exactly the tickets that have already been
+   * round once and want a second pass. Nothing about a finished workspace is a reason not to start a
+   * new one; a running one is.
+   *
+   * <p>A missing status counts as live, which is why this asks {@link isLiveWorkspace} rather than
+   * comparing to `ACTIVE` — see there for why that is the safe direction to be wrong in.
+   */
+  protected readonly taken = computed(() => this.workspaces().some(isLiveWorkspace));
 
   /** Only the dispatching presses close when a workspace is already on it; the moves stay available. */
   protected closed(action: EntityAction): boolean {
@@ -218,30 +227,22 @@ export class EntityActions {
   }
 
   /**
-   * The workspace in qits-workspaces, opened on its chat: `repositories/{id}/workspaces/{rowId}`.
+   * Where the press just sent an agent, opened on its chat — composed by {@link workspaceAddress},
+   * which is the one place on this client that spells a workspace's address.
    *
-   * <p><b>Unscoped on purpose.</b> That application addresses a workspace by the repository row id
-   * alone, so spelling this project's scope in front of it would compose a URL nothing serves.
+   * <p><b>Always the live form, and not a judgement call.</b> This is a dispatch the reader made
+   * moments ago: the door either started an agent or found one already running on the branch, so the
+   * workspace it answers is by construction being worked in, and the chat is what the press was for.
+   * Unlike the references beside it there is no status to ask about — a dispatch answer is not a
+   * workspace reference and never becomes one.
    */
   protected readonly workspaceHref = computed(() => {
     const dispatch = this.dispatch();
     if (!dispatch) {
       return undefined;
     }
-    return this.address(dispatch.repositoryId, dispatch.workspaceRowId);
+    return workspaceAddress(this.appLinks, dispatch.repositoryId, dispatch.workspaceRowId);
   });
-
-  /** The same address for a workspace the entity itself named — one composition, two sources. */
-  protected hrefFor(workspace: WorkspaceReferenceDto): string | undefined {
-    return this.address(workspace.repositoryId, workspace.workspaceRowId);
-  }
-
-  private address(repositoryId: string, workspaceRowId: number): string | undefined {
-    return this.appLinks.href(
-      WORKSPACES_APP,
-      `repositories/${encodeURIComponent(repositoryId)}/workspaces/${workspaceRowId}?tab=chat`,
-    );
-  }
 
   /** What became of the press, in one clause — and the whole answer where there is no anchor. */
   protected readonly note = computed(() => {

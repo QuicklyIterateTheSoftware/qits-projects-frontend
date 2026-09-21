@@ -42,6 +42,7 @@ import {
   ticketsRoute,
   type TicketEntity,
 } from './entities-model';
+import { WorkspaceLinks } from './workspace-links';
 
 /** The two kinds, in the order the edit form offers them — the same order the create form uses. */
 const TYPES: readonly { readonly value: TicketType; readonly label: string }[] = [
@@ -88,6 +89,19 @@ interface DrawnComment {
  * copied, and it does its own read — this page's list is asked only whether there is anything to
  * show, which is a question the panel cannot answer before it is on screen.
  *
+ * <p><b>The workspaces are the link to where the work happened, and they outlive the work.</b> A
+ * ticket's change is written by an agent in a workspace, on a branch, over a conversation — and
+ * until now that chain was readable only while the workspace was still open, so the moment it was
+ * integrated the ticket went back to being a paragraph with no trace of what answered it. The
+ * service now reports the resolved ones too, each saying which it is, and this section draws them:
+ * ticket → the workspace → its sessions → the conversation. It needs no read of its own, because
+ * the references come off the ticket the page already has. A ticket nobody ever dispatched an agent
+ * onto draws **nothing at all**, in the same spirit as the dossier — an empty "Workspaces" heading
+ * on every freshly reported ticket would be a promise the row cannot keep. The markup is
+ * {@link WorkspaceLinks}, shared with the entity rows rather than copied, so the live/resolved
+ * distinction is drawn the same way in both places; `app-entity-actions` itself is not reused here,
+ * because it would draw a second, differently-worded copy of this page's own transition buttons.
+ *
  * <p><b>The transition control offers the ticket's legal neighbours and nothing else.</b> The
  * lifecycle is adjacent-only in both directions, so from any status there are one or two moves and
  * every other target is a 409 waiting to happen. Each button is named after the claim pressing it
@@ -122,7 +136,16 @@ interface DrawnComment {
 @Component({
   selector: 'app-ticket-detail-page',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [Async, DossierPanel, Empty, MarkdownView, QitsBadge, QitsButton, RouterLink],
+  imports: [
+    Async,
+    DossierPanel,
+    Empty,
+    MarkdownView,
+    QitsBadge,
+    QitsButton,
+    RouterLink,
+    WorkspaceLinks,
+  ],
   template: `
     <p class="back">
       <a [routerLink]="backRoute()">← Tickets</a>
@@ -256,6 +279,19 @@ interface DrawnComment {
             <p class="absent">Not refined yet — nobody has written what to do about this.</p>
           }
         </section>
+
+        <!--
+          Where the work happened — see the class note. Live and resolved both, and nothing at all
+          where there are none, for the same reason the dossier draws nothing.
+        -->
+        @if (row.workspaces.length > 0) {
+          <section class="workspaces-section" aria-label="Workspaces">
+            <h2>Workspaces</h2>
+            <div class="workspaces">
+              <app-workspace-links [workspaces]="row.workspaces" />
+            </div>
+          </section>
+        }
 
         <div class="actions">
           <qits-button
@@ -501,6 +537,17 @@ interface DrawnComment {
     .description {
       margin: 0;
       color: #374151;
+    }
+    .workspaces-section {
+      margin: 0 0 1rem;
+    }
+    /* The links lay themselves out here rather than in the component: it draws itself with
+       display: contents precisely so each caller decides the row its anchors sit in. */
+    .workspaces {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      flex-wrap: wrap;
     }
     .absent {
       margin: 0 0 1rem;
