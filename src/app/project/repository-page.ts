@@ -275,17 +275,19 @@ export class RepositoryPage {
    *
    * <p>A row with no archetype gets no cards, which is honest: nothing knows what kind it is.
    * An entry whose address this library cannot spell is dropped rather than drawn as a link to
-   * nowhere. An `APP` row is that same empty case for one more release: `apps.details` is not yet
-   * in the installed chrome's `QitsNavSlot`, so the word is asserted rather than proven and
-   * `entries` answers nothing for it until the dependency is bumped. No cards is the right answer
-   * there — the applications have not declared themselves against the slot either.
+   * nowhere.
+   *
+   * <p>The slot word is composed, not asserted: `directory` is the chrome's own `QitsCategory`, so
+   * `` `${category}.details` `` is a `QitsNavSlot` the compiler works out for itself. That is the
+   * check worth having — a category this table grows that the library has not learned stops the
+   * build here rather than silently asking `entries` for a slot that cannot exist.
    */
   protected readonly applications = computed<readonly { entry: QitsNavEntry; href: string }[]>(
     () => {
       const archetype = this.repository()?.archetype;
       const category = COMPONENT_TYPES.find((type) => type.archetype === archetype)?.directory;
       if (!category) return [];
-      const slot = `${category}.details` as QitsNavSlot;
+      const slot: QitsNavSlot = `${category}.details`;
       const scope = this.addressed();
       return (
         this.appLinks

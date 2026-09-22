@@ -60,6 +60,16 @@ function navigation(githost: boolean): QitsNavigation {
           position: 1,
         },
       ],
+      'apps.details': [
+        {
+          app: 'qits-docs',
+          label: 'Docs',
+          host: 'docs',
+          origin: 'https://docs.dev.example.test',
+          path: '/docs',
+          position: 1,
+        },
+      ],
       system: githost
         ? [
             {
@@ -246,10 +256,10 @@ describe('RepositoryPage', () => {
 
   /**
    * An `APP` is a standalone web application, and the page has to name it as one: its own heading
-   * word, at its own `/apps/` address. The cards are empty here and that is the honest answer for
-   * now — `apps.details` is not in the installed chrome's slots, so no application has declared
-   * itself against it — but the page itself has to *render*, which is the thing that would break
-   * if the archetype had no row in the table.
+   * word, at its own `/apps/` address, and its own slot. `apps.details` is a slot like any other
+   * now that the chrome knows the word, so an application that declares itself against it gets a
+   * card here — which is what proves the archetype is wired all the way through the table and not
+   * merely given a heading.
    */
   it('draws an app under its own category, standalone rather than a frontend', async () => {
     await open('/qits/apps/qits-docs-app', [
@@ -259,7 +269,9 @@ describe('RepositoryPage', () => {
     expect(page().querySelector('h1')?.textContent).toContain('qits-docs-app');
     expect(text()).toContain('Apps');
     expect(text()).not.toContain('Frontends');
-    expect(page().querySelector('a.app')).toBeNull();
+    expect(page().querySelector('a.app')?.getAttribute('href')).toBe(
+      'https://docs.dev.example.test/qits/apps/qits-docs-app/',
+    );
   });
 
   /**

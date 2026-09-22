@@ -42,23 +42,6 @@ export type PlaceableArchetype =
 /** Every archetype the service can answer with, placeable or not. */
 export type RepositoryArchetype = PlaceableArchetype | 'PROJECT' | 'SERVICE_TEMPLATE' | 'FORK';
 
-/**
- * A category word, which is the chrome's `QitsCategory` plus whatever this application knows first.
- *
- * <p>The two lists are deliberately separate copies of one vocabulary — this table here, and
- * `scope.ts` / `repositories.ts` in `@qits/ui-components` — so one of them necessarily learns a new
- * word a release before the other. `apps` is that word today: it is in the library's own
- * `QitsCategory` and `QITS_NAV_SLOTS` on the library's main, and it reaches this application only
- * when the dependency is bumped to the version that carries it. The union is what lets the table be
- * spelled in the meantime, and it is a *widening* rather than a replacement, so nothing else has to
- * change shape.
- *
- * <p>**Delete the `| 'apps'` when that bump lands** — at that point `QitsCategory` already says it,
- * the alias collapses to the import, and the compiler is the thing that proves the two lists agree
- * again.
- */
-export type RepositoryCategory = QitsCategory | 'apps';
-
 /** One group on the project page: an archetype, the wrapper directory it lands in, and its words. */
 export interface ComponentType {
   readonly archetype: PlaceableArchetype;
@@ -67,12 +50,14 @@ export interface ComponentType {
    * reconcile also makes there. A component entry is mounted under {@link componentDirectory}
    * instead, and its directory names no archetype.
    *
-   * <p>Typed as {@link RepositoryCategory} — the chrome's `QitsCategory`, widened — because it is
-   * the same word: the archetype directory is what the sidebar's legacy groups are called and what
-   * a `<category>.details` slot is keyed on. Saying so here is what lets a slot be composed from an
-   * archetype without a second table.
+   * <p>Typed as the chrome's own `QitsCategory` because it is the same word: the archetype
+   * directory is what the sidebar's legacy groups are called and what a `<category>.details` slot
+   * is keyed on. Saying so here is what lets a slot be composed from an archetype without a second
+   * table — and it makes the compiler the thing that proves this table and the library's
+   * `scope.ts` / `repositories.ts` still spell one vocabulary, since the two are deliberately
+   * separate copies of it.
    */
-  readonly directory: RepositoryCategory;
+  readonly directory: QitsCategory;
   /** The group heading. */
   readonly label: string;
   /** One of them, for “New <singular>”. */

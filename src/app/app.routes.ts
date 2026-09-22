@@ -31,11 +31,12 @@ import { RefiningPage } from './refining/refining-page';
  * categories the chrome knows still answer on their own, which keeps every archetype address
  * reading before any list has arrived.
  *
- * <p><b>`apps` is the one category the chrome does not know yet</b>, and it reaches the repository
- * page anyway — through the second branch, as an unclaimed word, exactly as a component name does.
- * That is the open-set rule paying for itself: a category this application learned a release before
- * `@qits/ui-components` did needs no special case, and when the bump lands `QITS_CATEGORIES` simply
- * starts answering for it on the first branch instead. Nothing here changes either way.
+ * <p><b>`apps` is what proved the rule.</b> This application learned the word a release before
+ * `@qits/ui-components` did, and the address read correctly the whole time — through the second
+ * branch, as an unclaimed word, exactly as a component name does — with no special case anywhere.
+ * Now that the chrome knows it, `QITS_CATEGORIES` answers for it on the first branch instead, and
+ * nothing here changed to make that happen. The next word the two lists learn out of order gets the
+ * same free ride.
  *
  * <p>The own-word list is {@link OWN_PROJECT_SEGMENTS}, read off the route table itself, so a route
  * added below `:project` cannot be swallowed by forgetting to name it here. Route *order* already

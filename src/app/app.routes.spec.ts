@@ -183,12 +183,13 @@ describe('routes', () => {
   });
 
   /**
-   * `apps` is a category this application knows and the installed chrome does not yet, so it takes
-   * the guard's *second* branch — an unclaimed word — rather than the `QITS_CATEGORIES` one. The
-   * address has to read the same either way, which is the whole point of asking the question the
-   * open-set way round, and this is what fails if somebody re-closes the set.
+   * `apps` reached this page through the guard's *second* branch — an unclaimed word — for the
+   * release in which this application knew the category and the installed chrome did not, and it
+   * reaches it through `QITS_CATEGORIES` now that the chrome has learned it. The address reads the
+   * same either way, which is the whole point of asking the question the open-set way round, and
+   * this is what fails if somebody re-closes the set.
    */
-  it('serves the repository page for an app, whose category the chrome has not learned yet', async () => {
+  it('serves the repository page for an app, whichever branch of the guard claims it', async () => {
     expect(await at('/qits/apps/qits-docs-app')).toBe(RepositoryPage);
     expect(await at('/qits/apps/qits-docs-app/release-requests')).toBe(
       RepositoryReleaseRequestsPage,
