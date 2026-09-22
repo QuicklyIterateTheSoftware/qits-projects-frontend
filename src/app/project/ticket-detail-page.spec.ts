@@ -208,6 +208,31 @@ describe('TicketDetailPage', () => {
     return found as HTMLButtonElement;
   }
 
+  function buttonLabels(): string[] {
+    return Array.from(page().querySelectorAll('button')).map(
+      (node) => node.textContent?.trim() ?? '',
+    );
+  }
+
+  /** The lifecycle row alone: the buttons between Edit and the block/delete presses. */
+  function lifecycleLabels(): string[] {
+    const lifecycle = new Set([
+      'Mark reported',
+      'Mark refined',
+      'Mark implemented',
+      'Mark verified',
+      'Close',
+      'Drop',
+      'Back to reported',
+      'Back to refined',
+      'Back to implemented',
+      'Back to done',
+      'Back to dropped',
+      'Reopen',
+    ]);
+    return buttonLabels().filter((label) => lifecycle.has(label));
+  }
+
   async function type(selector: string, value: string): Promise<void> {
     const field = page().querySelector<HTMLInputElement | HTMLTextAreaElement>(selector);
     expect(field, `no field at “${selector}”`).toBeTruthy();
@@ -541,6 +566,144 @@ describe('TicketDetailPage', () => {
       await settle();
 
       expect(text()).toContain('Could not move it — 503.');
+    });
+
+    /**
+     * The exit, offered from every status that still owes something — and last in the row, because it
+     * is the press that ends the ticket and must not sit where the hand reaching for the next step
+     * lands.
+     */
+    it('offers the drop from a status still in flight, after the lifecycle moves', async () => {
+      await openTicket(ticket({ status: 'IMPLEMENTED' }));
+
+      expect(lifecycleLabels()).toEqual(['Mark verified', 'Back to refined', 'Drop']);
+
+      buttonNamed('Drop').click();
+      await settle();
+
+      const request = http.expectOne('/projects/api/tickets/t1/transition');
+      expect(request.request.body).toEqual({ target: 'DROPPED' });
+      request.flush({ ticket: ticket({ status: 'DROPPED' }) });
+      await settle();
+
+      expect(lifecycleLabels()).toEqual(['Back to reported']);
+    });
+
+    /**
+     * `DONE` is an ending already, so dropping it would rewrite what happened rather than decide what
+     * will not — and out of `DROPPED` there is one move, landing at the beginning, because the
+     * refinement went with the work.
+     */
+    it('offers no drop out of done', async () => {
+      await openTicket(ticket({ status: 'DONE' }));
+
+      expect(lifecycleLabels()).toEqual(['Reopen']);
+    });
+
+    it('offers only the way back to reported out of dropped', async () => {
+      await openTicket(ticket({ status: 'DROPPED' }));
+      expect(lifecycleLabels()).toEqual(['Back to reported']);
+
+      buttonNamed('Back to reported').click();
+      await settle();
+
+      const request = http.expectOne('/projects/api/tickets/t1/transition');
+      expect(request.request.body).toEqual({ target: 'REPORTED' });
+      request.flush({ ticket: ticket({ status: 'REPORTED' }) });
+      await settle();
+
+      expect(
+        Array.from(page().querySelectorAll('.title-row .qits-badge')).map((node) =>
+          node.textContent?.trim(),
+        ),
+      ).toEqual(['bug', 'reported']);
+    });
+  });
+
+  /**
+   * Blocking, which is orthogonal to the lifecycle: a blocked ticket is exactly as far along as it
+   * was, and what it says is that the phase behind that status cannot proceed.
+   *
+   * <p>So the two things worth pinning are where the press is offered at all — only where a phase
+   * runs — and that a block without a reason never leaves the browser. A blocked ticket with no
+   * reason is a row that stopped and does not say what it is waiting for, which is the one thing
+   * anybody reading it afterwards needs.
+   */
+  describe('blocking it', () => {
+    it.each(['REPORTED', 'REFINED', 'IMPLEMENTED'] as const)(
+      'offers the block on %s, where a phase runs',
+      async (status) => {
+        await openTicket(ticket({ status }));
+
+        expect(buttonNamed('Block')).toBeTruthy();
+      },
+    );
+
+    it.each(['VERIFIED', 'DONE', 'DROPPED'] as const)(
+      'offers neither press on %s, where no phase runs',
+      async (status) => {
+        await openTicket(ticket({ status }));
+
+        expect(buttonLabels()).not.toContain('Block');
+        expect(buttonLabels()).not.toContain('Unblock');
+      },
+    );
+
+    /** The box opens in place and sends nothing; a blank reason leaves its submit dead. */
+    it('collects the reason before sending, and refuses to send a blank one', async () => {
+      await openTicket();
+
+      buttonNamed('Block').click();
+      await settle();
+      http.expectNone('/projects/api/tickets/t1/blocked');
+      expect(buttonNamed('Block').disabled).toBe(true);
+
+      await type('.block-note', '   ');
+      expect(buttonNamed('Block').disabled).toBe(true);
+      http.expectNone('/projects/api/tickets/t1/blocked');
+
+      await type('.block-note', 'Waiting on qits-ci to redeploy.');
+      buttonNamed('Block').click();
+      await settle();
+
+      const request = http.expectOne('/projects/api/tickets/t1/blocked');
+      expect(request.request.method).toBe('POST');
+      expect(request.request.body).toEqual({
+        blocked: true,
+        reason: 'Waiting on qits-ci to redeploy.',
+      });
+      request.flush({ ticket: ticket({ blocked: true }) });
+      await settle();
+
+      expect(text()).toContain('The phase behind this status cannot proceed');
+      expect(buttonNamed('Unblock')).toBeTruthy();
+      http.verify();
+    });
+
+    /** Coming back is self-explanatory, so the note is offered and not demanded. */
+    it('unblocks without insisting on a note', async () => {
+      await openTicket(ticket({ blocked: true }));
+
+      expect(text()).toContain('The phase behind this status cannot proceed');
+      buttonNamed('Unblock').click();
+      await settle();
+      buttonNamed('Unblock').click();
+      await settle();
+
+      const request = http.expectOne('/projects/api/tickets/t1/blocked');
+      expect(request.request.body).toEqual({ blocked: false, reason: '' });
+      request.flush({ ticket: ticket({ blocked: false }) });
+      await settle();
+
+      expect(text()).not.toContain('The phase behind this status cannot proceed');
+      expect(buttonNamed('Block')).toBeTruthy();
+    });
+
+    /** Nothing is said about a ticket that is not blocked — a "Blocked: no" on every row says nothing. */
+    it('draws no blocked fact on an unblocked ticket', async () => {
+      await openTicket();
+
+      expect(text()).not.toContain('The phase behind this status cannot proceed');
     });
   });
 

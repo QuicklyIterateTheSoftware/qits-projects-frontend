@@ -207,6 +207,32 @@ export class EntitiesApi {
   }
 
   /**
+   * Say that a ticket's phase cannot proceed, or that it can again.
+   *
+   * <p>A POST to its own door rather than a field on {@link update}, for {@link transition}'s reason:
+   * blocking is a thing that *happens* to a ticket — it writes a comment saying why, and the service
+   * is free to do more than set a column — where the edit is a restatement of the ticket's words.
+   * Sending it through the edit would also make every other box on that form part of a block.
+   *
+   * <p><b>The reason is required to block and a note to unblock, and the asymmetry is the point.</b>
+   * A blocked ticket with no reason is a row that stops and does not say what it is waiting for,
+   * which is the one thing anybody reading it afterwards needs; coming *back* from that is
+   * self-explanatory — the thing it was waiting for arrived — so a note there is worth having and not
+   * worth demanding. The caller withholds the press until there is a reason
+   * ({@link ../project/entities-model#hasPhase} says where the press is offered at all), and the
+   * service refuses a blank one regardless: offering correctly is not the same as being sure.
+   *
+   * <p>The answer is the ticket, and it is the new subject exactly the way a transition's is — one
+   * row in, one row out, nothing else on the project can have moved.
+   */
+  async setBlocked(ticketId: string, blocked: boolean, reason = ''): Promise<TicketEntity> {
+    const response = await firstValueFrom(
+      this.http.post<TicketResponse>(`${this.ticket(ticketId)}/blocked`, { blocked, reason }),
+    );
+    return ticketEntity(response.ticket);
+  }
+
+  /**
    * **Restate several entities at once**, and have the service take all of it or none of it.
    *
    * <p><b>A map of id to that entity's whole target state, applied atomically.</b> The shape is the

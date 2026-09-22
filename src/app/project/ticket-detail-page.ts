@@ -35,6 +35,7 @@ import { MarkdownView } from '../ui/markdown-view';
 import {
   IMPETUS_RULE,
   entityBySlug,
+  hasPhase,
   isEdited,
   ticketStatusBadge,
   ticketTransitions,
@@ -110,6 +111,15 @@ interface DrawnComment {
  * and it is rendered as **the service's own sentence** rather than wrapped in this page's prose: the
  * server is the one that knows what happened, and "Could not move it — 409 …" would bury that
  * sentence behind a status code.
+ *
+ * <p><b>Block and Unblock sit beside the transitions and are not transitions.</b> The flag is
+ * orthogonal to the status — a blocked ticket is exactly as far along as it was — so it is a press of
+ * its own rather than a seventh button on the lifecycle row. Blocking **demands a reason** and
+ * collects it the way this page collects every other piece of text: a box that opens in place with
+ * its own submit, which is the comment composer's and the edit form's idiom. Unblocking takes a note
+ * and does not insist on one. The pair is offered only where a phase actually runs — see
+ * {@link hasPhase} — because blocking a verified, done or dropped ticket would flag work nothing is
+ * running against and leave a flag only a transition could clear.
  *
  * <p><b>The impetus is the headline and the description is the refinement.</b> They are two
  * different statements by two different authors — what brought the ticket about, in the reporter's
@@ -187,6 +197,16 @@ interface DrawnComment {
         <dd class="opened">{{ opened() }}</dd>
         <dt>Updated</dt>
         <dd class="updated">{{ updated() }}</dd>
+        <!--
+          Only when it is true. A "Blocked: no" on every ticket in the estate would put a field
+          nobody is looking for above the ones everybody is, and say nothing on all but a handful.
+        -->
+        @if (row.blocked) {
+          <dt>Blocked</dt>
+          <dd class="blocked">
+            The phase behind this status cannot proceed — why is in the comments.
+          </dd>
+        }
       </dl>
 
       @if (editing()) {
@@ -311,6 +331,36 @@ interface DrawnComment {
               {{ move.label }}
             </qits-button>
           }
+          <!--
+            Offered only where a phase runs — hasPhase, not a list spelled out here. A block on a
+            verified, done or dropped ticket would flag work nothing is running against.
+          -->
+          <!--
+            The toggle stands down while its own box is open, so the "Block" the reader is looking at
+            is the one that sends. Two buttons with one word on them is the ambiguity the edit form
+            avoids by replacing the whole row.
+          -->
+          @if (blockable() && !blocking()) {
+            @if (row.blocked) {
+              <qits-button
+                variant="ghost"
+                class="unblock"
+                [disabled]="action() !== null"
+                (pressed)="startUnblocking()"
+              >
+                Unblock
+              </qits-button>
+            } @else {
+              <qits-button
+                variant="ghost"
+                class="block"
+                [disabled]="action() !== null"
+                (pressed)="startBlocking()"
+              >
+                Block
+              </qits-button>
+            }
+          }
           @if (confirmingDelete()) {
             <qits-button
               variant="secondary"
@@ -326,6 +376,57 @@ interface DrawnComment {
             </qits-button>
           }
         </div>
+
+        <!--
+          The reason, collected the way every other text on this page is collected: a box that opens
+          in place, with its own submit beside it. There is no dialog idiom in this application to
+          reach for, and a window.prompt would be a control nothing can style, nothing can test and
+          nothing can say the rule in.
+        -->
+        @if (blocking(); as mode) {
+          <section
+            class="form"
+            [attr.aria-label]="mode === 'block' ? 'Block the ticket' : 'Unblock the ticket'"
+          >
+            <label class="field">
+              <span class="label" id="block-note-label">{{
+                mode === 'block' ? 'Why is it blocked?' : 'Anything to note?'
+              }}</span>
+              <textarea
+                class="text area block-note"
+                rows="3"
+                aria-labelledby="block-note-label"
+                [value]="blockNote()"
+                (input)="onBlockNote($event)"
+              ></textarea>
+            </label>
+            <p class="hint">
+              {{
+                mode === 'block'
+                  ? 'Required — it is posted as a comment, and it is what anybody reading this ticket later has to go on.'
+                  : 'Optional. Any transition clears the block too, so this is for saying what changed.'
+              }}
+            </p>
+
+            <div class="actions">
+              <qits-button
+                variant="primary"
+                [disabled]="!blockSendable()"
+                [busy]="action() === 'blocked'"
+                (pressed)="setBlocked()"
+              >
+                {{ mode === 'block' ? 'Block' : 'Unblock' }}
+              </qits-button>
+              <qits-button
+                variant="ghost"
+                [disabled]="action() !== null"
+                (pressed)="stopBlocking()"
+              >
+                Cancel
+              </qits-button>
+            </div>
+          </section>
+        }
 
         <!--
           Nothing at all unless refining wrote pages — see the class note. The panel is the epic's
@@ -693,7 +794,7 @@ export class TicketDetailPage {
    */
   private readonly dossierPages = signal<readonly string[]>([]);
 
-  /** Which ticket-level write is in flight — `save`, `transition` or `delete`. */
+  /** Which ticket-level write is in flight — `save`, `transition:<target>`, `blocked` or `delete`. */
   protected readonly action = signal<string | null>(null);
   protected readonly actionFailure = signal<string | null>(null);
 
@@ -710,6 +811,16 @@ export class TicketDetailPage {
 
   /** Deleting throws a record away, so it asks in the button rather than in a browser dialog. */
   protected readonly confirmingDelete = signal(false);
+
+  /**
+   * Which of the two block presses has its box open, or null.
+   *
+   * One signal for both, because they are the same control with a different question in it and can
+   * never be open at once — the ticket is blocked or it is not.
+   */
+  protected readonly blocking = signal<'block' | 'unblock' | null>(null);
+
+  protected readonly blockNote = signal('');
 
   protected readonly editingComment = signal<string | null>(null);
   protected readonly commentDraft = signal('');
@@ -755,6 +866,23 @@ export class TicketDetailPage {
       this.draftTitle().trim().length > 0 &&
       this.draftImpetus().trim().length > 0 &&
       this.action() === null,
+  );
+
+  /**
+   * Whether "blocked" is a thing that can be said about this ticket where it stands.
+   *
+   * The rule is {@link hasPhase}'s and is not restated here: a status with no phase behind it has
+   * nothing to block, and a page that decided that for itself would be the second opinion.
+   */
+  protected readonly blockable = computed(() => hasPhase(this.ticket()?.status ?? 'DONE'));
+
+  /**
+   * Whether the open box may be submitted. Blocking demands a reason; unblocking does not, which is
+   * the asymmetry {@link EntitiesApi.setBlocked} argues for.
+   */
+  protected readonly blockSendable = computed(
+    () =>
+      this.action() === null && (this.blocking() !== 'block' || this.blockNote().trim().length > 0),
   );
 
   /** Whether refining wrote any dossier pages. False draws no section at all — see the class note. */
@@ -950,6 +1078,7 @@ export class TicketDetailPage {
     this.draftAssignee.set(row.assignee ?? '');
     this.actionFailure.set(null);
     this.confirmingDelete.set(false);
+    this.blocking.set(null);
     this.editing.set(true);
   }
 
@@ -1031,10 +1160,66 @@ export class TicketDetailPage {
     }
     this.action.set(`transition:${target}`);
     this.actionFailure.set(null);
+    this.blocking.set(null);
     try {
       this.subject.set(ready(await this.api.transition(row.id, target)));
     } catch (error) {
       this.actionFailure.set(this.refusal(error));
+    } finally {
+      this.action.set(null);
+    }
+  }
+
+  /** Open the reason box. Nothing is sent until the box's own submit. */
+  protected startBlocking(): void {
+    this.actionFailure.set(null);
+    this.confirmingDelete.set(false);
+    this.blockNote.set('');
+    this.blocking.set('block');
+  }
+
+  /** The same box, asking for a note rather than a reason. */
+  protected startUnblocking(): void {
+    this.actionFailure.set(null);
+    this.confirmingDelete.set(false);
+    this.blockNote.set('');
+    this.blocking.set('unblock');
+  }
+
+  protected stopBlocking(): void {
+    this.blocking.set(null);
+    this.blockNote.set('');
+    this.actionFailure.set(null);
+  }
+
+  protected onBlockNote(event: Event): void {
+    this.blockNote.set((event.target as HTMLTextAreaElement).value);
+  }
+
+  /**
+   * Block it or unblock it, with what the box says.
+   *
+   * The answer is the new subject, exactly as a transition's is: this door writes one row, and the
+   * row it writes is the one on screen.
+   */
+  protected async setBlocked(): Promise<void> {
+    const row = this.ticket();
+    const mode = this.blocking();
+    if (!row || !mode || !this.blockSendable()) {
+      return;
+    }
+    this.action.set('blocked');
+    this.actionFailure.set(null);
+    try {
+      this.subject.set(
+        ready(await this.api.setBlocked(row.id, mode === 'block', this.blockNote().trim())),
+      );
+      this.blocking.set(null);
+      this.blockNote.set('');
+    } catch (error) {
+      this.actionFailure.set(
+        `Could not ${mode === 'block' ? 'block' : 'unblock'} it — ${describeError(error)}.`,
+      );
     } finally {
       this.action.set(null);
     }

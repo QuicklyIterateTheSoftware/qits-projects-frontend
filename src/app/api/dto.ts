@@ -238,7 +238,7 @@ export interface WrapperDto {
  *
  * **There is no `DONE` on the wire, and that is on purpose.** Done is read off the features — an
  * `IMPLEMENTATION` epic whose every feature is implemented — so storing it would be a second copy
- * of a fact the tree already carries, free to disagree with it. See `isDone` in the epics model.
+ * of a fact the tree already carries, free to disagree with it. See `isClosed` in the epics model.
  *
  * `REFINING` is the draft phase: everything is still being written. `IMPLEMENTATION` freezes the
  * scope and only the implemented markers move after it. `IMPLEMENTED` is shipped — declared
@@ -464,19 +464,28 @@ export type TicketType = 'BUG' | 'IMPROVEMENT';
  * How far a ticket has got: **the status is what has been achieved, and the phase that runs while it
  * holds is what happens next.**
  *
- * <p>That is the whole rule, and it is what makes the five readable in either direction.
+ * <p>That is the whole rule, and it is what makes the pipeline readable in either direction.
  * `REPORTED` — somebody said what is wrong, so refining runs. `REFINED` — the ticket now says what
  * to do, so implementing runs. `IMPLEMENTED` — the change is released and deployed, so verifying
  * runs. `VERIFIED` — it no longer occurs on the platform, so a person closes it. `DONE` — closed.
  * A status therefore never names work in flight; it names the last thing that finished.
  *
- * <p><b>Adjacent-only, in either direction, and nothing is terminal.</b> The service refuses a
- * two-step move and answers 409 to a move to the status a ticket already holds, so a page offers a
- * ticket's neighbours and nothing else — see {@link ../project/entities-model#ticketTransitions}. A
- * closed ticket that turns out not to be fixed walks back the same way it came rather than being
- * reopened into a state it was never in.
+ * <p><b>Along that pipeline the moves are adjacent-only, in either direction, and nothing is
+ * terminal.</b> The service refuses a two-step move and answers 409 to a move to the status a ticket
+ * already holds, so a page offers a ticket's neighbours and nothing else — see
+ * {@link ../project/entities-model#ticketTransitions}. A closed ticket that turns out not to be
+ * fixed walks back the same way it came rather than being reopened into a state it was never in.
+ *
+ * <p><b>`DROPPED` is the one status off that line, and it is the exit for work that is not going to
+ * be done at all.</b> Every status that still owes something reaches it in one move — `REPORTED`,
+ * `REFINED`, `IMPLEMENTED` and `VERIFIED` — because abandoning a ticket is a decision somebody makes
+ * wherever they happen to be standing, and walking it back down the pipeline first would be asking
+ * them to retract claims that were true. `DONE` does not, since it is already an ending and dropping
+ * a closed ticket would be rewriting what happened rather than deciding what will not. Out of it
+ * there is one move, back to `REPORTED`: what somebody picks up again is the impetus, because the
+ * refinement went with the work when it was dropped.
  */
-export type TicketStatus = 'REPORTED' | 'REFINED' | 'IMPLEMENTED' | 'VERIFIED' | 'DONE';
+export type TicketStatus = 'REPORTED' | 'REFINED' | 'IMPLEMENTED' | 'VERIFIED' | 'DONE' | 'DROPPED';
 
 /**
  * A ticket: one small, self-contained piece of work, beside the plan rather than inside it.
@@ -546,6 +555,19 @@ export interface TicketDto {
   readonly qualifiedId: string | null;
   readonly type: TicketType;
   readonly status: TicketStatus;
+  /**
+   * Whether the phase belonging to the ticket's current status **cannot proceed** — waiting on an
+   * answer, on somebody else's change, on access nobody here can grant.
+   *
+   * <p>Orthogonal to {@link status} rather than a seventh value of it, because it says nothing about
+   * what has been achieved: a blocked ticket is still exactly as far along as it was. It is also
+   * **temporary** in a way a status is not — any transition clears it, since the phase that could not
+   * proceed is over the moment the ticket moves.
+   *
+   * <p>Optional for {@link WorkspaceReferenceDto.status}'s reason: it arrived after the ticket did,
+   * and absent means false.
+   */
+  readonly blocked?: boolean;
   /** Free text — whoever is looking at it. Null when nobody has said. */
   readonly assignee: string | null;
   /** Stamped from the session, never sent. Null for a row with no principal behind it. */

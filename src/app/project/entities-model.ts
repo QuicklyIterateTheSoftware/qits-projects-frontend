@@ -103,6 +103,14 @@ export interface TicketEntity extends EntityFields {
   readonly archetype: 'TICKET';
   readonly status: TicketStatus;
   readonly type: TicketType;
+  /**
+   * Whether the phase behind the current status cannot proceed — see {@link ../api/dto#TicketDto}.
+   *
+   * <p>Required here where the wire's is optional, because the boundary is where a missing field
+   * stops being a question: {@link ticketEntity} resolves absent to false once, and nothing
+   * downstream has to remember that `undefined` means "not blocked".
+   */
+  readonly blocked: boolean;
   /** Why it exists, in the reporter's own words. See {@link IMPETUS_RULE}. */
   readonly impetus: string | null;
   /** Free text — whoever is looking at it. Null when nobody has said. */
@@ -157,6 +165,7 @@ export function ticketEntity(ticket: TicketDto): TicketEntity {
     workspaces: ticket.workspaces,
     status: ticket.status,
     type: ticket.type,
+    blocked: ticket.blocked ?? false,
     impetus: ticket.impetus,
     assignee: ticket.assignee,
     createdBy: ticket.createdBy,
@@ -281,7 +290,7 @@ export function featureStatus(feature: Pick<FeatureDto, 'implementedOn'>): Statu
  *
  * <p>An epic with no features never reads as implemented <em>here</em> — its features are the only
  * evidence this derivation has, and an epic with none of them offers none. The declared
- * `IMPLEMENTED` status is the service's answer for that epic, and `isDone`/`entityBadge` read it
+ * `IMPLEMENTED` status is the service's answer for that epic, and `isClosed`/`entityBadge` read it
  * first.
  */
 export function epicStatus(entity: EpicEntity): StatusBadge {
@@ -312,6 +321,11 @@ const ABANDONED: StatusBadge = { label: 'abandoned', tone: 'danger' };
  *
  * <p>`DONE` is `success`, the same word an implemented epic uses.
  *
+ * <p>`DROPPED` is `neutral`, and the grey is the whole argument: work nobody is going to do is
+ * neither a failure nor an achievement, so the two tones that would say otherwise are both wrong —
+ * `danger` is the bug badge sitting beside this one and would read as "this went badly", `success`
+ * is what closing a ticket earns and would read as though dropping it were closing it.
+ *
  * <p>The five tones are not five distinct colours, because {@link QitsBadgeTone} has five values for
  * the whole application and two of them (`danger`, `info`) are already spoken for by the type badge
  * beside this one. Labels carry the distinction; the tone carries the phase.
@@ -322,7 +336,19 @@ const STATUS_BADGES: Readonly<Record<TicketStatus, StatusBadge>> = {
   IMPLEMENTED: { label: 'implemented', tone: 'neutral' },
   VERIFIED: { label: 'verified', tone: 'info' },
   DONE: { label: 'done', tone: 'success' },
+  DROPPED: { label: 'dropped', tone: 'neutral' },
 };
+
+/**
+ * The badge a blocked ticket carries **beside** its status, never instead of it.
+ *
+ * `warning` because it is the one thing a row can say that asks for somebody to do something: a
+ * blocked ticket is not further along or less far along than it was, it is a phase standing still
+ * until a person unsticks it. It shares the tone with `REPORTED`, which is the same kind of
+ * statement — a row waiting on a human — and the pair drawn together on a blocked reported ticket
+ * is two amber badges saying two true things, not one said twice.
+ */
+export const BLOCKED_BADGE: StatusBadge = { label: 'blocked', tone: 'warning' };
 
 /** What the ticket has achieved — see {@link ../api/dto#TicketStatus} for why that is the reading. */
 export function ticketStatusBadge(status: TicketStatus): StatusBadge {
@@ -359,11 +385,18 @@ export function entityBadge(entity: Entity): StatusBadge {
 }
 
 /**
- * Whether an entity is finished, in the sense its own archetype means by it.
+ * Whether an entity is **closed** — finished with, in the sense its own archetype means by it.
  *
- * <p>A ticket is done when a person closed it, which is the `DONE` status and nothing else. There is
- * nothing to derive: no children, and `VERIFIED` is deliberately not done — the platform agreeing the
- * problem is gone is not the same as somebody agreeing to close it.
+ * <p>A ticket is closed two ways and they are different endings: `DONE`, which a person pressed
+ * because the problem is gone, and `DROPPED`, which a person pressed because it is not going to be
+ * dealt with. What they have in common is the only thing this question asks — nothing is owed on the
+ * row any more — and that is why the two share an answer here and stay two statuses everywhere the
+ * distinction is worth drawing. `VERIFIED` is deliberately neither: the platform agreeing the problem
+ * is gone is not the same as somebody agreeing to close it.
+ *
+ * <p>It was `isDone`, and the name moved with the meaning: "done" is now one of the two ways a ticket
+ * gets here, so a caller reading `isDone(ticket)` on a dropped row would have been told something
+ * false about which of them happened.
  *
  * <p>An epic is done by the stored `IMPLEMENTED` status **or** by the feature derivation. The
  * derivation came first and stays: an implementation epic with at least one feature and every one of
@@ -372,9 +405,9 @@ export function entityBadge(entity: Entity): StatusBadge {
  * description, with no features to read. The transition that sets it stamps every unmarked feature in
  * the same breath, so the two spellings cannot disagree about one epic.
  */
-export function isDone(entity: Entity): boolean {
+export function isClosed(entity: Entity): boolean {
   if (entity.archetype === 'TICKET') {
-    return entity.status === 'DONE';
+    return entity.status === 'DONE' || entity.status === 'DROPPED';
   }
   if (entity.status === 'IMPLEMENTED') {
     return true;
@@ -424,7 +457,7 @@ export function groupEpics(entities: readonly Entity[]): EpicGroups {
         abandoned.push(entity);
         break;
       default:
-        (isDone(entity) ? done : implementation).push(entity);
+        (isClosed(entity) ? done : implementation).push(entity);
     }
   }
 
@@ -434,9 +467,16 @@ export function groupEpics(entities: readonly Entity[]): EpicGroups {
 /**
  * The lifecycle in order, which is the only place that order is written down.
  *
- * Everything else about a ticket is derived from it: the badge, the adjacency a transition control
- * offers, and the order the outstanding section reads down. A second copy of this sequence would be a
- * second opinion about what comes after what, and the one that was not updated would be the one drawn.
+ * Everything else about a ticket is derived from it: the badge, the direction a transition control
+ * draws a move in, and the order the outstanding section reads down. A second copy of this sequence
+ * would be a second opinion about what comes after what, and the one that was not updated would be
+ * the one drawn.
+ *
+ * <p><b>It is the pipeline, not the list of statuses — `DROPPED` is deliberately missing.</b> A
+ * dropped ticket is not at a point on this line, it left it, so there is no position for it here and
+ * anything asking "how far along is this" about one is asking the wrong question. What a ticket may
+ * *move* to is {@link TICKET_TRANSITIONS}, which is a different question with a different answer;
+ * the exhaustive set of statuses is {@link ../api/dto#TicketStatus} and nothing else.
  */
 export const TICKET_LIFECYCLE: readonly TicketStatus[] = [
   'REPORTED',
@@ -449,38 +489,48 @@ export const TICKET_LIFECYCLE: readonly TicketStatus[] = [
 /** The two sections of the tickets desk, in the order a reader works down them. */
 export interface TicketGroups {
   readonly outstanding: readonly TicketEntity[];
-  readonly done: readonly TicketEntity[];
+  /**
+   * The archive: `DONE` and `DROPPED` together.
+   *
+   * <p>Named for the question the split asks rather than for one of the two answers — it was `done`
+   * while `DONE` was the only way out, and a field still called that would be the name the next
+   * reader trusts over the code when they are wondering where a dropped ticket went.
+   */
+  readonly closed: readonly TicketEntity[];
 }
 
 /**
  * The project's tickets, split into **what is still moving and what is closed**: outstanding is
- * anything but `DONE`.
+ * everything that still owes something.
  *
  * <p><b>It filters the same collection {@link groupEpics} filters</b>, from the other end — which is
  * the whole shape of the two desks now. Neither of them owns a list; each owns a view.
  *
- * <p><b>Two lists for five statuses, deliberately.</b> A section per status would put five headings
- * on a desk that usually has one or two rows under each, and would make a ticket's progress a jump
- * between boxes rather than a move down a list. The split that matters to a reader is whether
- * anything is still owed, which is exactly `DONE` or not.
+ * <p><b>Two lists for six statuses, deliberately, and the sixth did not change that.</b> A section
+ * per status would put six headings on a desk that usually has one or two rows under each, and would
+ * make a ticket's progress a jump between boxes rather than a move down a list. The split that
+ * matters to a reader is whether anything is still owed — which is {@link isClosed}, and a dropped
+ * ticket owes nothing for a different reason than a done one owes nothing.
  *
  * <p><b>Outstanding is ordered by the lifecycle, not alphabetically and not by date</b> — reported
  * at the top, then refined, then implemented, then verified — so the section reads as a pipeline and
  * a reader sees where the work is piling up. Within one status it is **newest first**, which is the
  * old rule kept: the row that just arrived is the one being talked about.
  *
- * <p><b>Done is newest first throughout</b>, because it is an archive and what somebody looks up in
- * an archive is usually the most recent thing in it. A status that the lifecycle does not know
- * sorts after the ones it does rather than vanishing: an unrecognised row belongs at the bottom of
- * the desk, not off it.
+ * <p><b>Closed is newest first throughout</b>, because it is an archive and what somebody looks up
+ * in an archive is usually the most recent thing in it. A status the pipeline does not know sorts
+ * after the ones it does rather than vanishing: a row off the line belongs at the bottom of the
+ * desk, not off it. `DROPPED` is such a status and never reaches that ordering — it is closed, so it
+ * is in the archive, which is sorted by age alone — but the rule is what keeps a status this build
+ * has never heard of on the screen at all.
  */
 export function groupTickets(entities: readonly Entity[]): TicketGroups {
   const outstanding: TicketEntity[] = [];
-  const done: TicketEntity[] = [];
+  const closed: TicketEntity[] = [];
   for (const entity of ofArchetype(entities, 'TICKET')) {
-    (entity.status === 'DONE' ? done : outstanding).push(entity);
+    (isClosed(entity) ? closed : outstanding).push(entity);
   }
-  return { outstanding: byLifecycle(newestFirst(outstanding)), done: newestFirst(done) };
+  return { outstanding: byLifecycle(newestFirst(outstanding)), closed: newestFirst(closed) };
 }
 
 /** The lifecycle's own order, ties keeping whatever order they arrived in. See {@link groupTickets}. */
@@ -491,7 +541,7 @@ function byLifecycle(tickets: readonly TicketEntity[]): readonly TicketEntity[] 
     .map((entry) => entry.ticket);
 }
 
-/** Where a ticket sits on the lifecycle, with an unknown status sorted past every known one. */
+/** Where a ticket sits on the pipeline, with a status that is not on it sorted past every one that is. */
 function phase(ticket: TicketEntity): number {
   const at = TICKET_LIFECYCLE.indexOf(ticket.status);
   return at < 0 ? TICKET_LIFECYCLE.length : at;
@@ -679,8 +729,15 @@ const ABANDON: TransitionAction = {
  *
  * <p>A ticket gets the one press it has, and a closed ticket gets none of the lifecycle ones:
  * offering to put an agent on something a person has already closed would be offering to reopen it
- * sideways. The ticket's lifecycle moves are not here — they live on its detail page, where there is
- * room to say what each one claims ({@link ticketTransitions}).
+ * sideways. `DROPPED` is closed in exactly that sense — somebody decided the work will not happen,
+ * so an "Assign agent" beside it would be the button that quietly un-decides it. The ticket's
+ * lifecycle moves are not here — they live on its detail page, where there is room to say what each
+ * one claims ({@link ticketTransitions}).
+ *
+ * <p><b>A blocked ticket is withheld the same press, for a different reason.</b> It is not closed and
+ * nothing about it is decided; its phase simply cannot proceed, and dispatching an agent into a phase
+ * that cannot proceed is how a blocked ticket ends up with a workspace, a conversation and no way
+ * forward. Whoever unblocks it gets the button back, since any transition clears the flag too.
  *
  * <p><b>{@link ReshapeAction} is the one press every entity has, in every phase, and it is always
  * last.</b> It is not a lifecycle move at all — it says the row is the wrong *kind* of thing or in the
@@ -690,7 +747,7 @@ const ABANDON: TransitionAction = {
  */
 export function actionsFor(entity: Entity): readonly EntityAction[] {
   if (entity.archetype === 'TICKET') {
-    return entity.status === 'DONE' ? [RESHAPE] : [ASSIGN, RESHAPE];
+    return isClosed(entity) || entity.blocked ? [RESHAPE] : [ASSIGN, RESHAPE];
   }
   switch (entity.status) {
     case 'REFINING':
@@ -735,19 +792,33 @@ export function actionKey(action: EntityAction): string {
 export interface TicketTransition {
   readonly target: TicketStatus;
   readonly label: string;
-  /** Forward is the pipeline's direction; backward is a correction. */
+  /**
+   * Whether the move **advances the pipeline**, which is a question about {@link TICKET_LIFECYCLE}
+   * and not about how the move is spelled. Forward is the pipeline's direction; backward is a
+   * correction — and a move on or off the pipeline altogether is neither, so it is false. See
+   * {@link ticketTransitions} for why the off-pipeline moves take that answer rather than the other.
+   */
   readonly forward: boolean;
 }
 
 /**
  * What each move is called, **named after the claim it makes** rather than after the state it lands
- * in.
+ * in. Both records are keyed by the move's *target*, and which of the two a move reads depends on
+ * what pressing it does to the claim that status makes.
  *
- * Forward, a press asserts that a phase finished: "Mark refined" says the ticket now says what to
- * do. `DONE` is "Close", because that is the word a person uses for it and "mark done" would be the
- * one label on this row that described a column rather than an act. Backward, a press retracts a
- * claim — "Back to refined" says the implementation is not there after all — and the one move out of
- * `DONE` is "Reopen", which is what reopening has always been called.
+ * Asserting, a press says a phase finished: "Mark refined" says the ticket now says what to do.
+ * `DONE` is "Close", because that is the word a person uses for it and "mark done" would be the one
+ * label on this row that described a column rather than an act. `DROPPED` is "Drop", which asserts a
+ * decision rather than a finished phase but is an assertion all the same — nothing is being taken
+ * back by it. Retracting, a press withdraws a claim — "Back to refined" says the implementation is
+ * not there after all — and the retraction out of `DONE` is "Reopen", which is what reopening has
+ * always been called.
+ *
+ * <p>`BACKWARD_LABELS.DROPPED` is the one entry nothing reads, and it is spelled out rather than
+ * left off because the record is `Record<TicketStatus, string>` and that exhaustiveness is what
+ * makes a seventh status a compile error here instead of an undefined button label on a screen. No
+ * move retracts *into* `DROPPED` — the map below gives it no incoming edge that is a retraction —
+ * so it takes the phrasing its neighbours use and waits to be either read or deleted.
  */
 const FORWARD_LABELS: Readonly<Record<TicketStatus, string>> = {
   REPORTED: 'Mark reported',
@@ -755,6 +826,7 @@ const FORWARD_LABELS: Readonly<Record<TicketStatus, string>> = {
   IMPLEMENTED: 'Mark implemented',
   VERIFIED: 'Mark verified',
   DONE: 'Close',
+  DROPPED: 'Drop',
 };
 
 const BACKWARD_LABELS: Readonly<Record<TicketStatus, string>> = {
@@ -763,36 +835,94 @@ const BACKWARD_LABELS: Readonly<Record<TicketStatus, string>> = {
   IMPLEMENTED: 'Back to implemented',
   VERIFIED: 'Reopen',
   DONE: 'Back to done',
+  DROPPED: 'Back to dropped',
 };
 
 /**
- * The moves a ticket may make: its **neighbours on the lifecycle and nothing else**, forward first.
+ * Every move each status may make — **a mirror of the service's `TicketLifecycle.LEGAL_TARGETS`, and
+ * the two must not drift.**
  *
- * <p><b>Adjacent-only in either direction, and the current status is not among them.</b> The service
- * refuses both a two-step move and a move to the status already held, so a control that offered
- * either would be offering a 409 — and the reason it is computed here rather than in the page is
- * that this is the rule the whole screen is drawn from, and a rule inside a template is one nothing
- * can test without a browser around it.
+ * <p><b>Written out rather than derived, because the graph is no longer a line.</b> This used to be
+ * index arithmetic over {@link TICKET_LIFECYCLE} — the entry before and the entry after — which is
+ * exactly as expressive as the pipeline and no more. `DROPPED` is off the pipeline: four statuses
+ * reach it and it reaches one, and no amount of `indexOf` says that. A map says it in six lines and
+ * a reader can check it against the server's by looking.
+ *
+ * <p>The server is still the authority and this is still only about not offering a press that cannot
+ * work: a target it refuses answers 409 with the sentence saying why, which is what a page open while
+ * somebody else moved the ticket renders. Offering correctly is not the same as being sure.
+ *
+ * <p>The order here is the server's own and carries no presentation meaning — {@link
+ * ticketTransitions} imposes the order the buttons are drawn in, so this map can be kept spelled
+ * exactly like its counterpart without a re-ordering there changing a screen.
+ */
+export const TICKET_TRANSITIONS: Readonly<Record<TicketStatus, readonly TicketStatus[]>> = {
+  REPORTED: ['REFINED', 'DROPPED'],
+  REFINED: ['IMPLEMENTED', 'REPORTED', 'DROPPED'],
+  IMPLEMENTED: ['VERIFIED', 'REFINED', 'DROPPED'],
+  VERIFIED: ['DONE', 'IMPLEMENTED', 'DROPPED'],
+  DONE: ['VERIFIED'],
+  DROPPED: ['REPORTED'],
+};
+
+/**
+ * Whether a phase runs behind this status — and therefore whether "blocked" is a thing that can be
+ * said about a ticket holding it.
+ *
+ * <p>`REPORTED`, `REFINED` and `IMPLEMENTED` are the three a phase follows: refining, implementing,
+ * verifying. Blocking one of those says that phase cannot proceed, which is a fact about work in
+ * flight. The other three have no phase to block — `VERIFIED` is waiting on a person to press a
+ * button, and `DONE` and `DROPPED` are endings — so a block there would be a flag on a ticket
+ * nothing is running against, and the only way to clear it would be to move a row somebody had
+ * finished with.
+ *
+ * <p>It lives here beside {@link TICKET_TRANSITIONS} rather than in the page that draws the control,
+ * because it is the same kind of rule as the transition map — which presses are legal where — and a
+ * second screen asking the question would otherwise answer it from its own list.
+ */
+export function hasPhase(status: TicketStatus): boolean {
+  return status === 'REPORTED' || status === 'REFINED' || status === 'IMPLEMENTED';
+}
+
+/**
+ * The moves a ticket may make, drawn in the order the control reads: **forward, then backward, then
+ * the drop.**
+ *
+ * <p><b>The legality is {@link TICKET_TRANSITIONS}' answer; the order and the wording are this
+ * function's.</b> The current status is never among them — the service answers 409 to a move to the
+ * status already held — and the reason all of this is computed here rather than in the page is that
+ * it is the rule the whole screen is drawn from, and a rule inside a template is one nothing can test
+ * without a browser around it.
  *
  * <p>Forward first because the pipeline's direction is what a reader is usually pressing, and the
- * backward move is a correction they go looking for. The ends have one neighbour each, which is how
- * "nothing is terminal" draws: `DONE` still offers Reopen.
+ * backward move is a correction they go looking for. **The drop is last, always**, and that is the
+ * one piece of ordering that is a safety argument rather than a reading one: it is the press that
+ * ends the ticket, so it does not sit where the hand reaching for "Mark refined" lands. `DONE` offers
+ * one move and it is Reopen, which is how "nothing is terminal" draws.
+ *
+ * <p><b>Both off-pipeline moves report `forward: false`</b> — the drop, and the reopen out of
+ * `DROPPED`. Neither advances anything: the first leaves the line and the second re-enters it at the
+ * beginning, and {@link TicketTransition.forward} is read by exactly one thing, the weight the detail
+ * page draws a button with. Calling the drop forward because its label is an assertion would draw
+ * abandoning a ticket as the ordinary next step, which is the opposite of what putting it last says.
  */
 export function ticketTransitions(status: TicketStatus): readonly TicketTransition[] {
   const at = TICKET_LIFECYCLE.indexOf(status);
-  if (at < 0) {
-    return [];
-  }
-  const moves: TicketTransition[] = [];
-  const ahead = TICKET_LIFECYCLE[at + 1];
-  const behind = TICKET_LIFECYCLE[at - 1];
-  if (ahead) {
-    moves.push({ target: ahead, label: FORWARD_LABELS[ahead], forward: true });
-  }
-  if (behind) {
-    moves.push({ target: behind, label: BACKWARD_LABELS[behind], forward: false });
-  }
-  return moves;
+  return (TICKET_TRANSITIONS[status] ?? [])
+    .map((target) => {
+      const ahead = at >= 0 && TICKET_LIFECYCLE.indexOf(target) > at;
+      const off = target === 'DROPPED';
+      return {
+        move: {
+          target,
+          label: off || ahead ? FORWARD_LABELS[target] : BACKWARD_LABELS[target],
+          forward: ahead && !off,
+        },
+        rank: off ? 2 : ahead ? 0 : 1,
+      };
+    })
+    .sort((left, right) => left.rank - right.rank)
+    .map((entry) => entry.move);
 }
 
 /**
