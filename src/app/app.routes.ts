@@ -24,12 +24,18 @@ import { RefiningPage } from './refining/refining-page';
  * Whether the second segment of `/<project>/<group>/<repository>` names a group.
  *
  * <p>Without it every three-segment address in the application would be a repository. The test used
- * to be one set membership, because the group was always one of the six archetype categories. A
+ * to be one set membership, because the group was always one of the archetype categories. A
  * repository is addressed by its **component** now, and component names are an *open* set only the
  * platform knows — so a closed test cannot prove one, and the question has to be asked the other
  * way round: **a segment is a group unless this application has claimed the word for itself.** The
- * six categories still answer on their own, which keeps every archetype address reading before any
- * list has arrived.
+ * categories the chrome knows still answer on their own, which keeps every archetype address
+ * reading before any list has arrived.
+ *
+ * <p><b>`apps` is the one category the chrome does not know yet</b>, and it reaches the repository
+ * page anyway — through the second branch, as an unclaimed word, exactly as a component name does.
+ * That is the open-set rule paying for itself: a category this application learned a release before
+ * `@qits/ui-components` did needs no special case, and when the bump lands `QITS_CATEGORIES` simply
+ * starts answering for it on the first branch instead. Nothing here changes either way.
  *
  * <p>The own-word list is {@link OWN_PROJECT_SEGMENTS}, read off the route table itself, so a route
  * added below `:project` cannot be swallowed by forgetting to name it here. Route *order* already

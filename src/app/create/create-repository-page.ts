@@ -280,7 +280,7 @@ export class CreateRepositoryPage {
   });
 
   /**
-   * The six types, named and nothing more.
+   * The seven types, named and nothing more.
    *
    * The label used to carry the archetype's directory — "service (services/)" — and that is only
    * half true now: a repository with a component is mounted under `components/` whatever type it

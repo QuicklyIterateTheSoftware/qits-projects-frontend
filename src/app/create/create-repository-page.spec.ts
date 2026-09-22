@@ -5,6 +5,7 @@ import { TestBed } from '@angular/core/testing';
 import { Router, provideRouter } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
 import { routes } from '../app.routes';
+import { COMPONENT_TYPES } from '../api/dto';
 import { EVENT_SOURCE_FACTORY, type EventSourceFactory } from '../api/event-source';
 
 /**
@@ -128,12 +129,26 @@ describe('CreateRepositoryPage', () => {
     expect(text()).toContain('daemons/qits-watcher');
   });
 
+  /**
+   * The new type, end to end through the same seam: `APP` is offered by the picker, its word is
+   * "app", and the archetype-layout destination it previews is `apps/` — not `frontends/`, which
+   * is the mistake that would file a standalone application under the microfrontends.
+   */
+  it('seeds an app from ?type=APP and lands it under apps/', async () => {
+    await open('/p1/repositories/new?type=APP');
+
+    expect(pill()).toContain('app');
+    await type('qits-docs-app');
+    expect(text()).toContain('apps/qits-docs-app');
+    expect(text()).not.toContain('frontends/qits-docs-app');
+  });
+
   /** A prefill is not an address: an unrecognised value seeds nothing rather than inventing a type. */
   it('leaves the picker open for a ?type= it does not recognise', async () => {
     await open('/p1/repositories/new?type=WIDGET');
 
     expect(pill()).toBeNull();
-    expect(page().querySelectorAll('.qits-picker-option')).toHaveLength(6);
+    expect(page().querySelectorAll('.qits-picker-option')).toHaveLength(COMPONENT_TYPES.length);
   });
 
   it('sends a name and no url in the blank mode, then goes back to the project', async () => {

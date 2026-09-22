@@ -16,18 +16,48 @@ import type { QitsCategory } from '@qits/ui-components';
 /**
  * What a repository is for.
  *
- * The six **placeable** archetypes each name a directory in the wrapper's `.gitmodules` — the
+ * The seven **placeable** archetypes each name a directory in the wrapper's `.gitmodules` — the
  * archetype layout, `<directory>/<name>` — and a repository the wrapper does not mount somewhere is
  * not part of the project. `PROJECT` is the wrapper itself, `SERVICE_TEMPLATE` and `FORK` are rows
  * that deliberately sit outside any wrapper.
  *
+ * <p>`APP` and `FRONTEND` are two different things and the pair is the reason `APP` exists. An
+ * `-app` is a **standalone web application**: its own server, its own image, its own deployment,
+ * reached at its own host. A `-frontend` is a **microfrontend** — it ships no image and no
+ * deployment of its own, because a service carries it inside its image and serves it. Neither one
+ * is a variant of the other, so they are two archetypes and two groups.
+ *
  * <p>Under the **component layout** the directory states no archetype at all, so the two facts come
  * apart: see {@link RepositoryDto.component}.
  */
-export type PlaceableArchetype = 'SERVICE' | 'DAEMON' | 'LIBRARY' | 'FRONTEND' | 'CLI' | 'IMAGE';
+export type PlaceableArchetype =
+  | 'SERVICE'
+  | 'DAEMON'
+  | 'LIBRARY'
+  | 'APP'
+  | 'FRONTEND'
+  | 'CLI'
+  | 'IMAGE';
 
 /** Every archetype the service can answer with, placeable or not. */
 export type RepositoryArchetype = PlaceableArchetype | 'PROJECT' | 'SERVICE_TEMPLATE' | 'FORK';
+
+/**
+ * A category word, which is the chrome's `QitsCategory` plus whatever this application knows first.
+ *
+ * <p>The two lists are deliberately separate copies of one vocabulary — this table here, and
+ * `scope.ts` / `repositories.ts` in `@qits/ui-components` — so one of them necessarily learns a new
+ * word a release before the other. `apps` is that word today: it is in the library's own
+ * `QitsCategory` and `QITS_NAV_SLOTS` on the library's main, and it reaches this application only
+ * when the dependency is bumped to the version that carries it. The union is what lets the table be
+ * spelled in the meantime, and it is a *widening* rather than a replacement, so nothing else has to
+ * change shape.
+ *
+ * <p>**Delete the `| 'apps'` when that bump lands** — at that point `QitsCategory` already says it,
+ * the alias collapses to the import, and the compiler is the thing that proves the two lists agree
+ * again.
+ */
+export type RepositoryCategory = QitsCategory | 'apps';
 
 /** One group on the project page: an archetype, the wrapper directory it lands in, and its words. */
 export interface ComponentType {
@@ -37,11 +67,12 @@ export interface ComponentType {
    * reconcile also makes there. A component entry is mounted under {@link componentDirectory}
    * instead, and its directory names no archetype.
    *
-   * <p>Typed as the chrome's `QitsCategory` because it is the same word: the archetype directory
-   * is what the sidebar's legacy groups are called and what a `<category>.details` slot is keyed
-   * on. Saying so here is what lets a slot be composed from an archetype without a second table.
+   * <p>Typed as {@link RepositoryCategory} — the chrome's `QitsCategory`, widened — because it is
+   * the same word: the archetype directory is what the sidebar's legacy groups are called and what
+   * a `<category>.details` slot is keyed on. Saying so here is what lets a slot be composed from an
+   * archetype without a second table.
    */
-  readonly directory: QitsCategory;
+  readonly directory: RepositoryCategory;
   /** The group heading. */
   readonly label: string;
   /** One of them, for “New <singular>”. */
@@ -49,8 +80,16 @@ export interface ComponentType {
 }
 
 /**
- * The six groups, in display order, and the order is the project's own layout: what it deploys,
- * what runs beside it, what it shares, what it serves, what it hands a person, what it publishes.
+ * The seven groups, in display order, and the order is the project's own layout: what it deploys,
+ * what runs beside it, what it shares, what it serves on its own, what a service serves for it,
+ * what it hands a person, what it publishes.
+ *
+ * <p>The order is not this application's to choose. It is the platform's, and it is the same one
+ * `DeploymentSpecParser.SLOTS` in qits-deployments, `EdgeRoutes.SLOTS` in qits-edge and
+ * `QITS_NAV_SLOTS` / `QITS_CATEGORIES` in `@qits/ui-components` already spell — so `apps` sits
+ * after the libraries and before the frontends here because it sits there in all three. A group
+ * order that disagrees with the sidebar's is a page that reads as a different product on every
+ * host.
  *
  * An archetype missing from this list is not placeable, so it has no group — see
  * `groupComponents` in the project page for where an unknown value goes instead.
@@ -59,6 +98,7 @@ export const COMPONENT_TYPES: readonly ComponentType[] = [
   { archetype: 'SERVICE', directory: 'services', label: 'Services', singular: 'service' },
   { archetype: 'DAEMON', directory: 'daemons', label: 'Daemons', singular: 'daemon' },
   { archetype: 'LIBRARY', directory: 'libs', label: 'Libraries', singular: 'library' },
+  { archetype: 'APP', directory: 'apps', label: 'Apps', singular: 'app' },
   { archetype: 'FRONTEND', directory: 'frontends', label: 'Frontends', singular: 'frontend' },
   { archetype: 'CLI', directory: 'cli', label: 'Command line', singular: 'CLI tool' },
   { archetype: 'IMAGE', directory: 'images', label: 'Images', singular: 'image' },
@@ -68,7 +108,7 @@ export const COMPONENT_TYPES: readonly ComponentType[] = [
  * The first segment that marks a wrapper path as the **component layout's**:
  * `components/<component>/<name>`.
  *
- * The server reserves it as a project slug for the same reason the six category words are reserved
+ * The server reserves it as a project slug for the same reason the seven category words are reserved
  * — it is what the middle segment of a repository address becomes.
  */
 export const COMPONENTS_DIRECTORY = 'components';

@@ -56,15 +56,37 @@ function entry(over: Partial<ReconcileEntryDto> = {}): ReconcileEntryDto {
  * and the page still looks fine.
  */
 describe('groupComponents', () => {
-  it('always draws the six groups, empty or not', () => {
+  it('always draws the seven groups, empty or not', () => {
     expect(groupComponents([]).map((group) => group.key)).toEqual([
       'SERVICE',
       'DAEMON',
       'LIBRARY',
+      'APP',
       'FRONTEND',
       'CLI',
       'IMAGE',
     ]);
+  });
+
+  /**
+   * An `APP` is placeable, so it gets a group of its own rather than falling into the other
+   * bucket — which is what an archetype this build has never heard of does, and is the failure
+   * this asserts against. The frontend beside it is the control: the two archetypes are different
+   * kinds and must not collapse into one heading.
+   */
+  it('gives an app its own group and leaves the frontends alone', () => {
+    const groups = groupComponents([
+      repository('qits-docs-app', 'APP'),
+      repository('qits-ci-frontend', 'FRONTEND'),
+    ]);
+
+    expect(groups.find((group) => group.key === 'APP')?.repositories.map((r) => r.name)).toEqual([
+      'qits-docs-app',
+    ]);
+    expect(
+      groups.find((group) => group.key === 'FRONTEND')?.repositories.map((r) => r.name),
+    ).toEqual(['qits-ci-frontend']);
+    expect(groups.find((group) => group.key === 'OTHER')).toBeUndefined();
   });
 
   /** The wrapper is not a component of itself; it is the configuration, drawn above the groups. */

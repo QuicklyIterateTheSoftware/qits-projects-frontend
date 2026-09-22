@@ -245,6 +245,24 @@ describe('RepositoryPage', () => {
   });
 
   /**
+   * An `APP` is a standalone web application, and the page has to name it as one: its own heading
+   * word, at its own `/apps/` address. The cards are empty here and that is the honest answer for
+   * now — `apps.details` is not in the installed chrome's slots, so no application has declared
+   * itself against it — but the page itself has to *render*, which is the thing that would break
+   * if the archetype had no row in the table.
+   */
+  it('draws an app under its own category, standalone rather than a frontend', async () => {
+    await open('/qits/apps/qits-docs-app', [
+      repository({ id: 'r5', name: 'qits-docs-app', archetype: 'APP' }),
+    ]);
+
+    expect(page().querySelector('h1')?.textContent).toContain('qits-docs-app');
+    expect(text()).toContain('Apps');
+    expect(text()).not.toContain('Frontends');
+    expect(page().querySelector('a.app')).toBeNull();
+  });
+
+  /**
    * A row the component layout never told a kind: no archetype, so no category slot, so no cards.
    * Nothing knows what applications it has, and inventing a kind would offer the wrong ones.
    */

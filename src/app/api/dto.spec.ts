@@ -43,11 +43,12 @@ describe('componentDirectory', () => {
 });
 
 describe('COMPONENT_TYPES', () => {
-  it('names the six placeable archetypes and their wrapper directories, in display order', () => {
+  it('names the seven placeable archetypes and their wrapper directories, in display order', () => {
     expect(COMPONENT_TYPES.map((type) => type.archetype)).toEqual([
       'SERVICE',
       'DAEMON',
       'LIBRARY',
+      'APP',
       'FRONTEND',
       'CLI',
       'IMAGE',
@@ -56,9 +57,50 @@ describe('COMPONENT_TYPES', () => {
       'services',
       'daemons',
       'libs',
+      'apps',
       'frontends',
       'cli',
       'images',
     ]);
+  });
+
+  /**
+   * `apps` is asserted on its own as well as in the list, because the list is the kind of thing a
+   * merge re-orders without anyone noticing and the two facts it carries are load-bearing
+   * separately.
+   *
+   * <p>The **word** is what every address of an `APP` repository is spelled with —
+   * `/<project>/apps/<name>` — and it is the same word the deployer, the edge and the chrome key a
+   * slot on, so a typo here is a page that renders under one host and 404s under the next.
+   *
+   * <p>The **position** is the platform's order, not a preference: after the libraries and before
+   * the frontends, matching `DeploymentSpecParser.SLOTS`, `EdgeRoutes.SLOTS` and
+   * `QITS_NAV_SLOTS`.
+   */
+  it('files an app between the libraries and the frontends, where the platform files it', () => {
+    const directories = COMPONENT_TYPES.map((type) => type.directory);
+
+    expect(directories.indexOf('apps')).toBe(directories.indexOf('libs') + 1);
+    expect(directories.indexOf('apps')).toBe(directories.indexOf('frontends') - 1);
+  });
+
+  /**
+   * An app is a standalone web application — its own server, its own image, its own deployment —
+   * where a frontend is a microfrontend a service carries. Two rows, two labels, and the singular
+   * is what the "New <singular>" affordance says.
+   */
+  it('gives the app its own words, distinct from the frontend’s', () => {
+    expect(COMPONENT_TYPES.find((type) => type.archetype === 'APP')).toEqual({
+      archetype: 'APP',
+      directory: 'apps',
+      label: 'Apps',
+      singular: 'app',
+    });
+    expect(COMPONENT_TYPES.find((type) => type.archetype === 'FRONTEND')).toEqual({
+      archetype: 'FRONTEND',
+      directory: 'frontends',
+      label: 'Frontends',
+      singular: 'frontend',
+    });
   });
 });

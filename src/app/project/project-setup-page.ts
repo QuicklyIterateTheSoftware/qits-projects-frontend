@@ -22,7 +22,7 @@ import { BackupPanel } from './backup-panel';
 import { ComponentCard } from './component-card';
 import { ProjectRepositoryStatus } from './project-repository-status';
 
-/** The bucket for anything the six groups do not name — visible, and never a "New" affordance. */
+/** The bucket for anything the seven groups do not name — visible, and never a "New" affordance. */
 export const OTHER_GROUP = 'OTHER';
 
 /** What "no row is undeclared" is, before the first answer arrives. */
@@ -45,7 +45,7 @@ export interface ComponentGroup {
  *
  * Three rules, and each of them exists because the alternative loses a repository:
  *
- * - **The six groups are always drawn, empty or not.** An empty group is the create affordance —
+ * - **The seven groups are always drawn, empty or not.** An empty group is the create affordance —
  *   "this project has no daemons yet, and here is how it gets one" — so hiding it would make the
  *   only way to add the first daemon a URL somebody had to know.
  * - **`PROJECT` is excluded.** The wrapper is not a component of itself; it is drawn above, as the

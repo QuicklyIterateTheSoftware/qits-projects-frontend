@@ -183,6 +183,20 @@ describe('routes', () => {
   });
 
   /**
+   * `apps` is a category this application knows and the installed chrome does not yet, so it takes
+   * the guard's *second* branch — an unclaimed word — rather than the `QITS_CATEGORIES` one. The
+   * address has to read the same either way, which is the whole point of asking the question the
+   * open-set way round, and this is what fails if somebody re-closes the set.
+   */
+  it('serves the repository page for an app, whose category the chrome has not learned yet', async () => {
+    expect(await at('/qits/apps/qits-docs-app')).toBe(RepositoryPage);
+    expect(await at('/qits/apps/qits-docs-app/release-requests')).toBe(
+      RepositoryReleaseRequestsPage,
+    );
+    expect(await at('/qits/apps/qits-docs-app/release-requests/r1')).toBe(ReleaseRequestDetailPage);
+  });
+
+  /**
    * The component form of the same address, which no compiled-in set could ever prove: component
    * names are the platform's, so the guard has to let an unclaimed word through.
    */
