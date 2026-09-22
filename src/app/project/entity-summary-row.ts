@@ -22,9 +22,12 @@ import {
  *
  * <p><b>The archetype decides what goes beside the title, and nothing else.</b> An epic says how it
  * ended, because "superseded" and "abandoned" are different endings and the row is the only place
- * that distinction survives. A ticket says its *kind* and not its status, because every row in the
- * done section is `DONE` — the word would be printed once per row and carry nothing, and the section
- * heading already says it once — while bug-against-improvement still varies from row to row.
+ * that distinction survives — and a ticket now says the same thing for the same reason. It used to
+ * say its *kind* alone, on the grounds that every row in the archive was `DONE` so the word would be
+ * printed once per row and carry nothing. `DROPPED` ended that: the section holds two endings, and
+ * which of them a row had — fixed, or decided against — is the first thing somebody looking a ticket
+ * up in the archive wants to know. So the row says both, the kind and the status, and the kind stays
+ * because bug-against-improvement still varies down the list.
  *
  * <p><b>Only a ticket's title is a link.</b> The reason a done ticket is on screen at all is that
  * somebody may want to read what was decided, and that is on its page. An epic has no detail page to
@@ -49,6 +52,7 @@ import {
     @if (ticket(); as row) {
       <a class="title link" [routerLink]="route()">{{ row.title }}</a>
       <qits-badge [label]="type().label" [tone]="type().tone" />
+      <qits-badge [label]="badge().label" [tone]="badge().tone" />
       <span class="assignee">{{ assignee() }}</span>
       <span class="age">{{ age() }}</span>
     } @else {

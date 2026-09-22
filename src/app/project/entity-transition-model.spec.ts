@@ -63,7 +63,7 @@ const REGISTRY: ArchetypeRegistry = {
         'ASSIGNEE',
         'CREATED_BY',
       ],
-      legalStatuses: ['DONE', 'IMPLEMENTED', 'REFINED', 'REPORTED', 'VERIFIED'],
+      legalStatuses: ['DONE', 'DROPPED', 'IMPLEMENTED', 'REFINED', 'REPORTED', 'VERIFIED'],
     },
     {
       archetype: 'FEATURE',

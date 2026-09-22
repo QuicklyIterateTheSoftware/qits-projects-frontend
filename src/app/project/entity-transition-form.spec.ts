@@ -45,7 +45,7 @@ const REGISTRY: ArchetypeRegistry = {
         'ASSIGNEE',
         'CREATED_BY',
       ],
-      legalStatuses: ['DONE', 'IMPLEMENTED', 'REFINED', 'REPORTED', 'VERIFIED'],
+      legalStatuses: ['DONE', 'DROPPED', 'IMPLEMENTED', 'REFINED', 'REPORTED', 'VERIFIED'],
     },
     {
       archetype: 'FEATURE',
@@ -237,12 +237,17 @@ describe('EntityTransitionForm', () => {
     ]);
   });
 
+  /**
+   * The picker is the served registry's list and nothing this build spells out, which is why the
+   * sixth ticket status reached it without a line of this form changing.
+   */
   it('renders status as a picker over the legal statuses of the target', async () => {
     await mount();
     const status = selects(entries()[0])[2];
 
     expect(Array.from(status.options).map((option) => option.value)).toEqual([
       'DONE',
+      'DROPPED',
       'IMPLEMENTED',
       'REFINED',
       'REPORTED',

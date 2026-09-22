@@ -5,6 +5,7 @@ import { NONE, relativeSince } from '../ui/format';
 import { MarkdownView } from '../ui/markdown-view';
 import { EpicDraftCard } from './epic-draft-card';
 import {
+  BLOCKED_BADGE,
   entityBadge,
   epicBranch,
   featureBranch,
@@ -194,6 +195,14 @@ function rowsOf(entity: EpicEntity): readonly Row[] {
                 }
                 <qits-badge [label]="type().label" [tone]="type().tone" />
                 <qits-badge [label]="badge().label" [tone]="badge().tone" />
+                <!--
+                  Beside the status and never instead of it: blocked says the phase cannot proceed,
+                  which is a different fact from how far the ticket has got, and a row that swapped
+                  one for the other would lose the one a reader is scanning the desk by.
+                -->
+                @if (row.blocked) {
+                  <qits-badge [label]="blocked.label" [tone]="blocked.tone" />
+                }
               </span>
             </div>
 
@@ -327,6 +336,9 @@ export class EntityCard {
    * when the caller has none — a desk always has it, because the address it is drawn at carries it.
    */
   readonly projectSlug = input<string>('');
+
+  /** The badge a blocked ticket adds — a constant, since nothing about it varies by row. */
+  protected readonly blocked = BLOCKED_BADGE;
 
   /** The epic still being drafted, or null — the one rendering this card hands to another component. */
   protected readonly draft = computed<EpicEntity | null>(() => {

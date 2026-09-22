@@ -363,6 +363,44 @@ describe('EntitiesApi', () => {
     });
 
     /**
+     * Its own door, not a field on the edit: blocking is something that happens to a ticket, and a
+     * block sent through the edit would drag every other box on that form along with it.
+     */
+    it('blocks a ticket through the blocked verb, carrying the reason', async () => {
+      const answer = api.setBlocked('t1', true, 'Waiting on qits-ci to redeploy.');
+      const request = http.expectOne('/projects/api/tickets/t1/blocked');
+      request.flush({ ticket: ticket({ blocked: true }) });
+
+      expect(request.request.method).toBe('POST');
+      expect(request.request.body).toEqual({
+        blocked: true,
+        reason: 'Waiting on qits-ci to redeploy.',
+      });
+      expect((await answer).blocked).toBe(true);
+    });
+
+    /** The same door the other way, and the note is optional — coming back is self-explanatory. */
+    it('unblocks through the same door, with or without a note', async () => {
+      const answer = api.setBlocked('t1', false);
+      const request = http.expectOne('/projects/api/tickets/t1/blocked');
+      request.flush({ ticket: ticket({ blocked: false }) });
+
+      expect(request.request.body).toEqual({ blocked: false, reason: '' });
+      expect((await answer).blocked).toBe(false);
+    });
+
+    /**
+     * Absent means false, and the boundary is where that stops being a question — a model field left
+     * `undefined` would have every reader of it remembering which way the missing value falls.
+     */
+    it('reads a ticket with no blocked field as not blocked', async () => {
+      const answer = api.get('t1');
+      http.expectOne('/projects/api/tickets/t1').flush({ ticket: ticket() });
+
+      expect((await answer).blocked).toBe(false);
+    });
+
+    /**
      * The single-row door, and it stays single. The unified entity brought
      * `POST /projects/api/entities/transition` with it — a map of id to target state — and nothing in
      * this client calls it yet: a one-row move has no business paying for a map.

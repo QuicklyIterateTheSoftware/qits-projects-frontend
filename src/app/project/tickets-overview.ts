@@ -51,21 +51,28 @@ interface Failure {
  * sections or in neither. `groupTickets` splits the one answer, which is the same rule the epics
  * overview is built on and for the same reason.
  *
- * <p><b>Two sections for five statuses, and the outstanding one reads as a pipeline.</b> A heading
- * per status would be five boxes with a row or two in each; the split a reader needs is whether
- * anything is still owed. So outstanding is everything but `DONE`, ordered reported → refined →
- * implemented → verified, which puts the unrefined work at the top where it is being picked up from
- * and the nearly-closed work at the bottom.
+ * <p><b>Two sections for six statuses, and the outstanding one reads as a pipeline.</b> A heading
+ * per status would be six boxes with a row or two in each; the split a reader needs is whether
+ * anything is still owed. So outstanding is everything that still owes something, ordered reported →
+ * refined → implemented → verified, which puts the unrefined work at the top where it is being picked
+ * up from and the nearly-closed work at the bottom.
  *
- * <p><b>Outstanding is cards and done is rows.</b> The two sections are read for different things:
- * the outstanding ones are being chosen between, so each carries its description and both badges;
- * the done ones are a record somebody occasionally looks something up in, so they are a scannable
- * list with a link. Drawing the archive as fully as the work would bury the work under it.
+ * <p><b>`DROPPED` did not make that a third section.</b> The archive now holds two endings rather
+ * than one — closed because it was fixed, closed because it will not be — and the heading says
+ * "Closed" rather than "Done" for exactly that reason. Splitting them would be two disclosures of a
+ * handful of rows each, and it would say the difference between the two endings matters to somebody
+ * scanning the desk; it matters to somebody reading *one* of them, which is why the distinction is
+ * on the row's own badge instead.
+ *
+ * <p><b>Outstanding is cards and the archive is rows.</b> The two sections are read for different
+ * things: the outstanding ones are being chosen between, so each carries its description and both
+ * badges; the closed ones are a record somebody occasionally looks something up in, so they are a
+ * scannable list with a link. Drawing the archive as fully as the work would bury the work under it.
  *
  * <p><b>Only the outstanding cards carry an action row.</b> A closed ticket is offered nothing —
- * that is {@link actionsFor}'s answer for a `DONE` ticket rather than this template's, because
- * offering to put an agent on something a person has already closed would be offering to reopen it
- * sideways, and that is a rule about tickets rather than about this screen.
+ * that is {@link actionsFor}'s answer for a `DONE` or `DROPPED` ticket rather than this template's,
+ * because offering to put an agent on something a person has already closed would be offering to
+ * reopen it sideways, and that is a rule about tickets rather than about this screen.
  *
  * <p><b>A dispatch is not re-read, and the memory of one is now only the fast path.</b> The door
  * writes a comment and fires the `tickets` topic, so the list refreshes itself and a manual reload
@@ -74,8 +81,8 @@ interface Failure {
  * carries the **live workspaces working on it**, derived by the service on every read, so a reload
  * and a second tab both show the way in and neither offers a second agent.
  *
- * <p><b>Done opens collapsed and only when there is something in it.</b> A project that has never
- * closed a ticket should not carry an empty disclosure explaining that; a project with two hundred
+ * <p><b>The archive opens collapsed and only when there is something in it.</b> A project that has
+ * never closed a ticket should not carry an empty disclosure explaining that; a project with two hundred
  * should not open with them. Outstanding is always there, because "nothing is outstanding" is a fact
  * worth stating out loud.
  *
@@ -145,11 +152,11 @@ interface Failure {
           }
         </section>
 
-        @if (groups().done.length > 0) {
+        @if (groups().closed.length > 0) {
           <details class="group">
-            <summary>Done ({{ groups().done.length }})</summary>
+            <summary>Closed ({{ groups().closed.length }})</summary>
             <div class="rows">
-              @for (entity of groups().done; track entity.id) {
+              @for (entity of groups().closed; track entity.id) {
                 <app-entity-summary-row
                   [id]="anchor(entity)"
                   [entity]="entity"

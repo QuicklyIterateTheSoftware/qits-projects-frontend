@@ -1,6 +1,7 @@
-import type { EpicDto, FeatureDto, TaskDto, TicketDto } from '../api/dto';
+import type { EpicDto, FeatureDto, TaskDto, TicketDto, TicketStatus } from '../api/dto';
 import {
   TICKET_LIFECYCLE,
+  TICKET_TRANSITIONS,
   actionKey,
   actionsFor,
   entityAnchor,
@@ -14,7 +15,8 @@ import {
   featureStatus,
   groupEpics,
   groupTickets,
-  isDone,
+  hasPhase,
+  isClosed,
   isEdited,
   isEpic,
   isTicket,
@@ -37,6 +39,16 @@ import {
 } from './entities-model';
 
 const AT = '2026-08-08T09:00:00Z';
+
+/** Every status there is, which is what the exhaustive assertions below sweep. */
+const ALL_STATUSES: readonly TicketStatus[] = [
+  'REPORTED',
+  'REFINED',
+  'IMPLEMENTED',
+  'VERIFIED',
+  'DONE',
+  'DROPPED',
+];
 const TICKET_AT = '2026-09-07T09:00:00Z';
 
 function epicDto(over: Partial<EpicDto> = {}): EpicDto {
@@ -381,14 +393,14 @@ describe('entities model', () => {
    * an epic becomes done by having its last feature implemented, with nothing pressed. For a ticket
    * it is the opposite — a person pressing Close is the whole of it.
    */
-  describe('isDone', () => {
+  describe('isClosed', () => {
     it('is done when an implementation epic has every feature implemented', () => {
-      expect(isDone(finished())).toBe(true);
+      expect(isClosed(finished())).toBe(true);
     });
 
     it('is not done while a feature is still open', () => {
       expect(
-        isDone(
+        isClosed(
           epic([
             { feature: feature({ id: 'f1', implementedOn: AT }), tasks: [] },
             { feature: feature({ id: 'f2' }), tasks: [] },
@@ -399,26 +411,35 @@ describe('entities model', () => {
 
     /** An epic with no features has no evidence, so it cannot be done — the `epicStatus` rule again. */
     it('is not done for an epic with no features', () => {
-      expect(isDone(epic([]))).toBe(false);
+      expect(isClosed(epic([]))).toBe(false);
     });
 
     /** The declared spelling: `IMPLEMENTED` is done outright, features or none. */
     it('is done for a declared IMPLEMENTED epic even with no features', () => {
-      expect(isDone(epic([], { status: 'IMPLEMENTED' }))).toBe(true);
+      expect(isClosed(epic([], { status: 'IMPLEMENTED' }))).toBe(true);
     });
 
     /** Only implementation can be done; a draft with nothing in it must not read as finished. */
     it('is not done in any other phase', () => {
-      expect(isDone(finished({ status: 'REFINING' }))).toBe(false);
-      expect(isDone(finished({ status: 'SUPERSEDED' }))).toBe(false);
-      expect(isDone(finished({ status: 'ABANDONED' }))).toBe(false);
+      expect(isClosed(finished({ status: 'REFINING' }))).toBe(false);
+      expect(isClosed(finished({ status: 'SUPERSEDED' }))).toBe(false);
+      expect(isClosed(finished({ status: 'ABANDONED' }))).toBe(false);
     });
 
-    /** Verified is deliberately not done: the platform agreeing is not a person agreeing. */
-    it('is done for a closed ticket and for nothing short of it', () => {
-      expect(isDone(ticket({ status: 'DONE' }))).toBe(true);
-      expect(isDone(ticket({ status: 'VERIFIED' }))).toBe(false);
-      expect(isDone(ticket({ status: 'REPORTED' }))).toBe(false);
+    /** Verified is deliberately not closed: the platform agreeing is not a person agreeing. */
+    it('is closed for a done ticket and for nothing short of it', () => {
+      expect(isClosed(ticket({ status: 'DONE' }))).toBe(true);
+      expect(isClosed(ticket({ status: 'VERIFIED' }))).toBe(false);
+      expect(isClosed(ticket({ status: 'REPORTED' }))).toBe(false);
+    });
+
+    /**
+     * The second ending. Dropped work owes nothing either — which is the only thing this question
+     * asks — so the archive holds it, and a caller still reading this as "done" would be told the
+     * ticket was fixed.
+     */
+    it('is closed for a dropped ticket too', () => {
+      expect(isClosed(ticket({ status: 'DROPPED' }))).toBe(true);
     });
   });
 
@@ -477,7 +498,7 @@ describe('entities model', () => {
   });
 
   describe('groupTickets', () => {
-    it('puts everything but done in outstanding, and done in its own list', () => {
+    it('puts everything still owed in outstanding, and both endings in the archive', () => {
       const rows = [
         ticket({ id: 'a' }),
         ticket({ id: 'b', status: 'DONE' }),
@@ -488,7 +509,22 @@ describe('entities model', () => {
       const groups = groupTickets(rows);
 
       expect(groups.outstanding.map((row) => row.id)).toEqual(['a', 'd', 'c']);
-      expect(groups.done.map((row) => row.id)).toEqual(['b']);
+      expect(groups.closed.map((row) => row.id)).toEqual(['b']);
+    });
+
+    /**
+     * The regression the sixth status is most likely to cause: a dropped ticket that fell into
+     * outstanding would sit at the bottom of the pipeline section for ever, asking to be picked up,
+     * on exactly the rows somebody decided not to do.
+     */
+    it('files a dropped ticket in the archive and not at the end of the pipeline', () => {
+      const groups = groupTickets([
+        ticket({ id: 'dropped', status: 'DROPPED' }),
+        ticket({ id: 'open', status: 'REPORTED' }),
+      ]);
+
+      expect(groups.outstanding.map((row) => row.id)).toEqual(['open']);
+      expect(groups.closed.map((row) => row.id)).toEqual(['dropped']);
     });
 
     /**
@@ -523,7 +559,7 @@ describe('entities model', () => {
       const groups = groupTickets(rows);
 
       expect(groups.outstanding.map((row) => row.id)).toEqual(['new', 'old']);
-      expect(groups.done.map((row) => row.id)).toEqual(['closed-new', 'closed-old']);
+      expect(groups.closed.map((row) => row.id)).toEqual(['closed-new', 'closed-old']);
     });
 
     /**
@@ -557,7 +593,7 @@ describe('entities model', () => {
     });
 
     it('answers two empty sections for a project with no tickets', () => {
-      expect(groupTickets([])).toEqual({ outstanding: [], done: [] });
+      expect(groupTickets([])).toEqual({ outstanding: [], closed: [] });
     });
 
     /** The mirror of the epics desk's filter: an epic is not a row on this one. */
@@ -565,51 +601,131 @@ describe('entities model', () => {
       const groups = groupTickets([ticket({ id: 't1' }), epic([], { id: 'e1' })]);
 
       expect(groups.outstanding.map((row) => row.id)).toEqual(['t1']);
-      expect(groups.done).toEqual([]);
+      expect(groups.closed).toEqual([]);
     });
   });
 
   /**
-   * The adjacency rule, which is what the detail page's control is drawn from. A target two steps
-   * away and a target the ticket already holds are both 409s, so offering either would be offering a
-   * press that cannot work.
+   * The legal-move rule, which is what the detail page's control is drawn from. A target the service
+   * refuses is a 409 waiting to happen, so offering one would be offering a press that cannot work —
+   * and the graph is no longer a line, so nothing here may be re-derived from an index.
    */
   describe('the moves a ticket may make', () => {
-    it('offers both neighbours from the middle of the lifecycle, forward first', () => {
+    it('offers both neighbours from the middle of the pipeline, forward first and the drop last', () => {
       expect(ticketTransitions('REFINED')).toEqual([
         { target: 'IMPLEMENTED', label: 'Mark implemented', forward: true },
         { target: 'REPORTED', label: 'Back to reported', forward: false },
+        { target: 'DROPPED', label: 'Drop', forward: false },
       ]);
       expect(ticketTransitions('IMPLEMENTED')).toEqual([
         { target: 'VERIFIED', label: 'Mark verified', forward: true },
         { target: 'REFINED', label: 'Back to refined', forward: false },
+        { target: 'DROPPED', label: 'Drop', forward: false },
       ]);
       expect(ticketTransitions('VERIFIED')).toEqual([
         { target: 'DONE', label: 'Close', forward: true },
         { target: 'IMPLEMENTED', label: 'Back to implemented', forward: false },
+        { target: 'DROPPED', label: 'Drop', forward: false },
       ]);
     });
 
-    /** The ends have one neighbour each — and `DONE` still has one, because nothing is terminal. */
-    it('offers one move from each end, and never a way to stand still', () => {
+    /** The head of the pipeline: one way on, and the exit. */
+    it('offers the reported ticket the refine and the drop, and never a way to stand still', () => {
       expect(ticketTransitions('REPORTED')).toEqual([
         { target: 'REFINED', label: 'Mark refined', forward: true },
+        { target: 'DROPPED', label: 'Drop', forward: false },
       ]);
+    });
+
+    /**
+     * `DONE` is an ending already, so dropping it would be rewriting what happened rather than
+     * deciding what will not — and it still offers Reopen, because nothing is terminal.
+     */
+    it('offers a done ticket the reopen and no drop', () => {
       expect(ticketTransitions('DONE')).toEqual([
         { target: 'VERIFIED', label: 'Reopen', forward: false },
       ]);
     });
 
-    it('never offers a target two steps away, or the status already held', () => {
-      for (const status of TICKET_LIFECYCLE) {
-        const targets = ticketTransitions(status).map((move) => move.target);
-        const at = TICKET_LIFECYCLE.indexOf(status);
+    /**
+     * Out of `DROPPED` there is one move and it lands at the beginning: what somebody picks back up
+     * is the impetus, since the refinement went with the work. A move straight back to `REFINED`
+     * would claim a refinement that was abandoned.
+     */
+    it('offers a dropped ticket the way back to reported and nothing else', () => {
+      expect(ticketTransitions('DROPPED')).toEqual([
+        { target: 'REPORTED', label: 'Back to reported', forward: false },
+      ]);
+    });
 
-        expect(targets).not.toContain(status);
-        for (const target of targets) {
-          expect(Math.abs(TICKET_LIFECYCLE.indexOf(target) - at)).toBe(1);
+    /** Every status, including the two endings: the control never offers a move to standing still. */
+    it('never offers the status already held', () => {
+      for (const status of ALL_STATUSES) {
+        expect(ticketTransitions(status).map((move) => move.target)).not.toContain(status);
+      }
+    });
+
+    /**
+     * The presentation contract, asserted over the whole graph rather than status by status: the
+     * forward move leads, the backward correction follows, and the press that ends the ticket is
+     * never the one the hand reaching for "Mark refined" lands on.
+     */
+    it('puts the drop last wherever it is offered, and forward first', () => {
+      for (const status of ALL_STATUSES) {
+        const moves = ticketTransitions(status);
+        const targets = moves.map((move) => move.target);
+
+        if (targets.includes('DROPPED')) {
+          expect(targets.at(-1)).toBe('DROPPED');
+        }
+        expect(moves.filter((move) => move.forward).length).toBeLessThanOrEqual(1);
+        if (moves.some((move) => move.forward)) {
+          expect(moves[0].forward).toBe(true);
         }
       }
+    });
+
+    /**
+     * Neither off-pipeline move advances anything, and `forward` is read by exactly one thing — the
+     * weight the detail page draws a button with. Drawing the drop as the forward press would make
+     * abandoning a ticket look like the ordinary next step.
+     */
+    it('calls neither the drop nor the reopen out of it forward', () => {
+      expect(ticketTransitions('REPORTED').find((move) => move.target === 'DROPPED')?.forward).toBe(
+        false,
+      );
+      expect(ticketTransitions('DROPPED')[0].forward).toBe(false);
+    });
+
+    /** The map is the server's, mirrored — so the function must not invent an edge it does not hold. */
+    it('offers exactly what the transition map holds, for every status', () => {
+      for (const status of ALL_STATUSES) {
+        expect([...ticketTransitions(status).map((move) => move.target)].sort()).toEqual(
+          [...TICKET_TRANSITIONS[status]].sort(),
+        );
+      }
+    });
+
+    /** `DROPPED` is not a point on the pipeline, and the sorting order must not pretend it is. */
+    it('keeps the pipeline to the five statuses that are on it', () => {
+      expect(TICKET_LIFECYCLE).toEqual([
+        'REPORTED',
+        'REFINED',
+        'IMPLEMENTED',
+        'VERIFIED',
+        'DONE',
+      ]);
+    });
+  });
+
+  /**
+   * Where a phase runs, and therefore where "blocked" is a thing that can be said. The three endings
+   * of the pipeline have nothing running against them, so a block there would be a flag only a
+   * transition could clear on a row somebody had finished with.
+   */
+  describe('hasPhase', () => {
+    it('is true for the three statuses a phase follows', () => {
+      expect(ALL_STATUSES.filter(hasPhase)).toEqual(['REPORTED', 'REFINED', 'IMPLEMENTED']);
     });
   });
 
@@ -726,6 +842,32 @@ describe('entities model', () => {
      */
     it('offers a closed ticket the reshape and not the dispatch', () => {
       expect(actionsFor(ticket({ status: 'DONE' })).map(actionKey)).toEqual(['reshape']);
+    });
+
+    /**
+     * A dropped ticket is closed in the same sense: somebody decided the work will not happen, so an
+     * "Assign agent" beside it would be the button that quietly un-decides it.
+     */
+    it('offers a dropped ticket the reshape and not the dispatch', () => {
+      expect(actionsFor(ticket({ status: 'DROPPED' })).map(actionKey)).toEqual(['reshape']);
+    });
+
+    /**
+     * Not closed, and still no dispatch: a blocked ticket's phase cannot proceed, and putting an
+     * agent into a phase that cannot proceed is how one ends up with a workspace and no way forward.
+     * The reshape stays — being stuck says nothing about the row being the wrong kind of thing.
+     */
+    it('withholds the dispatch from a blocked ticket whatever its status', () => {
+      expect(actionsFor(ticket({ status: 'REPORTED', blocked: true })).map(actionKey)).toEqual([
+        'reshape',
+      ]);
+      expect(actionsFor(ticket({ status: 'IMPLEMENTED', blocked: true })).map(actionKey)).toEqual([
+        'reshape',
+      ]);
+      expect(actionsFor(ticket({ status: 'REPORTED', blocked: false })).map(actionKey)).toEqual([
+        'assign',
+        'reshape',
+      ]);
     });
 
     /** Nothing is un-reshapeable, which is the one thing every phase of both archetypes now shares. */

@@ -235,6 +235,51 @@ describe('TicketsOverview', () => {
     expect(element().querySelector('.qits-badge')?.className).toContain('qits-badge-danger');
   });
 
+  /**
+   * A blocked ticket says so on its card, beside the status and never instead of it: how far along it
+   * is and whether its phase can proceed are two facts, and the second replacing the first would take
+   * the one a reader scans the desk by off the screen.
+   */
+  it('adds the blocked badge to a blocked card, keeping the status beside it', async () => {
+    await mount();
+    await flushTickets([ticket('a', { status: 'REFINED', blocked: true })]);
+
+    expect(badges()).toEqual(['bug', 'refined', 'blocked']);
+  });
+
+  it('draws no blocked badge on a ticket that is not blocked', async () => {
+    await mount();
+    await flushTickets([ticket('a', { status: 'REFINED' })]);
+
+    expect(badges()).toEqual(['bug', 'refined']);
+  });
+
+  /**
+   * The archive holds two endings, so a row in it has to say which one it had. It used to show only
+   * the kind, on the grounds that every row down there was `DONE` — which stopped being true.
+   */
+  it('badges an archived row with its status as well as its kind', async () => {
+    await mount();
+    await flushTickets([
+      ticket('b', { status: 'DONE', createdAt: '2026-09-08T09:00:00Z' }),
+      ticket('c', { status: 'DROPPED', type: 'IMPROVEMENT', createdAt: '2026-09-07T09:00:00Z' }),
+    ]);
+
+    element().querySelector('details')?.setAttribute('open', '');
+    expect(badges()).toEqual(['bug', 'done', 'improvement', 'dropped']);
+  });
+
+  /**
+   * A closed ticket is offered nothing, and a dropped one is closed in exactly that sense — an
+   * "Assign agent" beside it would be the press that quietly un-decides somebody's decision.
+   */
+  it('draws no action row for a dropped ticket', async () => {
+    await mount();
+    await flushTickets([ticket('c', { status: 'DROPPED' })]);
+
+    expect(element().querySelector('app-entity-actions')).toBeNull();
+  });
+
   /** A reported ticket has no description at all, so the reporter's sentence is what the card says. */
   it('draws the impetus on the card, description or no description', async () => {
     await loadBoth();
@@ -302,16 +347,33 @@ describe('TicketsOverview', () => {
   });
 
   /** The archive is a scannable list, and it opens closed so it cannot bury the work above it. */
-  it('draws the done tickets as collapsed rows, not as cards', async () => {
+  it('draws the closed tickets as collapsed rows, not as cards', async () => {
     await loadBoth();
 
     expect(rowTitles()).toEqual(['Ticket c']);
     const disclosure = element().querySelector('details');
     expect(disclosure?.open).toBe(false);
-    expect(element().querySelector('summary')?.textContent).toContain('Done (1)');
+    expect(element().querySelector('summary')?.textContent).toContain('Closed (1)');
   });
 
-  it('leaves the done section out of a project that has closed nothing', async () => {
+  /**
+   * The archive holds two endings now, and the heading is the only place the desk says so. "Done (2)"
+   * over a list containing a dropped ticket is a count of something that did not happen.
+   */
+  it('counts a dropped ticket into the archive and heads it Closed', async () => {
+    await mount();
+    await flushTickets([
+      ticket('a'),
+      ticket('b', { status: 'DONE' }),
+      ticket('c', { status: 'DROPPED' }),
+    ]);
+
+    expect(element().querySelector('summary')?.textContent).toContain('Closed (2)');
+    expect(rowTitles()).toEqual(['Ticket c', 'Ticket b']);
+    expect(cardTitles()).toEqual(['Ticket a']);
+  });
+
+  it('leaves the archive out of a project that has closed nothing', async () => {
     await mount();
     await flushTickets([ticket('a')]);
 
