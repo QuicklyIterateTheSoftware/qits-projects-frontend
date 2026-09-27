@@ -199,6 +199,15 @@ describe('WorkPage', () => {
       return { state: { entityId: 'c1', archetype: 'CAMPAIGN', status: 'REFINED', nextPhase: 'start', blocked: false, dispatchable: true, mode: null } };
     }
     if (url === '/projects/api/projects/p1/repositories') return { entries: [], wrapper: null };
+    if (url === '/projects/api/campaigns/c1/progress') {
+      return {
+        progress: {
+          campaign: { id: 'c1', qualifiedId: 'qits-430', title: 'Rename qits-x', status: 'REPORTED', start: null },
+          evaluator: { connected: true, lastSweepCompletedAt: null, stalled: false },
+          members: [],
+        },
+      };
+    }
     if (/\/audit$/.test(url)) return { entries: [] };
     throw new Error(`unanswered ${url}`);
   }

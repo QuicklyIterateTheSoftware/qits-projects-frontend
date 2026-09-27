@@ -1,13 +1,18 @@
+import type { QitsBadgeTone } from '@qits/ui-components';
 import type {
   CampaignMemberDto,
+  CampaignMemberState,
   CampaignSummaryDto,
   ConditionCriterion,
   ConditionGroup,
+  CriterionApprovalDto,
+  CriterionEvidenceDto,
   CriterionGroupDto,
   CriterionSpec,
   EntityStatus,
   WorkspaceReferenceDto,
 } from '../api/dto';
+import { formatInstant } from '../ui/format';
 import type { Entity } from './entities-model';
 
 /**
@@ -299,4 +304,61 @@ export function editableMember(
 /** Add, move, remove and condition are taken while the campaign is REPORTED or REFINED. */
 export function membershipEditable(campaignStatus: EntityStatus | null): boolean {
   return campaignStatus === 'REPORTED' || campaignStatus === 'REFINED';
+}
+
+// ---- progress ----------------------------------------------------------------------------------
+
+/** The one-line meaning each state carries on hover. */
+export const STATE_MEANINGS: Readonly<Record<CampaignMemberState, string>> = {
+  WAITING: 'Waiting — its condition is not met yet.',
+  READY: 'Ready — its condition is met; the campaign dispatches it on its next pass.',
+  REFUSED: 'Refused — its condition is met, but the dispatch was refused; fix the member.',
+  RUNNING: 'Running — this campaign dispatched it, and its work is under way.',
+  JOINED_RUNNING:
+    'Joined running — it was already in flight when it joined; never dispatched here.',
+  DONE: 'Done — it reached VERIFIED or DONE.',
+  DROPPED: 'Dropped — the member was dropped; nothing will run it.',
+  DISPATCH_FAILED: 'Dispatch failed — the campaign claimed it, but the dispatch errored.',
+};
+
+export const STATE_TONES: Readonly<Record<CampaignMemberState, QitsBadgeTone>> = {
+  WAITING: 'neutral',
+  READY: 'info',
+  REFUSED: 'warning',
+  RUNNING: 'info',
+  JOINED_RUNNING: 'info',
+  DONE: 'success',
+  DROPPED: 'neutral',
+  DISPATCH_FAILED: 'danger',
+};
+
+/** `JOINED_RUNNING` → `joined running`. */
+export function stateLabel(state: CampaignMemberState): string {
+  return state.toLowerCase().replace(/_/g, ' ');
+}
+
+/**
+ * **A satisfied criterion as a record, not a tick**: who approved it and when, with the note; the
+ * state it was already in when the campaign started; or the event that matched it, with its time and
+ * a short event id. Null for a criterion not yet latched.
+ */
+export function evidenceLine(criterion: {
+  readonly evidence: CriterionEvidenceDto | null;
+  readonly approval: CriterionApprovalDto | null;
+  readonly satisfiedAt: string | null;
+}): string | null {
+  const at = formatInstant(criterion.satisfiedAt);
+  if (criterion.approval) {
+    const who = criterion.approval.approvedBy || 'somebody';
+    const note = criterion.approval.note ? `: ${criterion.approval.note}` : '';
+    return `approved by ${who} at ${at}${note}`;
+  }
+  const evidence = criterion.evidence;
+  if (!evidence) {
+    return criterion.satisfiedAt ? `satisfied at ${at}` : null;
+  }
+  if (evidence.signature === 'STATE_AT_START' || !evidence.eventId) {
+    return evidence.summary;
+  }
+  return `matched ${evidence.signature}: ${evidence.summary} at ${at} · event ${evidence.eventId.slice(0, 8)}`;
 }

@@ -41,6 +41,7 @@ import {
 } from '../ui/loadable';
 import { MarkdownView } from '../ui/markdown-view';
 import { CampaignMembers, type CampaignCandidate } from './campaign-members';
+import { CampaignProgress } from './campaign-progress';
 import {
   BLOCKED_BADGE,
   IMPETUS_RULE,
@@ -134,8 +135,9 @@ interface TreeRow {
  * reparent — **go through `POST /entities/transition`**, a restatement of the whole row, which is
  * what replaced the retired `PUT /epics/{id}` and `PUT /tickets/{id}`.
  *
- * <p><b>A campaign</b> (qits-419) is a root with a lifecycle and a body of its own: its members,
- * their order and their conditions ({@link CampaignMembers}). Its status moves go through its own
+ * <p><b>A campaign</b> (qits-419, qits-420) is a root with a lifecycle and a body of its own: how
+ * it is running ({@link CampaignProgress}), and its members, their order and their conditions
+ * ({@link CampaignMembers}). Its status moves go through its own
  * door (`POST /campaigns/{id}/transition` — the multi-entity door refuses a campaign); its one
  * dispatching press is <b>Start campaign</b> (or <b>Re-check members</b> once started), asked twice
  * because it authorises every ungated dispatch in the campaign; and *Run the next phase*, *Refine*,
@@ -152,6 +154,7 @@ interface TreeRow {
   imports: [
     Async,
     CampaignMembers,
+    CampaignProgress,
     DossierPanel,
     EntityTransitionPanel,
     MarkdownView,
@@ -517,6 +520,11 @@ interface TreeRow {
             [projectSlug]="projectSlug()"
             [entities]="campaignCandidates()"
             [repositories]="repositoryList()"
+            [revision]="revision()"
+          />
+          <app-campaign-progress
+            [campaignId]="n.id"
+            [projectSlug]="projectSlug()"
             [revision]="revision()"
           />
         } @else if (n.description; as text) {

@@ -321,6 +321,15 @@ describe('EntityDetailPage', () => {
     if (url === '/projects/api/projects/p1/tickets') return { entries: [{ ticket: { ...TICKET, ...ticketPatch } }] };
     if (url === '/projects/api/projects/p1/campaigns') return { campaigns: [CAMPAIGN_ROW] };
     if (url === '/projects/api/campaigns/c1') return { campaign: CAMPAIGN };
+    if (url === '/projects/api/campaigns/c1/progress') {
+      return {
+        progress: {
+          campaign: { id: 'c1', qualifiedId: 'qits-430', title: 'Rename qits-x', status: 'REFINED', start: null },
+          evaluator: { connected: true, lastSweepCompletedAt: null, stalled: false },
+          members: [],
+        },
+      };
+    }
     if (url === '/projects/api/campaigns/c1/transition') {
       return { campaign: { ...CAMPAIGN, status: (request.request.body as { target: string }).target } };
     }
@@ -784,6 +793,23 @@ describe('EntityDetailPage', () => {
       ).toEqual(['qits-41', 'qits-12']);
       expect(body?.querySelector('.seeded')?.textContent).toBe('seeded');
       expect(sent.map((request) => request.url)).toContain('/projects/api/campaigns/c1');
+      // qits-420: the running view reads the progress, beside the members.
+      expect(body?.querySelector('app-campaign-progress')).toBeTruthy();
+      expect(sent.map((request) => request.url)).toContain('/projects/api/campaigns/c1/progress');
+    });
+
+    it('re-reads the progress after its own start press', async () => {
+      await open('/qits/work/qits-430');
+      const before = sent.filter((request) => request.url.endsWith('/c1/progress')).length;
+
+      buttonNamed('Start campaign').click();
+      await serve();
+      buttonNamed('Confirm start campaign?').click();
+      await serve();
+
+      expect(sent.filter((request) => request.url.endsWith('/c1/progress')).length).toBeGreaterThan(
+        before,
+      );
     });
 
     it('offers Start, and not Run the next phase, Refine, Edit or Reshape', async () => {
