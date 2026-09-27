@@ -32,7 +32,32 @@ const PLATFORM: QitsNavigation = {
 
 const WORDS = ['REPORTED', 'REFINED', 'IMPLEMENTED', 'VERIFIED', 'DONE', 'DROPPED'];
 
-function spec(archetype: string, legalStatuses: readonly string[], permitted: readonly string[]) {
+/** The served moves: forward, back, then drop/reopen — and DONE, final, with none. */
+const TRANSITIONS = {
+  REPORTED: [
+    { to: 'REFINED', kind: 'FORWARD' },
+    { to: 'DROPPED', kind: 'DROP' },
+  ],
+  REFINED: [
+    { to: 'IMPLEMENTED', kind: 'FORWARD' },
+    { to: 'REPORTED', kind: 'BACK' },
+    { to: 'DROPPED', kind: 'DROP' },
+  ],
+  IMPLEMENTED: [
+    { to: 'VERIFIED', kind: 'FORWARD' },
+    { to: 'REFINED', kind: 'BACK' },
+    { to: 'DROPPED', kind: 'DROP' },
+  ],
+  VERIFIED: [
+    { to: 'DONE', kind: 'FORWARD' },
+    { to: 'IMPLEMENTED', kind: 'BACK' },
+    { to: 'DROPPED', kind: 'DROP' },
+  ],
+  DONE: [],
+  DROPPED: [{ to: 'REPORTED', kind: 'REOPEN' }],
+};
+
+function spec(archetype: string, lifecycle: readonly string[], permitted: readonly string[]) {
   return {
     archetype,
     depth: archetype === 'TASK' ? 2 : archetype === 'FEATURE' ? 1 : 0,
@@ -40,7 +65,9 @@ function spec(archetype: string, legalStatuses: readonly string[], permitted: re
     required: ['TITLE'],
     requiredOnTransition: ['TITLE'],
     permitted,
-    legalStatuses,
+    legalStatuses: [...lifecycle].sort(),
+    lifecycle,
+    transitions: lifecycle.length > 0 ? TRANSITIONS : {},
   };
 }
 
@@ -188,9 +215,13 @@ describe('EntityDetailPage', () => {
   let sent: { method: string; url: string; body: unknown }[];
   let dispatchStates: Record<string, EntityDispatchStateDto>;
   let rooms: Record<string, object | null>;
+  let registry: object;
+  let ticketPatch: Partial<TicketDto>;
 
   beforeEach(async () => {
     sent = [];
+    registry = REGISTRY;
+    ticketPatch = {};
     dispatchStates = {
       t1: stateOf(),
       e1: stateOf({ entityId: 'e1', archetype: 'EPIC', status: 'REFINED', nextPhase: 'implement' }),
@@ -228,12 +259,12 @@ describe('EntityDetailPage', () => {
       };
     }
     if (url === '/projects/api/projects/p1/epics') return { entries: [{ epic: EPIC }] };
-    if (url === '/projects/api/projects/p1/tickets') return { entries: [{ ticket: TICKET }] };
+    if (url === '/projects/api/projects/p1/tickets') return { entries: [{ ticket: { ...TICKET, ...ticketPatch } }] };
     if (url === '/projects/api/epics/e1/features') return { entries: [{ feature: FEATURE }] };
     if (url === '/projects/api/features/f1/tasks') {
       return { entries: [{ task: TASK_DONE }, { task: TASK_OPEN }] };
     }
-    if (url === '/projects/api/entities/archetypes') return REGISTRY;
+    if (url === '/projects/api/entities/archetypes') return registry;
     if (url === '/projects/api/projects/p1/repositories') {
       return {
         entries: [{ repository: { id: 'r1', name: 'qits-projects-frontend' }, declared: true }],
@@ -560,6 +591,52 @@ describe('EntityDetailPage', () => {
           body: { target: 'IMPLEMENTED' },
         },
       ]);
+    });
+
+    /** The moves are the registry's `transitions`, labelled by kind — none held by this client. */
+    it('offers a refined ticket the step forward as primary, the step back and the drop', async () => {
+      ticketPatch = { status: 'REFINED' };
+      await open('/qits/work/qits-41');
+
+      const moves = Array.from(element().querySelectorAll('qits-button.move'));
+      expect(moves.map((host) => host.textContent?.trim())).toEqual([
+        'Mark implemented',
+        'Back to reported',
+        'Drop',
+      ]);
+      expect(moves[0].classList).toContain('forward');
+      expect(moves[1].classList).toContain('back');
+      expect(element().querySelector('.final-note')).toBeNull();
+    });
+
+    it('offers a done ticket no move at all, and says it is final', async () => {
+      ticketPatch = { status: 'DONE' };
+      await open('/qits/work/qits-41');
+
+      expect(element().querySelectorAll('qits-button.move').length).toBe(0);
+      expect(text()).not.toContain('Mark verified');
+      expect(element().querySelector('.final-note')?.textContent).toContain('Done — final.');
+    });
+
+    it('offers a dropped ticket the reopen', async () => {
+      ticketPatch = { status: 'DROPPED' };
+      await open('/qits/work/qits-41');
+
+      const moves = Array.from(element().querySelectorAll('qits-button.move'));
+      expect(moves.map((host) => host.textContent?.trim())).toEqual(['Reopen']);
+    });
+
+    /** An older server mid-rollout: no guess and no hardcoded fallback. */
+    it('offers no move where the registry serves no transitions', async () => {
+      registry = {
+        ...REGISTRY,
+        archetypes: REGISTRY.archetypes.map(({ transitions: _transitions, ...rest }) => rest),
+      };
+      await open('/qits/work/qits-41');
+
+      expect(element().querySelectorAll('qits-button.move').length).toBe(0);
+      expect(element().querySelector('.final-note')).toBeNull();
+      expect(buttonNamed('Edit')).toBeTruthy();
     });
 
     /** The retired PUT is replaced by a restatement of the whole row, emptied boxes clearing. */

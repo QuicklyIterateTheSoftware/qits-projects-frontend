@@ -10,6 +10,7 @@ import {
 } from '@angular/core';
 import { QitsButton } from '@qits/ui-components';
 import type { ArchetypeRegistry } from '../api/archetypes-api';
+import { lifecycleOf } from './entities-model';
 import {
   attributableProperties,
   attributeViolations,
@@ -532,7 +533,8 @@ export class EntityTransitionForm {
     for (const entry of this.selection().values()) {
       const spec = specOf(registry, entry.archetype);
       const required = requiredFieldsFor(registry, entry.archetype);
-      const legalStatuses = spec?.legalStatuses ?? [];
+      // The picker lists the words in the order the work walks them, not alphabetically.
+      const legalStatuses = lifecycleOf(registry, entry.archetype);
       const fields = statableProperties(registry, entry.archetype).map<Field>((property) => ({
         property,
         label: propertyLabel(property),

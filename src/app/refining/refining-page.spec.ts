@@ -72,6 +72,31 @@ const TICKET = {
 
 const WORDS = ['REPORTED', 'REFINED', 'IMPLEMENTED', 'VERIFIED', 'DONE', 'DROPPED'];
 
+/** The served moves — what the room's steps are drawn from, labelled by kind. */
+const TRANSITIONS = {
+  REPORTED: [
+    { to: 'REFINED', kind: 'FORWARD' },
+    { to: 'DROPPED', kind: 'DROP' },
+  ],
+  REFINED: [
+    { to: 'IMPLEMENTED', kind: 'FORWARD' },
+    { to: 'REPORTED', kind: 'BACK' },
+    { to: 'DROPPED', kind: 'DROP' },
+  ],
+  IMPLEMENTED: [
+    { to: 'VERIFIED', kind: 'FORWARD' },
+    { to: 'REFINED', kind: 'BACK' },
+    { to: 'DROPPED', kind: 'DROP' },
+  ],
+  VERIFIED: [
+    { to: 'DONE', kind: 'FORWARD' },
+    { to: 'IMPLEMENTED', kind: 'BACK' },
+    { to: 'DROPPED', kind: 'DROP' },
+  ],
+  DONE: [],
+  DROPPED: [{ to: 'REPORTED', kind: 'REOPEN' }],
+};
+
 /** The served registry — the lifecycle words the room's steps are drawn from. */
 const REGISTRY = {
   properties: ['TITLE', 'SLUG', 'DESCRIPTION', 'STATUS', 'TICKET_TYPE', 'IMPETUS', 'ASSIGNEE'],
@@ -84,7 +109,9 @@ const REGISTRY = {
       required: ['TITLE'],
       requiredOnTransition: ['TITLE', 'STATUS'],
       permitted: ['TITLE', 'SLUG', 'DESCRIPTION', 'STATUS'],
-      legalStatuses: WORDS,
+      legalStatuses: [...WORDS].sort(),
+      lifecycle: WORDS,
+      transitions: TRANSITIONS,
     },
     {
       archetype: 'TICKET',
@@ -93,7 +120,9 @@ const REGISTRY = {
       required: ['TITLE'],
       requiredOnTransition: ['TITLE', 'STATUS', 'TICKET_TYPE'],
       permitted: ['TITLE', 'SLUG', 'DESCRIPTION', 'STATUS', 'TICKET_TYPE', 'IMPETUS', 'ASSIGNEE'],
-      legalStatuses: WORDS,
+      legalStatuses: [...WORDS].sort(),
+      lifecycle: WORDS,
+      transitions: TRANSITIONS,
     },
   ],
 };
@@ -402,13 +431,13 @@ describe('RefiningPage', () => {
       expect(text()).not.toContain('**');
     });
 
-    it('draws the lifecycle steps below the subject, off the served words', async () => {
+    it('draws the lifecycle steps below the subject, off the served moves', async () => {
       await open();
 
       const actions = element().querySelector('.head .resolution-actions');
       expect(actions).not.toBeNull();
       expect(actions?.textContent).toContain('Mark refined');
-      expect(actions?.textContent).toContain('Mark dropped');
+      expect(actions?.textContent).toContain('Drop');
       expect(text()).not.toContain('Start implementation');
     });
 

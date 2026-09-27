@@ -43,8 +43,10 @@ import {
   BLOCKED_BADGE,
   IMPETUS_RULE,
   featureStatus,
+  isFinalStatus,
   lifecycleMoves,
   statusBadge,
+  lifecycleOf,
   statusLabel,
   statusesOf,
   taskStatus,
@@ -116,6 +118,11 @@ interface TreeRow {
  *   <li>The three are absent for an archetype with no lifecycle (the registry's `legalStatuses` is
  *       empty: a feature, a task), which is also where the service would refuse them.</li>
  * </ul>
+ *
+ * <p><b>Which status moves are offered is the served registry's `transitions`</b>, labelled by kind
+ * (forward "Mark <word>", back "Back to <word>", "Drop", "Reopen") — the client keeps no table of
+ * them. A status with no moves (`DONE`) is final and says so instead; a registry that serves no
+ * `transitions` draws no moves at all rather than guessing.
  *
  * <p><b>Status moves use the archetype's lifecycle door</b> — `POST /tickets/{id}/transition`,
  * `POST /epics/{id}/transition` — and not the multi-entity transition. The lifecycle door is what runs
@@ -274,14 +281,17 @@ interface TreeRow {
         </qits-button>
         @for (step of moves(); track step.target) {
           <qits-button
-            class="move"
-            [variant]="step.forward ? 'secondary' : 'ghost'"
+            [class]="'move ' + step.kind.toLowerCase()"
+            [variant]="step.variant"
             [disabled]="action() !== null"
             [busy]="action() === 'move:' + step.target"
             (pressed)="move(step)"
           >
             {{ step.label }}
           </qits-button>
+        }
+        @if (final()) {
+          <span class="note final-note">{{ finalNote() }}</span>
         }
         @if (supersedable()) {
           <qits-button
@@ -889,9 +899,22 @@ export class EntityDetailPage {
   /** Whether this node has a lifecycle — and so the three actions. The registry says, not a list. */
   protected readonly lifecycle = computed(() => this.vocabulary().length > 0);
 
-  protected readonly moves = computed<readonly LifecycleMove[]>(() =>
-    lifecycleMoves(this.node()?.status ?? null, this.vocabulary()),
-  );
+  protected readonly moves = computed<readonly LifecycleMove[]>(() => {
+    const node = this.node();
+    return node ? lifecycleMoves(this.loaded()?.registry ?? null, node.archetype, node.status) : [];
+  });
+
+  /** Whether the node holds a final status — served, with no move out of it (`DONE`). */
+  protected readonly final = computed(() => {
+    const node = this.node();
+    return node ? isFinalStatus(this.loaded()?.registry ?? null, node.archetype, node.status) : false;
+  });
+
+  protected readonly finalNote = computed(() => {
+    const node = this.node();
+    const word = node?.status ? statusLabel(node.status) : '';
+    return `${word.charAt(0).toUpperCase()}${word.slice(1)} — final. Follow-up work is a new ticket or epic.`;
+  });
 
   protected readonly dispatchable = computed(() => this.state()?.dispatchable === true);
 
@@ -937,14 +960,18 @@ export class EntityDetailPage {
       : `an agent is starting the ${answer.phase} phase on ${answer.branch}${stop}`;
   });
 
-  /** Supersede is an operation on an epic's plan, offered past its first phase and short of the exit. */
+  /**
+   * Supersede is an operation on an epic's plan: it lands the epic dropped, so it is offered where a
+   * drop is a served move, and past the first word of the walk (a draft has no frozen scope).
+   */
   protected readonly supersedable = computed(() => {
     const node = this.node();
-    const words = this.vocabulary();
-    if (node?.archetype !== 'EPIC' || !node.status || words.length === 0) {
+    const ground = this.loaded();
+    if (node?.archetype !== 'EPIC' || !node.status || !ground) {
       return false;
     }
-    return node.status !== words[0] && node.status !== words[words.length - 1];
+    const walk = lifecycleOf(ground.registry, node.archetype);
+    return node.status !== walk[0] && this.moves().some((step) => step.kind === 'DROP');
   });
 
   /** Block is offered where a phase runs behind the status — the dispatch state's `nextPhase`. */

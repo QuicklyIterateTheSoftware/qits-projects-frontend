@@ -1,5 +1,5 @@
-import type { QitsBadgeTone } from '@qits/ui-components';
-import type { ArchetypeRegistry } from '../api/archetypes-api';
+import type { QitsBadgeTone, QitsButtonVariant } from '@qits/ui-components';
+import type { ArchetypeRegistry, ArchetypeSpecDto } from '../api/archetypes-api';
 import type {
   EntityStatus,
   EpicDto,
@@ -341,18 +341,18 @@ export function statusLabel(status: EntityStatus): string {
 export const BLOCKED_BADGE: StatusBadge = { label: 'blocked', tone: 'warning' };
 
 /**
- * Every lifecycle word the service serves, in the order it serves them — the union of each
- * archetype's `legalStatuses`, first appearance winning.
+ * Every lifecycle word the service serves, in the order the work walks them — the union of each
+ * archetype's served `lifecycle`, first appearance winning.
  *
- * <p>This is **the** status list on this client, and it is read, never written: the desk's sections,
- * the order they run in and which moves a page offers are all derived from it. qits-392 deleted four
- * epic words in one release; a client that had its own list would have drawn them for as long as
- * nobody noticed.
+ * <p>This is **the** status list on this client, and it is read, never written: the desk's sections
+ * and the order they run in are derived from it. qits-392 deleted four epic words in one release; a
+ * client that had its own list would have drawn them for as long as nobody noticed. On a server older
+ * than the `lifecycle` field the words still come from `legalStatuses`, in that (alphabetical) order.
  */
 export function statusVocabulary(registry: ArchetypeRegistry): readonly EntityStatus[] {
   const words: EntityStatus[] = [];
   for (const spec of registry.archetypes ?? []) {
-    for (const word of spec.legalStatuses) {
+    for (const word of walkOf(spec)) {
       if (!words.includes(word)) {
         words.push(word);
       }
@@ -363,7 +363,24 @@ export function statusVocabulary(registry: ArchetypeRegistry): readonly EntitySt
 
 /** The words one archetype may hold, or none for an archetype with no lifecycle (feature, task). */
 export function statusesOf(registry: ArchetypeRegistry, archetype: string): readonly EntityStatus[] {
-  return registry.archetypes?.find((spec) => spec.archetype === archetype)?.legalStatuses ?? [];
+  return specOf(registry, archetype)?.legalStatuses ?? [];
+}
+
+/**
+ * One archetype's words **in walk order** — the served `lifecycle`, or `legalStatuses` on a server
+ * that does not serve one yet. Empty for an archetype with no lifecycle.
+ */
+export function lifecycleOf(registry: ArchetypeRegistry, archetype: string): readonly EntityStatus[] {
+  const spec = specOf(registry, archetype);
+  return spec ? walkOf(spec) : [];
+}
+
+function specOf(registry: ArchetypeRegistry, archetype: string): ArchetypeSpecDto | undefined {
+  return registry.archetypes?.find((spec) => spec.archetype === archetype);
+}
+
+function walkOf(spec: ArchetypeSpecDto): readonly EntityStatus[] {
+  return spec.lifecycle && spec.lifecycle.length > 0 ? spec.lifecycle : spec.legalStatuses;
 }
 
 /**
@@ -437,71 +454,66 @@ function createdMs(entity: Entity): number {
   return Number.isNaN(at) ? 0 : at;
 }
 
-/**
- * Every move each status may make — **a mirror of the service's `EntityLifecycle.LEGAL_TARGETS`**,
- * one graph for epics and tickets alike since qits-392.
- *
- * <p>The words are the registry's; the *edges* are the one thing the service does not serve, and
- * this is the only place they are written. Two guards keep the copy honest: a target the registry
- * does not list for the entity's archetype is never offered ({@link lifecycleMoves} filters by the
- * served vocabulary), and a status this map has never heard of falls back to its neighbours in the
- * registry's order rather than offering nothing. The server still refuses an illegal move with a 409
- * whose sentence the page shows.
- */
-export const LIFECYCLE_TRANSITIONS: Readonly<Record<string, readonly EntityStatus[]>> = {
-  REPORTED: ['REFINED', 'DROPPED'],
-  REFINED: ['IMPLEMENTED', 'REPORTED', 'DROPPED'],
-  IMPLEMENTED: ['VERIFIED', 'REFINED', 'DROPPED'],
-  VERIFIED: ['DONE', 'IMPLEMENTED', 'DROPPED'],
-  DONE: ['VERIFIED'],
-  DROPPED: ['REPORTED'],
-};
-
 /** One step an entity can take along its lifecycle, and how the button says it. */
 export interface LifecycleMove {
   readonly target: EntityStatus;
+  /** The served kind — `FORWARD`, `BACK`, `DROP`, `REOPEN`, or a word this client has not met. */
+  readonly kind: string;
   readonly label: string;
-  /** Whether the step advances the pipeline — what the button's weight is drawn from. */
-  readonly forward: boolean;
+  /** How loudly the button is drawn: the step forward is the one the hand should land on. */
+  readonly variant: QitsButtonVariant;
 }
 
 /**
- * The steps an entity holding `status` may take, drawn **forward, then back, then the exit**.
+ * The steps an entity of `archetype` holding `status` may take — **read off the served registry's
+ * `transitions`, in the order the service serves them**, and nothing else.
  *
- * <p>Labels are derived from the served order and nothing else: a target later in the vocabulary is
- * "Mark <word>", an earlier one "Back to <word>". The vocabulary's **last** word is the exit (today
- * `DROPPED`): it is never drawn as forward and always sorts last, so the press that ends the work is
- * not where the hand reaching for the next step lands.
+ * <p>The client keeps no table of its own: a status whose array is empty is final (`DONE`) and gets no
+ * buttons, and a registry that does not serve `transitions` at all (an older server, mid-rollout) gets
+ * none either — a guessed move is a move the server may refuse, or worse, one it would have hidden.
+ *
+ * <p>The label and weight come from the kind: `FORWARD` is "Mark <word>" and primary, `BACK` is a
+ * de-emphasised "Back to <word>", `DROP` is "Drop" and `REOPEN` "Reopen". A kind this client has not
+ * met is drawn plainly as "Move to <word>".
  */
 export function lifecycleMoves(
+  registry: ArchetypeRegistry | null,
+  archetype: string,
   status: EntityStatus | null,
-  vocabulary: readonly EntityStatus[],
 ): readonly LifecycleMove[] {
-  if (!status) {
+  if (!registry || !status) {
     return [];
   }
-  const at = vocabulary.indexOf(status);
-  const exit = vocabulary[vocabulary.length - 1] ?? null;
-  const mirrored = LIFECYCLE_TRANSITIONS[status];
-  const targets =
-    mirrored ??
-    (at < 0 ? [] : [vocabulary[at + 1], vocabulary[at - 1]].filter((word) => word !== undefined));
-  return targets
-    .filter((target) => target !== status && vocabulary.includes(target))
-    .map((target) => {
-      const ahead = vocabulary.indexOf(target) > at;
-      const off = target === exit;
-      return {
-        move: {
-          target,
-          label: `${ahead ? 'Mark' : 'Back to'} ${statusLabel(target)}`,
-          forward: ahead && !off,
-        },
-        rank: off ? 2 : ahead ? 0 : 1,
-      };
-    })
-    .sort((left, right) => left.rank - right.rank)
-    .map((entry) => entry.move);
+  const served = specOf(registry, archetype)?.transitions?.[status] ?? [];
+  return served
+    .filter((step) => step.to !== status)
+    .map((step) => ({ target: step.to, kind: step.kind, ...drawn(step.kind, step.to) }));
+}
+
+/** Whether `status` is final for `archetype`: served, and with no move out of it. */
+export function isFinalStatus(
+  registry: ArchetypeRegistry | null,
+  archetype: string,
+  status: EntityStatus | null,
+): boolean {
+  const transitions = registry && status ? specOf(registry, archetype)?.transitions : undefined;
+  const served = transitions && status ? transitions[status] : undefined;
+  return served !== undefined && served.length === 0;
+}
+
+function drawn(kind: string, target: EntityStatus): Pick<LifecycleMove, 'label' | 'variant'> {
+  switch (kind) {
+    case 'FORWARD':
+      return { label: `Mark ${statusLabel(target)}`, variant: 'primary' };
+    case 'BACK':
+      return { label: `Back to ${statusLabel(target)}`, variant: 'ghost' };
+    case 'DROP':
+      return { label: 'Drop', variant: 'ghost' };
+    case 'REOPEN':
+      return { label: 'Reopen', variant: 'secondary' };
+    default:
+      return { label: `Move to ${statusLabel(target)}`, variant: 'ghost' };
+  }
 }
 
 /**

@@ -59,7 +59,7 @@
             <div class="resolution-actions">
               @for (step of moves(); track step.target) {
                 <qits-button
-                  [variant]="step.forward ? 'secondary' : 'ghost'"
+                  [variant]="step.variant"
                   size="sm"
                   [disabled]="resolutionPending() !== null"
                   [busy]="resolutionPending() === step.target"

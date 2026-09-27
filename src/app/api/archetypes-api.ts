@@ -47,8 +47,30 @@ export interface ArchetypeSpecDto {
   readonly requiredOnTransition: readonly string[];
   /** Every property this kind may carry a value for. Anything outside it is cleared by a write. */
   readonly permitted: readonly string[];
-  /** The statuses this kind may hold, or empty for a kind with no lifecycle. */
+  /** The statuses this kind may hold, alphabetically, or empty for a kind with no lifecycle. */
   readonly legalStatuses: readonly string[];
+  /**
+   * The same words in the order the work walks them — the desk's spine and every status list's
+   * order. Empty for a kind with no lifecycle; absent on a server older than the field, where a
+   * reader falls back to `legalStatuses`.
+   */
+  readonly lifecycle?: readonly string[];
+  /**
+   * Every legal move, keyed by the status it leaves: forward first, then back, then drop/reopen, as
+   * the service orders them. **An empty array is a final status** (`DONE`) and draws no move at all.
+   * Absent on a server older than the field, and absent means *no moves drawn* — never a guess.
+   */
+  readonly transitions?: Readonly<Record<string, readonly TransitionDto[]>>;
+}
+
+/**
+ * One legal move out of a status, as the service serves it. `kind` is a plain string for the reason
+ * `archetype` is: a kind the service adds tomorrow still arrives, and is drawn plainly.
+ */
+export interface TransitionDto {
+  readonly to: string;
+  /** `FORWARD`, `BACK`, `DROP` or `REOPEN` today. It decides the button's label and weight. */
+  readonly kind: string;
 }
 
 /**

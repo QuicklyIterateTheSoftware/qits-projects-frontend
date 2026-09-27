@@ -2,7 +2,6 @@ import type { ArchetypeRegistry } from '../api/archetypes-api';
 import type { EpicDto, FeatureDto, TaskDto, TicketDto } from '../api/dto';
 import {
   BLOCKED_BADGE,
-  LIFECYCLE_TRANSITIONS,
   entityBySlug,
   epicBranch,
   epicEntity,
@@ -13,8 +12,10 @@ import {
   groupByStatus,
   isEdited,
   isEpic,
+  isFinalStatus,
   isTicket,
   lifecycleMoves,
+  lifecycleOf,
   newestFirst,
   ofArchetype,
   refiningBranch,
@@ -36,6 +37,31 @@ const AT = '2026-08-08T09:00:00Z';
 /** The served lifecycle, as the registry states it — the vocabulary every rule below reads. */
 const WORDS = ['REPORTED', 'REFINED', 'IMPLEMENTED', 'VERIFIED', 'DONE', 'DROPPED'];
 
+/** The served moves, as the service states them: forward, back, then drop/reopen; DONE is final. */
+const TRANSITIONS = {
+  REPORTED: [
+    { to: 'REFINED', kind: 'FORWARD' },
+    { to: 'DROPPED', kind: 'DROP' },
+  ],
+  REFINED: [
+    { to: 'IMPLEMENTED', kind: 'FORWARD' },
+    { to: 'REPORTED', kind: 'BACK' },
+    { to: 'DROPPED', kind: 'DROP' },
+  ],
+  IMPLEMENTED: [
+    { to: 'VERIFIED', kind: 'FORWARD' },
+    { to: 'REFINED', kind: 'BACK' },
+    { to: 'DROPPED', kind: 'DROP' },
+  ],
+  VERIFIED: [
+    { to: 'DONE', kind: 'FORWARD' },
+    { to: 'IMPLEMENTED', kind: 'BACK' },
+    { to: 'DROPPED', kind: 'DROP' },
+  ],
+  DONE: [],
+  DROPPED: [{ to: 'REPORTED', kind: 'REOPEN' }],
+};
+
 const REGISTRY: ArchetypeRegistry = {
   properties: ['TITLE', 'STATUS'],
   serverOwned: [],
@@ -47,7 +73,7 @@ const REGISTRY: ArchetypeRegistry = {
   ],
 };
 
-function spec(archetype: string, legalStatuses: readonly string[]) {
+function spec(archetype: string, lifecycle: readonly string[]) {
   return {
     archetype,
     depth: 0,
@@ -55,7 +81,10 @@ function spec(archetype: string, legalStatuses: readonly string[]) {
     required: [],
     requiredOnTransition: [],
     permitted: [],
-    legalStatuses,
+    // Served alphabetically — the walk is `lifecycle`, and nothing may read order off this one.
+    legalStatuses: [...lifecycle].sort(),
+    lifecycle,
+    transitions: lifecycle.length > 0 ? TRANSITIONS : {},
   };
 }
 const TICKET_AT = '2026-09-07T09:00:00Z';
@@ -367,20 +396,29 @@ describe('entities model', () => {
   });
 
   describe('the vocabulary', () => {
-    it('reads the words off the registry, in its order, each once', () => {
+    it('reads the words off the served lifecycle, in walk order, each once', () => {
       expect(statusVocabulary(REGISTRY)).toEqual(WORDS);
+      expect(lifecycleOf(REGISTRY, 'TICKET')).toEqual(WORDS);
     });
 
     it('answers no words for an archetype with no lifecycle', () => {
       expect(statusesOf(REGISTRY, 'TASK')).toEqual([]);
-      expect(statusesOf(REGISTRY, 'EPIC')).toEqual(WORDS);
+      expect([...statusesOf(REGISTRY, 'EPIC')].sort()).toEqual([...WORDS].sort());
       expect(statusesOf(REGISTRY, 'NOPE')).toEqual([]);
+      expect(lifecycleOf(REGISTRY, 'TASK')).toEqual([]);
     });
 
     /** qits-392 deleted four epic words; a client with its own list would still be drawing them. */
     it('carries no word the registry does not serve', () => {
-      const narrow: ArchetypeRegistry = { ...REGISTRY, archetypes: [spec('EPIC', ['A', 'B'])] };
-      expect(statusVocabulary(narrow)).toEqual(['A', 'B']);
+      const narrow: ArchetypeRegistry = { ...REGISTRY, archetypes: [spec('EPIC', ['B', 'A'])] };
+      expect(statusVocabulary(narrow)).toEqual(['B', 'A']);
+    });
+
+    it('falls back to legalStatuses on a server that serves no lifecycle', () => {
+      const older: Partial<ReturnType<typeof spec>> = spec('EPIC', ['B', 'A']);
+      delete older.lifecycle;
+      const registry = { ...REGISTRY, archetypes: [older] } as ArchetypeRegistry;
+      expect(statusVocabulary(registry)).toEqual(['A', 'B']);
     });
   });
 
@@ -447,60 +485,53 @@ describe('entities model', () => {
     });
   });
 
-  /** One lifecycle for epics and tickets (qits-392): the same steps, labelled off the served order. */
+  /** The moves are served — labels and weight come from the kind, the order from the service. */
   describe('lifecycleMoves', () => {
-    it('offers both neighbours from the middle, forward first and the exit last', () => {
-      expect(lifecycleMoves('IMPLEMENTED', WORDS)).toEqual([
-        { target: 'VERIFIED', label: 'Mark verified', forward: true },
-        { target: 'REFINED', label: 'Back to refined', forward: false },
-        { target: 'DROPPED', label: 'Mark dropped', forward: false },
+    it('offers a refined ticket the step forward as primary, the step back and the drop', () => {
+      expect(lifecycleMoves(REGISTRY, 'TICKET', 'REFINED')).toEqual([
+        { target: 'IMPLEMENTED', kind: 'FORWARD', label: 'Mark implemented', variant: 'primary' },
+        { target: 'REPORTED', kind: 'BACK', label: 'Back to reported', variant: 'ghost' },
+        { target: 'DROPPED', kind: 'DROP', label: 'Drop', variant: 'ghost' },
       ]);
     });
 
-    it('offers a reported entity the refine step and the exit, and never a way to stand still', () => {
-      expect(lifecycleMoves('REPORTED', WORDS).map((move) => move.target)).toEqual([
-        'REFINED',
-        'DROPPED',
+    it('offers a done entity nothing at all, and calls it final', () => {
+      expect(lifecycleMoves(REGISTRY, 'EPIC', 'DONE')).toEqual([]);
+      expect(isFinalStatus(REGISTRY, 'EPIC', 'DONE')).toBe(true);
+      expect(isFinalStatus(REGISTRY, 'EPIC', 'VERIFIED')).toBe(false);
+    });
+
+    it('offers a dropped entity the reopen, and nothing else', () => {
+      expect(lifecycleMoves(REGISTRY, 'TICKET', 'DROPPED').map((move) => move.label)).toEqual([
+        'Reopen',
       ]);
     });
 
-    it('offers a done entity the step back and no exit, and a dropped one the way back to reported', () => {
-      expect(lifecycleMoves('DONE', WORDS).map((move) => move.label)).toEqual([
-        'Back to verified',
-      ]);
-      expect(lifecycleMoves('DROPPED', WORDS).map((move) => move.label)).toEqual([
-        'Back to reported',
-      ]);
-    });
-
-    it('never offers the status already held, for every served word', () => {
+    /** An older server mid-rollout: no guess, no hardcoded fallback — and nothing is called final. */
+    it('offers nothing where the registry serves no transitions', () => {
+      const older: Partial<ReturnType<typeof spec>> = spec('TICKET', WORDS);
+      delete older.transitions;
+      const registry = { ...REGISTRY, archetypes: [older] } as ArchetypeRegistry;
       for (const word of WORDS) {
-        expect(lifecycleMoves(word, WORDS).map((move) => move.target)).not.toContain(word);
-        expect(lifecycleMoves(word, WORDS).map((move) => move.target).sort()).toEqual(
-          [...LIFECYCLE_TRANSITIONS[word]].sort(),
-        );
+        expect(lifecycleMoves(registry, 'TICKET', word)).toEqual([]);
       }
+      expect(isFinalStatus(registry, 'TICKET', 'DONE')).toBe(false);
     });
 
-    /** The edges are mirrored; the words are served — a target the registry drops is never offered. */
-    it('offers no target the served vocabulary does not hold', () => {
-      const narrow = ['REPORTED', 'REFINED', 'IMPLEMENTED'];
-      expect(lifecycleMoves('REFINED', narrow).map((move) => move.target).sort()).toEqual([
-        'IMPLEMENTED',
-        'REPORTED',
+    it('draws a kind it has never met plainly', () => {
+      const odd: ArchetypeRegistry = {
+        ...REGISTRY,
+        archetypes: [{ ...spec('TICKET', ['A', 'B']), transitions: { A: [{ to: 'B', kind: 'X' }] } }],
+      };
+      expect(lifecycleMoves(odd, 'TICKET', 'A')).toEqual([
+        { target: 'B', kind: 'X', label: 'Move to b', variant: 'ghost' },
       ]);
     });
 
-    it('falls back to the served neighbours for a word the mirror has never heard of', () => {
-      // The served order's last word is the exit, so it is drawn last and never as forward.
-      expect(lifecycleMoves('B', ['A', 'B', 'C']).map((move) => move.label)).toEqual([
-        'Back to a',
-        'Mark c',
-      ]);
-    });
-
-    it('offers nothing to a node with no status', () => {
-      expect(lifecycleMoves(null, WORDS)).toEqual([]);
+    it('offers nothing to a node with no status, no lifecycle or no registry', () => {
+      expect(lifecycleMoves(REGISTRY, 'TICKET', null)).toEqual([]);
+      expect(lifecycleMoves(REGISTRY, 'TASK', 'REPORTED')).toEqual([]);
+      expect(lifecycleMoves(null, 'TICKET', 'REPORTED')).toEqual([]);
     });
   });
 

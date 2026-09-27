@@ -11,7 +11,7 @@ import {
 import { toSignal } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, Router, RouterLink, convertToParamMap } from '@angular/router';
 import { QitsBadge, QitsButton } from '@qits/ui-components';
-import { ArchetypesApi } from '../api/archetypes-api';
+import { ArchetypesApi, type ArchetypeRegistry } from '../api/archetypes-api';
 import { DesignsApi } from '../api/designs-api';
 import { epicDossier, ticketDossier, type DossierOwner } from '../api/dossier-api';
 import { EntitiesApi } from '../api/entities-api';
@@ -22,9 +22,9 @@ import { RefinementsApi, type RefinementDto } from '../api/refinements-api';
 import { ProjectParam } from '../nav/project-param';
 import {
   lifecycleMoves,
+  lifecycleOf,
   refiningBranch,
   statusBadge,
-  statusesOf,
   type LifecycleMove,
 } from '../project/entities-model';
 import {
@@ -107,8 +107,8 @@ interface Subject {
   readonly node: EntityNode;
   /** The project's nodes, so a peer room in the activity bar can be addressed by its number. */
   readonly nodes: readonly EntityNode[];
-  /** The words this archetype may hold, off the served registry — what the moves are drawn from. */
-  readonly vocabulary: readonly string[];
+  /** The served registry — what the moves are drawn from, and the walk the first word is read off. */
+  readonly registry: ArchetypeRegistry;
 }
 
 /**
@@ -340,7 +340,9 @@ export class RefiningPage {
    */
   protected readonly moves = computed<readonly LifecycleMove[]>(() => {
     const subject = this.resolved();
-    return subject ? lifecycleMoves(subject.node.status, subject.vocabulary) : [];
+    return subject
+      ? lifecycleMoves(subject.registry, subject.node.archetype, subject.node.status)
+      : [];
   });
   protected readonly resolutionPending = signal<string | null>(null);
   protected readonly resolutionFailure = signal<string | null>(null);
@@ -677,7 +679,7 @@ export class RefiningPage {
     if (!node) {
       return { kind: 'error', status: 404, message: `No entity numbered ${number} in this project.` };
     }
-    return ready({ node, nodes, vocabulary: statusesOf(registry, node.archetype) });
+    return ready({ node, nodes, registry });
   }
 
   /**
@@ -978,13 +980,14 @@ export class RefiningPage {
   /**
    * Whether the dossier takes writes here. A ticket's pages are writable at every status; an epic's
    * scope — dossier included — is writable only in the lifecycle's **first** word (the service's
-   * `requireReported`), read off the served vocabulary rather than spelled here.
+   * `requireReported`), read off the served walk rather than spelled here.
    */
   protected dossierEditable(): boolean {
     const subject = this.resolved();
     if (!subject) return false;
     if (subject.node.archetype === 'TICKET') return true;
-    return subject.node.status !== null && subject.node.status === subject.vocabulary[0];
+    const walk = lifecycleOf(subject.registry, subject.node.archetype);
+    return subject.node.status !== null && subject.node.status === walk[0];
   }
 
   /**
