@@ -161,22 +161,10 @@ describe('ProjectsApi', () => {
     await expect(deleted).resolves.toBeUndefined();
   });
 
-  it('replaces a refining epic description', async () => {
-    const updated = api.updateEpic(
-      'epic 1',
-      'The epic',
-      'before\n\n![Sketch 1](qits-attachment:Sketch%201)',
-    );
-    const request = http.expectOne('/projects/api/epics/epic%201');
-
-    expect(request.request.method).toBe('PUT');
-    expect(request.request.body).toEqual({
-      title: 'The epic',
-      description: 'before\n\n![Sketch 1](qits-attachment:Sketch%201)',
-    });
-    request.flush({ epic: { id: 'epic 1', title: 'The epic' } });
-
-    await expect(updated).resolves.toMatchObject({ id: 'epic 1' });
+  /** The epic PUT is retired: a field edit is a restatement on the multi-entity transition door. */
+  it('has no epic PUT and no epic dispatch door', () => {
+    expect('updateEpic' in api).toBe(false);
+    expect('dispatchEpicAgent' in api).toBe(false);
   });
 
   it('sends a name and no url for a blank repository', async () => {
@@ -379,7 +367,7 @@ describe('ProjectsApi', () => {
             title: 'Epics on the project page',
             slug: 'epics-overview',
             description: 'show the plan where the reader arrives',
-            status: 'IMPLEMENTATION',
+            status: 'REFINED',
             supersededByEpicId: null,
             createdAt: '2026-08-08T09:00:00Z',
             updatedAt: '2026-08-08T09:00:00Z',
@@ -388,13 +376,14 @@ describe('ProjectsApi', () => {
       ],
     });
     await expect(epics).resolves.toMatchObject([
-      { id: 'e1', slug: 'epics-overview', status: 'IMPLEMENTATION' },
+      { id: 'e1', slug: 'epics-overview', status: 'REFINED' },
     ]);
   });
 
   /**
    * A transition answers two rows, and the successor is the one a caller is tempted to drop.
-   * Superseding *creates* the draft that replaces the epic, so keeping only `epic` would lose it.
+   * Superseding *creates* the draft that replaces the epic (landing the epic DROPPED), so keeping
+   * only `epic` would lose it. `SUPERSEDED` is the operation's name on this door, not a status.
    */
   it('posts the transition target and keeps both rows of the answer', async () => {
     const moved = api.transitionEpic('e1', 'SUPERSEDED');
@@ -410,7 +399,7 @@ describe('ProjectsApi', () => {
         title: 'Epics on the project page',
         slug: 'epics-overview',
         description: null,
-        status: 'SUPERSEDED',
+        status: 'DROPPED',
         supersededByEpicId: 'e2',
         createdAt: '2026-08-08T09:00:00Z',
         updatedAt: '2026-08-08T11:00:00Z',
@@ -421,7 +410,7 @@ describe('ProjectsApi', () => {
         title: 'Epics on the project page',
         slug: 'epics-overview',
         description: null,
-        status: 'REFINING',
+        status: 'REPORTED',
         supersededByEpicId: null,
         createdAt: '2026-08-08T11:00:00Z',
         updatedAt: '2026-08-08T11:00:00Z',
@@ -429,14 +418,14 @@ describe('ProjectsApi', () => {
     });
 
     await expect(moved).resolves.toMatchObject({
-      epic: { id: 'e1', status: 'SUPERSEDED', supersededByEpicId: 'e2' },
-      successor: { id: 'e2', status: 'REFINING' },
+      epic: { id: 'e1', status: 'DROPPED', supersededByEpicId: 'e2' },
+      successor: { id: 'e2', status: 'REPORTED' },
     });
   });
 
   /** Every move but superseding answers a null successor, and the null has to survive as one. */
   it('keeps a missing successor as null', async () => {
-    const moved = api.transitionEpic('e1', 'IMPLEMENTATION');
+    const moved = api.transitionEpic('e1', 'IMPLEMENTED');
     http.expectOne('/projects/api/epics/e1/transition').flush({
       epic: {
         id: 'e1',
@@ -444,7 +433,7 @@ describe('ProjectsApi', () => {
         title: 'Epics on the project page',
         slug: 'epics-overview',
         description: null,
-        status: 'IMPLEMENTATION',
+        status: 'REFINED',
         supersededByEpicId: null,
         createdAt: '2026-08-08T09:00:00Z',
         updatedAt: '2026-08-08T11:00:00Z',

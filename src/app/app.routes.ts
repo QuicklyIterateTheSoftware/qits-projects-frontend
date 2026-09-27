@@ -1,4 +1,5 @@
-import type { CanMatchFn, Routes } from '@angular/router';
+import { inject } from '@angular/core';
+import { Router, type CanMatchFn, type RedirectFunction, type Routes } from '@angular/router';
 import { QITS_CATEGORIES, QitsMainLayout, type QitsCategory } from '@qits/ui-components';
 import { AgentMcpCatalogPage } from './agent-config/agent-mcp-catalog-page';
 import { AgentSurfacePage } from './agent-config/agent-surface-page';
@@ -7,7 +8,8 @@ import { AgentSurfacesPage } from './agent-config/agent-surfaces-page';
 import { CreateRepositoryPage } from './create/create-repository-page';
 import { LandingPage } from './landing/landing-page';
 import { NotFound } from './not-found/not-found';
-import { EpicsPage } from './project/epics-page';
+import { EntityDetailPage } from './project/entity-detail-page';
+import { EntitySlugResolver } from './project/entity-slug-resolver';
 import { ProjectPage } from './project/project-page';
 import { ProjectReleaseRequestsPage } from './project/project-release-requests-page';
 import { ProjectSetupPage } from './project/project-setup-page';
@@ -16,8 +18,7 @@ import { ReleaseRequestDetailPage } from './project/release-request-detail-page'
 import { RepositoryApiDocsPage } from './project/repository-api-docs-page';
 import { RepositoryPage } from './project/repository-page';
 import { RepositoryReleaseRequestsPage } from './project/repository-release-requests-page';
-import { TicketDetailPage } from './project/ticket-detail-page';
-import { TicketsPage } from './project/tickets-page';
+import { WorkPage } from './project/work-page';
 import { RefiningPage } from './refining/refining-page';
 
 /**
@@ -60,7 +61,19 @@ export const repositoryGroupIsKnown: CanMatchFn = (_route, segments) => {
 };
 
 /**
- * Twenty routes, all of them inside the platform chrome.
+ * The redirect from an old desk address to the one desk, with the archetype filter set and any other
+ * query parameter carried along. A function rather than a string, because the filter is a query
+ * parameter and a string redirect would have to spell it into a path.
+ */
+function toDesk(archetype: string): RedirectFunction {
+  return ({ params, queryParams }) =>
+    inject(Router).createUrlTree(['/', params['project'], 'work'], {
+      queryParams: { ...queryParams, archetype: archetype.toLowerCase() },
+    });
+}
+
+/**
+ * The routes, all of them inside the platform chrome.
  *
  * <p><b>`agent-configuration` is the one word this application claims at the TOP level</b>, and it is
  * there because what it configures is platform-wide rather than a project's: one configuration per
@@ -102,21 +115,26 @@ export const repositoryGroupIsKnown: CanMatchFn = (_route, segments) => {
  * click away and leaves `:project` free for what a project is mostly for. It is a path segment
  * rather than a query parameter because it is a different *place*, not a view of the same one.
  *
- * <p><b>`:project` is a hub and `:project/epics` is the plan.</b> The board used to be what the
- * bare project address rendered, which made it a page with no name: the chrome's Project row leads
- * here, and nothing in the sidebar said that the epics were what "here" meant. Giving the board a
- * segment of its own makes it a sub-element beside `project-setup` and the workspaces application's
- * `workspaces`/`editor` — one row per place, and the project node itself is then what a repository's
- * node already is, a name and the ways into it. The refinement agent came down with the board,
- * because the agent is what changes the epics and the two are one surface.
+ * <p><b>`:project` is a hub and `:project/work` is the one desk</b> (qits-397, ticket 521a0bda). Every
+ * epic and every ticket of the project is on that one page, and the archetype is a **filter** on it —
+ * `?archetype=epic`, `?archetype=ticket` — never a second route and never a tab that is a route. It
+ * replaced `:project/epics` and `:project/tickets`, which were two routes over one collection.
  *
- * <p><b>`:project/tickets` is the plan's smaller sibling, and its detail route names a SLUG.</b>
- * A ticket is a self-contained piece of work rather than a tree, so it gets a page of its own where
- * an epic gets a refining workspace — and `:project/tickets/:ticket` spells the slug for the reason
- * the refining route does: the slug is the immutable git-safe identity, where a title is editable and
- * an id is the API's vocabulary rather than the address's. Both sit with the project's own literals
- * **above** the guarded routes, which is where every literal below `:project` has to be, and `tickets`
- * therefore becomes an {@link OWN_PROJECT_SEGMENTS} word by derivation — nothing lists it twice.
+ * <p><b>`:project/work/:number` is one node</b>, of any archetype — an epic, a ticket, and for the
+ * first time a feature or a task — addressed by its **qualified number**, `qits-1337` (the bare
+ * `1337` reads too). The number is stable for the entity's life and is what a person writes in a
+ * commit subject, where a slug is only unique within one archetype. **The literal `work` segment is
+ * load-bearing**: `:project/:group/:repository` and `:project/project-setup` are live addresses, so a
+ * node can never be `:project/:number` — a two-segment number would collide with the project's own
+ * words and a three-segment one with a repository. `:project/work/:number/refinement` is that node's
+ * refinement room, for an epic or a ticket (qits-395).
+ *
+ * <p><b>The old shapes keep working, cheaply.</b> `:project/epics` and `:project/tickets` redirect to
+ * the desk with the filter set; `:project/tickets/:ticket` and `:project/epics/:epicSlug/refining`
+ * name a slug, which only a read can turn into a number, so they route to
+ * {@link EntitySlugResolver}, which replaces itself with the numbered address. All four stay in the
+ * table, so `epics` and `tickets` stay {@link OWN_PROJECT_SEGMENTS} words and the guard keeps refusing
+ * them as repository groups.
  *
  * <p><b>`:project/release-requests` is the same sub-element shape, one scope up from the
  * repository's own.</b> It answers what is waiting to be released anywhere in the project, which is
@@ -179,23 +197,19 @@ export const repositoryGroupIsKnown: CanMatchFn = (_route, segments) => {
  * <p>Nothing about {@link OWN_PROJECT_SEGMENTS} moves: the set is derived from this table's
  * `:project/<literal>` heads, and `release-requests` was already one of them.
  *
- * <p><b>The refining route names an epic and never a workspace.</b>
- * `:project/epics/:epicSlug/refining` is where an epic is worked out, and the workspace behind it is
- * *looked up* — the ACTIVE workspace on `refining/<epicSlug>` in the project's wrapper repository.
- * Nothing stores that association, so an address carrying a workspace row id would be a link that rots
- * the moment the workspace is discarded and a new one started: it would point at a resolved workspace
- * with no container, for an epic that is being refined right now. The slug is the epic's immutable
- * git-safe identity, which is what the branch name is composed from, so the URL and the branch stay in
- * step by construction.
+ * <p><b>The refinement route names an entity and never a room.</b>
+ * `:project/work/:number/refinement` is where an epic or a ticket is worked out, and the room behind it
+ * is *looked up* by the entity it names. Nothing about a room belongs in an address: a room's row id
+ * rots the moment the room is discarded and another opened, while the entity's number does not.
  *
  * <p><b>Which tab is open rides in `?tab=`, not in a trailing segment.</b> A trailing segment would
  * make a tab switch free (Angular reuses a component across a parameter change) and would make an
- * *epic* switch free too — which is the bug, not the feature: the page would keep showing the previous
- * epic's workspace. Keeping the tab in the query string leaves the path meaning "which epic", makes a
+ * *entity* switch free too — which is the bug, not the feature: the page would keep showing the
+ * previous entity's room. Keeping the tab in the query string leaves the path meaning "which epic", makes a
  * bare URL mean "no tab pinned" by simple absence, and keeps every tab a shareable link.
  *
- * <p>All twenty load eagerly. There are twenty of them, they share every component below them,
- * and a lazy chunk boundary here would be ceremony that costs a round trip.
+ * <p>They all load eagerly: they share every component below them, and a lazy chunk boundary here
+ * would be ceremony that costs a round trip.
  *
  * <p>The `**` route sits *inside* the layout: this application is served at the root of its own
  * host, so an unknown URL here is an ordinary 404 and is drawn with the chrome around it.
@@ -215,16 +229,27 @@ export const routes: Routes = [
       },
       { path: ':project', component: ProjectPage },
       { path: ':project/project-setup', component: ProjectSetupPage },
-      { path: ':project/epics', component: EpicsPage },
-      { path: ':project/tickets', component: TicketsPage },
-      { path: ':project/tickets/:ticket', component: TicketDetailPage },
+      { path: ':project/work', component: WorkPage },
+      { path: ':project/work/:number', component: EntityDetailPage },
+      { path: ':project/work/:number/refinement', component: RefiningPage },
+      { path: ':project/epics', pathMatch: 'full', redirectTo: toDesk('EPIC') },
+      { path: ':project/tickets', pathMatch: 'full', redirectTo: toDesk('TICKET') },
+      {
+        path: ':project/tickets/:ticket',
+        component: EntitySlugResolver,
+        data: { archetype: 'TICKET' },
+      },
       { path: ':project/release-requests', component: ProjectReleaseRequestsPage },
       {
         path: ':project/release-requests/by-release/:repoId/:version',
         component: ReleaseRequestByReleaseResolver,
       },
       { path: ':project/release-requests/:requestId', component: ReleaseRequestDetailPage },
-      { path: ':project/epics/:epicSlug/refining', component: RefiningPage },
+      {
+        path: ':project/epics/:epicSlug/refining',
+        component: EntitySlugResolver,
+        data: { archetype: 'EPIC', room: true },
+      },
       { path: ':project/repositories/new', component: CreateRepositoryPage },
       {
         path: ':project/:group/:repository',
@@ -253,7 +278,7 @@ export const routes: Routes = [
 
 /**
  * The literal words this application routes for itself directly below `:project` — today
- * `project-setup`, `epics`, `tickets`, `release-requests` and `repositories`.
+ * `project-setup`, `work`, `epics`, `tickets`, `release-requests` and `repositories`.
  *
  * <p>**Derived from the table above, never listed twice.** It is what {@link repositoryGroupIsKnown}
  * inverts, so a second copy would be a list that silently stops matching the routes it is about,

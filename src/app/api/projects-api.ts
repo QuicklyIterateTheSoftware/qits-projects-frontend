@@ -6,11 +6,8 @@ import type {
   BackupSyncResponse,
   CreateRepositoryRequest,
   CreateRepositoryResponse,
-  EpicAgentDispatchDto,
-  EpicAgentDispatchResponse,
   EpicDto,
   EpicEntriesResponse,
-  EpicStatus,
   EpicTransitionResponse,
   FeatureDto,
   FeatureEntriesResponse,
@@ -37,10 +34,6 @@ export interface ProjectComponents {
   readonly repositories: readonly RepositoryDto[];
   readonly undeclared: ReadonlySet<string>;
   readonly wrapper: WrapperDto | null;
-}
-
-interface EpicResponse {
-  readonly epic: EpicDto;
 }
 
 /**
@@ -167,19 +160,14 @@ export class ProjectsApi {
     return response.entries.map((entry) => entry.epic);
   }
 
-  /** Replace a refining epic's human-authored Markdown spine. */
-  async updateEpic(epicId: string, title: string, description: string): Promise<EpicDto> {
-    const response = await firstValueFrom(
-      this.http.put<EpicResponse>(`${this.base}/projects/api/epics/${encodeURIComponent(epicId)}`, {
-        title,
-        description,
-      }),
-    );
-    return response.epic;
-  }
-
   /**
-   * Move one epic to another point in its life: freeze a draft, supersede it, abandon it.
+   * Move one epic one step along the lifecycle, or supersede it — the epic's **lifecycle** door.
+   *
+   * <p>Kept, and deliberately not replaced by the multi-entity transition: this door runs the
+   * lifecycle (adjacency, the implemented stamping at IMPLEMENTED, the resolving move that discards
+   * a refinement room) and is followed by the phase advance, where `POST /entities/transition` is a
+   * restatement of a row's shape that runs none of it. `SUPERSEDED` is accepted here as the name of
+   * the supersede *operation*: it lands the epic `DROPPED` and answers the successor draft.
    *
    * The whole answer is kept, successor and all, rather than reduced to the epic — superseding
    * spawns a draft, and a caller that dropped it would have no way to say what replaced what. An
@@ -189,46 +177,13 @@ export class ProjectsApi {
    * The server's answer is not spliced into the tree: a transition can change more than the one
    * row, so the caller re-reads instead.
    */
-  transitionEpic(epicId: string, target: EpicStatus): Promise<EpicTransitionResponse> {
+  transitionEpic(epicId: string, target: string): Promise<EpicTransitionResponse> {
     return firstValueFrom(
       this.http.post<EpicTransitionResponse>(
         `${this.base}/projects/api/epics/${encodeURIComponent(epicId)}/transition`,
         { target },
       ),
     );
-  }
-
-  /**
-   * Start implementing an epic: freeze the scope **and** stand a workspace and a coding agent up on
-   * the wrapper's `epic/<slug>` branch, in one press. Answers where they went.
-   *
-   * <p>A POST to a verb with **no body at all**, the same shape {@link ./entities-api#EntitiesApi}'s
-   * `dispatchAgent` has: everything the door needs is the epic, which the path already names, and
-   * the principal, which the session stamps. The `{}` is Angular's way of spelling an empty POST.
-   *
-   * <p><b>Not {@link transitionEpic} with an extra step.</b> The status move is only half of what
-   * this door does, and the halves are ordered on the server — the epic is in IMPLEMENTATION before
-   * the dispatch is made, because the marking tool the agent is told to use is only open to an epic
-   * that is. A client that transitioned and then dispatched would be that order without the
-   * transaction, and a client that only transitioned would leave the epic frozen with nobody on it.
-   *
-   * <p><b>Re-pressable, which is what makes it safe to retry.</b> An epic already in IMPLEMENTATION
-   * is dispatched onto as it stands rather than refused, and the far side adopts the workspace
-   * already on the branch — so a dispatch that failed after the status moved is fixed by pressing
-   * again. An epic whose work is over is a 409 naming the status.
-   *
-   * <p>The door fires the project's `epics` topic itself. The caller still re-reads, because unlike
-   * a ticket dispatch this one *moved the row it is about* and the panel showing it has to redraw
-   * whether or not the live channel is up.
-   */
-  async dispatchEpicAgent(epicId: string): Promise<EpicAgentDispatchDto> {
-    const response = await firstValueFrom(
-      this.http.post<EpicAgentDispatchResponse>(
-        `${this.base}/projects/api/epics/${encodeURIComponent(epicId)}/dispatch-agent`,
-        {},
-      ),
-    );
-    return response.dispatch;
   }
 
   /** One epic's features. */

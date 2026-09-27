@@ -34,16 +34,73 @@ const EPIC = {
   description: 'a third action on a **draft**',
   number: 5,
   qualifiedId: 'qits-5',
-  status: 'REFINING',
+  status: 'REPORTED',
   supersededByEpicId: null,
   createdAt: AT,
   updatedAt: AT,
   workspaces: [],
 };
 
+/** A second epic, so a peer room in the activity bar has a number to be addressed by. */
+const OTHER = {
+  ...EPIC,
+  id: 'e8',
+  slug: 'another-epic',
+  title: 'Another epic',
+  number: 9,
+  qualifiedId: 'qits-9',
+};
+
+const TICKET = {
+  id: 't1',
+  projectId: 'p1',
+  title: 'The badge is wrong',
+  slug: 'the-badge-is-wrong',
+  number: 6,
+  qualifiedId: 'qits-6',
+  type: 'BUG',
+  status: 'REPORTED',
+  blocked: false,
+  assignee: null,
+  createdBy: 'kim',
+  impetus: 'The badge reads as success when a run is cancelled.',
+  description: null,
+  createdAt: AT,
+  updatedAt: AT,
+  workspaces: [],
+};
+
+const WORDS = ['REPORTED', 'REFINED', 'IMPLEMENTED', 'VERIFIED', 'DONE', 'DROPPED'];
+
+/** The served registry — the lifecycle words the room's steps are drawn from. */
+const REGISTRY = {
+  properties: ['TITLE', 'SLUG', 'DESCRIPTION', 'STATUS', 'TICKET_TYPE', 'IMPETUS', 'ASSIGNEE'],
+  serverOwned: ['SLUG'],
+  archetypes: [
+    {
+      archetype: 'EPIC',
+      depth: 0,
+      mayBeRoot: true,
+      required: ['TITLE'],
+      requiredOnTransition: ['TITLE', 'STATUS'],
+      permitted: ['TITLE', 'SLUG', 'DESCRIPTION', 'STATUS'],
+      legalStatuses: WORDS,
+    },
+    {
+      archetype: 'TICKET',
+      depth: 0,
+      mayBeRoot: true,
+      required: ['TITLE'],
+      requiredOnTransition: ['TITLE', 'STATUS', 'TICKET_TYPE'],
+      permitted: ['TITLE', 'SLUG', 'DESCRIPTION', 'STATUS', 'TICKET_TYPE', 'IMPETUS', 'ASSIGNEE'],
+      legalStatuses: WORDS,
+    },
+  ],
+};
+
 const workspace = (over: Partial<RefinementDto> = {}): RefinementDto => ({
   id: 7,
-  epicId: 'e1',
+  entityId: 'e1',
   projectId: 'p1',
   repositoryId: 'qits-qits',
   branch: 'refining/epic-refining-workspace',
@@ -63,13 +120,16 @@ const workspace = (over: Partial<RefinementDto> = {}): RefinementDto => ({
   ...over,
 });
 
-const URL_BASE = '/p1/epics/epic-refining-workspace/refining';
+const URL_BASE = '/p1/work/qits-5/refinement';
 const EPICS_URL = '/projects/api/projects/p1/epics';
+const TICKETS_URL = '/projects/api/projects/p1/tickets';
+const ARCHETYPES_URL = '/projects/api/entities/archetypes';
 const REFINEMENTS_URL = '/projects/api/projects/p1/refinements';
 
 /**
  * The shell, and the one thing about it that is not the workspace detail page it was copied from:
- * **the URL names an epic and the workspace is resolved from it.**
+ * **the URL names an entity — `/<project>/work/<qualified id>/refinement` — and the room is resolved
+ * from it**, by the entity id the room names (qits-395/397).
  *
  * That resolution is what these tests are mostly about, because it is where the page can go wrong while
  * still looking fine. A branch match against the wrapper's ACTIVE workspaces is the *only* association
@@ -161,12 +221,24 @@ describe('RefiningPage', () => {
     await settle();
   }
 
-  /** The epic fan-out — the page's whole subject now the wrapper is the server's business. */
-  async function flushSubject(): Promise<void> {
+  /**
+   * The subject: the project's epics (with their features) and tickets — the number is looked up in
+   * them — and the served registry, which is memoised for the application's life.
+   */
+  async function flushSubject(
+    epics: readonly object[] = [EPIC, OTHER],
+    tickets: readonly object[] = [TICKET],
+  ): Promise<void> {
     await flushProjectList();
-    http.expectOne(EPICS_URL).flush({ entries: [{ epic: EPIC }] });
+    http.expectOne(EPICS_URL).flush({ entries: epics.map((epic) => ({ epic })) });
+    http.expectOne(TICKETS_URL).flush({ entries: tickets.map((ticket) => ({ ticket })) });
+    for (const request of http.match(ARCHETYPES_URL)) {
+      request.flush(REGISTRY);
+    }
     await settle();
-    http.expectOne('/projects/api/epics/e1/features').flush({ entries: [] });
+    for (const epic of epics as readonly { id: string }[]) {
+      http.expectOne(`/projects/api/epics/${epic.id}/features`).flush({ entries: [] });
+    }
     await settle();
   }
 
@@ -174,10 +246,10 @@ describe('RefiningPage', () => {
    * The refinements listing, plus — when one matched this page's branch — the full-row upgrade the
    * page issues for its own subject.
    */
-  async function flushRefinements(rows: readonly RefinementDto[]): Promise<void> {
+  async function flushRefinements(rows: readonly RefinementDto[], entityId = 'e1'): Promise<void> {
     http.expectOne(REFINEMENTS_URL).flush({ refinements: rows });
     await settle();
-    const match = rows.find((row) => row.branch === 'refining/epic-refining-workspace');
+    const match = rows.find((row) => row.entityId === entityId);
     if (match) {
       http.expectOne(`/projects/api/refinements/${match.id}`).flush({ refinement: match });
       await settle();
@@ -192,10 +264,11 @@ describe('RefiningPage', () => {
     url = URL_BASE,
     workspaces: readonly RefinementDto[] = [workspace()],
     processId: string | null = null,
+    entityId = 'e1',
   ): Promise<void> {
     await harness.navigateByUrl(url);
     await flushSubject();
-    await flushRefinements(workspaces);
+    await flushRefinements(workspaces, entityId);
     for (const request of http.match((candidate) => candidate.url.endsWith('/active-process'))) {
       request.flush({ technicalProcessId: processId });
     }
@@ -285,17 +358,24 @@ describe('RefiningPage', () => {
       // resolved project alone, and neither waits on the other.
       const first = http.match(() => true);
       expect(first.map((request) => request.request.url).sort()).toEqual(
-        [EPICS_URL, REFINEMENTS_URL].sort(),
+        [EPICS_URL, TICKETS_URL, ARCHETYPES_URL, REFINEMENTS_URL].sort(),
       );
       for (const request of first) {
         if (request.request.url === REFINEMENTS_URL) {
           request.flush({ refinements: [workspace()] });
+        } else if (request.request.url === ARCHETYPES_URL) {
+          request.flush(REGISTRY);
+        } else if (request.request.url === TICKETS_URL) {
+          request.flush({ entries: [] });
         } else {
           request.flush({ entries: [{ epic: EPIC }] });
         }
       }
       await settle();
       http.expectOne('/projects/api/epics/e1/features').flush({ entries: [] });
+      await settle();
+      // The listing landed before the subject, so the room is matched — and upgraded — once the
+      // subject has resolved: the match is by the entity's id, which only the subject knows.
       http.expectOne('/projects/api/refinements/7').flush({ refinement: workspace() });
       await settle();
       http.expectOne('/projects/api/refinements/7/active-process').flush({
@@ -322,77 +402,66 @@ describe('RefiningPage', () => {
       expect(text()).not.toContain('**');
     });
 
-    it('puts the implementation and abandonment decisions directly below the epic', async () => {
+    it('draws the lifecycle steps below the subject, off the served words', async () => {
       await open();
 
-      const actions = element().querySelector('.head app-entity-actions');
+      const actions = element().querySelector('.head .resolution-actions');
       expect(actions).not.toBeNull();
-      expect(actions?.textContent).toContain('Start implementation');
-      expect(actions?.textContent).toContain('Abandon');
+      expect(actions?.textContent).toContain('Mark refined');
+      expect(actions?.textContent).toContain('Mark dropped');
+      expect(text()).not.toContain('Start implementation');
     });
 
     /**
-     * The same door the board presses, which is the whole point: ending a refinement here has to
-     * freeze the scope *and* put an implementing agent on `epic/<slug>`, or this route would leave
-     * the epic frozen with nobody on it while the board's route did not.
+     * A step goes through the archetype's **lifecycle** door — which runs the phase advance and the
+     * resolving move that ends this room — and then to the entity's page.
      */
-    it('starts implementation through the same dispatch door as the overview', async () => {
+    it('takes a step through the epic lifecycle door, then goes to the entity page', async () => {
       await open();
       const navigate = vi.spyOn(TestBed.inject(Router), 'navigate').mockResolvedValue(true);
 
-      buttonNamed('Start implementation').click();
+      buttonNamed('Mark refined').click();
       await settle();
 
-      http.expectNone('/projects/api/epics/e1/transition');
-      const request = http.expectOne('/projects/api/epics/e1/dispatch-agent');
-      expect(request.request.method).toBe('POST');
-      expect(request.request.body).toEqual({});
-      request.flush({
-        dispatch: {
-          workspaceRowId: 7,
-          repositoryId: 'r1',
-          branch: 'epic/epic-refining-workspace',
-          fresh: true,
-          agentLaunch: 'SCHEDULED',
-        },
-      });
+      http.expectNone('/projects/api/epics/e1/dispatch-agent');
+      http.expectNone('/projects/api/entities/transition');
+      const request = http.expectOne('/projects/api/epics/e1/transition');
+      expect(request.request.body).toEqual({ target: 'REFINED' });
+      request.flush({ epic: { ...EPIC, status: 'REFINED' }, successor: null });
       await settle();
 
-      expect(navigate).toHaveBeenCalledWith(['p1', 'epics'], { fragment: 'epic-e1' });
-      http.expectNone('/projects/api/refinements/7/discard');
+      expect(navigate).toHaveBeenCalledWith(['/', 'p1', 'work', 'qits-5']);
     });
 
-    /**
-     * The teardown moved to the service on 2026-09-08: it discards the refinement and only then
-     * makes the epic terminal, so every route to a resolved epic cleans up and this page asks for
-     * the transition alone.
-     */
-    it('confirms abandonment, then abandons the epic with one request and no discard of its own', async () => {
-      await open();
+    /** A ticket has a room too (qits-395), and its words and its door are the ticket's own. */
+    it('refines a ticket: its impetus, its prompt, and its own lifecycle door', async () => {
+      await open('/p1/work/qits-6/refinement', [workspace({ entityId: 't1' })], null, 't1');
       const navigate = vi.spyOn(TestBed.inject(Router), 'navigate').mockResolvedValue(true);
 
-      buttonNamed('Abandon').click();
-      await settle();
-      http.expectNone('/projects/api/refinements/7/discard');
-      http.expectNone('/projects/api/epics/e1/transition');
+      expect(text()).toContain('The badge is wrong');
+      expect(element().querySelector('.head .impetus')?.textContent).toContain(
+        'The badge reads as success',
+      );
+      expect(element().querySelector('.tab.active')?.textContent?.trim()).toBe('Ticket');
+      expect(page()['promptContext']()).toContain('# Refine ticket qits-6: The badge is wrong');
+      expect(page()['promptContext']()).toContain('description');
+      expect(page()['dossierEditable']()).toBe(true);
 
-      buttonNamed('Confirm abandon?').click();
+      buttonNamed('Mark refined').click();
       await settle();
-      http.expectNone('/projects/api/refinements/7/discard');
-
-      const transition = http.expectOne('/projects/api/epics/e1/transition');
-      expect(transition.request.body).toEqual({ target: 'ABANDONED' });
-      transition.flush({ epic: { ...EPIC, status: 'ABANDONED' }, successor: null });
+      const request = http.expectOne('/projects/api/tickets/t1/transition');
+      expect(request.request.body).toEqual({ target: 'REFINED' });
+      request.flush({ ticket: { ...TICKET, status: 'REFINED' } });
       await settle();
 
-      expect(navigate).toHaveBeenCalledWith(['p1', 'epics'], { fragment: 'epic-e1' });
+      expect(navigate).toHaveBeenCalledWith(['/', 'p1', 'work', 'qits-6']);
     });
 
-    /** Loose matching would open another epic's workspace, which is the worst thing this page can do. */
-    it('takes only the workspace whose branch is this epic’s, never a near miss', async () => {
+    /** Loose matching would open another entity's room, which is the worst thing this page can do. */
+    it('takes only the room whose entity is this one, never one on a look-alike branch', async () => {
       await open(URL_BASE, [
-        workspace({ id: 3, branch: 'epic/epic-refining-workspace' }),
-        workspace({ id: 4, branch: 'refining/epic-refining-workspace-2' }),
+        workspace({ id: 3, entityId: 'e8', branch: 'refining/epic-refining-workspace' }),
+        workspace({ id: 4, entityId: 't1' }),
         workspace({ id: 9 }),
       ]);
 
@@ -405,10 +474,12 @@ describe('RefiningPage', () => {
       http
         .expectOne(EPICS_URL)
         .flush({ message: 'projects is down' }, { status: 503, statusText: 'Down' });
+      http.expectOne(TICKETS_URL).flush({ entries: [] });
+      http.expectOne(ARCHETYPES_URL).flush(REGISTRY);
       http.expectOne(REFINEMENTS_URL).flush({ refinements: [] });
       await settle();
 
-      expect(text()).toContain('Could not open this refining workspace');
+      expect(text()).toContain('Could not open this refinement room');
       expect(element().querySelector('app-tab-host')).toBeNull();
     });
   });
@@ -418,7 +489,7 @@ describe('RefiningPage', () => {
     it('offers to start one instead of drawing a broken page', async () => {
       await open(URL_BASE, []);
 
-      expect(text()).toContain('No refining workspace is open for this epic');
+      expect(text()).toContain('No refinement room is open for this epic');
       expect(element().querySelector('app-tab-host')).toBeNull();
       expect(buttonNamed('Start refining')).toBeTruthy();
     });
@@ -429,13 +500,15 @@ describe('RefiningPage', () => {
       buttonNamed('Start refining').click();
       await settle();
 
-      // One idempotent POST keyed by the epic — the find, the branch cut and the adopt-existing
-      // dance are the server's business now, which is what makes a refinement started in another
-      // tab meanwhile a find rather than a failure.
+      // One idempotent POST on the entity's own door — the find, the branch cut and the
+      // adopt-existing dance are the server's business, and the retired `POST /refinements` is
+      // never called.
       const create = http.expectOne(
-        (candidate) => candidate.method === 'POST' && candidate.url === '/projects/api/refinements',
+        (candidate) =>
+          candidate.method === 'POST' && candidate.url === '/projects/api/entities/e1/refinement',
       );
-      expect(create.request.body).toEqual({ epicId: 'e1' });
+      expect(create.request.body).toEqual({});
+      expect(http.match('/projects/api/refinements')).toEqual([]);
       create.flush({ refinement: workspace() });
       await settle();
 
@@ -447,7 +520,7 @@ describe('RefiningPage', () => {
       await answerChatPanel();
 
       expect(element().querySelector('app-tab-host')).not.toBeNull();
-      expect(text()).not.toContain('No refining workspace is open');
+      expect(text()).not.toContain('No refinement room is open');
     });
 
     it('keeps the offer and says why when starting one fails', async () => {
@@ -456,12 +529,12 @@ describe('RefiningPage', () => {
       buttonNamed('Start refining').click();
       await settle();
       http
-        .expectOne('/projects/api/refinements')
+        .expectOne('/projects/api/entities/e1/refinement')
         .flush({ message: 'projects is down' }, { status: 503, statusText: 'Down' });
       await settle();
 
       expect(text()).toContain('That did not work — 503 projects is down.');
-      expect(text()).toContain('No refining workspace is open for this epic');
+      expect(text()).toContain('No refinement room is open for this epic');
     });
 
     /** An unanswered listing is not an absence; flashing the offer at a running workspace is a lie. */
@@ -469,7 +542,7 @@ describe('RefiningPage', () => {
       await harness.navigateByUrl(URL_BASE);
       await flushSubject();
 
-      expect(text()).not.toContain('No refining workspace is open');
+      expect(text()).not.toContain('No refinement room is open');
 
       await flushRefinements([workspace()]);
       http.expectOne('/projects/api/refinements/7/active-process').flush({
@@ -511,7 +584,7 @@ describe('RefiningPage', () => {
       expect(TestBed.inject(Location).path()).toBe(URL_BASE);
     });
 
-    it('reuses the page across a tab change and rebuilds it across an epic change', async () => {
+    it('reuses the page across a tab change and rebuilds it across an entity change', async () => {
       await open();
       const refining = page();
       expect(refining.remounts()).toBe(0);
@@ -522,13 +595,13 @@ describe('RefiningPage', () => {
       await settle();
       expect(refining.remounts()).toBe(0);
 
-      await harness.navigateByUrl('/p1/epics/another-epic/refining?tab=files');
+      await harness.navigateByUrl('/p1/work/qits-9/refinement?tab=files');
       await settle();
-      http
-        .expectOne(EPICS_URL)
-        .flush({ entries: [{ epic: { ...EPIC, id: 'e2', slug: 'another-epic' } }] });
+      http.expectOne(EPICS_URL).flush({ entries: [{ epic: EPIC }, { epic: OTHER }] });
+      http.expectOne(TICKETS_URL).flush({ entries: [] });
       await settle();
-      http.expectOne('/projects/api/epics/e2/features').flush({ entries: [] });
+      http.expectOne('/projects/api/epics/e1/features').flush({ entries: [] });
+      http.expectOne('/projects/api/epics/e8/features').flush({ entries: [] });
       http.expectOne(REFINEMENTS_URL).flush({ refinements: [] });
       await settle();
 
@@ -701,17 +774,31 @@ describe('RefiningPage', () => {
       buttonNamed('Sketch 1').click();
       await settle();
 
-      const update = http.expectOne('/projects/api/epics/e1');
-      expect(update.request.method).toBe('PUT');
-      expect(update.request.body.description).toBe(
-        '![Sketch 1](/projects/api/refinements/7/prompt-attachments/image-1/content)\n\na third action on a **draft**',
-      );
-      update.flush({
-        epic: {
-          ...EPIC,
-          description: update.request.body.description,
+      // A field edit is a restatement on the multi-entity transition door; the epic PUT is retired.
+      http.expectNone((candidate) => candidate.method === 'PUT');
+      const update = http.expectOne('/projects/api/entities/transition');
+      expect(update.request.method).toBe('POST');
+      const described =
+        '![Sketch 1](/projects/api/refinements/7/prompt-attachments/image-1/content)\n\na third action on a **draft**';
+      expect(update.request.body).toEqual({
+        e1: {
+          archetype: 'EPIC',
+          membership: { parent: null },
+          title: 'Epic refining workspace',
+          description: described,
+          status: 'REPORTED',
         },
       });
+      update.flush({});
+      await settle();
+      // The subject is re-read quietly, with the new description.
+      http.expectOne(EPICS_URL).flush({
+        entries: [{ epic: { ...EPIC, description: described } }, { epic: OTHER }],
+      });
+      http.expectOne(TICKETS_URL).flush({ entries: [] });
+      await settle();
+      http.expectOne('/projects/api/epics/e1/features').flush({ entries: [] });
+      http.expectOne('/projects/api/epics/e8/features').flush({ entries: [] });
       await settle();
 
       expect(element().querySelector('app-epic-document img')?.getAttribute('src')).toBe(
@@ -772,10 +859,11 @@ describe('RefiningPage', () => {
      * such column now, so what matters is that this is one line, that it names the epic, and that it
      * comes from the epic the page has resolved rather than from anything on the refinement row.
      */
-    it('derives the rewrite context from the epic, one line, not from the row', async () => {
+    it('derives the rewrite context from the epic, not from the row', async () => {
       await open();
 
-      expect(page()['promptContext']()).toBe('# Refine: Epic refining workspace');
+      expect(page()['promptContext']()).toContain('# Refine epic qits-5: Epic refining workspace');
+      expect(page()['promptContext']()).toContain('feature/task tree');
 
       // A rename during the session moves it: the row is not in the picture at all.
       page()['subject'].set(
@@ -786,7 +874,7 @@ describe('RefiningPage', () => {
       );
       harness.detectChanges();
 
-      expect(page()['promptContext']()).toBe('# Refine: Sharper onboarding');
+      expect(page()['promptContext']()).toContain('# Refine epic qits-5: Sharper onboarding');
     });
 
     it('builds the files panel on its tab, pointed at the resolved workspace’s container', async () => {
@@ -944,15 +1032,18 @@ describe('RefiningPage', () => {
     });
 
     /**
-     * The activity bar is a "who needs me next" queue, and a press has to land somewhere. This SPA
-     * addresses a workspace by the epic it refines, so a workspace on any other branch has no page here
-     * — carrying it would draw a button that goes nowhere.
+     * The activity bar is a "who needs me next" queue, and a press has to land somewhere: every room
+     * names an entity, so a press lands on that entity's room, addressed by its number.
      */
-    it('shows only refining workspaces in the activity bar, and presses through to that epic', async () => {
+    it('presses through from the activity bar to the peer entity’s room', async () => {
       await open(URL_BASE, [
         workspace(),
-        workspace({ id: 8, branch: 'refining/another-epic', agentActivity: 'WAITING' }),
-        workspace({ id: 9, branch: 'epic/some-frozen-epic', agentActivity: 'BUSY' }),
+        workspace({
+          id: 8,
+          entityId: 'e8',
+          branch: 'refining/another-epic',
+          agentActivity: 'WAITING',
+        }),
       ]);
 
       const entries = Array.from(element().querySelectorAll<HTMLElement>('.bar .entry'));
@@ -963,11 +1054,10 @@ describe('RefiningPage', () => {
       entries[0].click();
       await settle();
 
-      expect(TestBed.inject(Location).path()).toBe('/p1/epics/another-epic/refining?tab=chat');
+      expect(TestBed.inject(Location).path()).toBe('/p1/work/qits-9/refinement?tab=chat');
 
-      // The destination resolves itself from the URL, exactly as this page did — the row id the button
-      // was drawn from is not carried. What it finds is that page's business; these reads are answered
-      // only so the verifier has nothing left over.
+      // The destination resolves itself from the URL; these reads are answered only so the verifier
+      // has nothing left over.
       for (const request of http.match(() => true)) {
         request.flush({ entries: [] });
       }
@@ -991,7 +1081,7 @@ describe('RefiningPage', () => {
       await flushSubject();
 
       // The listing is in flight: nothing can be drawn, but the page still has to say so.
-      expect(text()).toContain('Looking for the refining workspace');
+      expect(text()).toContain('Looking for the refinement room');
       expect(element().querySelector('app-tab-host')).toBeNull();
 
       await flushRefinements([workspace()]);
@@ -1000,7 +1090,7 @@ describe('RefiningPage', () => {
       });
       await settle();
       await answerChatPanel();
-      expect(text()).not.toContain('Looking for the refining workspace');
+      expect(text()).not.toContain('Looking for the refinement room');
     });
 
     /**
@@ -1035,7 +1125,7 @@ describe('RefiningPage', () => {
 
     /** The residue of the three states is a state too, and it is never an empty content area. */
     it('names the case where nothing resolved and nothing failed', async () => {
-      await harness.navigateByUrl('/nobody/epics/epic-refining-workspace/refining');
+      await harness.navigateByUrl('/nobody/work/qits-5/refinement');
       for (const request of http.match('/projects/api/projects')) {
         request.flush({ entries: [] });
       }
@@ -1051,12 +1141,19 @@ describe('RefiningPage', () => {
    * created seconds ago, on an epic with no description and no features drafted yet.
    */
   describe('a freshly started refinement', () => {
-    const FRESH = { ...EPIC, id: 'e3', slug: 'agent-configuration-system', description: null };
-    const FRESH_URL = '/p1/epics/agent-configuration-system/refining';
+    const FRESH = {
+      ...EPIC,
+      id: 'e3',
+      slug: 'agent-configuration-system',
+      description: null,
+      number: 30,
+      qualifiedId: 'qits-30',
+    };
+    const FRESH_URL = '/p1/work/qits-30/refinement';
     const fresh = (): RefinementDto =>
       workspace({
         id: 3,
-        epicId: 'e3',
+        entityId: 'e3',
         branch: 'refining/agent-configuration-system',
         label: 'refining-agent-configuration-system',
         runtimeStatus: 'RUNNING',
@@ -1069,11 +1166,7 @@ describe('RefiningPage', () => {
 
     it('opens on the listing alone, with the drift read still outstanding', async () => {
       await harness.navigateByUrl(FRESH_URL);
-      await flushProjectList();
-      http.expectOne(EPICS_URL).flush({ entries: [{ epic: FRESH }] });
-      await settle();
-      http.expectOne('/projects/api/epics/e3/features').flush({ entries: [] });
-      await settle();
+      await flushSubject([FRESH], []);
       http.expectOne(REFINEMENTS_URL).flush({ refinements: [fresh()] });
       await settle();
 

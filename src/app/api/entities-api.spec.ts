@@ -34,7 +34,7 @@ const epic = (over: Partial<EpicDto> = {}): EpicDto => ({
   description: null,
   number: 12,
   qualifiedId: 'qits-12',
-  status: 'IMPLEMENTATION',
+  status: 'REFINED',
   supersededByEpicId: null,
   createdAt: AT,
   updatedAt: AT,
@@ -322,24 +322,9 @@ describe('EntitiesApi', () => {
       expect((await answer).slug).toBe('the-cancelled-badge-is-the-wrong-colour');
     });
 
-    it('puts an edit and answers the entity it came back as', async () => {
-      const answer = api.update('t1', { title: 'Renamed', type: 'IMPROVEMENT' });
-      const request = http.expectOne('/projects/api/tickets/t1');
-      request.flush({ ticket: ticket({ title: 'Renamed', type: 'IMPROVEMENT' }) });
-
-      expect(request.request.method).toBe('PUT');
-      expect(request.request.body).toEqual({ title: 'Renamed', type: 'IMPROVEMENT' });
-      expect((await answer).title).toBe('Renamed');
-    });
-
-    /** The pairing is the whole shape of this body — see {@link TicketEdit}. */
-    it('sends the clears as their own flags, beside the fields they empty', async () => {
-      const answer = api.update('t1', { clearDescription: true, clearAssignee: true });
-      const request = http.expectOne('/projects/api/tickets/t1');
-      request.flush({ ticket: ticket({ description: null, assignee: null }) });
-
-      expect(request.request.body).toEqual({ clearDescription: true, clearAssignee: true });
-      expect((await answer).assignee).toBeNull();
+    /** The retired PUT is never called: an edit is a restatement on the multi-entity door. */
+    it('has no ticket PUT at all', () => {
+      expect('update' in api).toBe(false);
     });
 
     it('moves a ticket along the lifecycle through the transition verb, not a field edit', async () => {
@@ -401,9 +386,8 @@ describe('EntitiesApi', () => {
     });
 
     /**
-     * The single-row door, and it stays single. The unified entity brought
-     * `POST /projects/api/entities/transition` with it — a map of id to target state — and nothing in
-     * this client calls it yet: a one-row move has no business paying for a map.
+     * A status step stays on the lifecycle door: the multi-entity transition restates a row's shape
+     * and runs no lifecycle (no adjacency, no phase advance, no resolving move).
      */
     it('addresses one ticket rather than the multi-entity transition', async () => {
       const answer = api.transition('t1', 'REFINED');
@@ -411,46 +395,6 @@ describe('EntitiesApi', () => {
 
       await answer;
       expect(http.match('/projects/api/entities/transition')).toEqual([]);
-    });
-
-    /** Nothing is sent: the ticket is in the path and the principal is in the session. */
-    it('dispatches an agent with an empty body, and unwraps the dispatch', async () => {
-      const answer = api.dispatchAgent('t1');
-      const request = http.expectOne('/projects/api/tickets/t1/dispatch-agent');
-      request.flush({
-        dispatch: {
-          workspaceRowId: 7,
-          repositoryId: 'r1',
-          branch: 'ticket/the-cancelled-badge-is-the-wrong-colour',
-          fresh: true,
-          agentLaunch: 'SCHEDULED',
-        },
-      });
-
-      expect(request.request.method).toBe('POST');
-      expect(request.request.body).toEqual({});
-      expect(await answer).toEqual({
-        workspaceRowId: 7,
-        repositoryId: 'r1',
-        branch: 'ticket/the-cancelled-badge-is-the-wrong-colour',
-        fresh: true,
-        agentLaunch: 'SCHEDULED',
-      });
-    });
-
-    it('escapes the ticket id on the dispatch path too', async () => {
-      const answer = api.dispatchAgent('a/b');
-      http.expectOne('/projects/api/tickets/a%2Fb/dispatch-agent').flush({
-        dispatch: {
-          workspaceRowId: 7,
-          repositoryId: 'r1',
-          branch: 'ticket/a-b',
-          fresh: false,
-          agentLaunch: 'SKIPPED_RUNNING',
-        },
-      });
-
-      expect((await answer).agentLaunch).toBe('SKIPPED_RUNNING');
     });
 
     /** The `success` body adds nothing a 200 has not said, so it is dropped rather than returned. */
@@ -461,6 +405,90 @@ describe('EntitiesApi', () => {
 
       expect(request.request.method).toBe('DELETE');
       await expect(answer).resolves.toBeUndefined();
+    });
+  });
+
+  /** The one dispatching door, for every archetype with a lifecycle (qits-394). */
+  describe('the dispatch door', () => {
+    const answer = {
+      entityId: 't1',
+      archetype: 'TICKET',
+      phase: 'refine',
+      mode: 'FLOW',
+      workspaceRowId: 7,
+      repositoryId: 'r1',
+      branch: 'ticket/the-cancelled-badge-is-the-wrong-colour',
+      fresh: true,
+      agentLaunch: 'SCHEDULED',
+    };
+
+    it('posts Dispatch as FLOW to the entity door, and unwraps the dispatch', async () => {
+      const dispatched = api.dispatch('t1', 'FLOW');
+      const request = http.expectOne('/projects/api/entities/t1/dispatch');
+      request.flush({ dispatch: answer });
+
+      expect(request.request.method).toBe('POST');
+      expect(request.request.body).toEqual({ mode: 'FLOW' });
+      expect(await dispatched).toEqual(answer);
+    });
+
+    it('posts Run the next phase as PHASE to the same door', async () => {
+      const dispatched = api.dispatch('e1', 'PHASE');
+      const request = http.expectOne('/projects/api/entities/e1/dispatch');
+      request.flush({ dispatch: { ...answer, entityId: 'e1', archetype: 'EPIC', mode: 'PHASE' } });
+
+      expect(request.request.body).toEqual({ mode: 'PHASE' });
+      expect((await dispatched).mode).toBe('PHASE');
+    });
+
+    it('never calls the retired per-archetype dispatch doors', async () => {
+      const dispatched = api.dispatch('t1', 'FLOW');
+      http.expectOne('/projects/api/entities/t1/dispatch').flush({ dispatch: answer });
+      await dispatched;
+
+      expect(http.match(() => true)).toEqual([]);
+      expect('dispatchAgent' in api).toBe(false);
+    });
+
+    it('reads what a press would start, unwrapping the state', async () => {
+      const state = api.dispatchState('a/b');
+      const request = http.expectOne('/projects/api/entities/a%2Fb/dispatch');
+      request.flush({
+        state: {
+          entityId: 'a/b',
+          archetype: 'EPIC',
+          status: 'REFINED',
+          nextPhase: 'implement',
+          blocked: false,
+          dispatchable: true,
+          mode: null,
+        },
+      });
+
+      expect(request.request.method).toBe('GET');
+      expect((await state).nextPhase).toBe('implement');
+    });
+
+    /** The audit's key is a subtree key: an epic's id for its tree, a ticket's own for a ticket. */
+    it('reads the audit subtree by its key', async () => {
+      const entries = api.audit('t1');
+      const request = http.expectOne('/projects/api/epics/t1/audit');
+      request.flush({
+        entries: [
+          {
+            id: 'a1',
+            entityType: 'TICKET',
+            entityId: 't1',
+            epicId: 't1',
+            operation: 'UPDATE',
+            changedBy: 'kim',
+            changedAt: AT,
+            snapshot: null,
+          },
+        ],
+      });
+
+      expect((await entries).map((entry) => entry.operation)).toEqual(['UPDATE']);
     });
   });
 

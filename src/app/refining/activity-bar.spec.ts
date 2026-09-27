@@ -10,7 +10,7 @@ const workspace = (
   agentActivity: AgentActivityState | null,
 ): RefinementDto => ({
   id,
-  epicId: 'e' + id,
+  entityId: 'e' + id,
   projectId: 'p1',
   repositoryId: 'qits-qits',
   branch: label,

@@ -1,15 +1,15 @@
 @if (mounted()) {
   <app-async
     [state]="subject()"
-    loadingLabel="Resolving the epic and its wrapper repository"
-    errorLabel="Could not open this refining workspace"
+    loadingLabel="Resolving the entity and its wrapper repository"
+    errorLabel="Could not open this refinement room"
     (retry)="reload()"
   />
 
   <app-async
     [state]="workspaces()"
-    loadingLabel="Looking for the refining workspace"
-    errorLabel="Could not read the wrapper’s workspaces"
+    loadingLabel="Looking for the refinement room"
+    errorLabel="Could not read the project’s refinement rooms"
     (retry)="onChanged()"
   />
 
@@ -23,11 +23,16 @@
       <ng-template appTabPanel="epic">
         <header class="head">
           <p class="crumb">
-            <button type="button" class="back" (click)="backToEpics()">Epics</button>
+            @if (entityLink(); as link) {
+              <a class="back" [routerLink]="link">{{ node()?.qualifiedId || subjectLabel() }}</a>
+            }
             <span class="sep">/</span>
-            <span>Refining</span>
+            <span>Refinement</span>
           </p>
-          <h1>{{ title() }}</h1>
+          <h1>
+            {{ title() }}
+            <qits-badge [label]="statusBadge().label" [tone]="statusBadge().tone" />
+          </h1>
           <p class="meta">
             <code>{{ branch() }}</code>
             @if (repositoryId()) {
@@ -37,6 +42,9 @@
               >
             }
           </p>
+          @if (impetus(); as said) {
+            <p class="impetus">{{ said }}</p>
+          }
           @if (description(); as description) {
             <app-epic-document
               class="description"
@@ -47,16 +55,23 @@
               (editImage)="editSketch($event)"
             />
           }
-          @if (epic(); as subject) {
-            <app-entity-actions
-              class="resolution-actions"
-              [entity]="subject"
-              [actions]="resolutionActions()"
-              [disabled]="resolutionPending() !== null"
-              [running]="resolutionPending()"
-              [error]="resolutionFailure()"
-              (chosen)="resolveEpic($event)"
-            />
+          @if (moves().length > 0) {
+            <div class="resolution-actions">
+              @for (step of moves(); track step.target) {
+                <qits-button
+                  [variant]="step.forward ? 'secondary' : 'ghost'"
+                  size="sm"
+                  [disabled]="resolutionPending() !== null"
+                  [busy]="resolutionPending() === step.target"
+                  (pressed)="move(step)"
+                >
+                  {{ step.label }}
+                </qits-button>
+              }
+            </div>
+          }
+          @if (resolutionFailure(); as message) {
+            <p class="fault" role="alert">Could not move it — {{ message }}.</p>
           }
         </header>
 
@@ -87,7 +102,7 @@
                 [owner]="dossierOwner()"
                 [workspaceRowId]="ws.id"
                 [visible]="selected() === 'dossier'"
-                [editable]="epicRefining()"
+                [editable]="dossierEditable()"
                 [pageSlug]="dossierPage()"
                 (pageChosen)="dossierPageChosen($event)"
               />
@@ -129,15 +144,16 @@
     </app-tab-host>
   } @else if (absent()) {
     <!--
-      Not a 404. A discarded workspace is gone, so an epic with no active refinement workspace can be
-      restarted with the same press the epics list offers, made here rather than somewhere else.
+      Not a 404. A discarded room is gone, so an entity with no room can have one opened again with
+      the same press its page offers, made here rather than somewhere else.
     -->
     <section class="offer" aria-label="Start refining">
-      <h2>No refining workspace is open for this epic</h2>
+      <h2>No refinement room is open for this {{ subjectLabel().toLowerCase() }}</h2>
       <p>
-        Refining happens in a workspace on <code>{{ branch() }}</code
-        >, and there is none active right now — either nobody has started one, or the last one was
-        discarded. Starting one creates the branch and workspace again.
+        Refining happens in a room on <code>{{ branch() }}</code
+        >, and there is none right now — either nobody has opened one, or the last one was
+        discarded. Opening one creates the branch and the room again. The service opens a room only
+        while the entity is in the first phase of its lifecycle.
       </p>
       <qits-button variant="primary" [busy]="starting()" (pressed)="startRefining()">
         Start refining
@@ -160,7 +176,7 @@
     <section class="pending" aria-label="Nothing resolved">
       <h2>Nothing has resolved for this address yet</h2>
       <p>
-        No epic and no refining workspace on <code>{{ branch() }}</code> — and nothing failed
+        No entity and no refinement room for <code>{{ entityParam() }}</code> — and nothing failed
         either, so there is nothing to retry automatically.
       </p>
       <qits-button variant="ghost" (pressed)="retryAll()">Try again</qits-button>

@@ -162,7 +162,11 @@ import { ReleaseSources } from './release-sources';
                 </span>
                 <span class="by">{{ request.requester || none }}</span>
                 @if (request.gateTicketId) {
-                  <a class="fact ticket" [routerLink]="['/', projectSlug(), 'tickets']">
+                  <a
+                    class="fact ticket"
+                    [routerLink]="['/', projectSlug(), 'work']"
+                    [queryParams]="{ archetype: 'ticket' }"
+                  >
                     a bug ticket was filed
                   </a>
                 }

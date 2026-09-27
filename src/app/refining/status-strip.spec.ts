@@ -7,7 +7,7 @@ import { StatusStrip } from './status-strip';
 
 const refinement = (over: Partial<RefinementDto> = {}): RefinementDto => ({
   id: 7,
-  epicId: 'e1',
+  entityId: 'e1',
   projectId: 'p1',
   repositoryId: 'qits-qits',
   branch: 'refining/task-widgets',

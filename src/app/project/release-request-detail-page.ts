@@ -248,7 +248,11 @@ interface DrawnArtifact {
             </span>
             <span class="fact">asked by {{ request.requester || none }}</span>
             @if (request.gateTicketId) {
-              <a class="fact ticket" [routerLink]="['/', addressed().project, 'tickets']">
+              <a
+                class="fact ticket"
+                [routerLink]="['/', addressed().project, 'work']"
+                [queryParams]="{ archetype: 'ticket' }"
+              >
                 a bug ticket was filed for this failure
               </a>
             }

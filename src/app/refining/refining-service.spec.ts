@@ -1,13 +1,13 @@
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
+import type { EpicDto, TicketDto } from '../api/dto';
 import type { RefinementDto } from '../api/refinements-api';
-import { epicEntity, type EpicEntity } from '../project/entities-model';
 import { RefiningService } from './refining-service';
 
 const AT = '2026-08-08T09:00:00Z';
 
-const EPIC = {
+const EPIC: EpicDto = {
   id: 'e1',
   projectId: 'p1',
   title: 'Sharper onboarding',
@@ -15,8 +15,26 @@ const EPIC = {
   description: 'a draft',
   number: 3,
   qualifiedId: 'qits-3',
-  status: 'REFINING' as const,
+  status: 'REPORTED',
   supersededByEpicId: null,
+  createdAt: AT,
+  updatedAt: AT,
+  workspaces: [],
+};
+
+const TICKET: TicketDto = {
+  id: 't1',
+  projectId: 'p1',
+  title: 'The badge is wrong',
+  slug: 'the-badge-is-wrong',
+  number: 4,
+  qualifiedId: 'qits-4',
+  type: 'BUG',
+  status: 'REPORTED',
+  assignee: null,
+  createdBy: 'kim',
+  impetus: 'The badge reads as success when a run is cancelled.',
+  description: null,
   createdAt: AT,
   updatedAt: AT,
   workspaces: [],
@@ -24,12 +42,12 @@ const EPIC = {
 
 const REFINEMENT: RefinementDto = {
   id: 7,
-  epicId: 'e1',
+  entityId: 't1',
   projectId: 'p1',
   repositoryId: 'qits-qits',
-  branch: 'refining/sharper-onboarding',
+  branch: 'refining/the-badge-is-wrong',
   parent: 'main',
-  label: 'refining-sharper-onboarding',
+  label: 'refining-the-badge-is-wrong',
   runtimeStatus: null,
   runtimeError: null,
   clean: null,
@@ -43,8 +61,6 @@ const REFINEMENT: RefinementDto = {
   createdAt: AT,
 };
 
-const node = (): EpicEntity => epicEntity(EPIC, []);
-
 const settle = async () => {
   for (let turn = 0; turn < 8; turn++) {
     await Promise.resolve();
@@ -52,12 +68,8 @@ const settle = async () => {
 };
 
 /**
- * Starting and finding the refinement an epic is refined in — and how little of it is left here.
- *
- * The 409/adopt-existing choreography, the label rule and the wrapper resolution all moved
- * server-side when refinement moved into qits-projects: the open is one
- * idempotent POST keyed by the epic id, and the find is a list read that never creates. What is
- * worth pinning is exactly that — which requests go out, and that the find creates nothing.
+ * Finding and opening an entity's refinement room (qits-395): both through the entity's own door,
+ * for an epic and a ticket alike, and never through the retired `POST /refinements {"epicId"}`.
  */
 describe('RefiningService', () => {
   let http: HttpTestingController;
@@ -73,63 +85,44 @@ describe('RefiningService', () => {
 
   afterEach(() => http.verify());
 
-  describe('finding the refinement', () => {
-    it('matches the epic in the project listing and writes nothing', async () => {
-      const answer = refining.find('p1', 'e1');
-      const request = http.expectOne('/projects/api/projects/p1/refinements');
-      expect(request.request.method).toBe('GET');
-      request.flush({ refinements: [REFINEMENT] });
-      expect(await answer).toEqual(REFINEMENT);
-    });
+  it('opens a room through the entity door, with an empty body', async () => {
+    const opened = refining.open('t1');
+    const request = http.expectOne('/projects/api/entities/t1/refinement');
+    expect(request.request.method).toBe('POST');
+    expect(request.request.body).toEqual({});
+    request.flush({ refinement: REFINEMENT });
 
-    it('answers null when no refinement is on that epic', async () => {
-      const answer = refining.find('p1', 'e-other');
-      http.expectOne('/projects/api/projects/p1/refinements').flush({ refinements: [REFINEMENT] });
-      expect(await answer).toBeNull();
-    });
+    expect((await opened).entityId).toBe('t1');
+    expect(http.match('/projects/api/refinements')).toEqual([]);
   });
 
-  describe('opening the refinement', () => {
-    it('is one idempotent POST keyed by the epic id', async () => {
-      const answer = refining.open(node());
-      const request = http.expectOne('/projects/api/refinements');
-      expect(request.request.method).toBe('POST');
-      expect(request.request.body).toEqual({ epicId: 'e1' });
-      request.flush({ refinement: REFINEMENT });
-      expect(await answer).toEqual(REFINEMENT);
-    });
+  it('finds a room with a GET on the same door, which never creates', async () => {
+    const found = refining.find('e1');
+    const request = http.expectOne('/projects/api/entities/e1/refinement');
+    expect(request.request.method).toBe('GET');
+    request.flush({ refinement: null });
 
-    it('opens from a slug by resolving the epic first', async () => {
-      const answer = refining.openBySlug('p1', 'sharper-onboarding');
-      http.expectOne('/projects/api/projects/p1/epics').flush({ entries: [{ epic: EPIC }] });
-      await settle();
-      http.expectOne('/projects/api/epics/e1/features').flush({ entries: [] });
-      await settle();
-      http.expectOne('/projects/api/refinements').flush({ refinement: REFINEMENT });
-      expect(await answer).toEqual(REFINEMENT);
-    });
+    expect(await found).toBeNull();
   });
 
-  describe('reading one epic by slug', () => {
-    it('finds the epic the URL names and fans out to its features and tasks', async () => {
-      const answer = refining.node('p1', 'sharper-onboarding');
-      http.expectOne('/projects/api/projects/p1/epics').flush({ entries: [{ epic: EPIC }] });
-      await settle();
-      http
-        .expectOne('/projects/api/epics/e1/features')
-        .flush({ entries: [{ feature: { id: 'f1', epicId: 'e1', projectId: 'p1', title: 'F', slug: 'f', description: null, number: 4, qualifiedId: 'qits-4', dependsOnFeatureId: null, implementedOn: null, createdAt: AT, updatedAt: AT } }] });
-      await settle();
-      http.expectOne('/projects/api/features/f1/tasks').flush({ entries: [] });
-      const resolved = await answer;
-      expect(resolved.id).toBe('e1');
-      expect(resolved.archetype).toBe('EPIC');
-      expect(resolved.features).toHaveLength(1);
-    });
+  it('resolves a number to its node across the project’s epics and tickets', async () => {
+    const resolved = refining.resolve('p1', 4);
+    http.expectOne('/projects/api/projects/p1/epics').flush({ entries: [{ epic: EPIC }] });
+    http.expectOne('/projects/api/projects/p1/tickets').flush({ entries: [{ ticket: TICKET }] });
+    await settle();
+    http.expectOne('/projects/api/epics/e1/features').flush({ entries: [] });
 
-    it('says so when the project has no epic with that slug', async () => {
-      const answer = refining.node('p1', 'unknown');
-      http.expectOne('/projects/api/projects/p1/epics').flush({ entries: [{ epic: EPIC }] });
-      await expect(answer).rejects.toThrowError(/no epic called/);
-    });
+    const { node, nodes } = await resolved;
+    expect(node?.id).toBe('t1');
+    expect(node?.archetype).toBe('TICKET');
+    expect(nodes.map((each) => each.number)).toEqual([3, 4]);
+  });
+
+  it('answers a null node for a number the project does not hold', async () => {
+    const resolved = refining.resolve('p1', 99);
+    http.expectOne('/projects/api/projects/p1/epics').flush({ entries: [] });
+    http.expectOne('/projects/api/projects/p1/tickets').flush({ entries: [] });
+
+    expect((await resolved).node).toBeNull();
   });
 });

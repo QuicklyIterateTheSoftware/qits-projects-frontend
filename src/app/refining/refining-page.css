@@ -11,7 +11,7 @@
   font-size: 0.82rem;
 }
 
-/* A button and not a link: the destination is a route with a fragment, and the router owns both. */
+/* The crumb back to the entity's page — its qualified number, which is its address. */
 .back {
   padding: 0;
   border: 0;
@@ -53,7 +53,17 @@
 }
 
 .resolution-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
   margin-top: 0.75rem;
+}
+
+/* The ticket's own words, above the description that answers them. */
+.impetus {
+  margin: 0.5rem 0 0;
+  color: #111827;
+  overflow-wrap: anywhere;
 }
 
 /* The offer is a surface rather than an error box: nothing is wrong, there is simply nothing open. */

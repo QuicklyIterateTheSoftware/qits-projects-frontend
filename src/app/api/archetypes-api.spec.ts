@@ -14,7 +14,7 @@ const REGISTRY: ArchetypeRegistry = {
       required: ['TITLE'],
       requiredOnTransition: ['TITLE', 'STATUS'],
       permitted: ['TITLE', 'SLUG', 'STATUS'],
-      legalStatuses: ['REFINING'],
+      legalStatuses: ['REPORTED'],
     },
   ],
 };

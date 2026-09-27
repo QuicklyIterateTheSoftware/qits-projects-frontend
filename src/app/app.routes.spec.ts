@@ -3,6 +3,7 @@ import { HttpTestingController, provideHttpClientTesting } from '@angular/common
 import { provideLocationMocks } from '@angular/common/testing';
 import { TestBed } from '@angular/core/testing';
 import type { Type } from '@angular/core';
+import { Location } from '@angular/common';
 import { Router, provideRouter } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
 import { provideQitsScope } from '@qits/ui-components';
@@ -15,7 +16,8 @@ import { EVENT_SOURCE_FACTORY, type EventSourceFactory } from './api/event-sourc
 import { CreateRepositoryPage } from './create/create-repository-page';
 import { LandingPage } from './landing/landing-page';
 import { NotFound } from './not-found/not-found';
-import { EpicsPage } from './project/epics-page';
+import { EntityDetailPage } from './project/entity-detail-page';
+import { EntitySlugResolver } from './project/entity-slug-resolver';
 import { ProjectPage } from './project/project-page';
 import { ProjectReleaseRequestsPage } from './project/project-release-requests-page';
 import { ProjectSetupPage } from './project/project-setup-page';
@@ -23,8 +25,8 @@ import { ReleaseRequestByReleaseResolver } from './project/release-request-by-re
 import { ReleaseRequestDetailPage } from './project/release-request-detail-page';
 import { RepositoryPage } from './project/repository-page';
 import { RepositoryReleaseRequestsPage } from './project/repository-release-requests-page';
-import { TicketDetailPage } from './project/ticket-detail-page';
-import { TicketsPage } from './project/tickets-page';
+import { WorkPage } from './project/work-page';
+import { RefiningPage } from './refining/refining-page';
 
 /** jsdom has no `EventSource`, and the epics overview opens one on the epics page. */
 const SILENT: EventSourceFactory = () => ({
@@ -104,23 +106,59 @@ describe('routes', () => {
   });
 
   /**
-   * The board has an address of its own. It used to be whatever `/qits` rendered, which is why the
-   * project node could not name it in the chrome — a sub-element needs a segment to be a row.
+   * **The one desk** (qits-397): every archetype on one page, the archetype a query-parameter filter
+   * rather than a second route.
    */
-  it('serves the epics board one segment below the project, which is the hub', async () => {
-    expect(await at('/qits/epics')).toBe(EpicsPage);
+  it('serves the one desk one segment below the project, which is the hub', async () => {
+    expect(await at('/qits/work')).toBe(WorkPage);
+    expect(await at('/qits/work?archetype=ticket')).toBe(WorkPage);
     expect(await at('/qits')).toBe(ProjectPage);
   });
 
   /**
-   * The tickets sit beside the board, and one ticket is a place of its own at the list's address
-   * plus its **slug**. The two literals are what keep `/qits/tickets/cancelled-badge` from reading
-   * as a repository called `cancelled-badge` in a group called `tickets` — which is route order,
-   * and the one thing in this table that fails silently.
+   * One node — of any archetype — at the desk's address plus its qualified number, and its room one
+   * segment further down.
    */
-  it('serves the tickets beside the board, and one ticket below them by slug', async () => {
-    expect(await at('/qits/tickets')).toBe(TicketsPage);
-    expect(await at('/qits/tickets/cancelled-badge')).toBe(TicketDetailPage);
+  it('serves one node by its qualified number below the desk, and its room below that', async () => {
+    expect(await at('/qits/work/qits-1337')).toBe(EntityDetailPage);
+    expect(await at('/qits/work/1337')).toBe(EntityDetailPage);
+    expect(await at('/qits/work/qits-1337/refinement')).toBe(RefiningPage);
+  });
+
+  /**
+   * **The literal `work` segment is what makes a number unambiguous.** A number directly below the
+   * project would be a two-segment address — which is where the project's own words live — and a
+   * number with anything after it would be three segments, which is the repository grammar. So a
+   * bare number reads as neither a node nor a project word, and the node lives only under `work`,
+   * where neither the repository guard nor a project word can claim it.
+   */
+  it('never reads a number directly below the project, which only `work` may carry', async () => {
+    expect(await at('/qits/qits-1337')).toBe(NotFound);
+    expect(await at('/qits/project-setup')).toBe(ProjectSetupPage);
+    expect(await at('/qits/qits-ci/qits-1337')).toBe(RepositoryPage);
+    expect(await at('/qits/work/qits-1337')).toBe(EntityDetailPage);
+    // `work` is an own word, so the guard refuses it as a repository group four segments deep too.
+    expect(await at('/qits/work/qits-1337/release-requests')).toBe(NotFound);
+    expect(await at('/qits/work/qits-1337/refinement/extra')).toBe(NotFound);
+  });
+
+  /** The old desks redirect to the one desk, with the archetype filter set. */
+  it('redirects the old epics and tickets desks to the one desk, filtered', async () => {
+    expect(await at('/qits/epics')).toBe(WorkPage);
+    expect(TestBed.inject(Location).path()).toBe('/qits/work?archetype=epic');
+
+    expect(await at('/qits/tickets')).toBe(WorkPage);
+    expect(TestBed.inject(Location).path()).toBe('/qits/work?archetype=ticket');
+  });
+
+  /**
+   * The old slug addresses — a ticket's page and an epic's refining room — are in links people have
+   * sent each other, so they resolve: only a read can turn a slug into a number, which is the
+   * resolver's job (its own spec is the entity-slug-resolver's).
+   */
+  it('resolves the old slug addresses rather than 404ing them', async () => {
+    expect(await at('/qits/tickets/cancelled-badge')).toBe(EntitySlugResolver);
+    expect(await at('/qits/epics/epic-refining-workspace/refining')).toBe(EntitySlugResolver);
   });
 
   /**
@@ -214,9 +252,10 @@ describe('routes', () => {
     expect(await at('/qits/epics/planning')).toBe(NotFound);
     expect(await at('/qits/repositories/qits-ci')).toBe(NotFound);
     expect(await at('/qits/project-setup/qits-ci')).toBe(NotFound);
-    // `tickets` becomes one of those words by derivation, so the guard refuses it too — and the
-    // literal route above still wins, which is the assertion one test up.
+    // `tickets` and `work` are those words by derivation, so the guard refuses them too — and the
+    // literal routes above still win, which is the assertion further up.
     expect(await at('/qits/tickets/one/two')).toBe(NotFound);
+    expect(await at('/qits/work/one/two')).toBe(NotFound);
   });
 
   /**
@@ -284,6 +323,7 @@ describe('OWN_PROJECT_SEGMENTS', () => {
       'release-requests',
       'repositories',
       'tickets',
+      'work',
     ]);
   });
 

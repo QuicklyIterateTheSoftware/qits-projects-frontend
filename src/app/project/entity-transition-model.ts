@@ -568,3 +568,45 @@ export function isSubmittable(registry: ArchetypeRegistry, draft: TransitionDraf
     (property) => (draft.values[property] ?? '').trim().length > 0,
   );
 }
+
+/**
+ * **One row restated with some of its properties replaced** — how a field edit is spelled on the
+ * multi-entity transition door, now that the per-archetype PUTs (`PUT /epics/{id}`,
+ * `PUT /tickets/{id}`) are retired.
+ *
+ * <p>The door is PUT-per-entry: a property the body leaves out is *cleared*. So an edit cannot send
+ * only what changed — it starts from everything the row already carries ({@link subjectsOf}'s
+ * values), replaces the changed properties, and sends the whole row back through
+ * {@link draftToRequest}, which drops the server-owned ones and anything the archetype does not
+ * permit. A change to `null` or a blank string clears that property, which is how an emptied box
+ * clears a description or an assignee.
+ *
+ * <p>The archetype and the parent are the subject's own: an edit never reshapes. `position` is the
+ * row's current place among its siblings, passed for a row that has a parent — the door appends a
+ * member whose position is left out, which would move a retitled task to the end of its feature.
+ */
+export function restatement(
+  registry: ArchetypeRegistry,
+  subject: TransitionSubject,
+  changes: Readonly<Record<string, string | null>>,
+  position?: number,
+): EntityTransitionRequest {
+  const values: Record<string, string> = { ...subject.values };
+  for (const [property, value] of Object.entries(changes)) {
+    if (value === null || value.trim().length === 0) {
+      delete values[property];
+    } else {
+      values[property] = value;
+    }
+  }
+  const request = draftToRequest(registry, {
+    subject,
+    archetype: subject.archetype,
+    parentId: subject.parentId,
+    values,
+  });
+  if (subject.parentId === null || position === undefined) {
+    return request;
+  }
+  return { ...request, membership: { parent: subject.parentId, position } };
+}

@@ -3,18 +3,15 @@ import {
   Component,
   computed,
   inject,
+  input,
+  output,
   signal,
-  viewChild,
 } from '@angular/core';
-import { RouterLink } from '@angular/router';
 import { QitsButton } from '@qits/ui-components';
 import type { TicketType } from '../api/dto';
 import { EntitiesApi, type NewTicket } from '../api/entities-api';
-import { ProjectParam } from '../nav/project-param';
-import { IDLE, LOADING, ready, failed, type Loadable } from '../ui/loadable';
-import { RefinementPanel } from './agent/refinement-panel';
+import { IDLE, LOADING, failed, ready, type Loadable } from '../ui/loadable';
 import { IMPETUS_RULE } from './entities-model';
-import { TicketsOverview } from './tickets-overview';
 
 /** The two kinds, in the order the form offers them: what is broken first, then what could be better. */
 const TYPES: readonly { readonly value: TicketType; readonly label: string }[] = [
@@ -23,57 +20,26 @@ const TYPES: readonly { readonly value: TicketType; readonly label: string }[] =
 ];
 
 /**
- * The small work beside the plan: a project's tickets, and the form that opens one.
+ * Opening a ticket by hand, on the one desk — the form the tickets page used to carry, moved as it
+ * was (qits-397).
  *
- * <p>The shell is the shape every sub-page here has — a back link carrying the project's name, the
- * page's own word as an `h1`, and the panel that does the reading — and both halves of the header
- * come from the shared project list {@link ProjectParam} has already read to resolve the address's
- * slug, so the page adds no request of its own.
+ * <p><b>Closed until it is asked for</b>: the desk is read far more often than it is written to, and
+ * an always-open form would push the work below the fold. <b>The title and the impetus are required,
+ * the type has a default</b>, and the description is what refining writes, so its box is expected to
+ * stay empty. <b>An empty box is left off the request</b> — the service reads an absent
+ * `description` or `assignee` as "nothing was said".
  *
- * <p><b>The agent above the list is the tickets' own front desk.</b> It is the same panel the epics
- * page carries, mounted at the `project.tickets` surface: same container, same three verbs, its own conversation
- * and its own system prompt — one for filing and triaging, where the epics page's is for drafting a
- * plan. It sits above the list for the reason the epics one does, that it is what changes the rows
- * below it, and it costs nothing until somebody opens it. The form beneath it is not made redundant
- * by it: filing a known ticket by hand is four boxes, where asking an agent to is a model process.
- *
- * <p><b>The form is closed until it is asked for, and that is not only about space.</b> This page is
- * read far more often than it is written to: a reader arrives to find a ticket, not to file one. An
- * always-open form would put four empty boxes above the list every time, and would make the list —
- * the thing the page is for — start below the fold.
- *
- * <p><b>The title and the impetus are required, and the type has a default.</b> A ticket that has to
- * be fully described before it can be filed is a ticket that does not get filed — but a ticket with
- * no impetus is a title nobody can act on, and the sentence that says what brought it about is the
- * one thing only the reporter can write. The description is what *refining* produces, so the form
- * keeps the box and expects it empty. `BUG` leads because a defect is the report somebody is most
- * likely to be in a hurry with.
- *
- * <p><b>An empty box is left off the request entirely.</b> The service reads an absent
- * `description` or `assignee` as "nothing was said", so sending `""` would store an empty string and
- * make a ticket nobody has assigned look subtly different from one nobody has assigned. See
- * {@link ../api/entities-api#NewTicket}.
- *
- * <p><b>A create re-reads rather than splicing the new row in.</b> The server stamps the slug, the
- * principal and both timestamps, so the answer is not the row this page would have guessed — and the
- * overview owns the read, the grouping and the ordering. Handing it back its own job keeps one
- * notion of what the project holds.
+ * <p>A create emits {@link created} and the desk re-reads: the server stamps the slug, the number,
+ * the principal and both timestamps, so the answer is not a row this form could have guessed.
  */
 @Component({
-  selector: 'app-tickets-page',
+  selector: 'app-new-ticket-form',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [QitsButton, RefinementPanel, RouterLink, TicketsOverview],
+  imports: [QitsButton],
   template: `
-    <p class="back">
-      <a [routerLink]="['/', projectSlug()]">← {{ heading() }}</a>
-    </p>
-
-    <div class="title-row">
-      <h1>Tickets</h1>
-      <qits-button variant="secondary" size="sm" (pressed)="toggle()">
-        {{ open() ? 'Cancel' : 'New ticket' }}
-      </qits-button>
-    </div>
+    <qits-button class="toggle" variant="secondary" size="sm" (pressed)="toggle()">
+      {{ open() ? 'Cancel' : 'New ticket' }}
+    </qits-button>
 
     @if (open()) {
       <section class="form" aria-label="New ticket">
@@ -163,30 +129,14 @@ const TYPES: readonly { readonly value: TicketType; readonly label: string }[] =
         }
       </section>
     }
-
-    <app-refinement-panel [projectId]="projectId()" surface="project.tickets" />
-
-    <app-tickets-overview [projectId]="projectId()" [projectSlug]="projectSlug()" />
   `,
   styles: `
     :host {
       display: block;
     }
-    .back {
+    .toggle {
+      display: inline-block;
       margin: 0 0 0.75rem;
-    }
-    .title-row {
-      display: flex;
-      align-items: baseline;
-      justify-content: space-between;
-      gap: 0.75rem;
-      flex-wrap: wrap;
-    }
-    h1 {
-      margin: 0 0 1rem;
-      font-size: 1.25rem;
-      font-weight: 600;
-      overflow-wrap: anywhere;
     }
     .form {
       max-width: 40rem;
@@ -244,31 +194,17 @@ const TYPES: readonly { readonly value: TicketType; readonly label: string }[] =
     }
   `,
 })
-export class TicketsPage {
+export class NewTicketForm {
   private readonly api = inject(EntitiesApi);
-  private readonly param = inject(ProjectParam);
 
-  /**
-   * The panel below the form, so a create can hand the re-read back to the component that owns it.
-   *
-   * A signal input pushed the other way would work too and would be worse: the overview already
-   * re-reads on the project's `tickets` hint, so this is the same job it does for every other writer
-   * — and asking it directly means there is exactly one code path that turns a write into a list.
-   */
-  private readonly overview = viewChild(TicketsOverview);
+  /** The project the ticket is filed against. */
+  readonly projectId = input.required<string>();
 
-  /** The id every request takes, and the slug every link is spelled with. */
-  protected readonly projectId = this.param.projectId;
-  protected readonly projectSlug = this.param.projectSlug;
+  /** A ticket was opened; the desk re-reads. */
+  readonly created = output<void>();
 
   protected readonly types = TYPES;
   protected readonly impetusRule = IMPETUS_RULE;
-
-  /** The project's display name, once the shared list has answered. The address until then. */
-  protected readonly heading = computed(() => {
-    const state = this.param.currentProject()();
-    return state.kind === 'ready' ? state.value.name : this.param.segment();
-  });
 
   protected readonly open = signal(false);
   protected readonly title = signal('');
@@ -322,7 +258,7 @@ export class TicketsPage {
   }
 
   /**
-   * File it, then let the overview say what the project holds.
+   * File it, then let the desk say what the project holds.
    *
    * The form closes only on success. A failed create leaves every box exactly as it was, because the
    * words are the reader's and the failure is usually transient — clearing them would make one bad
@@ -347,7 +283,7 @@ export class TicketsPage {
       this.submit.set(ready(await this.api.create(this.projectId(), ticket)));
       this.open.set(false);
       this.reset();
-      await this.overview()?.load();
+      this.created.emit();
     } catch (error) {
       this.submit.set(failed(error));
     }

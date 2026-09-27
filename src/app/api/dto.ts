@@ -234,19 +234,20 @@ export interface WrapperDto {
 }
 
 /**
- * Where an epic stands in its life, as the service stores it.
+ * Where an entity stands in its life — **one lifecycle for every archetype that has one** (qits-392).
  *
- * **There is no `DONE` on the wire, and that is on purpose.** Done is read off the features — an
- * `IMPLEMENTATION` epic whose every feature is implemented — so storing it would be a second copy
- * of a fact the tree already carries, free to disagree with it. See `isClosed` in the epics model.
+ * <p>An epic and a ticket hold the same six words over the same legal-target graph: `REPORTED`,
+ * `REFINED`, `IMPLEMENTED`, `VERIFIED`, `DONE`, plus `DROPPED`. The status is what has been
+ * *achieved*; the phase that runs while it holds is what happens next.
  *
- * `REFINING` is the draft phase: everything is still being written. `IMPLEMENTATION` freezes the
- * scope and only the implemented markers move after it. `IMPLEMENTED` is shipped — declared
- * through the transition, which stamps any features and tasks still unmarked. `SUPERSEDED` sent
- * the plan back to the drawing board and names the draft that replaced it. `ABANDONED` is
- * terminal.
+ * <p><b>A plain string, and not a union of today's six.</b> The vocabulary is the service's: the
+ * served archetype registry (`GET /entities/archetypes`, each archetype's `legalStatuses`) is where a
+ * screen reads which words exist and in what order, so a word the service adds reaches the badges,
+ * the desk's sections and the status moves without this file changing. A union here would be a
+ * second copy of that list, and the copy that was not updated would be the one drawn — which is
+ * exactly what happened to the four epic words qits-392 deleted.
  */
-export type EpicStatus = 'REFINING' | 'IMPLEMENTATION' | 'IMPLEMENTED' | 'SUPERSEDED' | 'ABANDONED';
+export type EntityStatus = string;
 
 /**
  * An epic: the backbone of a change to the platform.
@@ -288,8 +289,11 @@ export interface EpicDto {
    * with the service about a row's own name.
    */
   readonly qualifiedId: string | null;
-  readonly status: EpicStatus;
-  /** The draft that replaced this one. Set only on a `SUPERSEDED` epic; null on every other. */
+  readonly status: EntityStatus;
+  /**
+   * The draft that replaced this one — set on a `DROPPED` epic that was superseded (the supersede
+   * *operation* lands the epic DROPPED and names its successor here); null on every other.
+   */
   readonly supersededByEpicId: string | null;
   readonly createdAt: string;
   readonly updatedAt: string;
@@ -301,7 +305,7 @@ export interface EpicDto {
  * What a transition came to: the epic in its new state, and the draft it spawned.
  *
  * `successor` is a second row, not a field of the first, because superseding **creates** an epic —
- * a fresh `REFINING` copy of the frozen scope. Every other transition answers a null there, so a
+ * a fresh `REPORTED` copy of the frozen scope. Every other transition answers a null there, so a
  * caller that assumed a successor would invent one for an abandonment.
  */
 export interface EpicTransitionResponse {
@@ -461,33 +465,6 @@ export interface TaskEntriesResponse {
 export type TicketType = 'BUG' | 'IMPROVEMENT';
 
 /**
- * How far a ticket has got: **the status is what has been achieved, and the phase that runs while it
- * holds is what happens next.**
- *
- * <p>That is the whole rule, and it is what makes the pipeline readable in either direction.
- * `REPORTED` — somebody said what is wrong, so refining runs. `REFINED` — the ticket now says what
- * to do, so implementing runs. `IMPLEMENTED` — the change is released and deployed, so verifying
- * runs. `VERIFIED` — it no longer occurs on the platform, so a person closes it. `DONE` — closed.
- * A status therefore never names work in flight; it names the last thing that finished.
- *
- * <p><b>Along that pipeline the moves are adjacent-only, in either direction, and nothing is
- * terminal.</b> The service refuses a two-step move and answers 409 to a move to the status a ticket
- * already holds, so a page offers a ticket's neighbours and nothing else — see
- * {@link ../project/entities-model#ticketTransitions}. A closed ticket that turns out not to be
- * fixed walks back the same way it came rather than being reopened into a state it was never in.
- *
- * <p><b>`DROPPED` is the one status off that line, and it is the exit for work that is not going to
- * be done at all.</b> Every status that still owes something reaches it in one move — `REPORTED`,
- * `REFINED`, `IMPLEMENTED` and `VERIFIED` — because abandoning a ticket is a decision somebody makes
- * wherever they happen to be standing, and walking it back down the pipeline first would be asking
- * them to retract claims that were true. `DONE` does not, since it is already an ending and dropping
- * a closed ticket would be rewriting what happened rather than deciding what will not. Out of it
- * there is one move, back to `REPORTED`: what somebody picks up again is the impetus, because the
- * refinement went with the work when it was dropped.
- */
-export type TicketStatus = 'REPORTED' | 'REFINED' | 'IMPLEMENTED' | 'VERIFIED' | 'DONE' | 'DROPPED';
-
-/**
  * A ticket: one small, self-contained piece of work, beside the plan rather than inside it.
  *
  * <p>Project-scoped like an epic, and holding nothing under it — no features, no tasks, no
@@ -554,7 +531,7 @@ export interface TicketDto {
   /** `<projectKey>-<number>`, or null. See {@link EpicDto.qualifiedId}, including why null draws nothing. */
   readonly qualifiedId: string | null;
   readonly type: TicketType;
-  readonly status: TicketStatus;
+  readonly status: EntityStatus;
   /**
    * Whether the phase belonging to the ticket's current status **cannot proceed** — waiting on an
    * answer, on somebody else's change, on access nobody here can grant.
@@ -656,95 +633,109 @@ export interface TicketCommentResponse {
 }
 
 /**
+ * How much of the flow one press runs — the only difference between the two dispatching actions.
+ *
+ * <p>`FLOW` is **Dispatch**: start the phase the status implies and let each transition start the
+ * next one. `PHASE` is **Run the next phase**: one phase, then stop and wait for the next press. The
+ * bit is stored on the entity by the press, because the transition that reads it arrives hours later.
+ */
+export type DispatchMode = 'FLOW' | 'PHASE';
+
+/**
+ * Which phase a status starts — the service's words, never computed here.
+ *
+ * <p>`REPORTED` starts refine, `REFINED` implement, `IMPLEMENTED` verify, and the rest start nothing.
+ * That rule lives in exactly one place on the service (`PhasePrompts.phaseOf`) and the SPA learns its
+ * answer from {@link EntityDispatchStateDto.nextPhase}; a switch here would be a second copy of it.
+ */
+export type DispatchPhase = string;
+
+/**
  * Whether a coding agent was actually started on the workspace a dispatch landed in.
  *
  * <p>`SKIPPED_RUNNING` is a success, not a refusal: the workspace already had an agent working in
- * it, and starting a second one would put two of them on the same branch. The two words exist so a
- * reader can be told which happened — the workspace is worth opening either way.
+ * it, and starting a second one would put two of them on the same branch.
  */
-export type TicketAgentLaunch = 'SCHEDULED' | 'SKIPPED_RUNNING';
+export type AgentLaunch = 'SCHEDULED' | 'SKIPPED_RUNNING';
 
 /**
- * Where dispatching an agent onto a ticket put it: which workspace, on which repository's which
- * branch, and whether an agent was started there.
+ * Where one press of Dispatch or Run the next phase put an agent — `POST /entities/{id}/dispatch`.
  *
  * <p><b>`workspaceRowId` is a number and `repositoryId` is a string</b>, which is qits-workspaces'
- * own split rather than an inconsistency here: a workspace is keyed by a row id in that service's
- * database, a repository by the id this service assigns. Both are carried through exactly as the
- * wire spells them, because together they are the address of the workspace in qits-workspaces —
- * `repositories/{repositoryId}/workspaces/{workspaceRowId}`.
+ * own split: together they are the workspace's address there,
+ * `repositories/{repositoryId}/workspaces/{workspaceRowId}`. The branch is the entity's own on the
+ * project's wrapper — `ticket/<slug>` or `epic/<slug>`.
  *
- * <p><b>`fresh` says the workspace was created for this press</b>; false is the find-or-create path
- * answering with the workspace a previous press left behind. Nothing on screen has to branch on it
- * — the link is the same either way — but it is the difference between "a container is starting"
- * and "the container is already there", which is why the door states it.
- *
- * <p><b>Nothing here is stored on the ticket.</b> The service keeps no queryable record of a
- * dispatch, so this shape is the *answer to one press* and not a field a later read brings back: a
- * page that reloads has no way to ask where the last agent went. Pressing again is idempotent —
- * find-or-create lands in the same workspace — so the cure for a lost link is another press.
+ * <p><b>Nothing here is stored.</b> It is the answer to one press; the record that survives a reload
+ * is the entity's own `workspaces`, and pressing again is find-or-create onto the same workspace.
  */
-export interface TicketAgentDispatchDto {
+export interface EntityDispatchDto {
+  readonly entityId: string;
+  readonly archetype: string;
+  /** The phase this press started: `refine`, `implement` or `verify`. */
+  readonly phase: DispatchPhase;
+  readonly mode: DispatchMode;
   readonly workspaceRowId: number;
   readonly repositoryId: string;
-  /** The branch the workspace is on — the ticket's own, as the service names it. */
   readonly branch: string;
   /** Whether this press created the workspace, rather than re-entering one that was there. */
   readonly fresh: boolean;
-  readonly agentLaunch: TicketAgentLaunch;
+  readonly agentLaunch: AgentLaunch;
 }
 
-/** One dispatch, wrapped — the whole answer to `POST /tickets/{id}/dispatch-agent`. */
-export interface TicketAgentDispatchResponse {
-  readonly dispatch: TicketAgentDispatchDto;
+/** One dispatch, wrapped — the whole answer to `POST /projects/api/entities/{id}/dispatch`. */
+export interface EntityDispatchResponse {
+  readonly dispatch: EntityDispatchDto;
 }
 
 /**
- * Whether a coding agent was actually started on the workspace an epic's dispatch landed in — the
- * same two words {@link TicketAgentLaunch} carries, and read the same way.
+ * What a press *would* do, read before anybody presses — `GET /entities/{id}/dispatch`.
  *
- * <p>A name of its own rather than a re-export, because the two doors are two flows and a shape
- * called `Ticket…` inside an epic's answer would say the wrong thing about where it came from. That
- * is the service's own stance on the record — {@code EpicAgentDispatchDto} is a separate record
- * beside {@code TicketAgentDispatchDto} for the same reason — and it is mirrored here rather than
- * flattened out.
+ * <p>This is what decides whether Dispatch and Run the next phase are offered and what they say:
+ * `dispatchable` false (a VERIFIED, DONE or DROPPED entity, a blocked ticket, a feature or a task)
+ * draws them disabled, and `nextPhase` names the phase a press starts. The refine action reads the
+ * same answer — refinement is the REPORTED phase, which is `nextPhase === 'refine'` — so no screen
+ * on this client maps a status word to a phase.
+ *
+ * <p>`mode` is the bit the last press stored, or null when nothing has pressed yet.
  */
-export type EpicAgentLaunch = 'SCHEDULED' | 'SKIPPED_RUNNING';
-
-/**
- * Where "Start implementation" put an agent: which workspace, on which repository's which branch,
- * and whether an agent was started there.
- *
- * <p>The five fields are {@link TicketAgentDispatchDto}'s, and everything that note says about the
- * `workspaceRowId`/`repositoryId` split and about `fresh` holds here word for word. Two things are
- * different, and both are about the press rather than the shape.
- *
- * <p><b>The branch is the epic's, on the project's wrapper.</b> `epic/<slug>` over the whole estate,
- * not a component's repository: an epic's tasks name repositories one each and the epic itself names
- * none, so the aggregate workspace is the only honest answer.
- *
- * <p><b>`agentLaunch` matters more here, because the press is re-pressable by design.</b> An epic
- * already in IMPLEMENTATION is dispatched onto as it stands, and the far side then adopts the
- * workspace already on `epic/<slug>` and answers `SKIPPED_RUNNING` rather than starting a second
- * agent. That is a success, and it is the reason a second press is also the retry for a dispatch
- * that failed after the status had already moved.
- *
- * <p><b>Nothing here is stored on the epic</b>, exactly as nothing is stored on a ticket: this is the
- * answer to one press, so a reload forgets where the last agent went and the cure is another press.
- */
-export interface EpicAgentDispatchDto {
-  readonly workspaceRowId: number;
-  readonly repositoryId: string;
-  /** The branch the workspace is on — `epic/<slug>` on the wrapper, as the service names it. */
-  readonly branch: string;
-  /** Whether this press created the workspace, rather than re-entering one that was there. */
-  readonly fresh: boolean;
-  readonly agentLaunch: EpicAgentLaunch;
+export interface EntityDispatchStateDto {
+  readonly entityId: string;
+  readonly archetype: string;
+  readonly status: EntityStatus | null;
+  readonly nextPhase: DispatchPhase | null;
+  readonly blocked: boolean;
+  readonly dispatchable: boolean;
+  readonly mode: DispatchMode | null;
 }
 
-/** One dispatch, wrapped — the whole answer to `POST /epics/{id}/dispatch-agent`. */
-export interface EpicAgentDispatchResponse {
-  readonly dispatch: EpicAgentDispatchDto;
+/** The state, wrapped — the whole answer to `GET /projects/api/entities/{id}/dispatch`. */
+export interface EntityDispatchStateResponse {
+  readonly state: EntityDispatchStateDto;
+}
+
+/**
+ * One row of an entity's history, as the audit log keeps it.
+ *
+ * <p>`epicId` is the log's **subtree key**, not literally an epic: a ticket's rows carry the ticket's
+ * id there, a feature's and a task's their epic's. That is why one read of `GET /epics/{key}/audit`
+ * answers a whole tree, and why a feature's page filters the answer by `entityId`. `snapshot` is the
+ * row as JSON after the write, which the page does not parse.
+ */
+export interface AuditEntryDto {
+  readonly id: string;
+  readonly entityType: string;
+  readonly entityId: string;
+  readonly epicId: string;
+  readonly operation: string;
+  readonly changedBy: string | null;
+  readonly changedAt: string;
+  readonly snapshot: string | null;
+}
+
+/** The audit subtree, newest first. */
+export interface AuditEntriesResponse {
+  readonly entries: readonly AuditEntryDto[];
 }
 
 /**

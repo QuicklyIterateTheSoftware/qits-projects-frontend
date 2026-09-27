@@ -139,9 +139,9 @@ export class ProjectPage {
   protected readonly description = computed(() => this.project()?.description ?? '');
 
   /**
-   * The sub-elements this application serves itself, in the order a reader needs them: the plan
-   * first, because it is what a project is mostly for; the tickets beside it, because they are the
-   * same question at a smaller size and belong next to the thing they are not; what is waiting to be
+   * The sub-elements this application serves itself, in the order a reader needs them: the work
+   * first — every epic and ticket on the one desk (qits-397) — because it is what a project is mostly
+   * for; what is waiting to be
    * released third, because that is the other standing question about a whole project; and its
    * configuration last, because setting a project up is rare.
    *
@@ -151,8 +151,7 @@ export class ProjectPage {
   protected readonly own = computed<readonly OwnLink[]>(() => {
     const project = this.projectSlug();
     return [
-      { key: 'epics', label: 'Epics', note: PROJECTS_APP, route: ['/', project, 'epics'] },
-      { key: 'tickets', label: 'Tickets', note: PROJECTS_APP, route: ['/', project, 'tickets'] },
+      { key: 'work', label: 'Work', note: PROJECTS_APP, route: ['/', project, 'work'] },
       {
         key: 'release-requests',
         label: 'Release requests',

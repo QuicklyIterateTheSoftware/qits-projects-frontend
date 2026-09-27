@@ -1,64 +1,43 @@
 import { Injectable, inject } from '@angular/core';
-import { ProjectsApi } from '../api/projects-api';
+import { EntitiesApi } from '../api/entities-api';
 import { RefinementsApi, type RefinementDto } from '../api/refinements-api';
-import { epicEntity, type EpicEntity, type FeatureNode } from '../project/entities-model';
+import { flattenEntities, nodeByNumber, type EntityNode } from '../project/entity-nodes';
 
 /**
- * Starting and finding the refinement an epic is refined in.
+ * Finding and opening the refinement room of an entity — an epic's or a ticket's (qits-395).
  *
- * <p><b>qits-projects owns the whole flow now.</b> A refinement used to be an ordinary
- * qits-workspaces workspace the browser created against the wrapper repository, with the
- * `refining/` branch prefix as a convention only this SPA knew — which is why refining branches
- * leaked into the workspaces overview. The find/create, the branch cut, the adopt-existing dance
- * and the wrapper resolution all moved server-side, keyed by the epic: {@link open} is one
- * idempotent POST,
- * and two racing opens are settled by the server's unique constraint rather than by client
- * choreography.
+ * <p><b>Both doors are the entity's own.</b> `POST /entities/{id}/refinement` is find-or-create and
+ * `GET` the same path is find-only; the service cuts or adopts `refining/<slug>` on the wrapper and
+ * settles two racing opens with a unique constraint. Nothing here composes a branch or matches one:
+ * a room is found by the entity it names.
  *
- * <p>{@link find} deliberately never creates — it is the page's own resolve, which renders "no
- * refinement yet" as an offer rather than eagerly cutting a branch on every visit.
+ * <p>{@link find} deliberately never creates — it is the room page's own resolve, which renders "no
+ * room yet" as an offer rather than eagerly cutting a branch on every visit.
  */
 @Injectable({ providedIn: 'root' })
 export class RefiningService {
-  private readonly projects = inject(ProjectsApi);
+  private readonly entities = inject(EntitiesApi);
   private readonly refinements = inject(RefinementsApi);
 
-  /** The epic's live refinement, or null. A list read, so peers come for free elsewhere. */
-  async find(projectId: string, epicId: string): Promise<RefinementDto | null> {
-    const rows = await this.refinements.list(projectId);
-    return rows.find((row) => row.epicId === epicId) ?? null;
+  /** The entity's room, or null. Never creates. */
+  find(entityId: string): Promise<RefinementDto | null> {
+    return this.refinements.findFor(entityId);
   }
 
-  /** Find the epic's refinement or make one — the server cuts or adopts the branch either way. */
-  async open(entity: EpicEntity): Promise<RefinementDto> {
-    return this.refinements.open(entity.id);
-  }
-
-  /** The same flow, from a slug alone — what the refining page's own create offer presses. */
-  async openBySlug(projectId: string, epicSlug: string): Promise<RefinementDto> {
-    return this.open(await this.node(projectId, epicSlug));
+  /** Find the entity's room or make one. 409 unless it is REPORTED, or for a feature or a task. */
+  open(entityId: string): Promise<RefinementDto> {
+    return this.refinements.openFor(entityId);
   }
 
   /**
-   * One epic of a project, with its features and their tasks, found by slug.
-   *
-   * The slug and not the id, because the slug is what the URL carries: it is the immutable git-safe
-   * identity the branch name is composed from, so a refining page addressed by it names the same
-   * branch the epics overview would.
+   * The project's nodes, and the one a number names — the room is addressed by the entity's number,
+   * like its page, and there is no read by number (see {@link flattenEntities}).
    */
-  async node(projectId: string, epicSlug: string): Promise<EpicEntity> {
-    const epics = await this.projects.epics(projectId);
-    const epic = epics.find((candidate) => candidate.slug === epicSlug);
-    if (!epic) {
-      throw new Error(`this project has no epic called “${epicSlug}”`);
-    }
-    const features = await this.projects.features(epic.id);
-    const children: readonly FeatureNode[] = await Promise.all(
-      features.map(async (feature) => ({
-        feature,
-        tasks: await this.projects.tasks(feature.id),
-      })),
-    );
-    return epicEntity(epic, children);
+  async resolve(
+    projectId: string,
+    number: number,
+  ): Promise<{ readonly node: EntityNode | null; readonly nodes: readonly EntityNode[] }> {
+    const nodes = flattenEntities(await this.entities.list(projectId));
+    return { node: nodeByNumber(nodes, number), nodes };
   }
 }

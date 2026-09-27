@@ -13,15 +13,20 @@ import type { EntityTransitionRequest } from '../project/entity-transition-model
 import { QITS_API_BASE } from './api-base';
 import { ProjectsApi } from './projects-api';
 import type {
+  AuditEntriesResponse,
+  AuditEntryDto,
+  DispatchMode,
+  EntityDispatchDto,
+  EntityDispatchResponse,
+  EntityDispatchStateDto,
+  EntityDispatchStateResponse,
   EntityStateDto,
-  TicketAgentDispatchDto,
-  TicketAgentDispatchResponse,
+  EntityStatus,
   TicketCommentDto,
   TicketCommentEntriesResponse,
   TicketCommentResponse,
   TicketEntriesResponse,
   TicketResponse,
-  TicketStatus,
   TicketType,
 } from './dto';
 
@@ -52,40 +57,6 @@ export interface NewTicket {
   readonly description?: string;
   readonly type: TicketType;
   readonly assignee?: string;
-}
-
-/**
- * What a PUT sends to change a ticket: every field optional, and **two of them paired with an
- * explicit clear**.
- *
- * <p>That pairing is the whole shape of this body. A partial update means an absent field is
- * untouched, so absence cannot also mean "empty it" — the two are opposite intentions and a single
- * spelling would make one of them unreachable. `clearDescription` and `clearAssignee` are how a
- * reader takes a description or an assignee *off* a ticket, and they are separate booleans rather
- * than a `null` value so that the request stays readable in a log.
- *
- * <p>`status` is not here: it moves through the transition, which is a different verb on a different
- * path. Moving a ticket down the lifecycle is an event, not a field edit, and keeping it out of this
- * body is what stops a retitle from quietly closing something.
- *
- * <p><b>`impetus` is here, and nothing freezes it.</b> Triage fixes a badly written impetus — that
- * is the one edit the field is for — and the later phases are kept off it by their **prompt
- * templates**, which tell a refining or implementing agent to answer the impetus rather than rewrite
- * it. Not by a guard: a guard would also refuse the correction triage is supposed to make, and the
- * rule it would be enforcing is a matter of editorial discipline rather than of data integrity.
- *
- * <p>It takes no paired clear, unlike the two above it. An impetus is required at intake, so no form
- * here can produce an empty one, and a `clearImpetus` this client never sends would be a promise
- * about a state the product does not have. What refining produces still goes in `description`.
- */
-export interface TicketEdit {
-  readonly title?: string;
-  readonly impetus?: string;
-  readonly description?: string;
-  readonly clearDescription?: boolean;
-  readonly type?: TicketType;
-  readonly assignee?: string;
-  readonly clearAssignee?: boolean;
 }
 
 /**
@@ -171,14 +142,6 @@ export class EntitiesApi {
     return ticketEntity(response.ticket);
   }
 
-  /** Change a ticket's words, its kind or who has it. See {@link TicketEdit} for the clears. */
-  async update(ticketId: string, edit: TicketEdit): Promise<TicketEntity> {
-    const response = await firstValueFrom(
-      this.http.put<TicketResponse>(this.ticket(ticketId), edit),
-    );
-    return ticketEntity(response.ticket);
-  }
-
   /**
    * Move a ticket one step along the lifecycle, forwards or back.
    *
@@ -191,15 +154,13 @@ export class EntitiesApi {
    * ({@link ../project/entities-model#ticketTransitions}), but offering correctly is not the same as
    * being sure, and only the server is.
    *
-   * <p><b>This is still the single-row door, and it stays that way.</b> The unified entity brought a
-   * multi-entity write with it — {@link transitionEntities}, taking a map of id to full target state —
-   * and the reshape panel is what calls it. A one-row lifecycle step has no business paying for a map:
-   * this door takes a target and nothing else, where that one restates every property of every row it
-   * touches. Routing a "mark verified" through the map form would make a page that only meant to move
-   * a status responsible for resending the ticket's impetus, its assignee and its kind, and would
-   * clear whichever of them it got wrong.
+   * <p><b>This is the lifecycle door, and a status move stays on it.</b> The multi-entity write
+   * ({@link transitionEntities}) restates a row's shape and runs no lifecycle at all — no adjacency,
+   * no phase advance after the move, no discarding of the refinement room a resolving move ends. A
+   * status step sent through it would be a column write that skipped everything a step means. Field
+   * edits and reshapes go through the map form; a step goes through here.
    */
-  async transition(ticketId: string, target: TicketStatus): Promise<TicketEntity> {
+  async transition(ticketId: string, target: EntityStatus): Promise<TicketEntity> {
     const response = await firstValueFrom(
       this.http.post<TicketResponse>(`${this.ticket(ticketId)}/transition`, { target }),
     );
@@ -245,7 +206,7 @@ export class EntitiesApi {
    * intention.
    *
    * <p><b>PUT semantics per entry: a property the body does not carry is cleared.</b> There is no
-   * partial spelling and no paired `clear…` boolean the way {@link TicketEdit} has one, because the
+   * partial spelling and no paired `clear…` boolean the retired ticket PUT had, because the
    * entry is not an edit — it is the row as it is to be. That is what makes the form's "what will be
    * lost" warning load-bearing rather than decorative: demoting a ticket to a feature discards its
    * status, its kind, its impetus and its assignee by *omission*, and the only place that can be
@@ -275,25 +236,50 @@ export class EntitiesApi {
   }
 
   /**
-   * Put a workspace and a coding agent onto a ticket, and answer where they went.
+   * **Dispatch** (`FLOW`) or **Run the next phase** (`PHASE`) — the one dispatching door for every
+   * archetype with a lifecycle (qits-394).
    *
-   * <p>A POST to a verb with **no body at all**: everything the door needs is the ticket, which the
-   * path already names, and the principal, which the session stamps. The `{}` is Angular's way of
-   * spelling an empty POST, the same one the refinement container calls use.
+   * <p>It starts the phase the entity's status implies in a workspace on the project's wrapper, on
+   * `ticket/<slug>` or `epic/<slug>`, and answers where it went. The mode is the only difference
+   * between the two actions: FLOW lets every transition start the next phase, PHASE stops after one.
+   * A VERIFIED, DONE or DROPPED entity, a blocked ticket, a feature and a task are 409s — which is
+   * why a page asks {@link dispatchState} first and does not offer the press at all where it would be
+   * refused.
    *
-   * <p><b>Idempotent by construction.</b> Behind it is find-or-create, so a second press re-enters
-   * the workspace the first one made rather than opening another — which is what makes it safe for a
-   * page that cannot remember, after a reload, that it ever pressed.
-   *
-   * <p>The door also writes a comment on the ticket and fires the project's `tickets` topic, so no
-   * caller re-reads the list itself: the live channel does it, and a manual reload on top would be a
-   * second read of the same change.
+   * <p>Find-or-create behind it, so a second press re-enters the workspace the first one made.
    */
-  async dispatchAgent(ticketId: string): Promise<TicketAgentDispatchDto> {
+  async dispatch(entityId: string, mode: DispatchMode): Promise<EntityDispatchDto> {
     const response = await firstValueFrom(
-      this.http.post<TicketAgentDispatchResponse>(`${this.ticket(ticketId)}/dispatch-agent`, {}),
+      this.http.post<EntityDispatchResponse>(this.dispatchDoor(entityId), { mode }),
     );
     return response.dispatch;
+  }
+
+  /**
+   * What a press would start, asked before anybody presses: `nextPhase`, `dispatchable`, the block
+   * and the stored mode. The status-to-phase rule is the service's alone and this is how it is read.
+   */
+  async dispatchState(entityId: string): Promise<EntityDispatchStateDto> {
+    const response = await firstValueFrom(
+      this.http.get<EntityDispatchStateResponse>(this.dispatchDoor(entityId)),
+    );
+    return response.state;
+  }
+
+  /**
+   * The history of one audit subtree, newest first.
+   *
+   * <p>The key is the subtree's — an epic's id for the epic, its features and its tasks; a ticket's
+   * own id for a ticket and its comments — because the log's `epic_id` column is a subtree key and not
+   * a foreign key. It answers after the rows are gone, which is the point of an audit log.
+   */
+  async audit(subtreeId: string): Promise<readonly AuditEntryDto[]> {
+    const response = await firstValueFrom(
+      this.http.get<AuditEntriesResponse>(
+        `${this.base}/projects/api/epics/${encodeURIComponent(subtreeId)}/audit`,
+      ),
+    );
+    return response.entries ?? [];
   }
 
   /** Remove a ticket and everything said on it. The `success` body is dropped — see the class note. */
@@ -363,6 +349,10 @@ export class EntitiesApi {
     return Promise.all(
       features.map(async (feature) => ({ feature, tasks: await this.projects.tasks(feature.id) })),
     );
+  }
+
+  private dispatchDoor(entityId: string): string {
+    return `${this.base}/projects/api/entities/${encodeURIComponent(entityId)}/dispatch`;
   }
 
   private ticketsPath(projectId: string): string {

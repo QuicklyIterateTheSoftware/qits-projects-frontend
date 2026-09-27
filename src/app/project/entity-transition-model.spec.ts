@@ -11,6 +11,7 @@ import {
   mayContain,
   propertyLabel,
   requiredFieldsFor,
+  restatement,
   specOf,
   statableProperties,
   subjectsOf,
@@ -45,7 +46,7 @@ const REGISTRY: ArchetypeRegistry = {
       required: ['TITLE'],
       requiredOnTransition: ['TITLE', 'STATUS'],
       permitted: ['TITLE', 'SLUG', 'DESCRIPTION', 'STATUS', 'SUPERSEDED_BY'],
-      legalStatuses: ['ABANDONED', 'IMPLEMENTATION', 'IMPLEMENTED', 'REFINING', 'SUPERSEDED'],
+      legalStatuses: ['REPORTED', 'REFINED', 'IMPLEMENTED', 'VERIFIED', 'DONE', 'DROPPED'],
     },
     {
       archetype: 'TICKET',
@@ -117,7 +118,7 @@ function epicDto(over: Partial<EpicDto> = {}): EpicDto {
     description: 'One entity, two archetypes.',
     number: 12,
     qualifiedId: 'qits-12',
-    status: 'IMPLEMENTATION',
+    status: 'REFINED',
     supersededByEpicId: null,
     createdAt: AT,
     updatedAt: AT,
@@ -429,7 +430,7 @@ describe('entity-transition-model', () => {
     it('loses a supersession when an epic becomes a ticket', () => {
       const epic = subject({
         archetype: 'EPIC',
-        values: { TITLE: 'A plan', STATUS: 'SUPERSEDED', SUPERSEDED_BY: 'e9' },
+        values: { TITLE: 'A plan', STATUS: 'DROPPED', SUPERSEDED_BY: 'e9' },
       });
 
       expect(lostProperties(REGISTRY, epic, 'TICKET')).toEqual(['SUPERSEDED_BY']);
@@ -590,7 +591,7 @@ describe('entity-transition-model', () => {
         TITLE: 'Merge the entities',
         SLUG: 'merge-the-entities',
         DESCRIPTION: 'One entity, two archetypes.',
-        STATUS: 'IMPLEMENTATION',
+        STATUS: 'REFINED',
       });
       expect(ticket.values).toEqual({
         TITLE: 'The badge is the wrong colour',
@@ -730,7 +731,7 @@ describe('entity-transition-model', () => {
       expect(
         isSubmittable(
           REGISTRY,
-          draft({ archetype: 'EPIC', values: { TITLE: 'A plan', STATUS: 'REFINING' } }),
+          draft({ archetype: 'EPIC', values: { TITLE: 'A plan', STATUS: 'REPORTED' } }),
         ),
       ).toBe(true);
     });
@@ -739,7 +740,7 @@ describe('entity-transition-model', () => {
       expect(
         isSubmittable(
           REGISTRY,
-          draft({ archetype: 'EPIC', values: { TITLE: '  ', STATUS: 'REFINING' } }),
+          draft({ archetype: 'EPIC', values: { TITLE: '  ', STATUS: 'REPORTED' } }),
         ),
       ).toBe(false);
     });
@@ -758,6 +759,38 @@ describe('entity-transition-model', () => {
       expect(isSubmittable(REGISTRY, draft({ archetype: 'STORY', values: { TITLE: 'x' } }))).toBe(
         false,
       );
+    });
+  });
+
+  /** A field edit on the multi-entity door, now that the per-archetype PUTs are retired. */
+  describe('restatement', () => {
+    it('restates the whole row with the changed properties replaced', () => {
+      const [ticket] = subjectsOf([ticketEntity(ticketDto())]);
+      expect(restatement(REGISTRY, ticket, { TITLE: 'Renamed' })).toEqual(
+        draftToRequest(REGISTRY, {
+          subject: ticket,
+          archetype: 'TICKET',
+          parentId: null,
+          values: { ...ticket.values, TITLE: 'Renamed' },
+        }),
+      );
+    });
+
+    it('clears a property changed to nothing, which is how an emptied box clears', () => {
+      const [ticket] = subjectsOf([ticketEntity(ticketDto({ assignee: 'kim' }))]);
+      const request = restatement(REGISTRY, ticket, { ASSIGNEE: '  ' });
+      expect('assignee' in request).toBe(false);
+      expect(request['title']).toBe(ticket.values['TITLE']);
+    });
+
+    it('keeps a member in its place among its siblings, and a root without a position', () => {
+      const subjects = subjectsOf([
+        epicEntity(epicDto(), [{ feature: featureDto(), tasks: [] }]),
+      ]);
+      const feature = subjects.find((subject) => subject.id === 'f1')!;
+      const epic = subjects.find((subject) => subject.id === 'e1')!;
+      expect(restatement(REGISTRY, feature, {}, 3).membership).toEqual({ parent: 'e1', position: 3 });
+      expect(restatement(REGISTRY, epic, {}, 3).membership).toEqual({ parent: null });
     });
   });
 });

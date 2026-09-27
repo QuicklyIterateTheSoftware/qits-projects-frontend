@@ -1,12 +1,12 @@
 import type { QitsBadgeTone } from '@qits/ui-components';
+import type { ArchetypeRegistry } from '../api/archetypes-api';
 import type {
+  EntityStatus,
   EpicDto,
-  EpicStatus,
   FeatureDto,
   TaskDto,
   TicketCommentDto,
   TicketDto,
-  TicketStatus,
   TicketType,
   WorkspaceReferenceDto,
 } from '../api/dto';
@@ -92,8 +92,8 @@ interface EntityFields {
  */
 export interface EpicEntity extends EntityFields {
   readonly archetype: 'EPIC';
-  readonly status: EpicStatus;
-  /** The draft that replaced this one. Set only on a `SUPERSEDED` epic; null on every other. */
+  readonly status: EntityStatus;
+  /** The draft that replaced this one: set on a superseded (so `DROPPED`) epic, null on every other. */
   readonly supersededByEpicId: string | null;
   readonly features: readonly FeatureNode[];
 }
@@ -101,7 +101,7 @@ export interface EpicEntity extends EntityFields {
 /** A ticket: one small, self-contained piece of work, read as a row. */
 export interface TicketEntity extends EntityFields {
   readonly archetype: 'TICKET';
-  readonly status: TicketStatus;
+  readonly status: EntityStatus;
   readonly type: TicketType;
   /**
    * Whether the phase behind the current status cannot proceed — see {@link ../api/dto#TicketDto}.
@@ -228,40 +228,16 @@ export function taskBranch(epicSlug: string, featureSlug: string, taskSlug: stri
 }
 
 /**
- * The branch a **refining** epic is worked out on: `refining/<epic>`.
+ * The branch an epic or a ticket is refined on: `refining/<slug>`, cut by the service on the
+ * project's wrapper when the room is opened.
  *
- * <p>`refining/` is a fresh top-level prefix, so it cannot collide with `epic/`, `feature/` or
- * `task/` at any depth — and that separation is what the name is for. The other three are branches of
- * the *plan*, cut once the scope is frozen; this one is where the plan is written, and it exists while
- * the slug can still change. Keeping them in different namespaces means a refining branch is never
- * mistaken for the epic's own.
- *
- * <p>Composed like the others rather than stored, for the same reason: the name is a rule, and a
- * stored copy of a rule is free to drift from it. **Nothing records which workspace refines which
- * epic** — the refining workspace of an epic *is* the ACTIVE workspace on this branch in the project's
- * wrapper repository, looked up by branch match every time. No column, no drift, and a discarded
- * workspace simply stops being found.
- *
- * <p>The branch lives on the **wrapper** repository, not on a component, because refining is about the
- * whole plan: it reads and writes epics, features and tasks that span every component the project has.
+ * <p>`refining/` is a fresh top-level prefix, so it cannot collide with `epic/`, `feature/`, `task/`
+ * or `ticket/` at any depth. The room is **found by the entity it names** (`entityId` on the row), not
+ * by this branch; the name is composed here only so the room page can say where a room *would* be
+ * before one exists.
  */
 export function refiningBranch(epicSlug: string): string {
   return `refining/${epicSlug}`;
-}
-
-/**
- * The epic a branch refines, or null if it refines none.
- *
- * <p>The inverse of {@link refiningBranch}, and it lives beside it so the two forms of one rule cannot
- * drift apart. The reader is the refining page's activity bar: the bar knows a *workspace*, the page is
- * addressed by an *epic*, and this is the only thing that bridges them — nothing stores the pairing.
- *
- * <p>The prefix has to be there and something has to follow it. A branch called exactly `refining/`
- * would otherwise map to the empty slug, which is a URL that resolves to no epic at all.
- */
-export function refiningEpicSlug(branch: string | null): string | null {
-  const slug = branch?.startsWith('refining/') ? branch.slice('refining/'.length) : '';
-  return slug ? slug : null;
 }
 
 /** What a line's badge says, and how loudly. One shape for both archetypes and every level below. */
@@ -285,13 +261,12 @@ export function featureStatus(feature: Pick<FeatureDto, 'implementedOn'>): Statu
 }
 
 /**
- * An epic, read off its features: all of them implemented is implemented, some is in progress,
- * none is open.
+ * An epic's tree, read off its features: all of them implemented is implemented, some is in
+ * progress, none is open.
  *
- * <p>An epic with no features never reads as implemented <em>here</em> — its features are the only
- * evidence this derivation has, and an epic with none of them offers none. The declared
- * `IMPLEMENTED` status is the service's answer for that epic, and `isClosed`/`entityBadge` read it
- * first.
+ * <p>This is the *tree's* answer and never the epic's status — the status is the lifecycle word the
+ * service stores, and {@link statusBadge} draws it. The two are shown side by side where both matter:
+ * a REFINED epic half of whose features have landed is exactly the one worth reading twice.
  */
 export function epicStatus(entity: EpicEntity): StatusBadge {
   const implemented = entity.features.filter((child) => child.feature.implementedOn).length;
@@ -301,257 +276,151 @@ export function epicStatus(entity: EpicEntity): StatusBadge {
   return implemented > 0 ? IN_PROGRESS : OPEN;
 }
 
-const REFINING: StatusBadge = { label: 'refining', tone: 'info' };
-const SUPERSEDED: StatusBadge = { label: 'superseded', tone: 'neutral' };
-const ABANDONED: StatusBadge = { label: 'abandoned', tone: 'danger' };
+/**
+ * How much of an epic's tree has landed, counted over its tasks — the markers the implement phase
+ * sets one by one as each lands. A feature with no tasks counts as one unit of its own, marked by its
+ * own `implementedOn`, so an epic planned only down to features still reads honestly.
+ */
+export interface EpicProgress {
+  readonly implemented: number;
+  readonly total: number;
+}
+
+export function epicProgress(entity: EpicEntity): EpicProgress {
+  let implemented = 0;
+  let total = 0;
+  for (const node of entity.features) {
+    if (node.tasks.length === 0) {
+      total += 1;
+      implemented += node.feature.implementedOn ? 1 : 0;
+      continue;
+    }
+    total += node.tasks.length;
+    implemented += node.tasks.filter((task) => task.implementedAt).length;
+  }
+  return { implemented, total };
+}
 
 /**
- * A badge per ticket status, and the tones say **how finished**, not how urgent.
+ * How loudly each lifecycle word is drawn. **The tones say how finished, not how urgent.**
  *
- * <p>The three in flight are the accent the palette has and the grey beside it. `REPORTED` is
- * `warning` for the reason the old single open badge was: it is a standing request nobody has
- * picked up, and drawing it in the same grey as a ticket already being worked would make the top of
- * the pipeline read as background. `REFINED` and `IMPLEMENTED` are `neutral` — something is
- * underway and nothing is being claimed about it, which is exactly what the plan's own `neutral`
- * means one archetype over.
+ * <p>A lookup and not the vocabulary: which words exist, and their order, is the served registry's
+ * answer ({@link statusVocabulary}). A word missing here is drawn neutral with its own name as the
+ * label, so a sixth word the service adds tomorrow reads correctly before anybody touches this table.
  *
- * <p>`VERIFIED` is `info` and not `success`, and that is the distinction worth having. Verified
- * means the platform no longer shows the problem; done means a person agreed to close it. Toning
- * both green would hide the one row on the desk that is waiting for a human sentence.
- *
- * <p>`DONE` is `success`, the same word an implemented epic uses.
- *
- * <p>`DROPPED` is `neutral`, and the grey is the whole argument: work nobody is going to do is
- * neither a failure nor an achievement, so the two tones that would say otherwise are both wrong —
- * `danger` is the bug badge sitting beside this one and would read as "this went badly", `success`
- * is what closing a ticket earns and would read as though dropping it were closing it.
- *
- * <p>The five tones are not five distinct colours, because {@link QitsBadgeTone} has five values for
- * the whole application and two of them (`danger`, `info`) are already spoken for by the type badge
- * beside this one. Labels carry the distinction; the tone carries the phase.
+ * <p>`REPORTED` is `warning` because it is a standing request nobody has picked up; `VERIFIED` is
+ * `info` rather than `success` because it waits on a person to close it; `DONE` is `success`; and
+ * `DROPPED` is neutral — work nobody is going to do is neither a failure nor an achievement.
  */
-const STATUS_BADGES: Readonly<Record<TicketStatus, StatusBadge>> = {
-  REPORTED: { label: 'reported', tone: 'warning' },
-  REFINED: { label: 'refined', tone: 'neutral' },
-  IMPLEMENTED: { label: 'implemented', tone: 'neutral' },
-  VERIFIED: { label: 'verified', tone: 'info' },
-  DONE: { label: 'done', tone: 'success' },
-  DROPPED: { label: 'dropped', tone: 'neutral' },
+const STATUS_TONES: Readonly<Record<string, QitsBadgeTone>> = {
+  REPORTED: 'warning',
+  VERIFIED: 'info',
+  DONE: 'success',
 };
 
 /**
- * The badge a blocked ticket carries **beside** its status, never instead of it.
- *
- * `warning` because it is the one thing a row can say that asks for somebody to do something: a
- * blocked ticket is not further along or less far along than it was, it is a phase standing still
- * until a person unsticks it. It shares the tone with `REPORTED`, which is the same kind of
- * statement — a row waiting on a human — and the pair drawn together on a blocked reported ticket
- * is two amber badges saying two true things, not one said twice.
+ * The badge for any lifecycle word, of any archetype — **generic by construction**: the label is the
+ * word itself, lower-cased, and the tone comes from {@link STATUS_TONES} with neutral for the rest.
+ */
+export function statusBadge(status: EntityStatus | null): StatusBadge {
+  if (!status) {
+    return { label: 'no status', tone: 'neutral' };
+  }
+  return { label: statusLabel(status), tone: STATUS_TONES[status] ?? 'neutral' };
+}
+
+/** `IMPLEMENTED` → `implemented`, `SOME_WORD` → `some word`. The one rule a status is spelled by. */
+export function statusLabel(status: EntityStatus): string {
+  return status.toLowerCase().replace(/_/g, ' ');
+}
+
+/**
+ * The badge a blocked ticket carries **beside** its status, never instead of it: blocked says the
+ * phase cannot proceed, which is a different fact from how far the ticket has got.
  */
 export const BLOCKED_BADGE: StatusBadge = { label: 'blocked', tone: 'warning' };
 
-/** What the ticket has achieved — see {@link ../api/dto#TicketStatus} for why that is the reading. */
-export function ticketStatusBadge(status: TicketStatus): StatusBadge {
-  return STATUS_BADGES[status] ?? STATUS_BADGES.REPORTED;
-}
-
 /**
- * The badge on an entity's own header — **one function over both archetypes**, which is the thing two
- * models could not have.
+ * Every lifecycle word the service serves, in the order it serves them — the union of each
+ * archetype's `legalStatuses`, first appearance winning.
  *
- * <p>A ticket's badge is its status, always: the lifecycle is the whole answer and there is nothing
- * underneath a ticket to derive anything from.
- *
- * <p>An epic's is its lifecycle too, **except in implementation**. That is the phase where the
- * question is how far along it is and the features are the only ones who can answer. In every other
- * phase the lifecycle *is* the answer — an abandoned epic's feature count says nothing worth reading.
+ * <p>This is **the** status list on this client, and it is read, never written: the desk's sections,
+ * the order they run in and which moves a page offers are all derived from it. qits-392 deleted four
+ * epic words in one release; a client that had its own list would have drawn them for as long as
+ * nobody noticed.
  */
-export function entityBadge(entity: Entity): StatusBadge {
-  if (entity.archetype === 'TICKET') {
-    return ticketStatusBadge(entity.status);
-  }
-  switch (entity.status) {
-    case 'REFINING':
-      return REFINING;
-    case 'IMPLEMENTED':
-      return IMPLEMENTED;
-    case 'SUPERSEDED':
-      return SUPERSEDED;
-    case 'ABANDONED':
-      return ABANDONED;
-    default:
-      return epicStatus(entity);
-  }
-}
-
-/**
- * Whether an entity is **closed** — finished with, in the sense its own archetype means by it.
- *
- * <p>A ticket is closed two ways and they are different endings: `DONE`, which a person pressed
- * because the problem is gone, and `DROPPED`, which a person pressed because it is not going to be
- * dealt with. What they have in common is the only thing this question asks — nothing is owed on the
- * row any more — and that is why the two share an answer here and stay two statuses everywhere the
- * distinction is worth drawing. `VERIFIED` is deliberately neither: the platform agreeing the problem
- * is gone is not the same as somebody agreeing to close it.
- *
- * <p>It was `isDone`, and the name moved with the meaning: "done" is now one of the two ways a ticket
- * gets here, so a caller reading `isDone(ticket)` on a dropped row would have been told something
- * false about which of them happened.
- *
- * <p>An epic is done by the stored `IMPLEMENTED` status **or** by the feature derivation. The
- * derivation came first and stays: an implementation epic with at least one feature and every one of
- * them implemented is done without anything being pressed. `IMPLEMENTED` is the declared spelling the
- * service added for the epic the derivation cannot reach — one implemented straight from its
- * description, with no features to read. The transition that sets it stamps every unmarked feature in
- * the same breath, so the two spellings cannot disagree about one epic.
- */
-export function isClosed(entity: Entity): boolean {
-  if (entity.archetype === 'TICKET') {
-    return entity.status === 'DONE' || entity.status === 'DROPPED';
-  }
-  if (entity.status === 'IMPLEMENTED') {
-    return true;
-  }
-  return entity.status === 'IMPLEMENTATION' && epicStatus(entity) === IMPLEMENTED;
-}
-
-/** The five sections of the epics desk, in the order a reader works down them. */
-export interface EpicGroups {
-  readonly refining: readonly EpicEntity[];
-  readonly implementation: readonly EpicEntity[];
-  readonly done: readonly EpicEntity[];
-  readonly superseded: readonly EpicEntity[];
-  readonly abandoned: readonly EpicEntity[];
-}
-
-/**
- * The project's epics, split by where they stand, keeping the service's order inside each group.
- *
- * <p><b>It takes the project's whole collection and filters it, which is what makes the epics desk a
- * *view* rather than a second model.</b> Anything that is not an epic is not this desk's business and
- * is dropped here, once, instead of being kept out by a second fetch.
- *
- * <p>Grouped rather than fetched per status: the desk already reads every epic to build the tree, and
- * `done` cannot be asked for at all — it is a shape of the tree, not a value on the row. One read that
- * is grouped is also one moment; five reads would let two sections disagree about the same epic.
- */
-export function groupEpics(entities: readonly Entity[]): EpicGroups {
-  const refining: EpicEntity[] = [];
-  const implementation: EpicEntity[] = [];
-  const done: EpicEntity[] = [];
-  const superseded: EpicEntity[] = [];
-  const abandoned: EpicEntity[] = [];
-
-  for (const entity of ofArchetype(entities, 'EPIC')) {
-    switch (entity.status) {
-      case 'REFINING':
-        refining.push(entity);
-        break;
-      case 'IMPLEMENTED':
-        done.push(entity);
-        break;
-      case 'SUPERSEDED':
-        superseded.push(entity);
-        break;
-      case 'ABANDONED':
-        abandoned.push(entity);
-        break;
-      default:
-        (isClosed(entity) ? done : implementation).push(entity);
+export function statusVocabulary(registry: ArchetypeRegistry): readonly EntityStatus[] {
+  const words: EntityStatus[] = [];
+  for (const spec of registry.archetypes ?? []) {
+    for (const word of spec.legalStatuses) {
+      if (!words.includes(word)) {
+        words.push(word);
+      }
     }
   }
+  return words;
+}
 
-  return { refining, implementation, done, superseded, abandoned };
+/** The words one archetype may hold, or none for an archetype with no lifecycle (feature, task). */
+export function statusesOf(registry: ArchetypeRegistry, archetype: string): readonly EntityStatus[] {
+  return registry.archetypes?.find((spec) => spec.archetype === archetype)?.legalStatuses ?? [];
 }
 
 /**
- * The lifecycle in order, which is the only place that order is written down.
- *
- * Everything else about a ticket is derived from it: the badge, the direction a transition control
- * draws a move in, and the order the outstanding section reads down. A second copy of this sequence
- * would be a second opinion about what comes after what, and the one that was not updated would be
- * the one drawn.
- *
- * <p><b>It is the pipeline, not the list of statuses — `DROPPED` is deliberately missing.</b> A
- * dropped ticket is not at a point on this line, it left it, so there is no position for it here and
- * anything asking "how far along is this" about one is asking the wrong question. What a ticket may
- * *move* to is {@link TICKET_TRANSITIONS}, which is a different question with a different answer;
- * the exhaustive set of statuses is {@link ../api/dto#TicketStatus} and nothing else.
+ * The statuses the desk opens **collapsed** — the two endings, which are the record rather than the
+ * work. Presentation only: it decides whether a section starts open, never what is in it, and a word
+ * not named here opens expanded, which is the safe direction for a word nobody has seen.
  */
-export const TICKET_LIFECYCLE: readonly TicketStatus[] = [
-  'REPORTED',
-  'REFINED',
-  'IMPLEMENTED',
-  'VERIFIED',
-  'DONE',
-];
+const ARCHIVE_STATUSES: ReadonlySet<string> = new Set(['DONE', 'DROPPED']);
 
-/** The two sections of the tickets desk, in the order a reader works down them. */
-export interface TicketGroups {
-  readonly outstanding: readonly TicketEntity[];
-  /**
-   * The archive: `DONE` and `DROPPED` together.
-   *
-   * <p>Named for the question the split asks rather than for one of the two answers — it was `done`
-   * while `DONE` was the only way out, and a field still called that would be the name the next
-   * reader trusts over the code when they are wondering where a dropped ticket went.
-   */
-  readonly closed: readonly TicketEntity[];
+/** One section of the desk: one status word and the entities holding it, newest first. */
+export interface StatusGroup {
+  readonly status: EntityStatus | null;
+  readonly badge: StatusBadge;
+  readonly entities: readonly Entity[];
+  /** Whether the section opens collapsed — see {@link ARCHIVE_STATUSES}. */
+  readonly archive: boolean;
 }
 
 /**
- * The project's tickets, split into **what is still moving and what is closed**: outstanding is
- * everything that still owes something.
+ * The project's entities, split by status in the **registry's** order, empty sections dropped.
  *
- * <p><b>It filters the same collection {@link groupEpics} filters</b>, from the other end — which is
- * the whole shape of the two desks now. Neither of them owns a list; each owns a view.
- *
- * <p><b>Two lists for six statuses, deliberately, and the sixth did not change that.</b> A section
- * per status would put six headings on a desk that usually has one or two rows under each, and would
- * make a ticket's progress a jump between boxes rather than a move down a list. The split that
- * matters to a reader is whether anything is still owed — which is {@link isClosed}, and a dropped
- * ticket owes nothing for a different reason than a done one owes nothing.
- *
- * <p><b>Outstanding is ordered by the lifecycle, not alphabetically and not by date</b> — reported
- * at the top, then refined, then implemented, then verified — so the section reads as a pipeline and
- * a reader sees where the work is piling up. Within one status it is **newest first**, which is the
- * old rule kept: the row that just arrived is the one being talked about.
- *
- * <p><b>Closed is newest first throughout</b>, because it is an archive and what somebody looks up
- * in an archive is usually the most recent thing in it. A status the pipeline does not know sorts
- * after the ones it does rather than vanishing: a row off the line belongs at the bottom of the
- * desk, not off it. `DROPPED` is such a status and never reaches that ordering — it is closed, so it
- * is in the archive, which is sorted by age alone — but the rule is what keeps a status this build
- * has never heard of on the screen at all.
+ * <p>One section per word rather than a hand-picked split into "outstanding" and "closed": a desk
+ * that mixes archetypes has one lifecycle to read, so the pipeline is the natural spine and a reader
+ * sees where work piles up. A status the vocabulary does not know is not lost — it gets its own
+ * section at the end, labelled with its own word.
  */
-export function groupTickets(entities: readonly Entity[]): TicketGroups {
-  const outstanding: TicketEntity[] = [];
-  const closed: TicketEntity[] = [];
-  for (const entity of ofArchetype(entities, 'TICKET')) {
-    (isClosed(entity) ? closed : outstanding).push(entity);
+export function groupByStatus(
+  entities: readonly Entity[],
+  vocabulary: readonly EntityStatus[],
+): readonly StatusGroup[] {
+  const buckets = new Map<string, Entity[]>();
+  for (const entity of entities) {
+    const key = entity.status ?? '';
+    const bucket = buckets.get(key);
+    if (bucket) {
+      bucket.push(entity);
+    } else {
+      buckets.set(key, [entity]);
+    }
   }
-  return { outstanding: byLifecycle(newestFirst(outstanding)), closed: newestFirst(closed) };
-}
-
-/** The lifecycle's own order, ties keeping whatever order they arrived in. See {@link groupTickets}. */
-function byLifecycle(tickets: readonly TicketEntity[]): readonly TicketEntity[] {
-  return tickets
-    .map((ticket, index) => ({ ticket, index }))
-    .sort((left, right) => phase(left.ticket) - phase(right.ticket) || left.index - right.index)
-    .map((entry) => entry.ticket);
-}
-
-/** Where a ticket sits on the pipeline, with a status that is not on it sorted past every one that is. */
-function phase(ticket: TicketEntity): number {
-  const at = TICKET_LIFECYCLE.indexOf(ticket.status);
-  return at < 0 ? TICKET_LIFECYCLE.length : at;
+  const order = [
+    ...vocabulary,
+    ...[...buckets.keys()].filter((key) => !vocabulary.includes(key)),
+  ];
+  return order
+    .filter((key) => (buckets.get(key)?.length ?? 0) > 0)
+    .map((key) => ({
+      status: key || null,
+      badge: statusBadge(key || null),
+      entities: newestFirst(buckets.get(key) ?? []),
+      archive: ARCHIVE_STATUSES.has(key),
+    }));
 }
 
 /**
- * Newest first, ties keeping the incoming order reversed.
- *
- * <p>Generic over the entity rather than over the ticket, because the rule is about `createdAt` and
- * both archetypes have one. See {@link groupTickets} for why the client imposes an order at all.
+ * Newest first, ties keeping the incoming order reversed. Generic over the entity, because the rule
+ * is about `createdAt` and every archetype has one.
  */
 export function newestFirst<T extends Entity>(entities: readonly T[]): readonly T[] {
   return entities
@@ -569,294 +438,17 @@ function createdMs(entity: Entity): number {
 }
 
 /**
- * A move that takes an epic to another point in its life.
+ * Every move each status may make — **a mirror of the service's `EntityLifecycle.LEGAL_TARGETS`**,
+ * one graph for epics and tickets alike since qits-392.
  *
- * `confirmLabel` is null for a move worth making by accident. Freezing a draft is one of those — it is
- * the ordinary next step and the epic is still there afterwards — while superseding and abandoning
- * throw away a plan, so each asks in the button itself rather than in a browser dialog the page cannot
- * style or test.
+ * <p>The words are the registry's; the *edges* are the one thing the service does not serve, and
+ * this is the only place they are written. Two guards keep the copy honest: a target the registry
+ * does not list for the entity's archetype is never offered ({@link lifecycleMoves} filters by the
+ * served vocabulary), and a status this map has never heard of falls back to its neighbours in the
+ * registry's order rather than offering nothing. The server still refuses an illegal move with a 409
+ * whose sentence the page shows.
  */
-export interface TransitionAction {
-  readonly kind: 'transition';
-  readonly target: EpicStatus;
-  readonly label: string;
-  readonly confirmLabel: string | null;
-}
-
-/**
- * Open the refining workspace: start (or re-enter) a real qits-workspaces workspace on the wrapper's
- * `refining/<slug>` branch and go to it.
- *
- * <p><b>It is not a status transition, and the discriminant is what keeps it from pretending to be
- * one.</b> The epic does not move: it is `REFINING` before the press and `REFINING` after it. Reaching
- * this through {@link EpicStatus} would mean inventing a fifth status the service has never heard of,
- * and every reader of the epic's status would then have to know that one of its values is not a status.
- *
- * <p>No confirmation, because nothing is thrown away: the flow is find-or-create, so a second press
- * lands in the workspace the first one made.
- */
-export interface RefineAction {
-  readonly kind: 'refine';
-  readonly label: string;
-  readonly confirmLabel: null;
-}
-
-/**
- * Freeze the scope and put an implementing agent on it: move the epic to `IMPLEMENTATION` **and**
- * stand a real qits-workspaces workspace with a coding agent up on the wrapper's `epic/<slug>`
- * branch, in one press.
- *
- * <p><b>A third kind rather than a flag on the transition, for {@link RefineAction}'s reason turned
- * the other way round.</b> Refine is not a transition because the epic does not move; this one *is* a
- * transition and is still not one, because moving the epic is only half of what the press does. There
- * is a single door behind it — `POST /epics/{id}/dispatch-agent` — which transitions and dispatches in
- * one call and in that order, because the tool the agent is told to mark tasks with is only open to an
- * epic already in implementation. Routing this through `transitionEpic` would do the first half and
- * silently drop the second: a frozen epic with nobody on it.
- *
- * <p>It carries no `target`, for the same reason refine carries none: the status it lands on is the
- * door's decision and not a parameter the browser supplies. A re-press on an epic already in
- * implementation moves nothing and adopts the workspace already on the branch.
- *
- * <p><b>No confirmation.</b> Freezing a scope is the ordinary next step on a draft, and nothing is
- * thrown away — the refinement survives the freeze, and a second press lands in the workspace the
- * first one made rather than starting a second agent. What the press *does* commit to is the scope,
- * and the answer to that is the ordering in {@link actionsFor} rather than a second click: refining
- * comes first, and the press that ends it is not the one nearest the reader's hand.
- */
-export interface StartAction {
-  readonly kind: 'start';
-  readonly label: string;
-  readonly confirmLabel: null;
-}
-
-/**
- * Put a workspace and a coding agent on a ticket.
- *
- * <p><b>A ticket's one move, and it is its own kind rather than a {@link StartAction} reused.</b> The
- * two presses look alike from a button's side and go to different doors — `tickets/{id}/dispatch-agent`
- * against `epics/{id}/dispatch-agent` — and only one of them also transitions the row. Spelling them
- * with one discriminant would mean the panel that handles a press has to re-read the archetype to know
- * which door it meant, which is exactly the string compare this model exists to hold.
- *
- * <p>No confirmation: the door is find-or-create, so a second press re-enters the same workspace. That
- * is Refine's argument, word for word.
- */
-export interface AssignAction {
-  readonly kind: 'assign';
-  readonly label: string;
-  readonly confirmLabel: null;
-}
-
-/**
- * Change what this entity **is**, where it **sits**, or both: promote, demote, reparent.
- *
- * <p><b>Not a transition, and this is the furthest of the four from being one.</b> A transition moves
- * a row along its own lifecycle and leaves it the same kind of thing in the same place. This press
- * opens a form that may turn an epic into a ticket, a ticket into a feature, or a feature into an epic
- * of its own with its tasks re-shaped beneath it — and it may do all of that to several rows in one
- * atomic request. There is no `target` it could carry, because what it lands on is the whole of a
- * form's answer rather than one status.
- *
- * <p><b>No confirmation, because the form *is* the confirmation.</b> Every other destructive press
- * here asks in the button, since there is nowhere else to ask; this one opens a panel that names, per
- * entity, exactly which properties the write will discard, and asks for a submit after that. A
- * "Confirm reshape?" in front of it would be asking a person to agree to something they have not been
- * shown yet.
- *
- * <p><b>Offered on every entity, in every phase — including the terminal ones.</b> A superseded epic
- * is precisely the plan somebody wants to fold into another; an abandoned one is the plan somebody
- * wants to salvage a feature out of. Reshaping does not claim the work is live, only that the tree is
- * wrong, and that stays true after a row stops moving. It is last in every list for the same reason it
- * is unconfirmed: it is not what a reader came to the desk to press, and putting it first would push
- * the lifecycle moves away from the hand that is reaching for them.
- */
-export interface ReshapeAction {
-  readonly kind: 'reshape';
-  readonly label: string;
-  readonly confirmLabel: null;
-}
-
-/** One move a reader can make on an entity, of whichever archetype. */
-export type EntityAction =
-  | TransitionAction
-  | RefineAction
-  | StartAction
-  | AssignAction
-  | ReshapeAction;
-
-const REFINE: RefineAction = { kind: 'refine', label: 'Refine', confirmLabel: null };
-const RESHAPE: ReshapeAction = { kind: 'reshape', label: 'Reshape', confirmLabel: null };
-const START: StartAction = {
-  kind: 'start',
-  label: 'Start implementation',
-  confirmLabel: null,
-};
-const ASSIGN: AssignAction = { kind: 'assign', label: 'Assign agent', confirmLabel: null };
-const SUPERSEDE: TransitionAction = {
-  kind: 'transition',
-  target: 'SUPERSEDED',
-  label: 'Supersede',
-  confirmLabel: 'Confirm supersede?',
-};
-const MARK_IMPLEMENTED: TransitionAction = {
-  kind: 'transition',
-  target: 'IMPLEMENTED',
-  label: 'Mark implemented',
-  // One-way, and it stamps every still-open feature and task — worth a second press.
-  confirmLabel: 'Confirm implemented?',
-};
-const ABANDON: TransitionAction = {
-  kind: 'transition',
-  target: 'ABANDONED',
-  label: 'Abandon',
-  confirmLabel: 'Confirm abandon?',
-};
-
-/**
- * What can be done to an entity where it now stands — **the archetype's own moves, chosen here rather
- * than by whichever component happened to be drawing it.**
- *
- * <p>An epic gets the service's legal transitions, mirrored, plus the two actions on a draft that are
- * not transitions. Mirrored rather than guessed at from the buttons: the server validates every move
- * and answers a 409 for the rest, so this list is only about not offering a press that cannot work.
- * The two terminal states offer nothing, which is what makes their rows a summary rather than a card.
- *
- * <p><b>Refine comes first on a draft, ahead of freezing it.</b> The order is the order of the work:
- * refining is what a `REFINING` epic is *for*, and freezing the scope is what you do when the refining
- * is finished. Putting the ordinary next step at the front and the ending second would make the
- * destructive-adjacent press the closest one to hand.
- *
- * <p>A ticket gets the one press it has, and a closed ticket gets none of the lifecycle ones:
- * offering to put an agent on something a person has already closed would be offering to reopen it
- * sideways. `DROPPED` is closed in exactly that sense — somebody decided the work will not happen,
- * so an "Assign agent" beside it would be the button that quietly un-decides it. The ticket's
- * lifecycle moves are not here — they live on its detail page, where there is room to say what each
- * one claims ({@link ticketTransitions}).
- *
- * <p><b>A blocked ticket is withheld the same press, for a different reason.</b> It is not closed and
- * nothing about it is decided; its phase simply cannot proceed, and dispatching an agent into a phase
- * that cannot proceed is how a blocked ticket ends up with a workspace, a conversation and no way
- * forward. Whoever unblocks it gets the button back, since any transition clears the flag too.
- *
- * <p><b>{@link ReshapeAction} is the one press every entity has, in every phase, and it is always
- * last.</b> It is not a lifecycle move at all — it says the row is the wrong *kind* of thing or in the
- * wrong place — so no status can disqualify it, and a terminal epic is exactly the one somebody wants
- * to salvage a feature out of. No phase returns an empty list any more, which is the visible change:
- * a superseded epic used to offer nothing, and now offers the one thing that is still true about it.
- */
-export function actionsFor(entity: Entity): readonly EntityAction[] {
-  if (entity.archetype === 'TICKET') {
-    return isClosed(entity) || entity.blocked ? [RESHAPE] : [ASSIGN, RESHAPE];
-  }
-  switch (entity.status) {
-    case 'REFINING':
-      return [REFINE, START, ABANDON, RESHAPE];
-    case 'IMPLEMENTATION':
-      return [MARK_IMPLEMENTED, SUPERSEDE, ABANDON, RESHAPE];
-    case 'IMPLEMENTED':
-      return [SUPERSEDE, RESHAPE];
-    default:
-      return [RESHAPE];
-  }
-}
-
-/**
- * What identifies one action among the row — for `track`, and for saying which button is busy.
- *
- * A transition is identified by where it goes, which is unique within a phase; the four that are not
- * transitions are identified by their own discriminant, so the key is `refine`, `start`, `assign` or
- * `reshape`.
- *
- * <p><b>Total and collision-free over all five kinds, and both halves are structural rather than
- * lucky.</b> Total: the union is discriminated, so the one branch that is not a transition covers the
- * other four together and TypeScript narrows the remaining one to something with a `target` — the
- * fifth kind this argument predicted, {@link ReshapeAction}, widened `action.kind` and landed in that
- * same branch as its own literal, never as `undefined`, without a line here changing. Collision-free:
- * the non-transition keys are the discriminants themselves, which are lower-case, while every
- * transition key is an `EpicStatus`, a closed screaming-case set — so no value of one can ever spell a
- * value of the other, however many more of either are added.
- */
-export function actionKey(action: EntityAction): string {
-  return action.kind === 'transition' ? action.target : action.kind;
-}
-
-/**
- * One move a ticket can make along its own lifecycle, and the claim pressing it makes.
- *
- * <p>Separate from {@link EntityAction} because it is a different *control*: the detail page draws
- * these as a row of lifecycle steps with a direction, where the action row draws the one thing that
- * puts an agent on the row. Folding them together would give a card a "Back to reported" button it has
- * no room to explain.
- */
-export interface TicketTransition {
-  readonly target: TicketStatus;
-  readonly label: string;
-  /**
-   * Whether the move **advances the pipeline**, which is a question about {@link TICKET_LIFECYCLE}
-   * and not about how the move is spelled. Forward is the pipeline's direction; backward is a
-   * correction — and a move on or off the pipeline altogether is neither, so it is false. See
-   * {@link ticketTransitions} for why the off-pipeline moves take that answer rather than the other.
-   */
-  readonly forward: boolean;
-}
-
-/**
- * What each move is called, **named after the claim it makes** rather than after the state it lands
- * in. Both records are keyed by the move's *target*, and which of the two a move reads depends on
- * what pressing it does to the claim that status makes.
- *
- * Asserting, a press says a phase finished: "Mark refined" says the ticket now says what to do.
- * `DONE` is "Close", because that is the word a person uses for it and "mark done" would be the one
- * label on this row that described a column rather than an act. `DROPPED` is "Drop", which asserts a
- * decision rather than a finished phase but is an assertion all the same — nothing is being taken
- * back by it. Retracting, a press withdraws a claim — "Back to refined" says the implementation is
- * not there after all — and the retraction out of `DONE` is "Reopen", which is what reopening has
- * always been called.
- *
- * <p>`BACKWARD_LABELS.DROPPED` is the one entry nothing reads, and it is spelled out rather than
- * left off because the record is `Record<TicketStatus, string>` and that exhaustiveness is what
- * makes a seventh status a compile error here instead of an undefined button label on a screen. No
- * move retracts *into* `DROPPED` — the map below gives it no incoming edge that is a retraction —
- * so it takes the phrasing its neighbours use and waits to be either read or deleted.
- */
-const FORWARD_LABELS: Readonly<Record<TicketStatus, string>> = {
-  REPORTED: 'Mark reported',
-  REFINED: 'Mark refined',
-  IMPLEMENTED: 'Mark implemented',
-  VERIFIED: 'Mark verified',
-  DONE: 'Close',
-  DROPPED: 'Drop',
-};
-
-const BACKWARD_LABELS: Readonly<Record<TicketStatus, string>> = {
-  REPORTED: 'Back to reported',
-  REFINED: 'Back to refined',
-  IMPLEMENTED: 'Back to implemented',
-  VERIFIED: 'Reopen',
-  DONE: 'Back to done',
-  DROPPED: 'Back to dropped',
-};
-
-/**
- * Every move each status may make — **a mirror of the service's `TicketLifecycle.LEGAL_TARGETS`, and
- * the two must not drift.**
- *
- * <p><b>Written out rather than derived, because the graph is no longer a line.</b> This used to be
- * index arithmetic over {@link TICKET_LIFECYCLE} — the entry before and the entry after — which is
- * exactly as expressive as the pipeline and no more. `DROPPED` is off the pipeline: four statuses
- * reach it and it reaches one, and no amount of `indexOf` says that. A map says it in six lines and
- * a reader can check it against the server's by looking.
- *
- * <p>The server is still the authority and this is still only about not offering a press that cannot
- * work: a target it refuses answers 409 with the sentence saying why, which is what a page open while
- * somebody else moved the ticket renders. Offering correctly is not the same as being sure.
- *
- * <p>The order here is the server's own and carries no presentation meaning — {@link
- * ticketTransitions} imposes the order the buttons are drawn in, so this map can be kept spelled
- * exactly like its counterpart without a re-ordering there changing a screen.
- */
-export const TICKET_TRANSITIONS: Readonly<Record<TicketStatus, readonly TicketStatus[]>> = {
+export const LIFECYCLE_TRANSITIONS: Readonly<Record<string, readonly EntityStatus[]>> = {
   REPORTED: ['REFINED', 'DROPPED'],
   REFINED: ['IMPLEMENTED', 'REPORTED', 'DROPPED'],
   IMPLEMENTED: ['VERIFIED', 'REFINED', 'DROPPED'],
@@ -865,57 +457,44 @@ export const TICKET_TRANSITIONS: Readonly<Record<TicketStatus, readonly TicketSt
   DROPPED: ['REPORTED'],
 };
 
-/**
- * Whether a phase runs behind this status — and therefore whether "blocked" is a thing that can be
- * said about a ticket holding it.
- *
- * <p>`REPORTED`, `REFINED` and `IMPLEMENTED` are the three a phase follows: refining, implementing,
- * verifying. Blocking one of those says that phase cannot proceed, which is a fact about work in
- * flight. The other three have no phase to block — `VERIFIED` is waiting on a person to press a
- * button, and `DONE` and `DROPPED` are endings — so a block there would be a flag on a ticket
- * nothing is running against, and the only way to clear it would be to move a row somebody had
- * finished with.
- *
- * <p>It lives here beside {@link TICKET_TRANSITIONS} rather than in the page that draws the control,
- * because it is the same kind of rule as the transition map — which presses are legal where — and a
- * second screen asking the question would otherwise answer it from its own list.
- */
-export function hasPhase(status: TicketStatus): boolean {
-  return status === 'REPORTED' || status === 'REFINED' || status === 'IMPLEMENTED';
+/** One step an entity can take along its lifecycle, and how the button says it. */
+export interface LifecycleMove {
+  readonly target: EntityStatus;
+  readonly label: string;
+  /** Whether the step advances the pipeline — what the button's weight is drawn from. */
+  readonly forward: boolean;
 }
 
 /**
- * The moves a ticket may make, drawn in the order the control reads: **forward, then backward, then
- * the drop.**
+ * The steps an entity holding `status` may take, drawn **forward, then back, then the exit**.
  *
- * <p><b>The legality is {@link TICKET_TRANSITIONS}' answer; the order and the wording are this
- * function's.</b> The current status is never among them — the service answers 409 to a move to the
- * status already held — and the reason all of this is computed here rather than in the page is that
- * it is the rule the whole screen is drawn from, and a rule inside a template is one nothing can test
- * without a browser around it.
- *
- * <p>Forward first because the pipeline's direction is what a reader is usually pressing, and the
- * backward move is a correction they go looking for. **The drop is last, always**, and that is the
- * one piece of ordering that is a safety argument rather than a reading one: it is the press that
- * ends the ticket, so it does not sit where the hand reaching for "Mark refined" lands. `DONE` offers
- * one move and it is Reopen, which is how "nothing is terminal" draws.
- *
- * <p><b>Both off-pipeline moves report `forward: false`</b> — the drop, and the reopen out of
- * `DROPPED`. Neither advances anything: the first leaves the line and the second re-enters it at the
- * beginning, and {@link TicketTransition.forward} is read by exactly one thing, the weight the detail
- * page draws a button with. Calling the drop forward because its label is an assertion would draw
- * abandoning a ticket as the ordinary next step, which is the opposite of what putting it last says.
+ * <p>Labels are derived from the served order and nothing else: a target later in the vocabulary is
+ * "Mark <word>", an earlier one "Back to <word>". The vocabulary's **last** word is the exit (today
+ * `DROPPED`): it is never drawn as forward and always sorts last, so the press that ends the work is
+ * not where the hand reaching for the next step lands.
  */
-export function ticketTransitions(status: TicketStatus): readonly TicketTransition[] {
-  const at = TICKET_LIFECYCLE.indexOf(status);
-  return (TICKET_TRANSITIONS[status] ?? [])
+export function lifecycleMoves(
+  status: EntityStatus | null,
+  vocabulary: readonly EntityStatus[],
+): readonly LifecycleMove[] {
+  if (!status) {
+    return [];
+  }
+  const at = vocabulary.indexOf(status);
+  const exit = vocabulary[vocabulary.length - 1] ?? null;
+  const mirrored = LIFECYCLE_TRANSITIONS[status];
+  const targets =
+    mirrored ??
+    (at < 0 ? [] : [vocabulary[at + 1], vocabulary[at - 1]].filter((word) => word !== undefined));
+  return targets
+    .filter((target) => target !== status && vocabulary.includes(target))
     .map((target) => {
-      const ahead = at >= 0 && TICKET_LIFECYCLE.indexOf(target) > at;
-      const off = target === 'DROPPED';
+      const ahead = vocabulary.indexOf(target) > at;
+      const off = target === exit;
       return {
         move: {
           target,
-          label: off || ahead ? FORWARD_LABELS[target] : BACKWARD_LABELS[target],
+          label: `${ahead ? 'Mark' : 'Back to'} ${statusLabel(target)}`,
           forward: ahead && !off,
         },
         rank: off ? 2 : ahead ? 0 : 1,
@@ -958,71 +537,12 @@ export const IMPETUS_RULE =
   'not count against that.';
 
 /**
- * The element id an entity's card carries, and therefore what an in-page link points at.
- *
- * <p>The archetype is in the id and not only the row's own id, because the two desks are separate
- * screens that may one day be one: `epic-e1` and `ticket-e1` are different anchors even where a
- * migration gave the two rows the same key. It takes the id rather than the entity so that a link can
- * be composed for a row this list does not hold — which is exactly what a superseded epic's successor
- * link is.
- */
-export function entityAnchor(archetype: Archetype, id: string): string {
-  return `${archetype === 'EPIC' ? 'epic' : 'ticket'}-${id}`;
-}
-
-/** Every entity's title by id, so a superseded row can name the draft that replaced it. */
-export function entityTitles(entities: readonly Entity[]): ReadonlyMap<string, string> {
-  return new Map(entities.map((entity) => [entity.id, entity.title]));
-}
-
-/**
- * Where one ticket lives: `/<project>/tickets/<slug>`, as a router command array.
- *
- * <p>Composed here, and spelled with the **slug** on both segments, because that is this platform's
- * address grammar everywhere — the project's first segment is its slug and so is the ticket's. The
- * id would work for neither: nothing resolves a ticket id in the URL, and a project id in the first
- * segment is corrected away the moment it renders.
- *
- * <p>A rule rather than a stored field, for the reason the branch names are: a second copy of an
- * address is free to drift from the route table that serves it.
- *
- * <p><b>There is no `epicRoute` beside it, and the asymmetry is the product's rather than this
- * file's.</b> An epic has no detail page — it is read on its card, and the only address that names one
- * is its refining room. Inventing a route here so the two archetypes looked alike would spell a URL
- * nothing serves.
- */
-export function ticketRoute(projectSlug: string, ticketSlug: string): readonly string[] {
-  return ['/', projectSlug, 'tickets', ticketSlug];
-}
-
-/** The tickets desk's own address, which is where a deleted ticket's page sends the reader back to. */
-export function ticketsRoute(projectSlug: string): readonly string[] {
-  return ['/', projectSlug, 'tickets'];
-}
-
-/**
  * The entity of one archetype a slug names, or null when this collection holds none.
  *
- * <p><b>The archetype is a parameter rather than a search across everything</b>, because a slug is
- * only unique within one of them: nothing stops an epic and a ticket on the same project from being
- * called `cancelled-badge`, and a resolver that took the first match would open whichever the server
- * happened to list first.
- *
- * <p>Null is an ordinary answer and not an error: a detail page resolves its address against the
- * project's collection, so a slug nobody has is exactly the not-found this returns. Matched on the
- * slug alone and never on the id — the segment is the slug by construction, and accepting an id here
- * would quietly bless an address the route table does not promise to keep working.
+ * <p>Only the redirects from the old slug addresses use it (`/<project>/tickets/<slug>` and
+ * `/<project>/epics/<slug>/refining`): the address is the qualified number now. The archetype is a
+ * parameter because a slug is only unique within one of them.
  */
-export function entityBySlug(
-  entities: readonly Entity[],
-  archetype: 'EPIC',
-  slug: string,
-): EpicEntity | null;
-export function entityBySlug(
-  entities: readonly Entity[],
-  archetype: 'TICKET',
-  slug: string,
-): TicketEntity | null;
 export function entityBySlug(
   entities: readonly Entity[],
   archetype: Archetype,

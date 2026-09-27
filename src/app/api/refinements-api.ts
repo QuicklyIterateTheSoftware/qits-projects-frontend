@@ -12,10 +12,19 @@ import { QITS_API_BASE } from './api-base';
 export interface RefinementDto {
   /** The row id — what every daemon, draft, attachment and lifecycle URL carries. */
   readonly id: number;
-  readonly epicId: string;
+  /**
+   * The entity this room refines — an epic's or a ticket's id (qits-395). The key the page matches
+   * its room by.
+   */
+  readonly entityId: string;
+  /**
+   * The same value as {@link entityId}, kept by the service for the SPA this one replaces and removed
+   * in a later release. Nothing here reads it.
+   */
+  readonly epicId?: string;
   readonly projectId: string;
   readonly repositoryId: string;
-  /** `refining/<epicSlug>` on the project's wrapper. */
+  /** `refining/<slug>` on the project's wrapper — the epic's or the ticket's slug. */
   readonly branch: string;
   /** What the refinement forked from — the wrapper's default branch at create time. */
   readonly parent: string;
@@ -40,6 +49,11 @@ interface RefinementResponse {
   readonly refinement: RefinementDto;
 }
 
+/** The entity door's answer: find-or-create answers a room, find-only may answer none. */
+interface EntityRefinementResponse {
+  readonly refinement: RefinementDto | null;
+}
+
 interface ListResponse {
   readonly refinements: readonly RefinementDto[];
 }
@@ -58,22 +72,36 @@ interface ActiveProcessResponse {
  * The refinement lifecycle surface of qits-projects — everything the refining route used to take
  * from `/workspaces/api/**`, on this SPA's own service.
  *
- * **Find-or-create is one idempotent POST keyed by epic.** The 409/adopt-existing dance the
- * workspaces create needed is the server's ordinary path now: a `refining/<slug>` branch already on
- * the origin is adopted, an epic that already has a refinement answers it, and two racing opens are
- * settled by a unique constraint rather than by client choreography.
+ * **Find-or-create is one idempotent POST keyed by the entity** — `POST /entities/{id}/refinement`,
+ * for an epic or a ticket alike (qits-395). A `refining/<slug>` branch already on the origin is
+ * adopted, an entity that already has a room answers it, and two racing opens are settled by a unique
+ * constraint rather than by client choreography. The old `POST /refinements {"epicId"}` door is not
+ * called from here any more; the service removes it in its next release.
  */
 @Injectable({ providedIn: 'root' })
 export class RefinementsApi {
   private readonly http = inject(HttpClient);
   private readonly base = inject(QITS_API_BASE);
 
-  /** Find the epic's refinement or make one — cutting (or adopting) the branch on the wrapper. */
-  async open(epicId: string): Promise<RefinementDto> {
+  /**
+   * Find the entity's room or make one — cutting (or adopting) `refining/<slug>` on the wrapper.
+   *
+   * <p>Refused with a 409 for a feature or a task (no lifecycle), unless the entity is REPORTED, and
+   * while a dispatch runs on it. An existing room is always answered, whatever the entity's state.
+   */
+  async openFor(entityId: string): Promise<RefinementDto> {
     const answer = await firstValueFrom(
-      this.http.post<RefinementResponse>(`${this.base}/projects/api/refinements`, { epicId }),
+      this.http.post<RefinementResponse>(this.entityDoor(entityId), {}),
     );
     return answer.refinement;
+  }
+
+  /** The entity's room, or null when there is none. Never creates. */
+  async findFor(entityId: string): Promise<RefinementDto | null> {
+    const answer = await firstValueFrom(
+      this.http.get<EntityRefinementResponse>(this.entityDoor(entityId)),
+    );
+    return answer?.refinement ?? null;
   }
 
   /** One refinement with its full projection, git drift included. */
@@ -133,6 +161,10 @@ export class RefinementsApi {
       this.http.get<ActiveProcessResponse>(`${this.url(refinementId)}/active-process`),
     );
     return answer.technicalProcessId ?? null;
+  }
+
+  private entityDoor(entityId: string): string {
+    return `${this.base}/projects/api/entities/${encodeURIComponent(entityId)}/refinement`;
   }
 
   private url(refinementId: number): string {

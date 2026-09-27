@@ -9,25 +9,34 @@ import {
   untracked,
 } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
-import { ActivatedRoute, Router, convertToParamMap } from '@angular/router';
-import { QitsButton } from '@qits/ui-components';
+import { ActivatedRoute, Router, RouterLink, convertToParamMap } from '@angular/router';
+import { QitsBadge, QitsButton } from '@qits/ui-components';
+import { ArchetypesApi } from '../api/archetypes-api';
 import { DesignsApi } from '../api/designs-api';
-import { epicDossier, type DossierOwner } from '../api/dossier-api';
+import { epicDossier, ticketDossier, type DossierOwner } from '../api/dossier-api';
+import { EntitiesApi } from '../api/entities-api';
 import { WorkspaceDaemonApi } from '../api/workspace-daemon-api';
 import { WorkspaceEvents, anyOf } from '../api/workspace-events';
 import { ProjectsApi } from '../api/projects-api';
 import { RefinementsApi, type RefinementDto } from '../api/refinements-api';
 import { ProjectParam } from '../nav/project-param';
-import { EntityActions } from '../project/entity-actions';
 import {
-  actionKey,
-  actionsFor,
-  epicEntity,
+  lifecycleMoves,
   refiningBranch,
-  refiningEpicSlug,
-  type EntityAction,
-  type EpicEntity,
+  statusBadge,
+  statusesOf,
+  type LifecycleMove,
 } from '../project/entities-model';
+import {
+  archetypeLabel,
+  entityRoute,
+  nodeById,
+  parseEntityNumber,
+  refinePrompt,
+  refinementRoute,
+  type EntityNode,
+} from '../project/entity-nodes';
+import { restatement, subjectsOf } from '../project/entity-transition-model';
 import { Async } from '../ui/async';
 import {
   IDLE,
@@ -92,47 +101,46 @@ function speaking(state: Loadable<unknown>): boolean {
   return state.kind === 'loading' || state.kind === 'error';
 }
 
-/** What the page had to resolve before it could show anything: the epic. */
+/** What the page had to resolve before it could show anything: the entity, and its neighbours. */
 interface Subject {
-  /** The epic, so the header can name it and the refining route can address its refinement. */
-  readonly node: EpicEntity;
+  /** The epic or ticket this room refines — what the header names and the room is matched by. */
+  readonly node: EntityNode;
+  /** The project's nodes, so a peer room in the activity bar can be addressed by its number. */
+  readonly nodes: readonly EntityNode[];
+  /** The words this archetype may hold, off the served registry — what the moves are drawn from. */
+  readonly vocabulary: readonly string[];
 }
 
 /**
- * The room you sit in while an agent refines an epic.
+ * The room you sit in while an agent refines an epic or a ticket.
  *
  * ## What it is
  *
- * A refining workspace is an ordinary qits-workspaces workspace, on the project's **wrapper**
- * repository, on the branch `refining/<epicSlug>`. So this page is the workspace detail UI — copied
- * from qits-spa-workspaces, which is this codebase's sanctioned way to share a screen — with one
- * difference that shapes the whole file: **the URL does not name the workspace.**
+ * A refinement is a qits-projects row and a container on the project's **wrapper** repository, on
+ * `refining/<slug>`. This page is its detail UI — copied from qits-spa-workspaces, which is this
+ * codebase's sanctioned way to share a screen — with one difference that shapes the whole file: **the
+ * URL does not name the room.**
  *
  * ## Resolution, and why the URL is what it is
  *
- * `:project/epics/:epicSlug/refining` names the *epic*, and the workspace is looked up from it. That
- * is the same rule the epic card's Refine button follows and it is deliberate: the association between
- * an epic and its refining workspace is not stored anywhere, so the only honest address is the one that
- * can be re-resolved. A URL carrying a workspace row id would be a link that rots the moment the
- * workspace is discarded and a new one started — pointing at a resolved workspace with no container,
- * for an epic that is being refined right now.
+ * `:project/work/:number/refinement` names the *entity* — the entity's page plus `refinement` — and
+ * the room is looked up from it (qits-397; it used to be `:project/epics/:epicSlug/refining`, which
+ * still redirects here). Nothing about a room belongs in an address: a URL carrying a room's row id
+ * would rot the moment the room is discarded and a new one opened, while the entity's number is
+ * stable for its whole life. Both archetypes with a lifecycle have a room since qits-395.
  *
- * Three reads resolve it, and they are three because each answers something the others cannot:
+ * Three reads resolve it:
  *
- * 1. `GET /projects/api/projects/{id}/repositories` — the wrapper repository id **and** its default
- *    branch, from the one read that carries both (drift is the difference between the rows and the
- *    wrapper, so the service answers them together).
- * 2. `GET /projects/api/projects/{id}/epics` plus that epic's features and tasks — the header's
- *    title, its document, and the one line the prompt rewrite is given as context.
- * 3. `GET /workspaces/api/workspaces?repositoryId=` — the ACTIVE workspaces of the wrapper, of which
- *    the one whose `branch` matches is this page's subject. The listing rather than a read by id,
- *    because the branch is all this page has to go on.
+ * 1. The project's entities (epics with their trees, and tickets) — the number is looked up in them,
+ *    because there is no read by number; see `project/entity-nodes.ts`.
+ * 2. The served archetype registry — the words the subject's archetype may hold, which is what the
+ *    room's lifecycle steps are drawn from.
+ * 3. `GET /projects/api/projects/{id}/refinements` — the project's rooms, of which the one whose
+ *    `entityId` is the subject's is this page's; the rest are the activity bar's peers.
  *
- * Then `GET …/{workspaceId}/active-process` for the transient tab, and the workspace's hint channel.
+ * Then `GET …/{id}/active-process` for the transient tab, and the room's hint channel.
  *
- * **Nothing here polls.** The channel is what replaced that, and an idle workspace produces no traffic.
- * The first `onopen` re-issues the workspace read, because the rule is "invalidate everything on every
- * connect" and a first connect is a connect — one duplicate is the price of having one rule.
+ * **Nothing here polls.** The channel is what replaced that, and an idle room produces no traffic.
  *
  * ## No workspace is a state, not an error
  *
@@ -179,11 +187,12 @@ interface Subject {
     ChatPanel,
     DesignPanel,
     DossierPanel,
-    EntityActions,
     EpicDocument,
     FilesPanel,
     PanelPlaceholder,
+    QitsBadge,
     QitsButton,
+    RouterLink,
     SketchPanel,
     StartingPanel,
     StatusStrip,
@@ -197,6 +206,8 @@ interface Subject {
 export class RefiningPage {
   private readonly refining = inject(RefiningService);
   private readonly refinementsApi = inject(RefinementsApi);
+  private readonly entitiesApi = inject(EntitiesApi);
+  private readonly archetypes = inject(ArchetypesApi);
   private readonly daemon = inject(WorkspaceDaemonApi);
   private readonly events = inject(WorkspaceEvents);
   private readonly memory = inject(AgentActivityMemory);
@@ -221,10 +232,17 @@ export class RefiningPage {
    */
   protected readonly projectId = this.param.projectId;
   protected readonly projectSlug = this.param.projectSlug;
-  protected readonly epicSlug = computed(() => this.params().get('epicSlug') ?? '');
+  /** The address's own segment: the entity's qualified number, `qits-1337` (or the bare `1337`). */
+  protected readonly entityParam = computed(() => this.params().get('number') ?? '');
+  protected readonly entityNumber = computed(() => parseEntityNumber(this.entityParam()));
 
-  /** The branch this page is about, composed from the URL and never read off a field. */
-  protected readonly branch = computed(() => refiningBranch(this.epicSlug()));
+  /**
+   * The branch this room is on: the room row's own once there is one, and until then the
+   * `refining/<slug>` the service would cut — which is only ever drawn, never matched against.
+   */
+  protected readonly branch = computed(
+    () => this.workspace()?.branch ?? refiningBranch(this.resolved()?.node.slug ?? ''),
+  );
 
   protected readonly subject = signal<Loadable<Subject>>(LOADING);
 
@@ -256,7 +274,7 @@ export class RefiningPage {
    *
    * Angular reuses a component when only a path parameter changes, which is right for a tab and wrong
    * for an epic: the page reads its identity into a dozen signals and a live channel, and a reused
-   * instance would keep the previous epic's everything. So a change of `epicSlug` sets this false, and
+   * instance would keep the previous entity's everything. So a change of the number sets this false, and
    * a microtask later sets it true — one frame with the subtree gone is what actually destroys it.
    */
   protected readonly mounted = signal(true);
@@ -298,21 +316,36 @@ export class RefiningPage {
    * the reason above: a rule about which kinds end a refinement would drop the next new kind by
    * accident, where a named exclusion has to be thought about.
    */
-  /** The epic this room is about, once it has resolved — the subject the action row is drawn for. */
-  protected readonly epic = computed<EpicEntity | null>(() => this.resolved()?.node ?? null);
+  /** The entity this room is about, once it has resolved. */
+  protected readonly node = computed<EntityNode | null>(() => this.resolved()?.node ?? null);
 
-  protected readonly resolutionActions = computed(() => {
-    const epic = this.epic();
-    return epic
-      ? actionsFor(epic).filter(
-          (action) => action.kind !== 'refine' && action.kind !== 'reshape',
-        )
-      : [];
+  /** `Epic` or `Ticket` — what the header and the first tab call the subject. */
+  protected readonly subjectLabel = computed(() => {
+    const label = archetypeLabel(this.node()?.archetype ?? 'entity');
+    return label.charAt(0).toUpperCase() + label.slice(1);
+  });
+
+  protected readonly statusBadge = computed(() => statusBadge(this.node()?.status ?? null));
+
+  /** A ticket's impetus — the reporter's words, which a ticket's refinement answers. */
+  protected readonly impetus = computed(() => {
+    const entity = this.node()?.entity;
+    return entity?.archetype === 'TICKET' ? entity.impetus : null;
+  });
+
+  /**
+   * The lifecycle steps the room offers — the same derivation the entity's page uses, so "Mark
+   * refined" here and there is one rule. They go through the archetype's lifecycle door and then
+   * back to the entity's page, because a moved entity is one the room may no longer be for.
+   */
+  protected readonly moves = computed<readonly LifecycleMove[]>(() => {
+    const subject = this.resolved();
+    return subject ? lifecycleMoves(subject.node.status, subject.vocabulary) : [];
   });
   protected readonly resolutionPending = signal<string | null>(null);
   protected readonly resolutionFailure = signal<string | null>(null);
 
-  /** Which epic the subject on hand was resolved for, so a hop is told from a hint. */
+  /** Which entity the subject on hand was resolved for, so a hop is told from a hint. */
   private resolvedFor: string | null = null;
 
   /**
@@ -333,7 +366,7 @@ export class RefiningPage {
     // Every load is driven off the URL and never off a click, which is what makes a deep link, the
     // back button and a press behave identically.
     effect(() => {
-      const key = `${this.projectId()}/${this.epicSlug()}`;
+      const key = `${this.projectId()}/${this.entityParam()}`;
       if (key !== this.resolvedFor) {
         this.resolvedFor = key;
         untracked(() => void this.loadSubject());
@@ -342,9 +375,9 @@ export class RefiningPage {
 
     effect(() => {
       const projectId = this.projectId();
-      // An epic hop re-reads the listing too: the page's own row comes out of it, and a reused
-      // component would otherwise keep matching against the previous epic's read.
-      this.epicSlug();
+      // An entity hop re-reads the listing too: the page's own row comes out of it, and a reused
+      // component would otherwise keep matching against the previous entity's read.
+      this.entityParam();
       this.workspaceHints();
       untracked(() => void this.loadRefinements(projectId));
     });
@@ -366,7 +399,7 @@ export class RefiningPage {
     // The route key resets the one-shot guard when Angular reuses this component for another epic;
     // workspace hints do not, so a deliberate Stop is not immediately undone by the next refresh.
     effect(() => {
-      const routeKey = `${this.projectId()}/${this.epicSlug()}`;
+      const routeKey = `${this.projectId()}/${this.entityParam()}`;
       if (routeKey !== this.autoContainerRoute) {
         this.autoContainerRoute = routeKey;
         this.autoContainerWorkspaceId = 0;
@@ -375,7 +408,7 @@ export class RefiningPage {
       const subject = this.resolved();
       const belongsToRoute =
         subject?.node.projectId === this.projectId() &&
-        subject.node.slug === this.epicSlug();
+        subject.node.number === this.entityNumber();
       const workspace = belongsToRoute ? this.workspace() : null;
       if (!workspace || this.autoContainerWorkspaceId === workspace.id) return;
       this.autoContainerWorkspaceId = workspace.id;
@@ -384,7 +417,7 @@ export class RefiningPage {
       untracked(() => void this.startContainerOnEntry(workspace.id));
     });
 
-    effect(() => this.guardRemount(this.epicSlug()));
+    effect(() => this.guardRemount(this.entityParam()));
 
     // A slug nobody recognises is normalised away rather than obeyed — and rather than being left in
     // the URL looking like it meant something.
@@ -431,7 +464,7 @@ export class RefiningPage {
   /** Both live on the refinement row now — the wrapper is the server's business. */
   protected readonly repositoryId = computed(() => this.workspace()?.repositoryId ?? '');
   protected readonly mainBranch = computed(() => this.workspace()?.parent ?? '');
-  protected readonly title = computed(() => this.resolved()?.node.title ?? this.epicSlug());
+  protected readonly title = computed(() => this.resolved()?.node.title ?? this.entityParam());
 
   /**
    * The one line of context the prompt-rewrite helper is given — what this chat is about, and
@@ -449,11 +482,14 @@ export class RefiningPage {
    * word for the field on `POST /prompt-refinements`; renaming it here while the wire kept the old
    * word would be two names for one thing.
    */
-  protected readonly promptContext = computed(() => `# Refine: ${this.title()}`);
+  protected readonly promptContext = computed(() => {
+    const node = this.resolved()?.node;
+    return node ? refinePrompt(node) : `# Refine: ${this.title()}`;
+  });
   protected readonly description = computed(() => this.resolved()?.node.description ?? '');
 
   /**
-   * The workspace this page is about: the one whose branch is `refining/<epicSlug>`.
+   * The room this page is about: the one whose `entityId` is the subject's.
    *
    * The listing answers ACTIVE workspaces only, so a match is a live workspace and there is nothing to
    * filter on status.
@@ -463,30 +499,23 @@ export class RefiningPage {
     if (state.kind !== 'ready') {
       return null;
     }
-    return state.value.find((entry) => entry.branch === this.branch()) ?? null;
+    const id = this.resolved()?.node.id;
+    return id ? (state.value.find((entry) => roomEntity(entry) === id) ?? null) : null;
   });
 
   protected readonly workspaceRowId = computed(() => this.workspace()?.id ?? 0);
 
   /**
-   * The other epics being refined right now — the activity bar's row.
-   *
-   * **Refining branches only, and that narrowing is what makes the row pressable.** The bar's job is
-   * "who needs me next", and a press has to land somewhere: this SPA addresses a workspace by the epic
-   * it refines, so a workspace on `epic/…`, on a feature branch or on a hand-cut branch has no page
-   * here to open. Carrying it would be a button that either goes nowhere or leaves for another SPA
-   * mid-thought. So the row reads as *which epics have an agent working*, which is the question a
-   * reader of this page actually has.
-   *
-   * The filter costs nothing: the listing is already in hand for the branch match above, and the bar
-   * drops workspaces without agent activity itself.
+   * The other rooms open right now — the activity bar's row. Every refinement is a room this page
+   * can open (by its entity's number), so none is filtered out; the bar drops rooms without agent
+   * activity itself.
    */
   protected readonly refiningPeers = computed<readonly RefinementDto[]>(() => {
     const state = this.workspaces();
     if (state.kind !== 'ready') {
       return [];
     }
-    return state.value.filter((entry) => refiningEpicSlug(entry.branch) !== null);
+    return state.value;
   });
 
   /**
@@ -532,6 +561,9 @@ export class RefiningPage {
   protected readonly tabs = computed<readonly TabDef[]>(() => {
     const activity = this.workspace()?.agentActivity ?? null;
     const durable = DURABLE_TABS.map((tab) => {
+      if (tab.slug === 'epic') {
+        return { ...tab, label: this.subjectLabel() };
+      }
       if (tab.slug === 'agents' && activity) {
         return {
           ...tab,
@@ -565,21 +597,87 @@ export class RefiningPage {
    */
   protected async loadSubject(): Promise<void> {
     const projectId = this.projectId();
-    const epicSlug = this.epicSlug();
-    if (!projectId || !epicSlug) {
+    const number = this.entityNumber();
+    if (!projectId || !this.entityParam()) {
       this.subject.set(IDLE);
       return;
     }
+    if (number === null) {
+      this.subject.set(failedAddress(this.entityParam()));
+      return;
+    }
     this.subject.set(LOADING);
-    // An epic hop must not leave the previous epic's rows on screen matching against the new
-    // branch. LOADING rather than IDLE because the sibling effect re-reads them in this same flush:
-    // what is true of them is "being read again", and idle would blank the page until it answered.
+    // An entity hop must not leave the previous entity's rows on screen matching against the new
+    // one. LOADING rather than IDLE because the sibling effect re-reads them in this same flush.
     this.workspaces.set(LOADING);
     try {
-      this.subject.set(ready({ node: await this.refining.node(projectId, epicSlug) }));
+      this.subject.set(await this.resolveSubject(projectId, number));
     } catch (error) {
       this.subject.set(failed(error));
+      return;
     }
+    await this.upgradeMatch();
+  }
+
+  /**
+   * Swap this room's light listing row for its full projection — git drift included, which only the
+   * single-row read pays for. Called after the listing lands *and* after the subject resolves,
+   * because the two are read in parallel and the room is matched by the subject's id: whichever
+   * arrives second is the one that can make the match.
+   */
+  private async upgradeMatch(attempt = this.attempt): Promise<void> {
+    const id = this.resolved()?.node.id;
+    const listed = this.workspaces();
+    if (!id || listed.kind !== 'ready') {
+      return;
+    }
+    const match = listed.value.find((entry) => roomEntity(entry) === id);
+    if (!match) {
+      return;
+    }
+    try {
+      const full = await this.refinementsApi.get(match.id);
+      const current = this.workspaces();
+      if (attempt !== this.attempt || current.kind !== 'ready') {
+        return;
+      }
+      this.workspaces.set(
+        ready(current.value.map((entry) => (entry.id === match.id ? full : entry))),
+      );
+    } catch {
+      // The light row is already drawing the page; the drift arrives with the next hint.
+    }
+  }
+
+  /**
+   * Re-read the subject without blanking the room — after a write this page made itself (an image
+   * inserted into the description), where the room is correct and only one field moved.
+   */
+  private async refreshSubject(): Promise<void> {
+    const projectId = this.projectId();
+    const number = this.entityNumber();
+    if (!projectId || number === null) {
+      return;
+    }
+    try {
+      const next = await this.resolveSubject(projectId, number);
+      if (next.kind === 'ready') {
+        this.subject.set(next);
+      }
+    } catch {
+      // The room still shows the description as it was; the next visit reads it again.
+    }
+  }
+
+  private async resolveSubject(projectId: string, number: number): Promise<Loadable<Subject>> {
+    const [{ node, nodes }, registry] = await Promise.all([
+      this.refining.resolve(projectId, number),
+      this.archetypes.registry(),
+    ]);
+    if (!node) {
+      return { kind: 'error', status: 404, message: `No entity numbered ${number} in this project.` };
+    }
+    return ready({ node, nodes, vocabulary: statusesOf(registry, node.archetype) });
   }
 
   /**
@@ -627,22 +725,7 @@ export class RefiningPage {
       this.memory.observe(rows);
       this.workspaces.set(ready(rows));
 
-      const match = rows.find((entry) => entry.branch === this.branch());
-      if (!match) {
-        return;
-      }
-      try {
-        const full = await this.refinementsApi.get(match.id);
-        const current = this.workspaces();
-        if (attempt !== this.attempt || current.kind !== 'ready') {
-          return;
-        }
-        this.workspaces.set(
-          ready(current.value.map((entry) => (entry.id === match.id ? full : entry))),
-        );
-      } catch {
-        // The light row is already drawing the page; the drift arrives with the next hint.
-      }
+      await this.upgradeMatch(attempt);
     } catch (error) {
       if (attempt === this.attempt) {
         this.workspaces.set(failed(error));
@@ -705,7 +788,7 @@ export class RefiningPage {
     this.starting.set(true);
     this.startFailure.set(null);
     try {
-      await this.refining.open(subject.node);
+      await this.refining.open(subject.node.id);
       await this.loadRefinements(this.projectId());
     } catch (error) {
       this.startFailure.set(describeError(error));
@@ -723,11 +806,10 @@ export class RefiningPage {
    * the press lands and the destination still comes out right.
    */
   protected openPeer(workspaceRowId: number): void {
-    const branch =
-      this.refiningPeers().find((entry) => entry.id === workspaceRowId)?.branch ?? null;
-    const slug = refiningEpicSlug(branch);
-    if (slug) {
-      void this.router.navigate([this.projectSlug(), 'epics', slug, 'refining'], {
+    const peer = this.refiningPeers().find((entry) => entry.id === workspaceRowId) ?? null;
+    const node = peer ? nodeById(this.resolved()?.nodes ?? [], roomEntity(peer)) : null;
+    if (node) {
+      void this.router.navigate(refinementRoute(this.projectSlug(), node) as string[], {
         queryParams: { tab: 'chat' },
       });
     }
@@ -754,28 +836,32 @@ export class RefiningPage {
       return;
     }
     this.picked.use(workspaceId);
-    this.picked.addEpic({ slug: this.epicSlug(), ...selection });
+    this.picked.addEpic({ slug: this.resolved()?.node.slug ?? '', ...selection });
     this.chooseTab('chat');
   }
 
+  /**
+   * Put an image into the subject's description — a field edit, so it goes through the multi-entity
+   * transition door as a restatement of the row (the per-archetype PUTs are retired). The subject is
+   * then re-read quietly: the room is correct and one field moved.
+   */
   protected async insertEpicImage(insertion: EpicImageInsertion): Promise<void> {
     const current = this.resolved();
-    if (!current) return;
+    const entity = current?.node.entity;
+    if (!current || !entity) return;
     const description = insertImageAt(
       current.node.description ?? '',
       insertion.line,
       this.workspaceRowId(),
       insertion.attachment,
     );
-    const epic = await this.projects.updateEpic(
-      current.node.id,
-      current.node.title,
-      description,
+    const registry = await this.archetypes.registry();
+    const subject = subjectsOf([entity]).find((candidate) => candidate.id === entity.id);
+    if (!subject) return;
+    await this.entitiesApi.transitionEntities(
+      new Map([[entity.id, restatement(registry, subject, { DESCRIPTION: description })]]),
     );
-    // The answer is the wire row; the subject is an entity, so it is stamped back through the model
-    // rather than spread in. The features the page already has stay — an epic update never touches
-    // them, and re-reading the fan-out to redraw one image would be three round trips for a string.
-    this.subject.set(ready({ ...current, node: epicEntity(epic, current.node.features) }));
+    await this.refreshSubject();
   }
 
   /**
@@ -838,43 +924,23 @@ export class RefiningPage {
   }
 
   /**
-   * Finish refinement from the document itself — one request now.
-   *
-   * The teardown used to be here, and only for `ABANDONED`: discard first, then transition. It is
-   * the service's job as of 2026-09-08, because this page was never the only route to a resolved
-   * epic — the board, the REST API and an agent all reached the transition without it and left the
-   * container, its volume, its credential and the `refining/<slug>` branch allocated for good. The
-   * order that argued for two operations still holds and is kept on the server side: the refinement
-   * is discarded first, and the epic is made terminal only once it owns nothing.
-   *
-   * <p><b>Two requests are possible now, and the action's discriminant is what picks.</b> Abandoning
-   * is a transition; starting implementation is the dispatch door, which freezes the scope *and*
-   * stands an implementing agent up on `epic/<slug>` — the same press the board makes, and it has to
-   * be the same door, or ending a refinement here would leave the epic frozen with nobody on it.
-   *
-   * <p>Either way the page leaves for the board, which is why nothing here draws the workspace link
-   * the board draws: this screen is about to stop existing. A reader who wants the address presses
-   * Start implementation again there, which adopts the workspace this press just made.
+   * Take one lifecycle step from the room — through the archetype's own lifecycle door, so the step
+   * runs everything a step means (the phase advance, and the resolving move that ends this room) —
+   * then go to the entity's page, which is where a moved entity is read.
    */
-  protected async resolveEpic(action: EntityAction): Promise<void> {
-    if (action.kind === 'refine' || this.resolutionPending()) return;
+  protected async move(move: LifecycleMove): Promise<void> {
     const current = this.resolved();
-    // The refinement row is no longer needed to resolve — the service finds it by epic — so a page
-    // whose row has already gone can still take the epic to its terminal status.
-    if (!current) return;
-
-    const epicId = current.node.id;
-    this.resolutionPending.set(actionKey(action));
+    if (!current || this.resolutionPending()) return;
+    const node = current.node;
+    this.resolutionPending.set(move.target);
     this.resolutionFailure.set(null);
     try {
-      if (action.kind === 'start') {
-        await this.projects.dispatchEpicAgent(epicId);
-      } else if (action.kind === 'transition') {
-        await this.projects.transitionEpic(epicId, action.target);
+      if (node.archetype === 'TICKET') {
+        await this.entitiesApi.transition(node.id, move.target);
+      } else {
+        await this.projects.transitionEpic(node.id, move.target);
       }
-      await this.router.navigate([this.projectSlug(), 'epics'], {
-        fragment: `epic-${epicId}`,
-      });
+      await this.router.navigate(entityRoute(this.projectSlug(), node) as string[]);
     } catch (error) {
       this.resolutionFailure.set(describeError(error));
     } finally {
@@ -897,31 +963,28 @@ export class RefiningPage {
     void this.loadRefinements(this.projectId());
   }
 
-  /**
-   * Back to the epic this workspace refines — the board, which is `<project>/epics` and not the
-   * project's own address: the project node is a hub now, and it carries no epic to anchor on.
-   */
-  protected backToEpics(): void {
-    void this.router.navigate([this.projectSlug(), 'epics'], {
-      fragment: `epic-${this.epicId()}`,
-    });
-  }
+  /** The entity's own page — where the room's crumb leads back to. */
+  protected readonly entityLink = computed(() => {
+    const node = this.resolved()?.node;
+    return node ? entityRoute(this.projectSlug(), node) : null;
+  });
 
-  protected epicId(): string {
-    return this.resolved()?.node.id ?? '';
-  }
-
-  /**
-   * Whose dossier the tab shows. An epic's, here — the panel serves a ticket's too, on the ticket
-   * detail page, which is why it takes an owner rather than an epic id.
-   */
+  /** The dossier this room writes: the epic's, or the ticket's. */
   protected dossierOwner(): DossierOwner {
-    return epicDossier(this.epicId());
+    const node = this.resolved()?.node;
+    return node?.archetype === 'TICKET' ? ticketDossier(node.id) : epicDossier(node?.id ?? '');
   }
 
-  /** Whether the epic still takes writes. The Dossier tab renders read-only off this. */
-  protected epicRefining(): boolean {
-    return this.resolved()?.node.status === 'REFINING';
+  /**
+   * Whether the dossier takes writes here. A ticket's pages are writable at every status; an epic's
+   * scope — dossier included — is writable only in the lifecycle's **first** word (the service's
+   * `requireReported`), read off the served vocabulary rather than spelled here.
+   */
+  protected dossierEditable(): boolean {
+    const subject = this.resolved();
+    if (!subject) return false;
+    if (subject.node.archetype === 'TICKET') return true;
+    return subject.node.status !== null && subject.node.status === subject.vocabulary[0];
   }
 
   /**
@@ -949,15 +1012,15 @@ export class RefiningPage {
 
   // ---- plumbing ---------------------------------------------------------------------------------
 
-  private guardRemount(epicSlug: string): void {
+  private guardRemount(entityParam: string): void {
     if (this.mountedFor === null) {
-      this.mountedFor = epicSlug;
+      this.mountedFor = entityParam;
       return;
     }
-    if (this.mountedFor === epicSlug) {
+    if (this.mountedFor === entityParam) {
       return;
     }
-    this.mountedFor = epicSlug;
+    this.mountedFor = entityParam;
     untracked(() => {
       this.shownProcessId.set(null);
       this.transient.set(false);
@@ -988,4 +1051,14 @@ export class RefiningPage {
       this.linger = null;
     }
   }
+}
+
+/** The entity a room names — `entityId`, with the legacy `epicId` for a row from an older service. */
+function roomEntity(row: RefinementDto): string {
+  return row.entityId ?? row.epicId ?? '';
+}
+
+/** An address whose segment names no number at all: a not-found, said as one. */
+function failedAddress(segment: string): Loadable<never> {
+  return { kind: 'error', status: 404, message: `“${segment}” is not an entity number.` };
 }

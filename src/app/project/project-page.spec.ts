@@ -170,8 +170,9 @@ describe('ProjectPage', () => {
   });
 
   /**
-   * The sub-elements, in the order a reader needs them: this application's own two first — the plan,
-   * then the configuration — and the platform's after them, in the order the edge sorted them.
+   * The sub-elements, in the order a reader needs them: this application's own first — the one desk
+   * (qits-397), the release requests, the configuration — and the platform's after them, in the order
+   * the edge sorted them.
    *
    * The `qits-projects` entry in the same slot is this application's own Epics row in the sidebar.
    * Drawing it here as well would put one destination on the page twice, once as a router hop and
@@ -181,8 +182,7 @@ describe('ProjectPage', () => {
     await openResolved();
 
     expect(cards()).toEqual([
-      { label: 'Epics', href: '/p1/epics' },
-      { label: 'Tickets', href: '/p1/tickets' },
+      { label: 'Work', href: '/p1/work' },
       { label: 'Release requests', href: '/p1/release-requests' },
       { label: 'Project setup', href: '/p1/project-setup' },
       { label: 'Workspaces', href: 'https://workspaces.dev.example.test/p1/' },
@@ -190,42 +190,33 @@ describe('ProjectPage', () => {
     ]);
   });
 
-  /** A platform that names no project-scoped application still has the four this SPA serves itself. */
+  /** A platform that names no project-scoped application still has the three this SPA serves itself. */
   it('keeps its own links when the platform names no other application', async () => {
     TestBed.resetTestingModule();
     configure(navigation('none'));
     await openResolved();
 
     expect(cards()).toEqual([
-      { label: 'Epics', href: '/p1/epics' },
-      { label: 'Tickets', href: '/p1/tickets' },
+      { label: 'Work', href: '/p1/work' },
       { label: 'Release requests', href: '/p1/release-requests' },
       { label: 'Project setup', href: '/p1/project-setup' },
     ]);
   });
 
-  /** The tickets are the plan's smaller sibling, so their card sits directly beside the board's. */
-  it('goes to the tickets board when its card is followed', async () => {
-    await openResolved();
-
-    Array.from(page().querySelectorAll<HTMLAnchorElement>('a.app'))[1].click();
-    await settle();
-
-    expect(TestBed.inject(Router).url).toBe('/p1/tickets');
-    // The board reads the tickets for itself, which is the read this page does not do.
-    http.expectOne('/projects/api/projects/p1/tickets').flush({ entries: [] });
-    await settle();
-  });
-
-  it('goes to the epics board when its card is followed', async () => {
+  /** The one desk replaces the epics and tickets boards; its card is the first way in. */
+  it('goes to the one desk when its card is followed', async () => {
     await openResolved();
 
     page().querySelector<HTMLAnchorElement>('a.app')?.click();
     await settle();
 
-    expect(TestBed.inject(Router).url).toBe('/p1/epics');
-    // The board reads the epics for itself, which is the read this page does not do.
-    http.expectOne('/projects/api/projects/p1/epics').flush({ entries: [] });
+    expect(TestBed.inject(Router).url).toBe('/p1/work');
+    // The desk reads the project's work for itself, which is the read this page does not do.
+    for (const request of http.match(() => true)) {
+      request.flush(
+        request.request.url.endsWith('/archetypes') ? { archetypes: [] } : { entries: [] },
+      );
+    }
     await settle();
   });
 
@@ -239,7 +230,7 @@ describe('ProjectPage', () => {
     await settle();
 
     expect(page().querySelector('h1')?.textContent).toContain('p1');
-    expect(cards()[0]).toEqual({ label: 'Epics', href: '/p1/epics' });
+    expect(cards()[0]).toEqual({ label: 'Work', href: '/p1/work' });
     http.verify();
   });
 
@@ -247,7 +238,7 @@ describe('ProjectPage', () => {
     await openResolved([{ id: 'p1', name: 'qits' }], '/nope');
 
     expect(page().querySelector('h1')?.textContent).toContain('nope');
-    expect(cards()[3]).toEqual({ label: 'Project setup', href: '/nope/project-setup' });
+    expect(cards()[2]).toEqual({ label: 'Project setup', href: '/nope/project-setup' });
     http.verify();
   });
 
@@ -260,6 +251,6 @@ describe('ProjectPage', () => {
     await openResolved([{ id: 'p1', name: 'qits', slug: 'qits' }], '/p1');
 
     expect(TestBed.inject(Router).url).toBe('/qits');
-    expect(cards()[0]).toEqual({ label: 'Epics', href: '/qits/epics' });
+    expect(cards()[0]).toEqual({ label: 'Work', href: '/qits/work' });
   });
 });

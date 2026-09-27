@@ -18,7 +18,7 @@ const REGISTRY: ArchetypeRegistry = {
       required: ['TITLE'],
       requiredOnTransition: ['TITLE', 'STATUS'],
       permitted: ['TITLE', 'SLUG', 'DESCRIPTION', 'STATUS'],
-      legalStatuses: ['REFINING', 'IMPLEMENTATION'],
+      legalStatuses: ['REPORTED', 'REFINED'],
     },
     {
       archetype: 'TICKET',
@@ -57,7 +57,7 @@ const EPIC: EpicDto = {
   description: null,
   number: 12,
   qualifiedId: 'qits-12',
-  status: 'IMPLEMENTATION',
+  status: 'REFINED',
   supersededByEpicId: null,
   createdAt: AT,
   updatedAt: AT,
