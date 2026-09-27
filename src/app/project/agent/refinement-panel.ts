@@ -48,21 +48,6 @@ const WORDS: Readonly<Record<AgentSurface, DeskWords>> = {
     idleLead: 'This project’s desk has had a session before and nothing is running now.',
     terminal: 'Front desk agent session',
   },
-  // The two retired desks. No page mounts them any more; their words stay while the type does.
-  'project.epics': {
-    title: 'Refinement agent',
-    invitation: 'Talk to the agent to draft and refine this project’s epics.',
-    starting: 'Starting the refinement agent…',
-    idleLead: 'This project has been refined before and nothing is running now.',
-    terminal: 'Refinement agent session',
-  },
-  'project.tickets': {
-    title: 'Triage agent',
-    invitation: 'Talk to the agent to file and triage this project’s tickets.',
-    starting: 'Starting the triage agent…',
-    idleLead: 'This project’s tickets have been triaged before and nothing is running now.',
-    terminal: 'Triage agent session',
-  },
 };
 
 /**

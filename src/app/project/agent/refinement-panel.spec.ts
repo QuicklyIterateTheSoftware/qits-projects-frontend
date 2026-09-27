@@ -393,139 +393,12 @@ describe('RefinementPanel', () => {
     expect(text()).toContain('daemon not connected');
   });
 
-  // ---- the two surfaces ---------------------------------------------------------------------
+  // ---- the surface the command reports ------------------------------------------------------
 
   /**
-   * One panel, two session surfaces, and the one thing that keeps them apart.
-   *
-   * <p>The command reports the surface it was launched from, and that is the **only** thing that
-   * sorts these lists. There used to be a fallback that read the old `"(tickets desk)"` substring
-   * out of the command's *name* for rows launched before the daemon shipped the field; task
-   * `46e32cb3` deleted it, so the runs below carry the key and the name is left deliberately
-   * misleading to prove nothing reads it. Both directions are pinned here because getting either
-   * wrong puts one board's conversation on the other board's screen, under a heading that says it is
-   * about something else.
-   */
-  describe('at the tickets surface', () => {
-    /**
-     * A tickets run. It keeps the legacy desk suffix in its name on purpose: the name is a label
-     * now, and a run that reports `project.tickets` belongs here whatever it is called.
-     */
-    function triage(id: string, over: Partial<CommandDto> = {}): CommandDto {
-      return running(id, {
-        actionName: 'Claude Code (tickets desk · repository MCP)',
-        agentSurface: 'project.tickets',
-        ...over,
-      });
-    }
-
-    it('is named for triage rather than refinement, and says what it is for', async () => {
-      await mount('p1', 'project.tickets');
-
-      expect(element().querySelector('button.toggle')?.textContent).toContain('Triage agent');
-      expect(text()).not.toContain('Refinement agent');
-
-      await press('Triage agent');
-      await flush('/projects/api/projects/p1/agent-container', {
-        container: container({ runtimeStatus: 'ABSENT', daemonConnected: false }),
-      });
-      expect(text()).toContain('file and triage this project’s tickets');
-    });
-
-    /**
-     * The lineage read is the one desk's alone. `GET /agent-sessions` answers session ids with no
-     * desk on them, so it cannot say whether the ticket desk has ever run anything — asking it would
-     * mean the first press at this desk landed on an idle screen offering somebody else's session.
-     * An empty filtered list is the answer, and `http.verify()` is what proves the read never left.
-     */
-    it('launches at its own desk without asking the desk-blind lineage read', async () => {
-      await mount('p1', 'project.tickets');
-      await press('Start');
-
-      await flush('/projects/api/projects/p1/agent-container/ensure', { container: container() });
-      // The container has epic history and no ticket history. That is still "nothing here yet".
-      await flush('/projects/container/p1/commands', {
-        entries: [{ command: running('epic-old', { status: 'EXITED' }) }],
-      });
-      await flushHarness();
-
-      const launch = http.expectOne('/projects/container/p1/agents');
-      expect(launch.request.method).toBe('POST');
-      expect(launch.request.body).toEqual({
-        scope: 'REPOSITORY',
-        mode: 'INTERACTIVE',
-        surface: 'project.tickets',
-      });
-      launch.flush({ command: triage('t1') });
-      await settle();
-
-      expect(sockets).toHaveLength(1);
-      expect(sockets[0].url).toContain('/terminal/commands/t1');
-      // No /agent-sessions read, and nothing else outstanding.
-      http.verify();
-    });
-
-    it('adopts a running ticket-desk session and leaves the one desk’s alone', async () => {
-      await mount('p1', 'project.tickets');
-      await press('Start');
-
-      await flush('/projects/api/projects/p1/agent-container/ensure', { container: container() });
-      await flush('/projects/container/p1/commands', {
-        entries: [{ command: running('epic-run') }, { command: triage('tix-run') }],
-      });
-      await flushHarness();
-
-      expect(sockets).toHaveLength(1);
-      expect(sockets[0].url).toContain('/terminal/commands/tix-run');
-      // No launch: branch 1 answered, at this desk.
-      http.verify();
-    });
-
-    it('offers this desk’s last session to resume, never the other desk’s', async () => {
-      await mount('p1', 'project.tickets');
-      await press('Start');
-
-      await flush('/projects/api/projects/p1/agent-container/ensure', { container: container() });
-      await flush('/projects/container/p1/commands', {
-        entries: [
-          // Newest first, and the newest is the one desk's. Ordering must not decide this.
-          {
-            command: running('epic-old', {
-              status: 'EXITED',
-              agentSessions: [{ sessionId: 'epic-9', source: 'PINNED', recordedAt: AT }],
-            }),
-          },
-          {
-            command: triage('tix-old', {
-              status: 'EXITED',
-              agentSessions: [{ sessionId: 'tix-1', source: 'PINNED', recordedAt: AT }],
-            }),
-          },
-        ],
-      });
-      await flushHarness();
-
-      expect(sockets).toHaveLength(0);
-      expect(text()).toContain('tickets have been triaged before');
-      http.verify();
-
-      await press('Resume the last session');
-      const launch = http.expectOne('/projects/container/p1/agents');
-      expect(launch.request.body).toEqual({
-        scope: 'REPOSITORY',
-        mode: 'INTERACTIVE',
-        surface: 'project.tickets',
-        resumeSessionId: 'tix-1',
-      });
-      launch.flush({ command: triage('t2') });
-      await settle();
-    });
-  });
-
-  /**
-   * The other direction of the same rule: a command reporting the tickets surface is not the one
-   * desk's, so the one desk (qits-403) launches `project.work` rather than adopting a terminal the
-   * retired tickets desk left running, and still consults the lineage read.
+   * A command reporting the retired tickets surface is not the one desk's, so the one desk
+   * (qits-403) launches `project.work` rather than adopting a terminal the retired tickets desk
+   * left running, and still consults the lineage read.
    */
   it('does not adopt the retired ticket desk’s running session onto the one desk', async () => {
     await mount();
@@ -550,33 +423,6 @@ describe('RefinementPanel', () => {
     expect(sockets).toHaveLength(1);
     expect(sockets[0].url).toContain('/terminal/commands/e1');
     expect(sockets[0].url).not.toContain('tix-run');
-  });
-
-  // ---- the surface the command reports ------------------------------------------------------
-
-  /**
-   * The field, winning over the name — which is the whole of what this task moved.
-   *
-   * <p>The run below is named exactly as an epics run always was ("Claude agent") and reports
-   * `project.tickets`. The old rule read the name and would have handed it to the desk panel; the
-   * new one reads the field, so the tickets panel adopts it. Asserting it this way round is
-   * deliberate: a name that *agrees* with the surface would pass under either rule and prove
-   * nothing.
-   */
-  it('sorts by the surface the command reports, not by what the command is called', async () => {
-    await mount('p1', 'project.tickets');
-    await press('Start');
-
-    await flush('/projects/api/projects/p1/agent-container/ensure', { container: container() });
-    await flush('/projects/container/p1/commands', {
-      entries: [{ command: running('reported', { agentSurface: 'project.tickets' }) }],
-    });
-    await flushHarness();
-
-    expect(sockets).toHaveLength(1);
-    expect(sockets[0].url).toContain('/terminal/commands/reported');
-    // Branch 1 answered at this surface: no launch, no lineage read.
-    http.verify();
   });
 
   /**

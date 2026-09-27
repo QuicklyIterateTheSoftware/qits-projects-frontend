@@ -33,16 +33,6 @@ export const SURFACE_NAMES: Readonly<Record<string, SurfaceName>> = {
     where:
       'At the head of a project’s Work desk, where epics are drafted and refined and tickets are filed and triaged.',
   },
-  'project.epics': {
-    title: 'Refinement agent (retired)',
-    where:
-      'The epics board’s agent before the boards merged into the Work desk. Nothing launches here any more; sessions started before the merge still read it.',
-  },
-  'project.tickets': {
-    title: 'Triage agent (retired)',
-    where:
-      'The tickets board’s agent before the boards merged into the Work desk. Nothing launches here any more; sessions started before the merge still read it.',
-  },
   'epic.chat': {
     title: 'Chat tab, refining an epic',
     where:
