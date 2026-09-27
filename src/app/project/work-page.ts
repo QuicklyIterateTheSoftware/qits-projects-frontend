@@ -7,8 +7,9 @@ import {
   viewChild,
 } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
-import { ActivatedRoute, RouterLink, convertToParamMap } from '@angular/router';
+import { ActivatedRoute, Router, RouterLink, convertToParamMap } from '@angular/router';
 import { ArchetypesApi } from '../api/archetypes-api';
+import type { CampaignDto } from '../api/dto';
 import { ProjectParam } from '../nav/project-param';
 import { RefinementPanel } from './agent/refinement-panel';
 import {
@@ -16,7 +17,9 @@ import {
   archetypeFilterParam,
   archetypeFromParam,
   archetypeLabel,
+  entityRoute,
 } from './entity-nodes';
+import { NewCampaignForm } from './new-campaign-form';
 import { NewTicketForm } from './new-ticket-form';
 import { WorkOverview } from './work-overview';
 
@@ -49,7 +52,7 @@ interface FilterOption {
 @Component({
   selector: 'app-work-page',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [NewTicketForm, RefinementPanel, RouterLink, WorkOverview],
+  imports: [NewCampaignForm, NewTicketForm, RefinementPanel, RouterLink, WorkOverview],
   template: `
     <p class="back">
       <a [routerLink]="['/', projectSlug()]">← {{ heading() }}</a>
@@ -72,9 +75,14 @@ interface FilterOption {
       }
     </nav>
 
-    @if (archetype() === null || archetype() === 'TICKET') {
-      <app-new-ticket-form [projectId]="projectId()" (created)="refresh()" />
-    }
+    <div class="creates">
+      @if (archetype() === null || archetype() === 'TICKET') {
+        <app-new-ticket-form [projectId]="projectId()" (created)="refresh()" />
+      }
+      @if (archetype() === null || archetype() === 'CAMPAIGN') {
+        <app-new-campaign-form [projectId]="projectId()" (created)="campaignOpened($event)" />
+      }
+    </div>
 
     <app-refinement-panel [projectId]="projectId()" surface="project.work" />
 
@@ -95,6 +103,15 @@ interface FilterOption {
       margin: 0 0 0.75rem;
       font-size: 1.25rem;
       font-weight: 600;
+    }
+    .creates {
+      display: flex;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+      align-items: flex-start;
+    }
+    .creates > * {
+      flex: 0 1 auto;
     }
     .filter {
       display: flex;
@@ -123,6 +140,7 @@ export class WorkPage {
   private readonly param = inject(ProjectParam);
   private readonly route = inject(ActivatedRoute);
   private readonly archetypes = inject(ArchetypesApi);
+  private readonly router = inject(Router);
 
   private readonly overview = viewChild(WorkOverview);
 
@@ -185,5 +203,13 @@ export class WorkPage {
   /** A ticket was opened: the desk re-reads. */
   protected refresh(): void {
     void this.overview()?.load();
+  }
+
+  /**
+   * A campaign was opened: go to its page, where its members and their conditions are authored — an
+   * empty campaign on the desk is not somewhere anybody can do anything with it.
+   */
+  protected campaignOpened(campaign: CampaignDto): void {
+    void this.router.navigate(entityRoute(this.projectSlug(), campaign) as string[]);
   }
 }

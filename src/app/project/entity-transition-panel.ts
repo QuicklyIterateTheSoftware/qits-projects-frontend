@@ -147,7 +147,8 @@ export class EntityTransitionPanel {
     try {
       const [registry, entities] = await Promise.all([
         this.archetypes.registry(),
-        this.api.list(projectId),
+        // Not the campaigns: the multi-entity transition refuses one (qits-419).
+        this.api.epicsAndTickets(projectId),
       ]);
       if (this.newest(projectId, attempt)) {
         this.ground.set(ready({ registry, subjects: subjectsOf(entities) }));

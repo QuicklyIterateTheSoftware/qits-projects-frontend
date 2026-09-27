@@ -39,6 +39,15 @@ const REGISTRY = {
       legalStatuses: WORDS,
     },
     {
+      archetype: 'CAMPAIGN',
+      depth: -1,
+      mayBeRoot: true,
+      required: [],
+      requiredOnTransition: [],
+      permitted: [],
+      legalStatuses: WORDS,
+    },
+    {
       archetype: 'FEATURE',
       depth: 1,
       mayBeRoot: false,
@@ -92,6 +101,18 @@ const TICKET: TicketDto = {
   workspaces: [],
 };
 
+const CAMPAIGN = {
+  id: 'c1',
+  number: 430,
+  qualifiedId: 'qits-430',
+  projectId: 'p1',
+  title: 'Rename qits-x',
+  status: 'REFINED',
+  started: false,
+  active: false,
+  members: 2,
+};
+
 const CLOSED: TicketDto = {
   ...TICKET,
   id: 't2',
@@ -114,9 +135,11 @@ describe('WorkPage', () => {
   let http: HttpTestingController;
   let harness: RouterTestingHarness;
   let urls: string[];
+  let posts: { url: string; body: unknown }[];
 
   beforeEach(async () => {
     urls = [];
+    posts = [];
     TestBed.configureTestingModule({
       providers: [
         provideRouter(routes),
@@ -151,8 +174,32 @@ describe('WorkPage', () => {
     if (url === '/projects/api/projects/p1/tickets') {
       return { entries: [{ ticket: TICKET }, { ticket: CLOSED }] };
     }
+    if (url === '/projects/api/projects/p1/campaigns') {
+      if (request.request.method === 'POST') {
+        return {
+          campaign: {
+            ...CAMPAIGN,
+            slug: 'rename-qits-x',
+            description: null,
+            status: 'REPORTED',
+            start: null,
+            members: [],
+          },
+        };
+      }
+      return { campaigns: [CAMPAIGN] };
+    }
     if (url === '/projects/api/epics/e1/features') return { entries: [] };
     if (url === '/projects/api/entities/archetypes') return REGISTRY;
+    // Whatever the campaign's own page reads once the create has gone there.
+    if (url === '/projects/api/campaigns/c1') {
+      return { campaign: { ...CAMPAIGN, slug: 'r', description: null, start: null, members: [] } };
+    }
+    if (url === '/projects/api/entities/c1/dispatch') {
+      return { state: { entityId: 'c1', archetype: 'CAMPAIGN', status: 'REFINED', nextPhase: 'start', blocked: false, dispatchable: true, mode: null } };
+    }
+    if (url === '/projects/api/projects/p1/repositories') return { entries: [], wrapper: null };
+    if (/\/audit$/.test(url)) return { entries: [] };
     throw new Error(`unanswered ${url}`);
   }
 
@@ -161,6 +208,9 @@ describe('WorkPage', () => {
       await new Promise((resolve) => setTimeout(resolve, 0));
       for (const request of http.match(() => true)) {
         urls.push(request.request.url);
+        if (request.request.method === 'POST') {
+          posts.push({ url: request.request.url, body: request.request.body });
+        }
         request.flush(respond(request));
       }
       await harness.fixture.whenStable();
@@ -194,8 +244,9 @@ describe('WorkPage', () => {
 
     expect(urls).toContain('/projects/api/projects/p1/epics');
     expect(urls).toContain('/projects/api/projects/p1/tickets');
+    expect(urls).toContain('/projects/api/projects/p1/campaigns');
     expect(sections()).toEqual(['REPORTED', 'REFINED', 'DONE']);
-    expect(titles()).toEqual(['One desk', 'The cancelled badge']);
+    expect(titles()).toEqual(['One desk', 'The cancelled badge', 'Rename qits-x']);
     // The endings are the record: collapsed, as rows rather than cards.
     expect(
       element().querySelector('details[data-status="DONE"] app-entity-summary-row'),
@@ -211,6 +262,7 @@ describe('WorkPage', () => {
     expect(links.map((link) => link.getAttribute('href'))).toEqual([
       '/qits/work/qits-12',
       '/qits/work/qits-41',
+      '/qits/work/qits-430',
       '/qits/work/qits-7',
     ]);
   });
@@ -220,8 +272,48 @@ describe('WorkPage', () => {
 
     expect(urls).toContain('/projects/api/projects/p1/tickets');
     expect(urls).not.toContain('/projects/api/projects/p1/epics');
+    expect(urls).not.toContain('/projects/api/projects/p1/campaigns');
     expect(titles()).toEqual(['The cancelled badge']);
     expect(element().querySelector('app-new-ticket-form')).not.toBeNull();
+    expect(element().querySelector('app-new-campaign-form')).toBeNull();
+  });
+
+  /** qits-419: a campaign is a root of work on the one desk, and `?archetype=campaign` reads only it. */
+  it('lists campaigns on the desk, and filters to them reading only campaigns', async () => {
+    await open('/qits/work?archetype=campaign');
+
+    expect(urls).toContain('/projects/api/projects/p1/campaigns');
+    expect(urls).not.toContain('/projects/api/projects/p1/epics');
+    expect(urls).not.toContain('/projects/api/projects/p1/tickets');
+    expect(titles()).toEqual(['Rename qits-x']);
+    const card = element().querySelector('app-entity-card')!;
+    expect(card.querySelector('.archetype')?.textContent).toContain('campaign');
+    expect(card.querySelector('.progress')?.textContent).toBe('2 members · not started');
+    // No reshape for a campaign: the multi-entity transition refuses one.
+    expect(element().textContent).not.toContain('Reshape');
+    expect(element().querySelector('app-new-campaign-form')).not.toBeNull();
+    expect(element().querySelector('app-new-ticket-form')).toBeNull();
+  });
+
+  it('opens a new campaign from the desk and goes to its page', async () => {
+    await open('/qits/work');
+
+    const toggle = Array.from(element().querySelectorAll('button')).find(
+      (node) => node.textContent?.trim() === 'New campaign',
+    )!;
+    toggle.click();
+    harness.detectChanges();
+    const title = element().querySelector<HTMLInputElement>('.campaign-title')!;
+    title.value = 'Rename qits-x';
+    title.dispatchEvent(new Event('input'));
+    harness.detectChanges();
+    element().querySelector<HTMLButtonElement>('.create-campaign button')!.click();
+    await serve();
+
+    expect(posts).toEqual([
+      { url: '/projects/api/projects/p1/campaigns', body: { title: 'Rename qits-x' } },
+    ]);
+    expect(TestBed.inject(Location).path()).toBe('/qits/work/qits-430');
   });
 
   it('offers the filter’s options from the registry’s lifecycle archetypes', async () => {
@@ -232,6 +324,7 @@ describe('WorkPage', () => {
       'All',
       'epics',
       'tickets',
+      'campaigns',
     ]);
     expect(options[0].getAttribute('aria-current')).toBe('page');
     expect(options[2].getAttribute('href')).toBe('/qits/work?archetype=ticket');

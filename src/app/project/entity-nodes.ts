@@ -1,4 +1,5 @@
 import type { EntityStatus, FeatureDto, TaskDto } from '../api/dto';
+import type { CampaignEntity, WorkItem } from './campaign-model';
 import type { Entity, EpicEntity, TicketEntity } from './entities-model';
 
 /**
@@ -20,7 +21,7 @@ import type { Entity, EpicEntity, TicketEntity } from './entities-model';
 /** One node, whatever its archetype. The four shapes' shared fields lifted, the rest kept beside. */
 export interface EntityNode {
   readonly id: string;
-  /** `EPIC`, `TICKET`, `FEATURE` or `TASK` — a string, as the registry spells archetypes. */
+  /** `EPIC`, `TICKET`, `CAMPAIGN`, `FEATURE` or `TASK` — a string, as the registry spells them. */
   readonly archetype: string;
   readonly projectId: string;
   readonly number: number;
@@ -46,6 +47,8 @@ export interface EntityNode {
   readonly epic: EpicEntity | null;
   readonly feature: FeatureDto | null;
   readonly task: TaskDto | null;
+  /** The campaign when this node is one; null on every other archetype. */
+  readonly campaign: CampaignEntity | null;
 }
 
 /**
@@ -53,10 +56,19 @@ export interface EntityNode {
  *
  * <p>A ticket has no children; an epic's features and tasks follow it in the tree's own order, which
  * is the order the service lists them in and the order a children list draws them.
+ *
+ * <p><b>A campaign is a root with no children</b>, and its arm comes before the epic fallthrough on
+ * purpose: everything that is not a ticket used to be read as an epic, and a campaign read that way
+ * is an epic whose `features` are undefined. Its members are not its children — they are epics and
+ * tickets in their own right, with their own nodes.
  */
-export function flattenEntities(entities: readonly Entity[]): readonly EntityNode[] {
+export function flattenEntities(entities: readonly WorkItem[]): readonly EntityNode[] {
   const nodes: EntityNode[] = [];
   for (const entity of entities) {
+    if (entity.archetype === 'CAMPAIGN') {
+      nodes.push(campaignNode(entity));
+      continue;
+    }
     if (entity.archetype === 'TICKET') {
       nodes.push(rootNode(entity, null));
       continue;
@@ -83,6 +95,7 @@ export function flattenEntities(entities: readonly Entity[]): readonly EntityNod
         epic: entity,
         feature,
         task: null,
+        campaign: null,
       });
       for (const task of tasks) {
         nodes.push({
@@ -105,6 +118,7 @@ export function flattenEntities(entities: readonly Entity[]): readonly EntityNod
           epic: entity,
           feature,
           task,
+          campaign: null,
         });
       }
     }
@@ -133,6 +147,32 @@ function rootNode(entity: Entity, epic: EpicEntity | null): EntityNode {
     epic,
     feature: null,
     task: null,
+    campaign: null,
+  };
+}
+
+function campaignNode(campaign: CampaignEntity): EntityNode {
+  return {
+    id: campaign.id,
+    archetype: 'CAMPAIGN',
+    projectId: campaign.projectId,
+    number: campaign.number,
+    qualifiedId: campaign.qualifiedId,
+    title: campaign.title,
+    slug: campaign.slug,
+    description: campaign.description,
+    status: campaign.status,
+    parentId: null,
+    implementedAt: null,
+    repositoryId: null,
+    dependsOn: null,
+    createdAt: campaign.createdAt,
+    updatedAt: campaign.updatedAt,
+    entity: null,
+    epic: null,
+    feature: null,
+    task: null,
+    campaign,
   };
 }
 

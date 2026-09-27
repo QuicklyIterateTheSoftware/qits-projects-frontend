@@ -13,6 +13,7 @@ import { toSignal } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, Router, RouterLink, convertToParamMap } from '@angular/router';
 import { QitsAppLinks, QitsBadge, QitsButton } from '@qits/ui-components';
 import { ArchetypesApi, type ArchetypeRegistry } from '../api/archetypes-api';
+import { CampaignsApi } from '../api/campaigns-api';
 import { DossierApi, epicDossier, ticketDossier, type DossierOwner } from '../api/dossier-api';
 import type {
   AuditEntryDto,
@@ -39,6 +40,7 @@ import {
   type Loadable,
 } from '../ui/loadable';
 import { MarkdownView } from '../ui/markdown-view';
+import { CampaignMembers, type CampaignCandidate } from './campaign-members';
 import {
   BLOCKED_BADGE,
   IMPETUS_RULE,
@@ -132,6 +134,13 @@ interface TreeRow {
  * reparent — **go through `POST /entities/transition`**, a restatement of the whole row, which is
  * what replaced the retired `PUT /epics/{id}` and `PUT /tickets/{id}`.
  *
+ * <p><b>A campaign</b> (qits-419) is a root with a lifecycle and a body of its own: its members,
+ * their order and their conditions ({@link CampaignMembers}). Its status moves go through its own
+ * door (`POST /campaigns/{id}/transition` — the multi-entity door refuses a campaign); its one
+ * dispatching press is <b>Start campaign</b> (or <b>Re-check members</b> once started), asked twice
+ * because it authorises every ungated dispatch in the campaign; and *Run the next phase*, *Refine*,
+ * *Edit* and *Reshape* are not offered, because the service would refuse every one of them.
+ *
  * <p><b>The number is resolved by reading the project</b>: there is no read by number, so the page
  * reads the collection the desk reads and looks the number up (`entity-nodes.ts`). A feature's page
  * needs its epic and siblings anyway. The page listens to both the `epics` and `tickets` topics and
@@ -142,6 +151,7 @@ interface TreeRow {
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     Async,
+    CampaignMembers,
     DossierPanel,
     EntityTransitionPanel,
     MarkdownView,
@@ -226,13 +236,40 @@ interface TreeRow {
             <a [routerLink]="routeOf(first)">{{ label(first) }}</a>
           </dd>
         }
-        <dt>Opened</dt>
-        <dd class="opened">{{ age(n.createdAt) }}</dd>
-        <dt>Updated</dt>
-        <dd class="updated">{{ age(n.updatedAt) }}</dd>
+        @if (n.createdAt) {
+          <dt>Opened</dt>
+          <dd class="opened">{{ age(n.createdAt) }}</dd>
+        }
+        @if (n.updatedAt) {
+          <dt>Updated</dt>
+          <dd class="updated">{{ age(n.updatedAt) }}</dd>
+        }
       </dl>
 
-      @if (lifecycle()) {
+      @if (lifecycle() && n.archetype === 'CAMPAIGN') {
+        <section class="flow start" aria-label="Start">
+          <div class="actions">
+            <qits-button
+              class="dispatch start-campaign"
+              variant="primary"
+              [disabled]="!dispatchable() || action() !== null"
+              [busy]="action() === 'dispatch:FLOW'"
+              (pressed)="start()"
+            >
+              {{ confirming() === 'start' ? 'Confirm ' + startLabel().toLowerCase() + '?' : startLabel() }}
+            </qits-button>
+            @if (confirming() === 'start') {
+              <qits-button variant="ghost" size="sm" (pressed)="confirming.set(null)">
+                Cancel
+              </qits-button>
+            }
+            <span class="note flow-note">{{ flowNote() }}</span>
+          </div>
+          @if (confirming() === 'start') {
+            <p class="start-caption" role="status">{{ startCaption }}</p>
+          }
+        </section>
+      } @else if (lifecycle()) {
         <section class="flow" aria-label="Agent">
           <div class="actions">
             <qits-button
@@ -276,9 +313,11 @@ interface TreeRow {
       }
 
       <div class="actions moves">
-        <qits-button variant="secondary" [disabled]="action() !== null" (pressed)="startEditing()">
-          Edit
-        </qits-button>
+        @if (n.archetype !== 'CAMPAIGN') {
+          <qits-button variant="secondary" [disabled]="action() !== null" (pressed)="startEditing()">
+            Edit
+          </qits-button>
+        }
         @for (step of moves(); track step.target) {
           <qits-button
             [class]="'move ' + step.kind.toLowerCase()"
@@ -314,14 +353,16 @@ interface TreeRow {
             {{ ticket()?.blocked ? 'Unblock' : 'Block' }}
           </qits-button>
         }
-        <qits-button
-          class="reshape"
-          variant="ghost"
-          [disabled]="action() !== null"
-          (pressed)="reshaping.set(true)"
-        >
-          Reshape
-        </qits-button>
+        @if (n.archetype !== 'CAMPAIGN') {
+          <qits-button
+            class="reshape"
+            variant="ghost"
+            [disabled]="action() !== null"
+            (pressed)="reshaping.set(true)"
+          >
+            Reshape
+          </qits-button>
+        }
         @if (ticket()) {
           <qits-button
             class="delete"
@@ -470,7 +511,15 @@ interface TreeRow {
 
       <section class="body" [attr.data-archetype]="n.archetype">
         <h2>{{ ticket() ? 'The work' : 'Description' }}</h2>
-        @if (n.description; as text) {
+        @if (n.archetype === 'CAMPAIGN') {
+          <app-campaign-members
+            [campaignId]="n.id"
+            [projectSlug]="projectSlug()"
+            [entities]="campaignCandidates()"
+            [repositories]="repositoryList()"
+            [revision]="revision()"
+          />
+        } @else if (n.description; as text) {
           <app-markdown class="description" [text]="text" />
         } @else {
           <p class="absent">
@@ -680,6 +729,11 @@ interface TreeRow {
       color: #6b7280;
       font-size: 0.85rem;
     }
+    .start-caption {
+      margin: 0.5rem 0 0;
+      color: #92400e;
+      font-size: 0.85rem;
+    }
     .dispatched {
       display: flex;
       gap: 0.5rem;
@@ -804,6 +858,7 @@ export class EntityDetailPage {
   private readonly api = inject(EntitiesApi);
   private readonly projects = inject(ProjectsApi);
   private readonly refinements = inject(RefinementsApi);
+  private readonly campaigns = inject(CampaignsApi);
   private readonly archetypes = inject(ArchetypesApi);
   private readonly dossier = inject(DossierApi);
   private readonly events = inject(ProjectEvents);
@@ -839,8 +894,15 @@ export class EntityDetailPage {
   /** Which write is in flight: `dispatch:<mode>`, `refine`, `move:<target>`, `save`, … */
   protected readonly action = signal<string | null>(null);
   protected readonly actionFailure = signal<string | null>(null);
-  /** Which destructive press is waiting for its second press. */
-  protected readonly confirming = signal<'supersede' | 'delete' | null>(null);
+  /** Which destructive (or authorising) press is waiting for its second press. */
+  protected readonly confirming = signal<'supersede' | 'delete' | 'start' | null>(null);
+
+  /** What the start press authorises, said on its confirm step (qits-419). */
+  protected readonly startCaption =
+    'Start — this authorises every dispatch in this campaign that no approval gates';
+
+  /** Bumped after this page's own presses, so a campaign's own reads re-read. */
+  protected readonly revision = signal(0);
 
   protected readonly editing = signal(false);
   protected readonly draftTitle = signal('');
@@ -926,10 +988,25 @@ export class EntityDetailPage {
     () => this.room() !== null || this.state()?.nextPhase === 'refine',
   );
 
+  /** The start press's word: *Start campaign*, or *Re-check members* once a start is live. */
+  protected readonly startLabel = computed(() =>
+    this.state()?.nextPhase === 'recheck' ? 'Re-check members' : 'Start campaign',
+  );
+
   protected readonly flowNote = computed(() => {
     const state = this.state();
     if (!state) {
       return '';
+    }
+    if (this.node()?.archetype === 'CAMPAIGN') {
+      if (state.dispatchable) {
+        return state.nextPhase === 'recheck'
+          ? 'Running — a press re-checks every waiting member now.'
+          : 'A press starts the campaign.';
+      }
+      return state.status
+        ? `Nothing to start at ${statusLabel(state.status)} — a campaign starts from refined.`
+        : 'Nothing to start.';
     }
     if (state.dispatchable && state.nextPhase) {
       return `A press starts the ${state.nextPhase} phase.`;
@@ -1051,6 +1128,23 @@ export class EntityDetailPage {
   });
 
   protected readonly hasDossier = computed(() => this.dossierPages().length > 0);
+
+  /** The project's epics and tickets, as a campaign's add-member picker offers them. */
+  protected readonly campaignCandidates = computed<readonly CampaignCandidate[]>(() =>
+    (this.loaded()?.nodes ?? [])
+      .filter((node) => node.archetype === 'EPIC' || node.archetype === 'TICKET')
+      .map((node) => ({
+        id: node.id,
+        archetype: node.archetype,
+        qualifiedId: node.qualifiedId,
+        title: node.title,
+      })),
+  );
+
+  /** The project's repositories by name, for a campaign's *repository releases* criterion. */
+  protected readonly repositoryList = computed<readonly string[]>(() =>
+    [...(this.loaded()?.repositories.values() ?? [])].sort(),
+  );
   protected readonly dossierPageSlug = computed(() => this.query().get('page'));
 
   /**
@@ -1071,7 +1165,8 @@ export class EntityDetailPage {
   /** Back to the desk filtered to this node's root archetype — where the reader came from. */
   protected readonly deskQuery = computed(() => {
     const node = this.node();
-    const root = node?.entity?.archetype ?? (node?.epic ? 'EPIC' : null);
+    const root =
+      node?.entity?.archetype ?? (node?.epic ? 'EPIC' : node?.campaign ? 'CAMPAIGN' : null);
     return root ? { [ARCHETYPE_PARAM]: archetypeFilterParam(root) } : {};
   });
 
@@ -1166,9 +1261,12 @@ export class EntityDetailPage {
       this.room.set(null);
       return;
     }
+    // A campaign has no refinement room — its members are refined, not it.
     const [state, room] = await Promise.all([
       this.api.dispatchState(node.id).catch(() => null),
-      this.refinements.findFor(node.id).catch(() => null),
+      node.archetype === 'CAMPAIGN'
+        ? Promise.resolve(null)
+        : this.refinements.findFor(node.id).catch(() => null),
     ]);
     if (attempt === this.attempt) {
       this.state.set(state);
@@ -1178,7 +1276,8 @@ export class EntityDetailPage {
 
   async readAudit(quiet = false): Promise<void> {
     const node = this.node();
-    const key = node?.entity?.id ?? node?.epic?.id ?? null;
+    // A campaign's writes are audited under its own id, the way an epic's tree is under the epic's.
+    const key = node?.entity?.id ?? node?.epic?.id ?? node?.campaign?.id ?? null;
     if (!key) {
       this.audit.set(ready([]));
       return;
@@ -1232,7 +1331,33 @@ export class EntityDetailPage {
       return;
     }
     await this.run(`dispatch:${mode}`, async () => {
-      this.dispatched.set(await this.api.dispatch(node.id, mode));
+      const answer = await this.api.dispatch(node.id, mode);
+      this.dispatched.set('dispatch' in answer ? answer.dispatch : null);
+      await this.load(true);
+    });
+  }
+
+  /**
+   * **Start a campaign** — asked twice, because it is a decision: the first press shows what it
+   * authorises (every dispatch in the campaign no approval gates), the second sends it. It is the
+   * dispatching press (`FLOW`) on the campaign, which answers `{progress}`; the campaign's own reads
+   * re-read. Once a start is live the same press re-checks the waiting members. A 403 (a non-admin
+   * session) shows the service's sentence the way the dispatch press does.
+   */
+  protected async start(): Promise<void> {
+    const node = this.node();
+    if (!node || this.action() || !this.dispatchable()) {
+      return;
+    }
+    if (this.confirming() !== 'start') {
+      this.confirming.set('start');
+      this.actionFailure.set(null);
+      return;
+    }
+    this.confirming.set(null);
+    await this.run('dispatch:FLOW', async () => {
+      await this.api.dispatch(node.id, 'FLOW');
+      this.revision.update((count) => count + 1);
       await this.load(true);
     });
   }
@@ -1263,6 +1388,10 @@ export class EntityDetailPage {
     await this.run(`move:${step.target}`, async () => {
       if (node.archetype === 'TICKET') {
         await this.api.transition(node.id, step.target);
+      } else if (node.archetype === 'CAMPAIGN') {
+        // The campaign's own door is the only one that moves its status (qits-413).
+        await this.campaigns.transition(node.id, step.target);
+        this.revision.update((count) => count + 1);
       } else {
         await this.projects.transitionEpic(node.id, step.target);
       }

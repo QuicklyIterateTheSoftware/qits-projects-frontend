@@ -3,13 +3,8 @@ import { RouterLink } from '@angular/router';
 import { QitsBadge, QitsCard } from '@qits/ui-components';
 import { NONE, relativeSince } from '../ui/format';
 import { MarkdownView } from '../ui/markdown-view';
-import {
-  BLOCKED_BADGE,
-  epicProgress,
-  statusBadge,
-  ticketTypeBadge,
-  type Entity,
-} from './entities-model';
+import { BLOCKED_BADGE, epicProgress, statusBadge, ticketTypeBadge } from './entities-model';
+import { campaignLine, type WorkItem } from './campaign-model';
 import { archetypeLabel, entityRoute } from './entity-nodes';
 
 /**
@@ -23,7 +18,8 @@ import { archetypeLabel, entityRoute } from './entity-nodes';
  * dispatching and refining presses live on the page, where the dispatch state can be read first.
  *
  * <p>The body is archetype-shaped and small: a ticket's impetus (the reporter's words) and its
- * refined description, an epic's description and how much of its tree has landed. Everything larger
+ * refined description, an epic's description and how much of its tree has landed, a campaign's
+ * member count and whether it is running (its listing carries no age). Everything larger
  * — the feature/task tree, the thread, the dossier — is the page's.
  *
  * <p>A null `qualifiedId` draws no identifier (the service could not resolve the project row), and
@@ -62,7 +58,9 @@ import { archetypeLabel, entityRoute } from './entity-nodes';
           <span class="progress">{{ landed }}</span>
           <span class="dot" aria-hidden="true">·</span>
         }
-        <span class="age">{{ age() }}</span>
+        @if (age(); as opened) {
+          <span class="age">{{ opened }}</span>
+        }
       </p>
 
       @if (ticket()?.impetus; as impetus) {
@@ -126,7 +124,7 @@ import { archetypeLabel, entityRoute } from './entity-nodes';
   `,
 })
 export class EntityCard {
-  readonly entity = input.required<Entity>();
+  readonly entity = input.required<WorkItem>();
 
   /** The project's slug, which every address is spelled with. The desk always has it. */
   readonly projectSlug = input<string>('');
@@ -147,9 +145,15 @@ export class EntityCard {
 
   protected readonly route = computed(() => entityRoute(this.projectSlug(), this.entity()));
 
-  /** "3 of 5 implemented" for an epic with a tree; nothing for a ticket or an empty epic. */
+  /**
+   * "3 of 5 implemented" for an epic with a tree, "3 members · running" for a campaign; nothing for a
+   * ticket or an empty epic.
+   */
   protected readonly progress = computed(() => {
     const entity = this.entity();
+    if (entity.archetype === 'CAMPAIGN') {
+      return campaignLine(entity);
+    }
     if (entity.archetype !== 'EPIC') {
       return null;
     }
@@ -157,5 +161,9 @@ export class EntityCard {
     return total > 0 ? `${implemented} of ${total} implemented` : null;
   });
 
-  protected readonly age = computed(() => relativeSince(this.entity().createdAt));
+  /** How long ago it was opened, or null where the read carries no timestamp (a campaign). */
+  protected readonly age = computed(() => {
+    const at = this.entity().createdAt;
+    return at ? relativeSince(at) : null;
+  });
 }

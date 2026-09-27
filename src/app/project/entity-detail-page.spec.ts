@@ -98,6 +98,7 @@ const REGISTRY = {
       'ASSIGNEE',
       'CREATED_BY',
     ]),
+    spec('CAMPAIGN', WORDS, ['TITLE', 'SLUG', 'DESCRIPTION', 'STATUS']),
     spec('FEATURE', [], ['TITLE', 'SLUG', 'DESCRIPTION', 'IMPLEMENTED_AT', 'DEPENDS_ON']),
     spec(
       'TASK',
@@ -182,6 +183,61 @@ const TICKET: TicketDto = {
   workspaces: [],
 };
 
+/** A campaign on the desk: its listing row, and its full read with two members. */
+const CAMPAIGN_ROW = {
+  id: 'c1',
+  number: 430,
+  qualifiedId: 'qits-430',
+  projectId: 'p1',
+  title: 'Rename qits-x',
+  status: 'REFINED',
+  started: false,
+  active: false,
+  members: 2,
+};
+
+function campaignMember(id: string, qualified: string, position: number, groups: object[] = []) {
+  return {
+    membershipId: `m-${id}`,
+    position,
+    entity: { id, archetype: 'TICKET', qualifiedId: qualified, title: `Member ${qualified}`, status: 'REPORTED', blocked: false },
+    claimedAt: null,
+    joinedRunning: false,
+    dispatchedAt: null,
+    dispatch: { workspaceId: null, branch: null, agentLaunch: null },
+    dispatchRefusal: null,
+    dispatchRefusedAt: null,
+    dispatchError: null,
+    groups,
+  };
+}
+
+const CAMPAIGN = {
+  ...CAMPAIGN_ROW,
+  slug: 'rename-qits-x',
+  description: 'Rename it **in order**.',
+  start: null,
+  members: [
+    campaignMember('t1', 'qits-41', 0),
+    campaignMember('e1', 'qits-12', 1, [
+      {
+        id: 'g1',
+        criteria: [
+          {
+            id: 'k1',
+            kind: 'ENTITY_STATUS',
+            predicate: { entityId: 't1', status: 'VERIFIED' },
+            seeded: true,
+            satisfiedAt: null,
+            evidence: null,
+            approval: null,
+          },
+        ],
+      },
+    ]),
+  ],
+};
+
 function stateOf(over: Partial<EntityDispatchStateDto> = {}): EntityDispatchStateDto {
   return {
     entityId: 't1',
@@ -217,14 +273,17 @@ describe('EntityDetailPage', () => {
   let rooms: Record<string, object | null>;
   let registry: object;
   let ticketPatch: Partial<TicketDto>;
+  let failures: Record<string, { status: number; body: object }>;
 
   beforeEach(async () => {
     sent = [];
     registry = REGISTRY;
     ticketPatch = {};
+    failures = {};
     dispatchStates = {
       t1: stateOf(),
       e1: stateOf({ entityId: 'e1', archetype: 'EPIC', status: 'REFINED', nextPhase: 'implement' }),
+      c1: stateOf({ entityId: 'c1', archetype: 'CAMPAIGN', status: 'REFINED', nextPhase: 'start' }),
     };
     rooms = {};
     TestBed.configureTestingModule({
@@ -260,6 +319,11 @@ describe('EntityDetailPage', () => {
     }
     if (url === '/projects/api/projects/p1/epics') return { entries: [{ epic: EPIC }] };
     if (url === '/projects/api/projects/p1/tickets') return { entries: [{ ticket: { ...TICKET, ...ticketPatch } }] };
+    if (url === '/projects/api/projects/p1/campaigns') return { campaigns: [CAMPAIGN_ROW] };
+    if (url === '/projects/api/campaigns/c1') return { campaign: CAMPAIGN };
+    if (url === '/projects/api/campaigns/c1/transition') {
+      return { campaign: { ...CAMPAIGN, status: (request.request.body as { target: string }).target } };
+    }
     if (url === '/projects/api/epics/e1/features') return { entries: [{ feature: FEATURE }] };
     if (url === '/projects/api/features/f1/tasks') {
       return { entries: [{ task: TASK_DONE }, { task: TASK_OPEN }] };
@@ -273,6 +337,15 @@ describe('EntityDetailPage', () => {
     }
     const dispatch = /^\/projects\/api\/entities\/([^/]+)\/dispatch$/.exec(url);
     if (dispatch && method === 'GET') return { state: dispatchStates[dispatch[1]] };
+    if (dispatch && method === 'POST' && dispatch[1] === 'c1') {
+      return {
+        progress: {
+          campaign: { id: 'c1', qualifiedId: 'qits-430', title: 'Rename qits-x', status: 'REFINED', start: null },
+          evaluator: { connected: true, lastSweepCompletedAt: null, stalled: false },
+          members: [],
+        },
+      };
+    }
     if (dispatch && method === 'POST') {
       const mode = (request.request.body as { mode: string }).mode;
       return {
@@ -359,7 +432,12 @@ describe('EntityDetailPage', () => {
           url: request.request.url,
           body: request.request.body,
         });
-        request.flush(respond(request) as object);
+        const failure = failures[`${request.request.method} ${request.request.url}`];
+        if (failure) {
+          request.flush(failure.body, { status: failure.status, statusText: 'Refused' });
+        } else {
+          request.flush(respond(request) as object);
+        }
       }
     }
     harness.detectChanges();
@@ -685,6 +763,117 @@ describe('EntityDetailPage', () => {
       const body = writes()[0].body as Record<string, { membership: unknown; dependsOn: string }>;
       expect(body['k2'].membership).toEqual({ parent: 'f1', position: 1 });
       expect(body['k2'].dependsOn).toBe('k1');
+    });
+  });
+  /**
+   * qits-419: a campaign resolves at its number like every other node, draws its own body, moves
+   * through its own door, and its one press — Start — is asked twice because it authorises every
+   * ungated dispatch in the campaign.
+   */
+  describe('a campaign', () => {
+    it('resolves at :project/work/:number and draws the CAMPAIGN body', async () => {
+      await open('/qits/work/qits-430');
+
+      expect(element().querySelector('h1')?.textContent).toContain('Rename qits-x');
+      expect(element().querySelector('.archetype')?.textContent).toContain('campaign');
+      const body = element().querySelector('.body[data-archetype="CAMPAIGN"]');
+      expect(body?.querySelector('app-campaign-members')).toBeTruthy();
+      expect(body?.querySelector('.description strong')?.textContent).toBe('in order');
+      expect(
+        Array.from(body!.querySelectorAll('.member .qualified')).map((node) => node.textContent),
+      ).toEqual(['qits-41', 'qits-12']);
+      expect(body?.querySelector('.seeded')?.textContent).toBe('seeded');
+      expect(sent.map((request) => request.url)).toContain('/projects/api/campaigns/c1');
+    });
+
+    it('offers Start, and not Run the next phase, Refine, Edit or Reshape', async () => {
+      await open('/qits/work/qits-430');
+
+      expect(buttonNamed('Start campaign').disabled).toBe(false);
+      const labels = Array.from(element().querySelectorAll('button')).map((node) =>
+        node.textContent?.trim(),
+      );
+      for (const absent of ['Run the next phase', 'Refine', 'Open refinement', 'Edit', 'Reshape', 'Dispatch']) {
+        expect(labels).not.toContain(absent);
+      }
+      // A campaign has no refinement room, so none is looked for.
+      expect(sent.some((request) => request.url.endsWith('/c1/refinement'))).toBe(false);
+    });
+
+    it('starts only on the confirm press, which names what it authorises', async () => {
+      await open('/qits/work/qits-430');
+
+      buttonNamed('Start campaign').click();
+      await serve();
+      expect(writes()).toEqual([]);
+      expect(element().querySelector('.start-caption')?.textContent).toBe(
+        'Start — this authorises every dispatch in this campaign that no approval gates',
+      );
+
+      buttonNamed('Confirm start campaign?').click();
+      await serve();
+      expect(writes()).toEqual([
+        { method: 'POST', url: '/projects/api/entities/c1/dispatch', body: { mode: 'FLOW' } },
+      ]);
+      expect(element().querySelector('.start-caption')).toBeNull();
+      expect(element().querySelector('.dispatched')).toBeNull();
+    });
+
+    it('reads Re-check members once a start is live', async () => {
+      dispatchStates['c1'] = stateOf({
+        entityId: 'c1',
+        archetype: 'CAMPAIGN',
+        status: 'REFINED',
+        nextPhase: 'recheck',
+      });
+      await open('/qits/work/qits-430');
+
+      expect(buttonNamed('Re-check members')).toBeTruthy();
+    });
+
+    it('is not startable where the state says so', async () => {
+      dispatchStates['c1'] = stateOf({
+        entityId: 'c1',
+        archetype: 'CAMPAIGN',
+        status: 'REPORTED',
+        nextPhase: 'start',
+        dispatchable: false,
+      });
+      await open('/qits/work/qits-430');
+
+      expect(buttonNamed('Start campaign').disabled).toBe(true);
+    });
+
+    it('shows a non-admin’s 403 the way the dispatch press does', async () => {
+      failures['POST /projects/api/entities/c1/dispatch'] = {
+        status: 403,
+        body: { message: 'only an admin starts a campaign' },
+      };
+      await open('/qits/work/qits-430');
+
+      buttonNamed('Start campaign').click();
+      await serve();
+      buttonNamed('Confirm start campaign?').click();
+      await serve();
+
+      expect(element().querySelector('.failed')?.textContent).toContain(
+        '403 only an admin starts a campaign',
+      );
+    });
+
+    it('moves its status through the campaign door, never the multi-entity transition', async () => {
+      await open('/qits/work/qits-430');
+
+      button('.move.forward').click();
+      await serve();
+
+      expect(writes()).toEqual([
+        {
+          method: 'POST',
+          url: '/projects/api/campaigns/c1/transition',
+          body: { target: 'IMPLEMENTED' },
+        },
+      ]);
     });
   });
 });

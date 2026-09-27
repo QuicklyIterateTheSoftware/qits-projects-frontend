@@ -10,14 +10,15 @@ import {
   type TicketEntity,
 } from '../project/entities-model';
 import type { EntityTransitionRequest } from '../project/entity-transition-model';
+import { campaignEntity, type CampaignEntity, type WorkItem } from '../project/campaign-model';
 import { QITS_API_BASE } from './api-base';
+import { CampaignsApi } from './campaigns-api';
 import { ProjectsApi } from './projects-api';
 import type {
   AuditEntriesResponse,
   AuditEntryDto,
   DispatchMode,
-  EntityDispatchDto,
-  EntityDispatchResponse,
+  EntityDispatchAnswer,
   EntityDispatchStateDto,
   EntityDispatchStateResponse,
   EntityStateDto,
@@ -98,6 +99,7 @@ export class EntitiesApi {
   private readonly http = inject(HttpClient);
   private readonly base = inject(QITS_API_BASE);
   private readonly projects = inject(ProjectsApi);
+  private readonly campaigns = inject(CampaignsApi);
 
   /**
    * Every entity in a project, of one archetype or of both.
@@ -110,14 +112,39 @@ export class EntitiesApi {
    * grouping and the newest-first ordering belong to the desks: transport does not decide how a
    * screen reads. A project with no rows of an archetype answers an empty list rather than a 404, so
    * absence needs no translation.
+   *
+   * <p><b>Campaigns are roots of work too</b> (qits-419), read from `GET …/campaigns` and stamped
+   * `archetype: 'CAMPAIGN'` here. "Everything" is three reads in parallel, and a filter naming
+   * `CAMPAIGN` reads only that one. Without them the detail page could not resolve a campaign's
+   * number, since it looks the number up in this same collection.
    */
-  async list(projectId: string, archetype?: Archetype): Promise<readonly Entity[]> {
+  list(projectId: string, archetype: Archetype): Promise<readonly Entity[]>;
+  list(projectId: string, archetype: 'CAMPAIGN'): Promise<readonly CampaignEntity[]>;
+  list(projectId: string, archetype?: Archetype | 'CAMPAIGN'): Promise<readonly WorkItem[]>;
+  async list(projectId: string, archetype?: Archetype | 'CAMPAIGN'): Promise<readonly WorkItem[]> {
     if (archetype === 'EPIC') {
       return this.epics(projectId);
     }
     if (archetype === 'TICKET') {
       return this.tickets(projectId);
     }
+    if (archetype === 'CAMPAIGN') {
+      return this.campaignItems(projectId);
+    }
+    const [epics, tickets, campaigns] = await Promise.all([
+      this.epics(projectId),
+      this.tickets(projectId),
+      this.campaignItems(projectId),
+    ]);
+    return [...epics, ...tickets, ...campaigns];
+  }
+
+  /**
+   * The epics and the tickets, without the campaigns — two reads in parallel, exactly the pre-campaign
+   * "everything". For the readers a campaign can never be a subject of: the reshape form (the
+   * multi-entity transition refuses a campaign) and the refinement room (a campaign has none).
+   */
+  async epicsAndTickets(projectId: string): Promise<readonly Entity[]> {
     const [epics, tickets] = await Promise.all([this.epics(projectId), this.tickets(projectId)]);
     return [...epics, ...tickets];
   }
@@ -247,12 +274,15 @@ export class EntitiesApi {
    * refused.
    *
    * <p>Find-or-create behind it, so a second press re-enters the workspace the first one made.
+   *
+   * <p><b>On a campaign the press is its start</b> (qits-417) and the answer is `{progress}` rather
+   * than `{dispatch}`, so the envelope is returned whole and a caller narrows on the key —
+   * `'progress' in answer`. See {@link EntityDispatchAnswer}.
    */
-  async dispatch(entityId: string, mode: DispatchMode): Promise<EntityDispatchDto> {
-    const response = await firstValueFrom(
-      this.http.post<EntityDispatchResponse>(this.dispatchDoor(entityId), { mode }),
+  async dispatch(entityId: string, mode: DispatchMode): Promise<EntityDispatchAnswer> {
+    return firstValueFrom(
+      this.http.post<EntityDispatchAnswer>(this.dispatchDoor(entityId), { mode }),
     );
-    return response.dispatch;
   }
 
   /**
@@ -342,6 +372,12 @@ export class EntitiesApi {
     return Promise.all(
       epics.map(async (epic) => epicEntity(epic, await this.features(epic.id))),
     );
+  }
+
+  /** The campaigns of a project, as desk items. */
+  private async campaignItems(projectId: string): Promise<readonly CampaignEntity[]> {
+    const campaigns = await this.campaigns.list(projectId);
+    return campaigns.map(campaignEntity);
   }
 
   private async features(epicId: string): Promise<readonly FeatureNode[]> {

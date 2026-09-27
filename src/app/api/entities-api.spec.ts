@@ -114,6 +114,18 @@ const settle = async () => {
  * absent field as untouched, so "empty this" needs a spelling of its own; a body that sent
  * `description: ''` would store an empty string where the reader meant nothing.
  */
+const CAMPAIGN = {
+  id: 'c1',
+  number: 430,
+  qualifiedId: 'qits-430',
+  projectId: 'p1',
+  title: 'Rename qits-x',
+  status: 'REFINED',
+  started: false,
+  active: false,
+  members: 3,
+};
+
 describe('EntitiesApi', () => {
   let api: EntitiesApi;
   let http: HttpTestingController;
@@ -197,20 +209,41 @@ describe('EntitiesApi', () => {
     });
 
     /**
-     * No filter means everything, and the two reads go out **together**: a caller asking for the
-     * project's whole body of work pays two round trips, not one per row and not one after the other.
+     * No filter means everything, and the reads go out **together**: a caller asking for the
+     * project's whole body of work pays one round trip per archetype, not one per row and not one
+     * after the other. Campaigns are roots of work too (qits-419), so they are part of "everything".
      */
-    it('reads both archetypes in parallel when no archetype is named', async () => {
+    it('reads every archetype in parallel when no archetype is named', async () => {
       const answer = api.list('p1');
       const epics = http.expectOne('/projects/api/projects/p1/epics');
       const tickets = http.expectOne('/projects/api/projects/p1/tickets');
+      const campaigns = http.expectOne('/projects/api/projects/p1/campaigns');
       epics.flush({ entries: [{ epic: epic() }] });
       tickets.flush({ entries: [{ ticket: ticket() }] });
+      campaigns.flush({ campaigns: [CAMPAIGN] });
       await settle();
       http.expectOne('/projects/api/epics/e1/features').flush({ entries: [] });
 
       const rows = await answer;
-      expect(rows.map((row) => row.archetype)).toEqual(['EPIC', 'TICKET']);
+      expect(rows.map((row) => row.archetype)).toEqual(['EPIC', 'TICKET', 'CAMPAIGN']);
+    });
+
+    it('reads nothing but the campaigns when the campaigns are what was asked for', async () => {
+      const answer = api.list('p1', 'CAMPAIGN');
+      http.expectOne('/projects/api/projects/p1/campaigns').flush({ campaigns: [CAMPAIGN] });
+
+      const rows = await answer;
+      expect(rows).toEqual([
+        expect.objectContaining({
+          archetype: 'CAMPAIGN',
+          id: 'c1',
+          number: 430,
+          qualifiedId: 'qits-430',
+          status: 'REFINED',
+          members: 3,
+        }),
+      ]);
+      expect(http.match(() => true)).toEqual([]);
     });
   });
 
@@ -429,7 +462,7 @@ describe('EntitiesApi', () => {
 
       expect(request.request.method).toBe('POST');
       expect(request.request.body).toEqual({ mode: 'FLOW' });
-      expect(await dispatched).toEqual(answer);
+      expect(await dispatched).toEqual({ dispatch: answer });
     });
 
     it('posts Run the next phase as PHASE to the same door', async () => {
@@ -438,7 +471,23 @@ describe('EntitiesApi', () => {
       request.flush({ dispatch: { ...answer, entityId: 'e1', archetype: 'EPIC', mode: 'PHASE' } });
 
       expect(request.request.body).toEqual({ mode: 'PHASE' });
-      expect((await dispatched).mode).toBe('PHASE');
+      const envelope = await dispatched;
+      expect('dispatch' in envelope && envelope.dispatch.mode).toBe('PHASE');
+    });
+
+    /** On a campaign the press is its start (qits-417), and the answer is its progress instead. */
+    it('answers a campaign’s start as its progress, discriminated by key', async () => {
+      const progress = {
+        campaign: { id: 'c1', qualifiedId: 'qits-430', title: 'Rename', status: 'REFINED', start: null },
+        evaluator: { connected: true, lastSweepCompletedAt: null, stalled: false },
+        members: [],
+      };
+      const dispatched = api.dispatch('c1', 'FLOW');
+      http.expectOne('/projects/api/entities/c1/dispatch').flush({ progress });
+
+      const envelope = await dispatched;
+      expect('progress' in envelope).toBe(true);
+      expect('dispatch' in envelope).toBe(false);
     });
 
     it('never calls the retired per-archetype dispatch doors', async () => {

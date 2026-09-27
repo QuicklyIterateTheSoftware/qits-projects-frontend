@@ -689,6 +689,16 @@ export interface EntityDispatchResponse {
 }
 
 /**
+ * **What the dispatching press answers, for every archetype** — discriminated by key, not by a tag.
+ *
+ * <p>On an epic or a ticket it is `{dispatch}`: where the agent went. On a campaign the press is the
+ * campaign's *start* (qits-417), and it answers `{progress}` — the same wrapper
+ * `GET /campaigns/{id}/progress` answers — because a start dispatches nothing itself; it authorises
+ * the members to run. `'progress' in answer` is the narrowing.
+ */
+export type EntityDispatchAnswer = EntityDispatchResponse | CampaignProgressResponse;
+
+/**
  * What a press *would* do, read before anybody presses — `GET /entities/{id}/dispatch`.
  *
  * <p>This is what decides whether Dispatch and Run the next phase are offered and what they say:
@@ -1538,4 +1548,258 @@ export interface ReleaseArtifactsResponse {
   readonly deployable: boolean;
   readonly artifacts: readonly ReleaseArtifactDto[];
   readonly detail: string | null;
+}
+
+// ---- campaigns (qits-413 … qits-418) ------------------------------------------------------------
+
+/**
+ * **A campaign in a project's listing** — `GET /projects/{projectId}/campaigns` answers
+ * `{"campaigns": [CampaignSummaryDto…]}`, oldest first.
+ *
+ * <p>A campaign is a root of work on the one desk, like an epic or a ticket, but it gathers other
+ * entities rather than holding a tree of its own. The listing carries **no timestamps, no slug and no
+ * description** — the service ships exactly these fields — so a desk card draws what is here and the
+ * detail page reads {@link CampaignDto} for the rest.
+ */
+export interface CampaignSummaryDto {
+  readonly id: string;
+  readonly number: number;
+  readonly qualifiedId: string | null;
+  readonly projectId: string;
+  readonly title: string;
+  readonly status: EntityStatus;
+  /** Whether it has ever been started. */
+  readonly started: boolean;
+  /** Whether its start is live now — leaving REFINED pauses it. */
+  readonly active: boolean;
+  /** How many members it gathers. */
+  readonly members: number;
+}
+
+export interface CampaignsResponse {
+  readonly campaigns: readonly CampaignSummaryDto[];
+}
+
+/** A campaign's start; null on a campaign never started. */
+export interface CampaignStartDto {
+  readonly firstStartedAt: string | null;
+  readonly startedAt: string | null;
+  readonly startedBy: string | null;
+  readonly active: boolean;
+}
+
+/** The entity one membership gathers, as a member row draws it. */
+export interface CampaignMemberEntityDto {
+  readonly id: string;
+  readonly archetype: string;
+  readonly qualifiedId: string | null;
+  readonly title: string;
+  readonly status: EntityStatus | null;
+  readonly blocked: boolean;
+}
+
+/** Where the campaign's dispatch of a member landed; every field null until it has. */
+export interface CampaignDispatchDto {
+  readonly workspaceId: string | null;
+  readonly branch: string | null;
+  readonly agentLaunch: string | null;
+}
+
+/** The four catalogue kinds a criterion can be. */
+export type CriterionKind = 'ENTITY_STATUS' | 'DEPLOYMENT_ACTIVE' | 'SCM_RELEASE' | 'APPROVAL';
+
+/** Another member reaches `status`. */
+export interface EntityStatusPredicate {
+  readonly entityId: string;
+  readonly status: EntityStatus;
+}
+
+/** `applicationName` goes live — in `environmentName` and at least `minimumVersion`, when set. */
+export interface DeploymentActivePredicate {
+  readonly applicationName: string;
+  readonly environmentName: string | null;
+  readonly minimumVersion: string | null;
+}
+
+/** `repositoryName` releases — in `projectId` and at least `minimumVersion`, when set. */
+export interface ScmReleasePredicate {
+  readonly repositoryName: string;
+  readonly projectId: string | null;
+  readonly minimumVersion: string | null;
+}
+
+/** A person's yes. It matches no event, so it carries nothing. */
+export type ApprovalPredicate = Readonly<Record<string, never>>;
+
+/**
+ * **One criterion as the condition door states it** — the four predicate shapes, discriminated on
+ * `kind`. The service writes every key of a shape, optional ones as `null`, and refuses a key the
+ * shape does not have; the SPA's forms produce exactly these.
+ */
+export type CriterionSpec =
+  | { readonly kind: 'ENTITY_STATUS'; readonly predicate: EntityStatusPredicate }
+  | { readonly kind: 'DEPLOYMENT_ACTIVE'; readonly predicate: DeploymentActivePredicate }
+  | { readonly kind: 'SCM_RELEASE'; readonly predicate: ScmReleasePredicate }
+  | { readonly kind: 'APPROVAL'; readonly predicate: ApprovalPredicate };
+
+/** What latched a criterion: an event, or `STATE_AT_START` with no event id. */
+export interface CriterionEvidenceDto {
+  readonly eventId: string | null;
+  readonly signature: string;
+  readonly summary: string;
+}
+
+/** Who approved an APPROVAL criterion, and what they said. */
+export interface CriterionApprovalDto {
+  readonly approvedBy: string | null;
+  readonly note: string | null;
+}
+
+/** One AND'd criterion: its kind, its predicate, whether it is the seeded one, and its latch. */
+export type CriterionDto = CriterionSpec & {
+  readonly id: string;
+  readonly seeded: boolean;
+  readonly satisfiedAt: string | null;
+  readonly evidence: CriterionEvidenceDto | null;
+  readonly approval: CriterionApprovalDto | null;
+};
+
+/** One OR'd group of a condition. */
+export interface CriterionGroupDto {
+  readonly id: string;
+  readonly criteria: readonly CriterionDto[];
+}
+
+/** One membership: the entity it gathers, its run record and its condition. `position` is 0-based. */
+export interface CampaignMemberDto {
+  readonly membershipId: string;
+  readonly position: number;
+  readonly entity: CampaignMemberEntityDto;
+  /** Set once the campaign has claimed the member — dispatched it, or joined it running. */
+  readonly claimedAt: string | null;
+  readonly joinedRunning: boolean;
+  readonly dispatchedAt: string | null;
+  readonly dispatch: CampaignDispatchDto;
+  readonly dispatchRefusal: string | null;
+  readonly dispatchRefusedAt: string | null;
+  readonly dispatchError: string | null;
+  readonly groups: readonly CriterionGroupDto[];
+}
+
+/** A campaign with its start and its members, ordered by position. */
+export interface CampaignDto {
+  readonly id: string;
+  readonly number: number;
+  readonly qualifiedId: string | null;
+  readonly projectId: string;
+  readonly slug: string;
+  readonly title: string;
+  readonly description: string | null;
+  readonly status: EntityStatus;
+  readonly start: CampaignStartDto | null;
+  readonly members: readonly CampaignMemberDto[];
+}
+
+export interface CampaignResponse {
+  readonly campaign: CampaignDto;
+}
+
+export interface CampaignMemberResponse {
+  readonly member: CampaignMemberDto;
+}
+
+/** One criterion of a `PUT …/condition` body: `id` restates an existing one and keeps its latch. */
+export type ConditionCriterion = CriterionSpec & { readonly id?: string };
+
+/** One OR'd group of a `PUT …/condition` body. The service refuses an empty one. */
+export interface ConditionGroup {
+  readonly criteria: readonly ConditionCriterion[];
+}
+
+/**
+ * The eight words a member's progress is, derived by the service in this order, the first match
+ * winning: DROPPED, DONE, DISPATCH_FAILED, JOINED_RUNNING, RUNNING, REFUSED, READY, WAITING.
+ */
+export type CampaignMemberState =
+  | 'DROPPED'
+  | 'DONE'
+  | 'DISPATCH_FAILED'
+  | 'JOINED_RUNNING'
+  | 'RUNNING'
+  | 'REFUSED'
+  | 'READY'
+  | 'WAITING';
+
+/** The campaign a progress read is of. */
+export interface CampaignProgressCampaignDto {
+  readonly id: string;
+  readonly qualifiedId: string | null;
+  readonly title: string;
+  readonly status: EntityStatus;
+  readonly start: CampaignStartDto | null;
+}
+
+/**
+ * The criteria evaluator's health: `connected` is the event stream's live connection,
+ * `lastSweepCompletedAt` and `stalled` the catch-up sweep's census.
+ */
+export interface CampaignEvaluatorDto {
+  readonly connected: boolean;
+  readonly lastSweepCompletedAt: string | null;
+  readonly stalled: boolean;
+}
+
+/**
+ * One criterion judged. The progress read carries **no predicate** — `wouldBeSatisfiedBy` is the
+ * service's own sentence for it — and `satisfiable: false` (ENTITY_STATUS alone) comes with `reason`.
+ */
+export interface CampaignCriterionProgressDto {
+  readonly id: string;
+  readonly kind: CriterionKind;
+  readonly seeded: boolean;
+  readonly satisfied: boolean;
+  readonly wouldBeSatisfiedBy: string;
+  readonly satisfiable: boolean;
+  readonly reason: string | null;
+  readonly evidence: CriterionEvidenceDto | null;
+  readonly approval: CriterionApprovalDto | null;
+  readonly satisfiedAt: string | null;
+}
+
+/** One OR'd group, and whether every one of its criteria is latched. */
+export interface CampaignGroupProgressDto {
+  readonly id: string;
+  readonly satisfied: boolean;
+  readonly criteria: readonly CampaignCriterionProgressDto[];
+}
+
+/** One member's progress: its state, what it waits for (entity ids), its condition judged. */
+export interface CampaignMemberProgressDto {
+  readonly membershipId: string;
+  readonly position: number;
+  readonly entity: CampaignMemberEntityDto;
+  readonly state: CampaignMemberState;
+  readonly waitsFor: readonly string[];
+  readonly joinedRunning: boolean;
+  readonly groups: readonly CampaignGroupProgressDto[];
+  readonly dispatchedAt: string | null;
+  readonly dispatch: CampaignDispatchDto;
+  readonly dispatchRefusal: string | null;
+  readonly dispatchRefusedAt: string | null;
+  readonly dispatchError: string | null;
+}
+
+/** How a campaign is doing — derived on every read; nothing of it is stored. */
+export interface CampaignProgressDto {
+  readonly campaign: CampaignProgressCampaignDto;
+  readonly evaluator: CampaignEvaluatorDto;
+  readonly members: readonly CampaignMemberProgressDto[];
+}
+
+/**
+ * `GET /campaigns/{id}/progress`'s answer — and what the start press
+ * (`POST /entities/{id}/dispatch` on a campaign) answers too.
+ */
+export interface CampaignProgressResponse {
+  readonly progress: CampaignProgressDto;
 }

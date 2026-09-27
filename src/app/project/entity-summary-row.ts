@@ -2,7 +2,8 @@ import { ChangeDetectionStrategy, Component, computed, input } from '@angular/co
 import { RouterLink } from '@angular/router';
 import { QitsBadge } from '@qits/ui-components';
 import { relativeSince } from '../ui/format';
-import { statusBadge, type Entity } from './entities-model';
+import type { WorkItem } from './campaign-model';
+import { statusBadge } from './entities-model';
 import { archetypeLabel, entityAddress, entityRoute } from './entity-nodes';
 
 /**
@@ -25,7 +26,9 @@ import { archetypeLabel, entityAddress, entityRoute } from './entity-nodes';
     @if (successor(); as next) {
       <a class="successor" [routerLink]="successorRoute()">superseded by {{ next.title }}</a>
     }
-    <span class="age">{{ age() }}</span>
+    @if (age(); as opened) {
+      <span class="age">{{ opened }}</span>
+    }
   `,
   styles: `
     :host {
@@ -59,19 +62,23 @@ import { archetypeLabel, entityAddress, entityRoute } from './entity-nodes';
   `,
 })
 export class EntitySummaryRow {
-  readonly entity = input.required<Entity>();
+  readonly entity = input.required<WorkItem>();
 
   /** The project's slug, which every address is spelled with. */
   readonly projectSlug = input<string>('');
 
   /** The epic that superseded this one, when the desk holds it; null draws nothing. */
-  readonly successor = input<Entity | null>(null);
+  readonly successor = input<WorkItem | null>(null);
 
   protected readonly badge = computed(() => statusBadge(this.entity().status));
   protected readonly archetype = computed(() => archetypeLabel(this.entity().archetype));
   protected readonly address = computed(() => entityAddress(this.entity()));
   protected readonly route = computed(() => entityRoute(this.projectSlug(), this.entity()));
-  protected readonly age = computed(() => relativeSince(this.entity().createdAt));
+  /** Null where the read carries no timestamp (a campaign's listing). */
+  protected readonly age = computed(() => {
+    const at = this.entity().createdAt;
+    return at ? relativeSince(at) : null;
+  });
 
   protected readonly successorRoute = computed(() => {
     const next = this.successor();

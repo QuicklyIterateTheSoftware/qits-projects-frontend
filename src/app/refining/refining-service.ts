@@ -37,7 +37,8 @@ export class RefiningService {
     projectId: string,
     number: number,
   ): Promise<{ readonly node: EntityNode | null; readonly nodes: readonly EntityNode[] }> {
-    const nodes = flattenEntities(await this.entities.list(projectId));
+    // Epics and tickets only: a campaign has no refinement room (qits-419).
+    const nodes = flattenEntities(await this.entities.epicsAndTickets(projectId));
     return { node: nodeByNumber(nodes, number), nodes };
   }
 }

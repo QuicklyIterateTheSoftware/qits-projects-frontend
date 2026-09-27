@@ -19,13 +19,14 @@ import { LOADING, failed, ready, type Loadable } from '../ui/loadable';
 import { EntityCard } from './entity-card';
 import { EntitySummaryRow } from './entity-summary-row';
 import { EntityTransitionPanel } from './entity-transition-panel';
-import { groupByStatus, statusVocabulary, type Entity } from './entities-model';
+import type { WorkItem } from './campaign-model';
+import { groupByStatus, statusVocabulary } from './entities-model';
 import { archetypeLabel } from './entity-nodes';
 import { WorkspaceLinks } from './workspace-links';
 
 /** What one read brings back: the entities, and the vocabulary their sections are ordered by. */
 interface Desk {
-  readonly entities: readonly Entity[];
+  readonly entities: readonly WorkItem[];
   readonly registry: ArchetypeRegistry;
 }
 
@@ -46,6 +47,10 @@ interface Desk {
  * <p><b>It listens as well as reads.</b> An agent, or another tab, changes these rows without this
  * page doing anything: both the `epics` and the `tickets` topics re-read it, quietly — a hint never
  * blanks the desk, and a failed quiet re-read leaves the rows standing.
+ *
+ * <p><b>Campaigns are on the desk too</b> (qits-419): {@link EntitiesApi.list} reads them beside
+ * the epics and tickets, and `?archetype=campaign` reads only them. A campaign has no Reshape — the
+ * multi-entity transition refuses it — so its card carries no press at all.
  *
  * <p><b>The only press on a row is Reshape</b> (promote, demote, reparent — the multi-entity
  * transition, through {@link EntityTransitionPanel}). Dispatch, Run the next phase and Refine are on
@@ -102,9 +107,11 @@ interface Desk {
                   <div class="entry">
                     <app-entity-card [entity]="entity" [projectSlug]="linkSlug()" />
                     <div class="actions">
-                      <qits-button variant="ghost" size="sm" (pressed)="reshaping.set(entity.id)">
-                        Reshape
-                      </qits-button>
+                      @if (entity.archetype !== 'CAMPAIGN') {
+                        <qits-button variant="ghost" size="sm" (pressed)="reshaping.set(entity.id)">
+                          Reshape
+                        </qits-button>
+                      }
                       <app-workspace-links [workspaces]="entity.workspaces" />
                     </div>
                     @if (reshaping() === entity.id) {
@@ -186,7 +193,7 @@ export class WorkOverview {
 
   protected readonly loaded = computed(() => this.desk().kind === 'ready');
 
-  protected readonly entities = computed<readonly Entity[]>(() => {
+  protected readonly entities = computed<readonly WorkItem[]>(() => {
     const state = this.desk();
     if (state.kind !== 'ready') {
       return [];
@@ -209,7 +216,7 @@ export class WorkOverview {
     const archetype = this.archetype();
     return archetype
       ? `This project has no ${archetypeLabel(archetype)}s yet.`
-      : 'This project has no epics or tickets yet.';
+      : 'This project has no epics, tickets or campaigns yet.';
   });
 
   private readonly byId = computed(
@@ -255,7 +262,7 @@ export class WorkOverview {
   }
 
   /** The epic that superseded this one, when the desk holds it. */
-  protected successorOf(entity: Entity): Entity | null {
+  protected successorOf(entity: WorkItem): WorkItem | null {
     const id = entity.archetype === 'EPIC' ? entity.supersededByEpicId : null;
     return id ? (this.byId().get(id) ?? null) : null;
   }
@@ -282,7 +289,9 @@ export class WorkOverview {
       const [entities, registry] = await Promise.all([
         this.api.list(
           projectId,
-          archetype === 'EPIC' || archetype === 'TICKET' ? archetype : undefined,
+          archetype === 'EPIC' || archetype === 'TICKET' || archetype === 'CAMPAIGN'
+            ? archetype
+            : undefined,
         ),
         this.archetypes.registry(),
       ]);

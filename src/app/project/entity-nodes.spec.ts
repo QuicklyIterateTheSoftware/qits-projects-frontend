@@ -1,8 +1,10 @@
 import type { EpicDto, FeatureDto, TaskDto, TicketDto } from '../api/dto';
+import { campaignEntity } from './campaign-model';
 import { epicEntity, ticketEntity } from './entities-model';
 import {
   archetypeFromParam,
   archetypeFilterParam,
+  archetypeLabel,
   childrenOf,
   entityAddress,
   entityRoute,
@@ -163,6 +165,42 @@ describe('entity nodes', () => {
       expect(archetypeFromParam('ticket')).toBe('TICKET');
       expect(archetypeFromParam('')).toBeNull();
       expect(archetypeFromParam(null)).toBeNull();
+    });
+  });
+
+  /**
+   * qits-419: a campaign is a root with no children, read by its own arm — never as an epic whose
+   * `features` are undefined, which is what the ticket-or-else-epic fallthrough would make of it.
+   */
+  describe('a campaign', () => {
+    const campaign = campaignEntity({
+      id: 'c1',
+      number: 430,
+      qualifiedId: 'qits-430',
+      projectId: 'p1',
+      title: 'Rename qits-x',
+      status: 'REFINED',
+      started: false,
+      active: false,
+      members: 3,
+    });
+
+    it('flattens to one root node carrying the campaign, and resolves by its number', () => {
+      const nodes = flattenEntities([epicEntity(EPIC), campaign]);
+      const node = nodeByNumber(nodes, 430);
+      expect(node?.archetype).toBe('CAMPAIGN');
+      expect(node?.campaign?.id).toBe('c1');
+      expect(node?.entity).toBeNull();
+      expect(node?.epic).toBeNull();
+      expect(node?.parentId).toBeNull();
+      expect(childrenOf(nodes, 'c1')).toEqual([]);
+      expect(entityRoute('qits', node!)).toEqual(['/', 'qits', 'work', 'qits-430']);
+    });
+
+    it('is labelled and filtered like every other archetype', () => {
+      expect(archetypeLabel('CAMPAIGN')).toBe('campaign');
+      expect(archetypeFilterParam('CAMPAIGN')).toBe('campaign');
+      expect(archetypeFromParam('campaign')).toBe('CAMPAIGN');
     });
   });
 

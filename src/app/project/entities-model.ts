@@ -384,6 +384,15 @@ function walkOf(spec: ArchetypeSpecDto): readonly EntityStatus[] {
 }
 
 /**
+ * What the grouping and the ordering read off a row — its status and when it was opened — so a desk
+ * of epics, tickets and campaigns (qits-419) groups with the one rule.
+ */
+export interface StatusRow {
+  readonly status: EntityStatus | null;
+  readonly createdAt: string;
+}
+
+/**
  * The statuses the desk opens **collapsed** — the two endings, which are the record rather than the
  * work. Presentation only: it decides whether a section starts open, never what is in it, and a word
  * not named here opens expanded, which is the safe direction for a word nobody has seen.
@@ -391,10 +400,10 @@ function walkOf(spec: ArchetypeSpecDto): readonly EntityStatus[] {
 const ARCHIVE_STATUSES: ReadonlySet<string> = new Set(['DONE', 'DROPPED']);
 
 /** One section of the desk: one status word and the entities holding it, newest first. */
-export interface StatusGroup {
+export interface StatusGroup<T extends StatusRow = Entity> {
   readonly status: EntityStatus | null;
   readonly badge: StatusBadge;
-  readonly entities: readonly Entity[];
+  readonly entities: readonly T[];
   /** Whether the section opens collapsed — see {@link ARCHIVE_STATUSES}. */
   readonly archive: boolean;
 }
@@ -407,11 +416,11 @@ export interface StatusGroup {
  * sees where work piles up. A status the vocabulary does not know is not lost — it gets its own
  * section at the end, labelled with its own word.
  */
-export function groupByStatus(
-  entities: readonly Entity[],
+export function groupByStatus<T extends StatusRow>(
+  entities: readonly T[],
   vocabulary: readonly EntityStatus[],
-): readonly StatusGroup[] {
-  const buckets = new Map<string, Entity[]>();
+): readonly StatusGroup<T>[] {
+  const buckets = new Map<string, T[]>();
   for (const entity of entities) {
     const key = entity.status ?? '';
     const bucket = buckets.get(key);
@@ -439,7 +448,7 @@ export function groupByStatus(
  * Newest first, ties keeping the incoming order reversed. Generic over the entity, because the rule
  * is about `createdAt` and every archetype has one.
  */
-export function newestFirst<T extends Entity>(entities: readonly T[]): readonly T[] {
+export function newestFirst<T extends StatusRow>(entities: readonly T[]): readonly T[] {
   return entities
     .map((entity, index) => ({ entity, index }))
     .sort(
@@ -449,7 +458,7 @@ export function newestFirst<T extends Entity>(entities: readonly T[]): readonly 
 }
 
 /** The creation instant in milliseconds, or the epoch for a stamp that will not parse. */
-function createdMs(entity: Entity): number {
+function createdMs(entity: StatusRow): number {
   const at = Date.parse(entity.createdAt);
   return Number.isNaN(at) ? 0 : at;
 }
