@@ -41,6 +41,14 @@ interface DeskWords {
 }
 
 const WORDS: Readonly<Record<AgentSurface, DeskWords>> = {
+  'project.work': {
+    title: 'Front desk agent',
+    invitation: 'Talk to the agent to plan this project’s epics and file and triage its tickets.',
+    starting: 'Starting the front desk agent…',
+    idleLead: 'This project’s desk has had a session before and nothing is running now.',
+    terminal: 'Front desk agent session',
+  },
+  // The two retired desks. No page mounts them any more; their words stay while the type does.
   'project.epics': {
     title: 'Refinement agent',
     invitation: 'Talk to the agent to draft and refine this project’s epics.',
@@ -67,8 +75,8 @@ const WORDS: Readonly<Record<AgentSurface, DeskWords>> = {
  * the board it is about, above the rows it changes, and those rows refresh through the project's live
  * channel when the agent changes them.
  *
- * <p><b>Two surfaces, one panel, one behaviour.</b> {@link surface} chooses which board this is the
- * front desk of. It changes four sentences ({@link WORDS}) and is sent on every launch, which is what
+ * <p><b>Surfaces, one panel, one behaviour.</b> {@link surface} chooses which desk this is the
+ * front desk of — `project.work`, the one desk, on every page since qits-403. It changes four sentences ({@link WORDS}) and is sent on every launch, which is what
  * decides the stored configuration the session is rendered from; it does not change what any button
  * does. The two share a container and a sign-in and nothing else — each gets its own
  * {@link RefinementSession}, provided here rather than at the root, so mounting the second panel
@@ -320,10 +328,9 @@ export class RefinementPanel {
   /**
    * Which session surface this is — where in the product the reader is standing.
    *
-   * Defaulted rather than required, and to the one that existed first: the epics page mounts this
-   * without the attribute and gets exactly what it always got.
+   * Defaulted rather than required, and to the one desk every page launches with: `project.work`.
    */
-  readonly surface = input<AgentSurface>('project.epics');
+  readonly surface = input<AgentSurface>('project.work');
 
   protected readonly words = computed(() => WORDS[this.surface()]);
 

@@ -10,8 +10,8 @@ export interface SurfaceName {
  * The surfaces, **named for where they are rather than for their keys**.
  *
  * <p><b>Why a table and not a prettified key.</b> `epic.chat` and `workspace.chat` are one word apart
- * and are two different places in two different routes; `project.epics` is not "the epics project",
- * it is the refinement agent at the head of a project's epics board. A reader configuring one of
+ * and are two different places in two different routes; `project.work` is not "the work project",
+ * it is the front desk agent at the head of a project's Work desk. A reader configuring one of
  * these has to know which screen they are about to change, and a key title-cased would tell them the
  * opposite of that as often as not. The key is still shown beside the name, because it is what the
  * launch sends and what a log will spell.
@@ -28,13 +28,20 @@ export interface SurfaceName {
  * until somebody writes the sentence.
  */
 export const SURFACE_NAMES: Readonly<Record<string, SurfaceName>> = {
+  'project.work': {
+    title: 'Front desk agent',
+    where:
+      'At the head of a project’s Work desk, where epics are drafted and refined and tickets are filed and triaged.',
+  },
   'project.epics': {
-    title: 'Refinement agent',
-    where: 'At the head of a project’s epics board, where the plan is drafted and refined.',
+    title: 'Refinement agent (retired)',
+    where:
+      'The epics board’s agent before the boards merged into the Work desk. Nothing launches here any more; sessions started before the merge still read it.',
   },
   'project.tickets': {
-    title: 'Triage agent',
-    where: 'At the head of a project’s tickets board, where small work is filed and triaged.',
+    title: 'Triage agent (retired)',
+    where:
+      'The tickets board’s agent before the boards merged into the Work desk. Nothing launches here any more; sessions started before the merge still read it.',
   },
   'epic.chat': {
     title: 'Chat tab, refining an epic',

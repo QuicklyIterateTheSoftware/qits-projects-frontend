@@ -152,12 +152,12 @@ export function isSignInTerminal(command: CommandDto): boolean {
  *
  * ## One instance per surface, which is why this is not a root singleton
  *
- * **A front desk is a session surface, and a project has two of them.** The epics page opens a
- * session for drafting the plan (`project.epics`); the tickets page opens one for filing and triaging
- * the small work (`project.tickets`). They share a container and share a sign-in, and they must not
- * share a conversation — one root instance would mean opening the second panel yanked the first
- * panel's socket onto the other surface's screen. So this is provided by the panel component that
- * owns it, one instance each, and the surface is set with the project in {@link use}.
+ * **A front desk is a session surface.** A project has one desk now — `project.work`, the epics and
+ * tickets desks merged at `:project/work` (qits-403) — but the rule outlives the count: two surfaces
+ * share a container and a sign-in and must not share a conversation, and one root instance would
+ * mean a second panel yanked the first panel's socket onto the other surface's screen. So this is
+ * provided by the panel component that owns it, one instance each, and the surface is set with the
+ * project in {@link use}.
  *
  * The surface changes exactly three things, and nothing else:
  *
@@ -167,9 +167,9 @@ export function isSignInTerminal(command: CommandDto): boolean {
  * - **Resolution only sees its own commands.** Branch 1 attaches to a running agent run at *this*
  *   surface, and branches 3–4 count history and pick the last session from the same filtered list.
  *   See {@link surfaceOf} for how a command's surface is read.
- * - **The tickets surface does not fall back to the lineage read.** `GET /agent-sessions` answers a
- *   tree of sessions with no surface on them, so it cannot say whether *this* surface has history. An
- *   empty filtered command list is the tickets surface's answer: launch fresh.
+ * - **Only the one desk falls back to the lineage read.** `GET /agent-sessions` answers a tree of
+ *   sessions with no surface on them, so it cannot say whether *this* surface has history. Any other
+ *   surface answers from its empty filtered command list: launch fresh.
  *
  * Branch 2 stays surface-agnostic on purpose: a container waiting on a login blocks both equally, and
  * the sign-in terminal is one shared terminal rather than one per surface.
@@ -187,7 +187,7 @@ export class RefinementSession {
    * Which surface this instance answers for. A plain field rather than a signal: nothing renders it,
    * and every reader of it is already inside a method the surface cannot change under.
    */
-  private surfaceKind: AgentSurface = 'project.epics';
+  private surfaceKind: AgentSurface = 'project.work';
 
   private readonly state = signal<SessionBranch>({ kind: 'dormant' });
   private readonly containerState = signal<AgentContainerDto | null>(null);
@@ -255,7 +255,7 @@ export class RefinementSession {
    * the guard for the same reason it is in the reset — a session resolved at one surface is not the
    * other one's session, even in the same project.
    */
-  use(projectId: string, surface: AgentSurface = 'project.epics'): void {
+  use(projectId: string, surface: AgentSurface = 'project.work'): void {
     if (this.project() === projectId && this.surfaceKind === surface) {
       return;
     }
@@ -591,17 +591,17 @@ export class RefinementSession {
   /**
    * Whether anything has ever run an agent *at this surface*. Branch 3's only question.
    *
-   * `commands` arrives already filtered to the surface. The lineage fallback below is the epics
-   * surface's alone: `GET /agent-sessions` answers a tree of session ids with no surface on them, so
-   * it cannot tell whose history it is describing — and the epics surface is the one that may
-   * legitimately claim all of it, since it owns every command from before any of this existed. For
-   * the tickets surface an empty filtered list is the answer, and the answer is "launch fresh".
+   * `commands` arrives already filtered to the surface. The lineage fallback below is the one
+   * desk's alone: `GET /agent-sessions` answers a tree of session ids with no surface on them, so it
+   * cannot tell whose history it is describing — and `project.work`, which inherited the epics desk
+   * that owned every command from before surfaces existed, is the one that may legitimately claim
+   * all of it. For any other surface an empty filtered list is the answer: "launch fresh".
    */
   private async hasHistory(projectId: string, commands: readonly CommandDto[]): Promise<boolean> {
     if (commands.some((command) => command.agentSessions.length > 0)) {
       return true;
     }
-    if (this.surfaceKind !== 'project.epics') {
+    if (this.surfaceKind !== 'project.work') {
       return false;
     }
     try {

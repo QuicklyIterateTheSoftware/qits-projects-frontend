@@ -56,13 +56,15 @@ export type AgentMcpScope = 'PROJECT' | 'REPOSITORY';
  * configuration for that place holds. Nothing is taken away from either, so an agent asked at the
  * tickets surface to open an epic still can.
  *
- * <p><b>The vocabulary is open and platform-wide</b> — eight keys today, of which this daemon serves
- * three (`project.epics`, `project.tickets` and the composed `epic.autonomous`, which no human
- * presses a button for). Only the two a human opens are spelled here, because only those are ever
- * *sent* from this client; `CommandDto.agentSurface` is a plain string for the same reason a
+ * <p><b>The vocabulary is open and platform-wide.</b> This daemon serves the one front desk,
+ * `project.work` — the epics and tickets desks merged at `:project/work` — and the composed
+ * `epic.autonomous`, which no human presses a button for. **Every desk launch sends `project.work`**
+ * (qits-403). `project.epics` and `project.tickets` stay in this type only because they are still
+ * real values: stored configurations and commands launched before the merge still name them, and
+ * they retire together later. `CommandDto.agentSurface` is a plain string for the same reason a
  * component name is, since a daemon may know a key this build has not been told about.
  */
-export type AgentSurface = 'project.epics' | 'project.tickets';
+export type AgentSurface = 'project.work' | 'project.epics' | 'project.tickets';
 
 /** `INTERACTIVE` is the full agent TUI on a PTY — the only mode this panel launches. */
 export type AgentLaunchMode = 'CHAT' | 'INTERACTIVE';

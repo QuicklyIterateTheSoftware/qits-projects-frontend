@@ -67,16 +67,19 @@ describe('AgentSurfacesPage', () => {
     harness = await RouterTestingHarness.create('/agent-configuration');
     http.expectOne('/projects/api/agent-surfaces').flush({
       surfaces: [
-        surface('project.epics'),
+        surface('project.work'),
         surface('epic.chat'),
         surface('workspace.chat'),
         surface('ticket.dispatch'),
+        // A retired desk an estate still stores rows for: listed, and named as retired.
+        surface('project.epics'),
       ],
       builtInServers: ['repository', 'observability', 'actions'],
     });
     await settle();
 
-    expect(text()).toContain('Refinement agent');
+    expect(text()).toContain('Front desk agent');
+    expect(text()).toContain('Refinement agent (retired)');
     expect(text()).toContain('Chat tab, refining an epic');
     expect(text()).toContain('Chat tab, on a workspace');
     // The two nobody presses a button for say so, or they cannot be found at all.

@@ -247,15 +247,20 @@ describe('WorkPage', () => {
     expect(titles()).toEqual(['One desk']);
   });
 
-  /** One front desk agent: its surface follows the filter, one mounted instance at a time. */
-  it('mounts one front desk agent, at the surface the filter implies', async () => {
+  /** One front desk agent, `project.work`, whatever the filter says (qits-403). */
+  it('mounts one front desk agent at project.work, whatever the filter', async () => {
+    for (const address of [
+      '/qits/work',
+      '/qits/work?archetype=epic',
+      '/qits/work?archetype=ticket',
+    ]) {
+      await open(address);
+      expect(element().querySelectorAll('app-refinement-panel')).toHaveLength(1);
+      expect(element().textContent).toContain('Front desk agent');
+      expect(element().textContent).not.toContain('Refinement agent');
+      expect(element().textContent).not.toContain('Triage agent');
+    }
     await open('/qits/work?archetype=epic');
-    expect(element().querySelectorAll('app-refinement-panel')).toHaveLength(1);
-    expect(element().textContent).toContain('Refinement agent');
     expect(element().querySelector('app-new-ticket-form')).toBeNull();
-
-    await open('/qits/work?archetype=ticket');
-    expect(element().querySelectorAll('app-refinement-panel')).toHaveLength(1);
-    expect(element().textContent).toContain('Triage agent');
   });
 });

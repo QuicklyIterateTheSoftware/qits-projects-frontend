@@ -14,7 +14,7 @@ function configuration(
   over: Partial<AgentSurfaceConfigurationDto> = {},
 ): AgentSurfaceConfigurationDto {
   return {
-    surface: 'project.tickets',
+    surface: 'project.work',
     harness: 'CLAUDE',
     model: '',
     effort: '',
@@ -101,7 +101,7 @@ describe('AgentSurfacePage', () => {
     answer: SurfaceListResponse = list(),
     capabilities: object = { harnesses: [CLAUDE, KIMI] },
   ): Promise<void> {
-    harness = await RouterTestingHarness.create('/agent-configuration/surfaces/project.tickets');
+    harness = await RouterTestingHarness.create('/agent-configuration/surfaces/project.work');
     http.expectOne('/projects/api/agent-surfaces').flush(answer);
     http.expectOne('/projects/api/agent-capabilities').flush(capabilities);
     http.expectOne('/projects/api/agent-mcp-catalog').flush({
@@ -135,9 +135,9 @@ describe('AgentSurfacePage', () => {
 
   it('names the surface for where it is, and keeps the key beside it', async () => {
     await open();
-    expect(page().querySelector('h1')?.textContent).toContain('Triage agent');
-    expect(text()).toContain('project.tickets');
-    expect(text()).toContain('tickets board');
+    expect(page().querySelector('h1')?.textContent).toContain('Front desk agent');
+    expect(text()).toContain('project.work');
+    expect(text()).toContain('Work desk');
   });
 
   /**
@@ -156,7 +156,7 @@ describe('AgentSurfacePage', () => {
     field<HTMLElement>('.actions').querySelector('button')?.click();
     await settle();
 
-    const save = http.expectOne('/projects/api/agent-surfaces/project.tickets');
+    const save = http.expectOne('/projects/api/agent-surfaces/project.work');
     expect(save.request.method).toBe('PUT');
     expect(save.request.body.model).toBe('claude-opus-5-20260501');
   });
@@ -178,7 +178,7 @@ describe('AgentSurfacePage', () => {
     field<HTMLElement>('.actions').querySelector('button')?.click();
     await settle();
 
-    const save = http.expectOne('/projects/api/agent-surfaces/project.tickets');
+    const save = http.expectOne('/projects/api/agent-surfaces/project.work');
     expect(save.request.body.harness).toBe('KIMI');
     expect(save.request.body.effort).toBe('');
   });
@@ -205,7 +205,7 @@ describe('AgentSurfacePage', () => {
 
   /** Remote control is on every surface — the owner's rule, and this one is a chat surface. */
   it('offers remote control here as everywhere else', async () => {
-    await open(list({ surface: 'project.tickets' }));
+    await open(list({ surface: 'project.work' }));
     expect(text()).toContain('Enable remote control');
   });
 
@@ -229,7 +229,7 @@ describe('AgentSurfacePage', () => {
   });
 
   it('says whose settings these are when the store refuses the reader', async () => {
-    harness = await RouterTestingHarness.create('/agent-configuration/surfaces/project.tickets');
+    harness = await RouterTestingHarness.create('/agent-configuration/surfaces/project.work');
     http.expectOne('/projects/api/agent-surfaces').flush(null, { status: 403, statusText: 'no' });
     http
       .expectOne('/projects/api/agent-capabilities')

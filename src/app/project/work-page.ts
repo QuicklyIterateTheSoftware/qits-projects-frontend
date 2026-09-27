@@ -42,9 +42,9 @@ interface FilterOption {
  * and whatever the address already names.
  *
  * <p><b>One front desk agent.</b> The refinement panel above the rows is the project's
- * conversation; its surface follows the filter — `project.tickets` (filing and triage) when the desk
- * is filtered to tickets, `project.epics` (drafting the plan) otherwise — mounted as two separate
- * instances so switching the filter never carries one surface's terminal onto the other's.
+ * conversation, and it is always the one desk's surface, `project.work` (qits-403) — whatever the
+ * filter says. The filter is a view of the one place, so it no longer picks a surface: switching it
+ * keeps the same panel and the same terminal.
  */
 @Component({
   selector: 'app-work-page',
@@ -76,11 +76,7 @@ interface FilterOption {
       <app-new-ticket-form [projectId]="projectId()" (created)="refresh()" />
     }
 
-    @if (archetype() === 'TICKET') {
-      <app-refinement-panel [projectId]="projectId()" surface="project.tickets" />
-    } @else {
-      <app-refinement-panel [projectId]="projectId()" surface="project.epics" />
-    }
+    <app-refinement-panel [projectId]="projectId()" surface="project.work" />
 
     <app-work-overview
       [projectId]="projectId()"

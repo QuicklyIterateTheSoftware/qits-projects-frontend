@@ -74,7 +74,7 @@ function running(id: string, over: Partial<CommandDto> = {}): CommandDto {
     agentSessions: [{ sessionId: 's1', source: 'PINNED', recordedAt: AT }],
     // Every live command carries its surface — the name match that used to place the ones without a
     // surface is deleted, so a row that reports none belongs to no panel at all.
-    agentSurface: 'project.epics',
+    agentSurface: 'project.work',
     ...over,
   };
 }
@@ -122,7 +122,7 @@ describe('RefinementPanel', () => {
     http.verify();
   });
 
-  async function mount(projectId = 'p1', surface: AgentSurface = 'project.epics'): Promise<void> {
+  async function mount(projectId = 'p1', surface: AgentSurface = 'project.work'): Promise<void> {
     fixture = TestBed.createComponent(RefinementPanel);
     fixture.componentRef.setInput('projectId', projectId);
     fixture.componentRef.setInput('surface', surface);
@@ -179,7 +179,7 @@ describe('RefinementPanel', () => {
 
   it('asks for nothing at all while it is closed', async () => {
     await mount();
-    expect(text()).toContain('Refinement agent');
+    expect(text()).toContain('Front desk agent');
     expect(text()).toContain('Not started');
     // No ensure, no status read, no daemon call. This is the whole reason the panel is collapsed.
     http.verify();
@@ -187,7 +187,7 @@ describe('RefinementPanel', () => {
 
   it('reads the container’s status on being opened, and creates nothing', async () => {
     await mount();
-    await press('Refinement agent');
+    await press('Front desk agent');
 
     await flush('/projects/api/projects/p1/agent-container', {
       container: container({
@@ -223,7 +223,7 @@ describe('RefinementPanel', () => {
     expect(launch.request.body).toEqual({
       scope: 'REPOSITORY',
       mode: 'INTERACTIVE',
-      surface: 'project.epics',
+      surface: 'project.work',
     });
     launch.flush({ command: running('c1') });
     await settle();
@@ -277,7 +277,7 @@ describe('RefinementPanel', () => {
     expect(launch.request.body).toEqual({
       scope: 'REPOSITORY',
       mode: 'INTERACTIVE',
-      surface: 'project.epics',
+      surface: 'project.work',
       resumeSessionId: 's1',
     });
     launch.flush({ command: running('c2') });
@@ -308,7 +308,7 @@ describe('RefinementPanel', () => {
     expect(sockets[0].closedByClient).toBe(true);
     // Closing the panel asks the daemon nothing at all — the agent is still running.
     http.verify();
-    expect(text()).toContain('Refinement agent');
+    expect(text()).toContain('Front desk agent');
     expect(button('Detach')).toBeUndefined();
   });
 
@@ -382,7 +382,7 @@ describe('RefinementPanel', () => {
     await settle();
     http.verify();
 
-    await press('Refinement agent');
+    await press('Front desk agent');
     await flush('/projects/api/projects/p1/agent-container', { container: container() });
 
     stream.emit('agent-activity');
@@ -433,7 +433,7 @@ describe('RefinementPanel', () => {
     });
 
     /**
-     * The lineage read is the epic desk's alone. `GET /agent-sessions` answers session ids with no
+     * The lineage read is the one desk's alone. `GET /agent-sessions` answers session ids with no
      * desk on them, so it cannot say whether the ticket desk has ever run anything — asking it would
      * mean the first press at this desk landed on an idle screen offering somebody else's session.
      * An empty filtered list is the answer, and `http.verify()` is what proves the read never left.
@@ -465,7 +465,7 @@ describe('RefinementPanel', () => {
       http.verify();
     });
 
-    it('adopts a running ticket-desk session and leaves the epic desk’s alone', async () => {
+    it('adopts a running ticket-desk session and leaves the one desk’s alone', async () => {
       await mount('p1', 'project.tickets');
       await press('Start');
 
@@ -488,7 +488,7 @@ describe('RefinementPanel', () => {
       await flush('/projects/api/projects/p1/agent-container/ensure', { container: container() });
       await flush('/projects/container/p1/commands', {
         entries: [
-          // Newest first, and the newest is the epic desk's. Ordering must not decide this.
+          // Newest first, and the newest is the one desk's. Ordering must not decide this.
           {
             command: running('epic-old', {
               status: 'EXITED',
@@ -523,11 +523,11 @@ describe('RefinementPanel', () => {
   });
 
   /**
-   * The other direction of the same rule: a command reporting the tickets surface is not the epics
-   * panel's, so the epics panel launches rather than adopting the tickets terminal, and still
-   * consults the lineage read.
+   * The other direction of the same rule: a command reporting the tickets surface is not the one
+   * desk's, so the one desk (qits-403) launches `project.work` rather than adopting a terminal the
+   * retired tickets desk left running, and still consults the lineage read.
    */
-  it('does not adopt the ticket desk’s running session onto the epics panel', async () => {
+  it('does not adopt the retired ticket desk’s running session onto the one desk', async () => {
     await mount();
     await press('Start');
 
@@ -542,7 +542,7 @@ describe('RefinementPanel', () => {
     expect(launch.request.body).toEqual({
       scope: 'REPOSITORY',
       mode: 'INTERACTIVE',
-      surface: 'project.epics',
+      surface: 'project.work',
     });
     launch.flush({ command: running('e1') });
     await settle();
@@ -558,7 +558,7 @@ describe('RefinementPanel', () => {
    * The field, winning over the name — which is the whole of what this task moved.
    *
    * <p>The run below is named exactly as an epics run always was ("Claude agent") and reports
-   * `project.tickets`. The old rule read the name and would have handed it to the epics panel; the
+   * `project.tickets`. The old rule read the name and would have handed it to the desk panel; the
    * new one reads the field, so the tickets panel adopts it. Asserting it this way round is
    * deliberate: a name that *agrees* with the surface would pass under either rule and prove
    * nothing.
@@ -583,7 +583,7 @@ describe('RefinementPanel', () => {
    * The accepted loss, pinned so it is a decision rather than a surprise.
    *
    * <p>A run launched before the daemon shipped `agentSurface` reports none, and the name match that
-   * used to place it is deleted. So it belongs to neither panel: the epics panel does not adopt it —
+   * used to place it is deleted. So it belongs to no panel: the one desk does not adopt it —
    * even though its name is the plain "Claude agent" an epics run always had — and launches fresh
    * instead. Old sessions lose their desk grouping, which is better than keeping a display-string
    * contract alive for them forever.
@@ -603,7 +603,7 @@ describe('RefinementPanel', () => {
     expect(launch.request.body).toEqual({
       scope: 'REPOSITORY',
       mode: 'INTERACTIVE',
-      surface: 'project.epics',
+      surface: 'project.work',
     });
     launch.flush({ command: running('e1') });
     await settle();
@@ -623,7 +623,7 @@ describe('RefinementPanel', () => {
         {
           command: running('mislabelled', {
             actionName: 'Claude Code (tickets desk)',
-            agentSurface: 'project.epics',
+            agentSurface: 'project.work',
           }),
         },
       ],
