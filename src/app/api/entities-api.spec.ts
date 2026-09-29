@@ -3,7 +3,7 @@ import { HttpTestingController, provideHttpClientTesting } from '@angular/common
 import { TestBed } from '@angular/core/testing';
 import type { EntityTransitionRequest } from '../project/entity-transition-model';
 import { EntitiesApi } from './entities-api';
-import type { EpicDto, FeatureDto, TaskDto, TicketCommentDto, TicketDto } from './dto';
+import type { CommentDto, EpicDto, FeatureDto, TaskDto, TicketDto } from './dto';
 
 const AT = '2026-09-07T09:00:00Z';
 
@@ -75,9 +75,9 @@ const task = (over: Partial<TaskDto> = {}): TaskDto => ({
   ...over,
 });
 
-const comment = (over: Partial<TicketCommentDto> = {}): TicketCommentDto => ({
+const comment = (over: Partial<CommentDto> = {}): CommentDto => ({
   id: 'c1',
-  ticketId: 't1',
+  entityId: 't1',
   author: 'kim',
   body: 'Reproduced on dev.',
   createdAt: AT,
@@ -542,9 +542,9 @@ describe('EntitiesApi', () => {
   });
 
   describe('the comments', () => {
-    it('lists a ticket’s comments under the ticket, unwrapped', async () => {
-      const answer = api.comments('t1');
-      const request = http.expectOne('/projects/api/tickets/t1/comments');
+    it('lists an entity’s comments under it, unwrapped — any archetype, not only a ticket', async () => {
+      const answer = api.comments('e1');
+      const request = http.expectOne('/projects/api/entities/e1/comments');
       request.flush({ entries: [{ comment: comment() }] });
 
       expect(request.request.method).toBe('GET');
@@ -553,8 +553,8 @@ describe('EntitiesApi', () => {
 
     /** The author is stamped from the session, so a client that sent one would be asserting it. */
     it('posts only the body, because the author is the server’s to stamp', async () => {
-      const answer = api.addComment('t1', 'Reproduced on dev.');
-      const request = http.expectOne('/projects/api/tickets/t1/comments');
+      const answer = api.addComment('e1', 'Reproduced on dev.');
+      const request = http.expectOne('/projects/api/entities/e1/comments');
       request.flush({ comment: comment() }, { status: 201, statusText: 'Created' });
 
       expect(request.request.method).toBe('POST');
@@ -562,20 +562,24 @@ describe('EntitiesApi', () => {
       expect((await answer).id).toBe('c1');
     });
 
-    /** A comment is addressed by its own id, at its own path — not under the ticket it is on. */
-    it('puts a comment edit at ticket-comments/<id>', async () => {
+    /**
+     * A comment is addressed by its own id, at its own path — not under the entity it is on — and
+     * the edit travels as a JSON merge patch, the only property it carries being `body`.
+     */
+    it('patches a comment edit at comments/<id>, as a merge patch', async () => {
       const answer = api.updateComment('c1', 'Reproduced on dev and on stage.');
-      const request = http.expectOne('/projects/api/ticket-comments/c1');
+      const request = http.expectOne('/projects/api/comments/c1');
       request.flush({ comment: comment({ body: 'Reproduced on dev and on stage.' }) });
 
-      expect(request.request.method).toBe('PUT');
+      expect(request.request.method).toBe('PATCH');
       expect(request.request.body).toEqual({ body: 'Reproduced on dev and on stage.' });
+      expect(request.request.headers.get('Content-Type')).toBe('application/merge-patch+json');
       expect((await answer).body).toBe('Reproduced on dev and on stage.');
     });
 
     it('deletes a comment at the same address, and drops the body', async () => {
       const answer = api.removeComment('c1');
-      const request = http.expectOne('/projects/api/ticket-comments/c1');
+      const request = http.expectOne('/projects/api/comments/c1');
       request.flush({ success: true });
 
       expect(request.request.method).toBe('DELETE');
@@ -584,7 +588,14 @@ describe('EntitiesApi', () => {
 
     it('escapes a comment id rather than pasting it into the path', async () => {
       const answer = api.removeComment('a/b');
-      http.expectOne('/projects/api/ticket-comments/a%2Fb').flush({ success: true });
+      http.expectOne('/projects/api/comments/a%2Fb').flush({ success: true });
+
+      await answer;
+    });
+
+    it('escapes an entity id rather than pasting it into the path', async () => {
+      const answer = api.comments('a/b');
+      http.expectOne('/projects/api/entities/a%2Fb/comments').flush({ entries: [] });
 
       await answer;
     });

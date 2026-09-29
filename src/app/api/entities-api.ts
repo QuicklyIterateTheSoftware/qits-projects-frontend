@@ -1,4 +1,4 @@
-import { HttpClient } from '@angular/common/http';
+import { HttpClient, HttpHeaders } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import {
@@ -17,19 +17,22 @@ import { ProjectsApi } from './projects-api';
 import type {
   AuditEntriesResponse,
   AuditEntryDto,
+  CommentDto,
+  CommentEntriesResponse,
+  CommentResponse,
   DispatchMode,
   EntityDispatchAnswer,
   EntityDispatchStateDto,
   EntityDispatchStateResponse,
   EntityStateDto,
   EntityStatus,
-  TicketCommentDto,
-  TicketCommentEntriesResponse,
-  TicketCommentResponse,
   TicketEntriesResponse,
   TicketResponse,
   TicketType,
 } from './dto';
+
+/** The header the comment PATCH sends: a JSON merge patch, not a whole replacement. */
+const MERGE_PATCH_HEADERS = new HttpHeaders({ 'Content-Type': 'application/merge-patch+json' });
 
 /**
  * What a POST sends to open a ticket.
@@ -84,11 +87,16 @@ export interface NewTicket {
  * copy of an address.
  *
  * <p><b>Two path families for the ticket writes, and the split is the service's.</b> A list and a
- * create are addressed under their parent — `projects/{id}/tickets`, `tickets/{id}/comments` —
- * because that is the only place the parent is known. Everything about one existing row is addressed
- * by that row's own id at the top level, `tickets/{id}` and `ticket-comments/{id}`, because an id is
- * already unique and repeating its parent in the path would be a second copy of a fact the id
- * carries. The epics use the same grammar, mirrored rather than reinvented.
+ * create are addressed under their parent — `projects/{id}/tickets` — because that is the only place
+ * the parent is known. Everything about one existing row is addressed by that row's own id at the top
+ * level, `tickets/{id}`, because an id is already unique and repeating its parent in the path would
+ * be a second copy of a fact the id carries. The epics use the same grammar, mirrored rather than
+ * reinvented.
+ *
+ * <p><b>Comments are the one thread every archetype now shares</b> (qits-551): `entities/{id}/comments`
+ * for the list and the create, whichever archetype `{id}` names, and `comments/{id}` for an edit or a
+ * delete of one existing row — the same "addressed by its own id at the top level" shape as the
+ * ticket writes above, generalised off the ticket.
  *
  * <p><b>The deletes drop their bodies.</b> Both answer `{"success": true}`, which adds nothing a 200
  * has not already said. The callers re-read instead of splicing the row out: the server's list is the
@@ -317,18 +325,23 @@ export class EntitiesApi {
     await firstValueFrom(this.http.delete<unknown>(this.ticket(ticketId)));
   }
 
-  /** One ticket's comments, oldest first, which is the order a conversation is read in. */
-  async comments(ticketId: string): Promise<readonly TicketCommentDto[]> {
+  /**
+   * One entity's comments, oldest first, which is the order a conversation is read in.
+   *
+   * <p>`entityId` takes any archetype — a ticket, an epic, a feature, a task or a campaign
+   * (qits-551): the thread is no longer a ticket-only fixture.
+   */
+  async comments(entityId: string): Promise<readonly CommentDto[]> {
     const response = await firstValueFrom(
-      this.http.get<TicketCommentEntriesResponse>(this.commentsOf(ticketId)),
+      this.http.get<CommentEntriesResponse>(this.commentsOf(entityId)),
     );
     return response.entries.map((entry) => entry.comment);
   }
 
-  /** Say something on a ticket. The author is stamped from the session, so only the body is sent. */
-  async addComment(ticketId: string, body: string): Promise<TicketCommentDto> {
+  /** Say something on an entity's thread. The author is stamped from the session, so only the body is sent. */
+  async addComment(entityId: string, body: string): Promise<CommentDto> {
     const response = await firstValueFrom(
-      this.http.post<TicketCommentResponse>(this.commentsOf(ticketId), { body }),
+      this.http.post<CommentResponse>(this.commentsOf(entityId), { body }),
     );
     return response.comment;
   }
@@ -336,12 +349,18 @@ export class EntitiesApi {
   /**
    * Rewrite one comment.
    *
-   * Addressed at `ticket-comments/{id}` rather than under its ticket, because the id is already
-   * unique — and the answer's `updatedAt` is what makes the "edited" hint appear beside it.
+   * Addressed at `comments/{id}` rather than under its entity, because the id is already unique —
+   * and the answer's `updatedAt` is what makes the "edited" hint appear beside it. Sent as a JSON
+   * merge patch (qits-551): the only property it carries is `body`, and the server never touches
+   * `author` from this door.
    */
-  async updateComment(commentId: string, body: string): Promise<TicketCommentDto> {
+  async updateComment(commentId: string, body: string): Promise<CommentDto> {
     const response = await firstValueFrom(
-      this.http.put<TicketCommentResponse>(this.comment(commentId), { body }),
+      this.http.patch<CommentResponse>(
+        this.comment(commentId),
+        { body },
+        { headers: MERGE_PATCH_HEADERS },
+      ),
     );
     return response.comment;
   }
@@ -399,11 +418,11 @@ export class EntitiesApi {
     return `${this.base}/projects/api/tickets/${encodeURIComponent(ticketId)}`;
   }
 
-  private commentsOf(ticketId: string): string {
-    return `${this.ticket(ticketId)}/comments`;
+  private commentsOf(entityId: string): string {
+    return `${this.base}/projects/api/entities/${encodeURIComponent(entityId)}/comments`;
   }
 
   private comment(commentId: string): string {
-    return `${this.base}/projects/api/ticket-comments/${encodeURIComponent(commentId)}`;
+    return `${this.base}/projects/api/comments/${encodeURIComponent(commentId)}`;
   }
 }

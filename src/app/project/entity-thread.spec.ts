@@ -1,15 +1,15 @@
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { TestBed, type ComponentFixture } from '@angular/core/testing';
-import type { TicketCommentDto } from '../api/dto';
-import { TicketThread } from './ticket-thread';
+import type { CommentDto } from '../api/dto';
+import { EntityThread } from './entity-thread';
 
 const AT = '2026-09-07T09:00:00Z';
 
-function comment(over: Partial<TicketCommentDto> = {}): TicketCommentDto {
+function comment(over: Partial<CommentDto> = {}): CommentDto {
   return {
     id: 'c1',
-    ticketId: 't1',
+    entityId: 't1',
     author: 'kim',
     body: 'Reproduced on **dev**.',
     createdAt: AT,
@@ -19,20 +19,22 @@ function comment(over: Partial<TicketCommentDto> = {}): TicketCommentDto {
 }
 
 /**
- * A ticket's thread, as the entity page draws it (moved out of the retired ticket page): oldest
- * first, markdown bodies, the "edited" hint off the two stamps, and a re-read after every write.
+ * An entity's thread, as the entity page draws it for any archetype (qits-551): oldest first,
+ * markdown bodies, the "edited" hint off the two stamps, per-archetype wording, and a re-read after
+ * every write.
  */
-describe('TicketThread', () => {
+describe('EntityThread', () => {
   let http: HttpTestingController;
-  let fixture: ComponentFixture<TicketThread>;
+  let fixture: ComponentFixture<EntityThread>;
 
   beforeEach(() => {
     TestBed.configureTestingModule({
       providers: [provideHttpClient(), provideHttpClientTesting()],
     });
     http = TestBed.inject(HttpTestingController);
-    fixture = TestBed.createComponent(TicketThread);
-    fixture.componentRef.setInput('ticketId', 't1');
+    fixture = TestBed.createComponent(EntityThread);
+    fixture.componentRef.setInput('entityId', 't1');
+    fixture.componentRef.setInput('archetype', 'TICKET');
     fixture.detectChanges();
   });
 
@@ -48,9 +50,9 @@ describe('TicketThread', () => {
     return fixture.nativeElement as HTMLElement;
   }
 
-  async function answer(comments: readonly TicketCommentDto[]): Promise<void> {
+  async function answer(comments: readonly CommentDto[]): Promise<void> {
     http
-      .expectOne('/projects/api/tickets/t1/comments')
+      .expectOne('/projects/api/entities/t1/comments')
       .flush({ entries: comments.map((value) => ({ comment: value })) });
     await settle();
   }
@@ -84,7 +86,7 @@ describe('TicketThread', () => {
 
     const request = http.expectOne(
       (candidate) =>
-        candidate.method === 'POST' && candidate.url === '/projects/api/tickets/t1/comments',
+        candidate.method === 'POST' && candidate.url === '/projects/api/entities/t1/comments',
     );
     expect(request.request.body).toEqual({ body: 'Reproduced on dev.' });
     request.flush({ comment: comment({ body: 'Reproduced on dev.' }) });
@@ -94,12 +96,56 @@ describe('TicketThread', () => {
     expect(element().querySelector('.comment .body')?.textContent).toContain('Reproduced on dev.');
   });
 
+  it('edits a comment with a merge patch, changing only the body', async () => {
+    await answer([comment()]);
+
+    const edit = Array.from(element().querySelectorAll('button')).find(
+      (node) => node.textContent?.trim() === 'Edit',
+    )!;
+    edit.click();
+    fixture.detectChanges();
+
+    const box = element().querySelector<HTMLTextAreaElement>('.comment-edit')!;
+    box.value = 'Reproduced on dev and on stage.';
+    box.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+    const save = Array.from(element().querySelectorAll('button')).find(
+      (node) => node.textContent?.trim() === 'Save',
+    )!;
+    save.click();
+    await settle();
+
+    const request = http.expectOne(
+      (candidate) => candidate.method === 'PATCH' && candidate.url === '/projects/api/comments/c1',
+    );
+    expect(request.request.body).toEqual({ body: 'Reproduced on dev and on stage.' });
+    expect(request.request.headers.get('Content-Type')).toBe('application/merge-patch+json');
+    request.flush({ comment: comment({ body: 'Reproduced on dev and on stage.' }) });
+    await settle();
+    await answer([comment({ body: 'Reproduced on dev and on stage.' })]);
+
+    expect(element().querySelector('.comment .body')?.textContent).toContain(
+      'Reproduced on dev and on stage.',
+    );
+  });
+
   it('says the thread could not be read, with its own retry', async () => {
     http
-      .expectOne('/projects/api/tickets/t1/comments')
+      .expectOne('/projects/api/entities/t1/comments')
       .flush({ message: 'down' }, { status: 503, statusText: 'Down' });
     await settle();
 
     expect(element().textContent).toContain('Could not load the comments');
+  });
+
+  it('words the composer and the empty state off the archetype, lowercased', async () => {
+    fixture.componentRef.setInput('archetype', 'EPIC');
+    fixture.detectChanges();
+    await answer([]);
+
+    expect(element().textContent).toContain('Nothing has been said about this epic yet.');
+    expect(
+      element().querySelector<HTMLTextAreaElement>('.compose')?.getAttribute('placeholder'),
+    ).toBe('Say something about this epic.');
   });
 });

@@ -585,7 +585,9 @@ export interface TicketDto {
 }
 
 /**
- * One thing somebody said about a ticket.
+ * One thing somebody said about a work entity — a ticket, an epic, a feature, a task or a campaign
+ * (qits-551). Every archetype shares one thread now; the service's `entity_id` column is a foreign
+ * key into the one `entity` table, not an archetype-specific one.
  *
  * <p>`body` is markdown and is **not** nullable: a comment with nothing in it is not a comment, so
  * the service refuses one rather than storing a row that draws as blank space.
@@ -595,9 +597,9 @@ export interface TicketDto {
  * there is no revision history and no `edited` flag, so the two timestamps together are what the
  * "edited" hint is derived from.
  */
-export interface TicketCommentDto {
+export interface CommentDto {
   readonly id: string;
-  readonly ticketId: string;
+  readonly entityId: string;
   /** Stamped from the session, never sent. Null for a comment with no principal behind it. */
   readonly author: string | null;
   readonly body: string;
@@ -622,14 +624,14 @@ export interface TicketResponse {
   readonly ticket: TicketDto;
 }
 
-/** One ticket's comments, oldest first, which is the order a conversation is read in. */
-export interface TicketCommentEntriesResponse {
-  readonly entries: readonly { readonly comment: TicketCommentDto }[];
+/** One entity's comments, oldest first, which is the order a conversation is read in. */
+export interface CommentEntriesResponse {
+  readonly entries: readonly { readonly comment: CommentDto }[];
 }
 
 /** One comment, wrapped — the answer to a post and to an edit. */
-export interface TicketCommentResponse {
-  readonly comment: TicketCommentDto;
+export interface CommentResponse {
+  readonly comment: CommentDto;
 }
 
 /**

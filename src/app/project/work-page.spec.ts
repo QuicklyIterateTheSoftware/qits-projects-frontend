@@ -209,6 +209,8 @@ describe('WorkPage', () => {
       };
     }
     if (/\/audit$/.test(url)) return { entries: [] };
+    // The campaign's own thread (qits-551): the detail page renders it for every archetype.
+    if (/\/comments$/.test(url)) return { entries: [] };
     throw new Error(`unanswered ${url}`);
   }
 

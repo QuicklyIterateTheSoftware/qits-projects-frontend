@@ -9,7 +9,7 @@ import {
   untracked,
 } from '@angular/core';
 import { QitsButton } from '@qits/ui-components';
-import type { TicketCommentDto } from '../api/dto';
+import type { CommentDto } from '../api/dto';
 import { EntitiesApi } from '../api/entities-api';
 import { ProjectEvents } from '../api/project-events';
 import { Async } from '../ui/async';
@@ -17,30 +17,40 @@ import { Empty } from '../ui/empty';
 import { NONE, relativeSince } from '../ui/format';
 import { IDLE, LOADING, describeError, failed, ready, type Loadable } from '../ui/loadable';
 import { MarkdownView } from '../ui/markdown-view';
+import { archetypeLabel } from './entity-nodes';
 import { isEdited } from './entities-model';
 
 /** One comment, with the two things the row derives rather than reads off the wire. */
 interface DrawnComment {
-  readonly comment: TicketCommentDto;
+  readonly comment: CommentDto;
   readonly author: string;
   readonly age: string;
   readonly edited: boolean;
 }
 
 /**
- * **A ticket's thread** — the body the entity page draws for a ticket beneath its work, moved out of
- * the retired ticket page as it was (qits-397).
+ * **An entity's thread** — the body the entity page draws beneath its work, for any archetype
+ * (qits-551). It started as a ticket's thread alone, moved out of the retired ticket page as it was
+ * (qits-397), and was generalised once the service unified the storage behind one `entity_id` and
+ * gave every archetype — epic, feature, task and campaign, not only ticket — a place to write.
  *
  * <p>Comments read **oldest first**, which is the order a conversation is read in (the audit log is
  * newest-first, because a log is scanned from the top). The author is the session's, so only the body
  * travels; an edit moves `updatedAt` and the "edited" hint is derived from the two stamps. Every write
  * re-reads the thread rather than splicing it: the server's list is the truth.
  *
- * <p>It listens to the project's `tickets` topic — a dispatch or a phase advance writes here — and a
- * hint's re-read is quiet: it never blanks the thread, and a failed one leaves it standing.
+ * <p>{@link archetype} decides only the wording — "Say something about this epic.", "Nothing has been
+ * said about this campaign yet." — never the behaviour: add, inline edit and delete are the same door
+ * for every archetype, and the server still answers a non-admin's delete with 403 whichever kind is
+ * on the other end.
+ *
+ * <p>It listens to the project's `tickets` **and** `epics` topics — a comment write fires `tickets`
+ * for a ticket and `epics` for anything else (see {@link ../api/project-events#PROJECT_TOPICS}), and
+ * this thread does not know in advance which one its own entity will move — and a hint's re-read is
+ * quiet: it never blanks the thread, and a failed one leaves it standing.
  */
 @Component({
-  selector: 'app-ticket-thread',
+  selector: 'app-entity-thread',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [Async, Empty, MarkdownView, QitsButton],
   template: `
@@ -56,7 +66,7 @@ interface DrawnComment {
 
       @if (comments().kind === 'ready') {
         @if (thread().length === 0) {
-          <app-empty message="Nothing has been said about this ticket yet." />
+          <app-empty [message]="'Nothing has been said about this ' + word() + ' yet.'" />
         } @else {
           <ol class="thread">
             @for (entry of thread(); track entry.comment.id) {
@@ -128,7 +138,7 @@ interface DrawnComment {
             class="text area compose"
             rows="3"
             aria-label="Add a comment"
-            placeholder="Say something about this ticket."
+            [placeholder]="'Say something about this ' + word() + '.'"
             [value]="composed()"
             (input)="onComposed($event)"
           ></textarea>
@@ -228,14 +238,19 @@ interface DrawnComment {
     }
   `,
 })
-export class TicketThread {
+export class EntityThread {
   private readonly api = inject(EntitiesApi);
   private readonly events = inject(ProjectEvents);
 
-  /** The ticket whose thread this is. */
-  readonly ticketId = input.required<string>();
+  /** The entity whose thread this is — a ticket, an epic, a feature, a task or a campaign. */
+  readonly entityId = input.required<string>();
 
-  protected readonly comments = signal<Loadable<readonly TicketCommentDto[]>>(IDLE);
+  /** Which archetype {@link entityId} names, for the wording only: "epic", "campaign", … */
+  readonly archetype = input.required<string>();
+
+  protected readonly word = computed(() => archetypeLabel(this.archetype()));
+
+  protected readonly comments = signal<Loadable<readonly CommentDto[]>>(IDLE);
 
   /** Which comment-level write is in flight — `add`, `save`, or `delete:<id>`. */
   protected readonly commentAction = signal<string | null>(null);
@@ -265,13 +280,16 @@ export class TicketThread {
 
   constructor() {
     effect(() => {
-      const ticketId = this.ticketId();
-      const hints = this.events.invalidations('tickets')();
-      if (!ticketId) {
+      const entityId = this.entityId();
+      // Both topics, summed: a comment write fires `tickets` for a ticket and `epics` for any other
+      // archetype (see the class doc), and this thread does not know in advance which one applies —
+      // either counter moving means the sum moves, which is all a change-detector needs.
+      const hints = this.events.invalidations('tickets')() + this.events.invalidations('epics')();
+      if (!entityId) {
         return;
       }
-      const quiet = ticketId === this.watching && hints !== this.hinted;
-      this.watching = ticketId;
+      const quiet = entityId === this.watching && hints !== this.hinted;
+      this.watching = entityId;
       this.hinted = hints;
       untracked(() => void this.readComments(quiet));
     });
@@ -283,14 +301,14 @@ export class TicketThread {
   }
 
   private async readComments(quiet = false): Promise<void> {
-    const ticketId = this.ticketId();
+    const entityId = this.entityId();
     if (!quiet) {
       this.comments.set(LOADING);
     }
     this.attempt += 1;
     const attempt = this.attempt;
     try {
-      const thread = await this.api.comments(ticketId);
+      const thread = await this.api.comments(entityId);
       if (attempt === this.attempt) {
         this.comments.set(ready(thread));
       }
@@ -313,15 +331,15 @@ export class TicketThread {
 
   /** Say something. The author is the session's, so only the body travels. */
   protected async addComment(): Promise<void> {
-    const ticketId = this.ticketId();
+    const entityId = this.entityId();
     const body = this.composed().trim();
-    if (!ticketId || !body || this.commentAction()) {
+    if (!entityId || !body || this.commentAction()) {
       return;
     }
     this.commentAction.set('add');
     this.commentFailure.set(null);
     try {
-      await this.api.addComment(ticketId, body);
+      await this.api.addComment(entityId, body);
       this.composed.set('');
       await this.readComments();
     } catch (error) {
@@ -331,7 +349,7 @@ export class TicketThread {
     }
   }
 
-  protected startEditingComment(comment: TicketCommentDto): void {
+  protected startEditingComment(comment: CommentDto): void {
     this.commentDraft.set(comment.body);
     this.commentFailure.set(null);
     this.editingComment.set(comment.id);
@@ -344,9 +362,9 @@ export class TicketThread {
   }
 
   protected async saveComment(commentId: string): Promise<void> {
-    const ticketId = this.ticketId();
+    const entityId = this.entityId();
     const body = this.commentDraft().trim();
-    if (!ticketId || !body || this.commentAction()) {
+    if (!entityId || !body || this.commentAction()) {
       return;
     }
     this.commentAction.set('save');
@@ -363,8 +381,8 @@ export class TicketThread {
   }
 
   protected async removeComment(commentId: string): Promise<void> {
-    const ticketId = this.ticketId();
-    if (!ticketId || this.commentAction()) {
+    const entityId = this.entityId();
+    if (!entityId || this.commentAction()) {
       return;
     }
     this.commentAction.set(`delete:${commentId}`);

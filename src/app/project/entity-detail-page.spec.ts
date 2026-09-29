@@ -407,7 +407,7 @@ describe('EntityDetailPage', () => {
           {
             comment: {
               id: 'c1',
-              ticketId: 't1',
+              entityId: 't1',
               author: 'kim',
               body: 'Reproduced on **dev**.',
               createdAt: AT,
@@ -816,9 +816,12 @@ describe('EntityDetailPage', () => {
       await open('/qits/work/qits-430');
 
       expect(buttonNamed('Start campaign').disabled).toBe(false);
-      const labels = Array.from(element().querySelectorAll('button')).map((node) =>
-        node.textContent?.trim(),
-      );
+      // Outside the comments thread: a campaign's own thread (qits-551) carries an "Edit" button
+      // per comment, which is a different thing from editing the campaign's own fields — the fact
+      // this test pins.
+      const labels = Array.from(element().querySelectorAll('button'))
+        .filter((node) => !node.closest('.comments'))
+        .map((node) => node.textContent?.trim());
       for (const absent of ['Run the next phase', 'Refine', 'Open refinement', 'Edit', 'Reshape', 'Dispatch']) {
         expect(labels).not.toContain(absent);
       }

@@ -74,7 +74,7 @@ import {
 } from './entity-nodes';
 import { EntityTransitionPanel } from './entity-transition-panel';
 import { restatement, subjectsOf } from './entity-transition-model';
-import { TicketThread } from './ticket-thread';
+import { EntityThread } from './entity-thread';
 import { WorkspaceLinks, workspaceAddress } from './workspace-links';
 
 /** The two kinds, in the order the edit form offers them — the same order the create form uses. */
@@ -156,12 +156,12 @@ interface TreeRow {
     CampaignMembers,
     CampaignProgress,
     DossierPanel,
+    EntityThread,
     EntityTransitionPanel,
     MarkdownView,
     QitsBadge,
     QitsButton,
     RouterLink,
-    TicketThread,
     WorkspaceLinks,
   ],
   template: `
@@ -620,9 +620,7 @@ interface TreeRow {
           }
         }
 
-        @if (ticket(); as row) {
-          <app-ticket-thread [ticketId]="row.id" />
-        }
+        <app-entity-thread [entityId]="n.id" [archetype]="n.archetype" />
       </section>
 
       <details class="history">

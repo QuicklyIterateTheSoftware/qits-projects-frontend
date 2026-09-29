@@ -11,10 +11,12 @@ import { EVENT_SOURCE_FACTORY, type EventSourceLike } from './event-source';
  * signal, so declaring it now means the refinement panel wires to a topic that is already ticking
  * instead of adding one.
  *
- * `tickets` is the third, and it is one topic for the tickets **and** their comments rather than
- * two. The hint carries nothing, so a finer split would buy a reader nothing either: both screens
- * that listen — the overview and one ticket's page — re-read what they are showing whichever of the
- * two moved, and a `ticket-comments` topic would only be a second counter they both had to watch.
+ * `tickets` is the third. A comment write (qits-551) fires `tickets` when its entity is a ticket and
+ * `epics` for any other archetype — an epic's, a feature's, a task's or a campaign's thread is not a
+ * topic of its own, it rides the same hint the entity itself does. The hint carries nothing, so a
+ * finer split would buy a reader nothing either: every screen that listens re-reads what it is
+ * showing whichever of the two moved, and a `comments` topic would only be a second counter they all
+ * had to watch.
  */
 export const PROJECT_TOPICS = ['epics', 'agent-activity', 'tickets'] as const;
 

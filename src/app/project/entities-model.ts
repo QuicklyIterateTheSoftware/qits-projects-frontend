@@ -1,11 +1,11 @@
 import type { QitsBadgeTone, QitsButtonVariant } from '@qits/ui-components';
 import type { ArchetypeRegistry, ArchetypeSpecDto } from '../api/archetypes-api';
 import type {
+  CommentDto,
   EntityStatus,
   EpicDto,
   FeatureDto,
   TaskDto,
-  TicketCommentDto,
   TicketDto,
   TicketType,
   WorkspaceReferenceDto,
@@ -583,7 +583,7 @@ export function entityBySlug(
  * change how it formats one and string order would then be arbitrary; a stamp that will not parse
  * reads as unedited, which is the quiet answer rather than the wrong one.
  */
-export function isEdited(comment: Pick<TicketCommentDto, 'createdAt' | 'updatedAt'>): boolean {
+export function isEdited(comment: Pick<CommentDto, 'createdAt' | 'updatedAt'>): boolean {
   const created = Date.parse(comment.createdAt);
   const updated = Date.parse(comment.updatedAt);
   if (Number.isNaN(created) || Number.isNaN(updated)) {
