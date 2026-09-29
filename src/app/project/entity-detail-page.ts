@@ -83,6 +83,17 @@ const TYPES: readonly { readonly value: TicketType; readonly label: string }[] =
   { value: 'IMPROVEMENT', label: 'Improvement' },
 ];
 
+/**
+ * `MAINTENANCE` appended, offered only on a ticket that already carries it — the opt-out from the
+ * platform's own auto-close, never a third choice a person picks from a blank form. A ticket that
+ * is retyped away from it and saved has no way back to it here, which is the point: the type is a
+ * person's own from then on.
+ */
+const TYPES_WITH_MAINTENANCE: readonly { readonly value: TicketType; readonly label: string }[] = [
+  ...TYPES,
+  { value: 'MAINTENANCE', label: 'Maintenance' },
+];
+
 /** What the page reads to draw anything: the project's nodes and the served model. */
 interface Ground {
   readonly nodes: readonly EntityNode[];
@@ -411,7 +422,7 @@ interface TreeRow {
                 aria-labelledby="edit-type-label"
                 (change)="draftType.set(typeOf($event))"
               >
-                @for (option of types; track option.value) {
+                @for (option of types(); track option.value) {
                   <option [value]="option.value" [selected]="option.value === draftType()">
                     {{ option.label }}
                   </option>
@@ -886,7 +897,6 @@ export class EntityDetailPage {
   protected readonly number = computed(() => parseEntityNumber(this.segment()));
 
   protected readonly none = NONE;
-  protected readonly types = TYPES;
   protected readonly impetusRule = IMPETUS_RULE;
   protected readonly blocked = BLOCKED_BADGE;
 
@@ -947,6 +957,15 @@ export class EntityDetailPage {
   protected readonly archetype = computed(() => archetypeLabel(this.node()?.archetype ?? ''));
   protected readonly badge = computed(() => statusBadge(this.node()?.status ?? null));
   protected readonly type = computed(() => ticketTypeBadge(this.ticket()?.type ?? 'BUG'));
+
+  /**
+   * `MAINTENANCE` joins the edit form's options only on a ticket that already carries it. Every
+   * other ticket sees the same two a person has always had, so retyping into `MAINTENANCE` by hand
+   * stays impossible — it is a state the platform files, not one a form offers.
+   */
+  protected readonly types = computed(() =>
+    this.ticket()?.type === 'MAINTENANCE' ? TYPES_WITH_MAINTENANCE : TYPES,
+  );
 
   /** A feature's or a task's implemented marker — what stands where a status would. */
   protected readonly marker = computed(() => {

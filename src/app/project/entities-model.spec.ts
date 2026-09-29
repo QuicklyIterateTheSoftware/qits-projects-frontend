@@ -1,5 +1,5 @@
 import type { ArchetypeRegistry } from '../api/archetypes-api';
-import type { EpicDto, FeatureDto, TaskDto, TicketDto } from '../api/dto';
+import type { EpicDto, FeatureDto, TaskDto, TicketDto, TicketType } from '../api/dto';
 import {
   BLOCKED_BADGE,
   entityBySlug,
@@ -392,6 +392,19 @@ describe('entities model', () => {
     it('keeps blocked a badge of its own, and the two types apart', () => {
       expect(BLOCKED_BADGE.tone).toBe('warning');
       expect(ticketTypeBadge('BUG').tone).not.toBe(ticketTypeBadge('IMPROVEMENT').tone);
+    });
+
+    it('draws maintenance neutral, apart from either a person files', () => {
+      expect(ticketTypeBadge('MAINTENANCE')).toEqual({ label: 'maintenance', tone: 'neutral' });
+      expect(ticketTypeBadge('MAINTENANCE').tone).not.toBe(ticketTypeBadge('BUG').tone);
+      expect(ticketTypeBadge('MAINTENANCE').tone).not.toBe(ticketTypeBadge('IMPROVEMENT').tone);
+    });
+
+    it('draws a type it has never seen neutral, under its own name, rather than as improvement', () => {
+      expect(ticketTypeBadge('WHATEVER' as TicketType)).toEqual({
+        label: 'whatever',
+        tone: 'neutral',
+      });
     });
   });
 

@@ -532,13 +532,29 @@ function drawn(kind: string, target: EntityStatus): Pick<LifecycleMove, 'label' 
  * The two are read together — a reader scanning the outstanding section is deciding what to pick up
  * — so they have to be told apart at a glance rather than by reading. Red against blue does that;
  * two neighbouring greys would leave the type badge as decoration.
+ *
+ * `MAINTENANCE` is neither: it is machine-filed, and the platform closes it itself, so it carries
+ * none of the urgency the other two are drawn to signal. Neutral, the same tone {@link statusBadge}
+ * falls back to for a word it does not recognise, marks it as the odd one out rather than folding it
+ * into either.
  */
 const BUG: StatusBadge = { label: 'bug', tone: 'danger' };
 const IMPROVEMENT: StatusBadge = { label: 'improvement', tone: 'info' };
+const MAINTENANCE: StatusBadge = { label: 'maintenance', tone: 'neutral' };
 
-/** What a ticket is about. */
+const TICKET_TYPE_BADGES: Readonly<Record<string, StatusBadge>> = {
+  BUG,
+  IMPROVEMENT,
+  MAINTENANCE,
+};
+
+/**
+ * What a ticket is about. A type this table does not carry — none exist today — is drawn the same
+ * way {@link statusBadge} draws an unknown status: neutral, under its own name, rather than folded
+ * silently into improvement.
+ */
 export function ticketTypeBadge(type: TicketType): StatusBadge {
-  return type === 'BUG' ? BUG : IMPROVEMENT;
+  return TICKET_TYPE_BADGES[type] ?? { label: statusLabel(type), tone: 'neutral' };
 }
 
 /**

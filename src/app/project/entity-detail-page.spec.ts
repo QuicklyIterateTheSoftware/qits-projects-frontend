@@ -761,6 +761,25 @@ describe('EntityDetailPage', () => {
       ]);
     });
 
+    it('offers only bug and improvement on an ordinary ticket', async () => {
+      await open('/qits/work/qits-41');
+
+      buttonNamed('Edit').click();
+      harness.detectChanges();
+      const options = Array.from(element().querySelectorAll<HTMLOptionElement>('.edit-type option'));
+      expect(options.map((option) => option.value)).toEqual(['BUG', 'IMPROVEMENT']);
+    });
+
+    it('offers maintenance too, as the opt-out, on a ticket that already carries it', async () => {
+      ticketPatch = { type: 'MAINTENANCE' };
+      await open('/qits/work/qits-41');
+
+      buttonNamed('Edit').click();
+      harness.detectChanges();
+      const options = Array.from(element().querySelectorAll<HTMLOptionElement>('.edit-type option'));
+      expect(options.map((option) => option.value)).toEqual(['BUG', 'IMPROVEMENT', 'MAINTENANCE']);
+    });
+
     it('keeps a task’s place among its siblings when it is edited', async () => {
       await open('/qits/work/qits-15');
 

@@ -458,11 +458,16 @@ export interface TaskEntriesResponse {
 /**
  * What a ticket is about: something that is broken, or something that could be better.
  *
- * Two values and no more, because the distinction has to be one a reporter can make without
- * thinking. A third kind — "task", "chore", "question" — would be a taxonomy this platform has no
- * use for: the plan is the epics, and a ticket is the small thing beside it.
+ * Two values for a person to pick between, because the distinction has to be one a reporter can
+ * make without thinking. A third kind — "task", "chore", "question" — would be a taxonomy this
+ * platform has no use for: the plan is the epics, and a ticket is the small thing beside it.
+ *
+ * `MAINTENANCE` is the one exception, and it is not a third choice for a reporter: the platform
+ * files it itself, against a failing maintenance release request, and closes it itself once the
+ * release goes through. A person never picks it from a menu; the edit form only offers it back on a
+ * ticket that already carries it, as the opt-out from that auto-close.
  */
-export type TicketType = 'BUG' | 'IMPROVEMENT';
+export type TicketType = 'BUG' | 'IMPROVEMENT' | 'MAINTENANCE';
 
 /**
  * A ticket: one small, self-contained piece of work, beside the plan rather than inside it.
