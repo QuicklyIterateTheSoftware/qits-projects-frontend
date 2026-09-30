@@ -81,6 +81,16 @@ interface EntityFields {
    * ones bear on whether a dispatching button is offered; see {@link WorkspaceReferenceDto.status}.
    */
   readonly workspaces: readonly WorkspaceReferenceDto[];
+  /**
+   * Whether the phase behind the current status cannot proceed — see {@link ../api/dto#TicketDto}.
+   *
+   * <p>Required here where the wire's is optional, because the boundary is where a missing field
+   * stops being a question: {@link epicEntity} and {@link ticketEntity} resolve absent to false once,
+   * and nothing downstream has to remember that `undefined` means "not blocked". Lifted onto every
+   * lifecycle archetype rather than left on the ticket alone: an epic and a campaign block the same
+   * way a ticket does, through the same door.
+   */
+  readonly blocked: boolean;
 }
 
 /**
@@ -103,14 +113,6 @@ export interface TicketEntity extends EntityFields {
   readonly archetype: 'TICKET';
   readonly status: EntityStatus;
   readonly type: TicketType;
-  /**
-   * Whether the phase behind the current status cannot proceed — see {@link ../api/dto#TicketDto}.
-   *
-   * <p>Required here where the wire's is optional, because the boundary is where a missing field
-   * stops being a question: {@link ticketEntity} resolves absent to false once, and nothing
-   * downstream has to remember that `undefined` means "not blocked".
-   */
-  readonly blocked: boolean;
   /** Why it exists, in the reporter's own words. See {@link IMPETUS_RULE}. */
   readonly impetus: string | null;
   /** Free text — whoever is looking at it. Null when nobody has said. */
@@ -143,6 +145,7 @@ export function epicEntity(epic: EpicDto, features: readonly FeatureNode[] = [])
     createdAt: epic.createdAt,
     updatedAt: epic.updatedAt,
     workspaces: epic.workspaces,
+    blocked: epic.blocked ?? false,
     status: epic.status,
     supersededByEpicId: epic.supersededByEpicId,
     features,

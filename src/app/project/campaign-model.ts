@@ -44,6 +44,11 @@ export interface CampaignEntity {
   readonly number: number;
   readonly qualifiedId: string | null;
   readonly status: EntityStatus;
+  /**
+   * Whether the phase behind the current status cannot proceed — {@link ../api/dto#TicketDto.blocked},
+   * rule for rule: {@link campaignEntity} resolves the wire's optional absence to false once.
+   */
+  readonly blocked: boolean;
   /** Empty: the listing has none, and the desk's newest-first sort reads an empty one as oldest. */
   readonly createdAt: string;
   readonly updatedAt: string;
@@ -70,6 +75,7 @@ export function campaignEntity(summary: CampaignSummaryDto): CampaignEntity {
     number: summary.number,
     qualifiedId: summary.qualifiedId,
     status: summary.status,
+    blocked: summary.blocked ?? false,
     createdAt: '',
     updatedAt: '',
     workspaces: [],

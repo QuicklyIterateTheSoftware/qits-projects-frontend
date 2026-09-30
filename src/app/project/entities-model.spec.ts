@@ -225,6 +225,17 @@ describe('entities model', () => {
       expect(ticket({ qualifiedId: null }).qualifiedId).toBeNull();
     });
 
+    /**
+     * `blocked` is optional on the wire and required on the model for both archetypes now — an epic
+     * blocks through the same door a ticket does, not only a ticket.
+     */
+    it('resolves a missing blocked to false, and carries a true one through, on both archetypes', () => {
+      expect(epic().blocked).toBe(false);
+      expect(epic([], { blocked: true }).blocked).toBe(true);
+      expect(ticket().blocked).toBe(false);
+      expect(ticket({ blocked: true }).blocked).toBe(true);
+    });
+
     it('tells the two apart with guards that narrow', () => {
       expect(isEpic(epic())).toBe(true);
       expect(isEpic(ticket())).toBe(false);

@@ -211,7 +211,7 @@ interface TreeRow {
           } @else {
             <qits-badge class="marker" [label]="marker().label" [tone]="marker().tone" />
           }
-          @if (ticket()?.blocked) {
+          @if (blockedEntity()) {
             <qits-badge class="blocked" [label]="blocked.label" [tone]="blocked.tone" />
           }
         </span>
@@ -359,12 +359,12 @@ interface TreeRow {
         }
         @if (blockable() && !blocking()) {
           <qits-button
-            [class]="ticket()?.blocked ? 'unblock' : 'block'"
+            [class]="blockedEntity() ? 'unblock' : 'block'"
             variant="ghost"
             [disabled]="action() !== null"
-            (pressed)="startBlocking(ticket()?.blocked ? 'unblock' : 'block')"
+            (pressed)="startBlocking(blockedEntity() ? 'unblock' : 'block')"
           >
-            {{ ticket()?.blocked ? 'Unblock' : 'Block' }}
+            {{ blockedEntity() ? 'Unblock' : 'Block' }}
           </qits-button>
         }
         @if (n.archetype !== 'CAMPAIGN') {
@@ -954,6 +954,15 @@ export class EntityDetailPage {
 
   protected readonly ticket = computed(() => ticketOf(this.node()));
 
+  /**
+   * Whether this node is blocked — read off whichever root holds the flag, an epic or a ticket
+   * through {@link EntityNode.entity}, a campaign through {@link EntityNode.campaign}. False for a
+   * feature or a task, which carry neither.
+   */
+  protected readonly blockedEntity = computed(
+    () => this.node()?.entity?.blocked ?? this.node()?.campaign?.blocked ?? false,
+  );
+
   protected readonly archetype = computed(() => archetypeLabel(this.node()?.archetype ?? ''));
   protected readonly badge = computed(() => statusBadge(this.node()?.status ?? null));
   protected readonly type = computed(() => ticketTypeBadge(this.ticket()?.type ?? 'BUG'));
@@ -1077,9 +1086,20 @@ export class EntityDetailPage {
   });
 
   /** Block is offered where a phase runs behind the status — the dispatch state's `nextPhase`. */
-  protected readonly blockable = computed(
-    () => this.ticket() !== null && (this.state()?.nextPhase ?? null) !== null,
-  );
+  /**
+   * Block is offered on every lifecycle archetype — an epic, a ticket or a campaign, read off
+   * whichever root the node holds — and only where a phase runs behind the status, the dispatch
+   * state's `nextPhase`. A feature or a task holds neither {@link EntityNode.entity} nor
+   * {@link EntityNode.campaign}, so it never qualifies.
+   */
+  protected readonly blockable = computed(() => {
+    const node = this.node();
+    return (
+      node !== null &&
+      (node.entity !== null || node.campaign !== null) &&
+      (this.state()?.nextPhase ?? null) !== null
+    );
+  });
 
   protected readonly blockSendable = computed(
     () =>

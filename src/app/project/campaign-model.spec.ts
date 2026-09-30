@@ -221,4 +221,21 @@ describe('campaign-model', () => {
     expect(item.archetype).toBe('CAMPAIGN');
     expect(campaignLine(item)).toBe('1 member · paused');
   });
+
+  /** `blocked` is optional on the wire, same as an epic's or a ticket's — absent resolves to false. */
+  it('resolves a missing blocked to false, and carries a true one through', () => {
+    const row = {
+      id: 'c1',
+      number: 4,
+      qualifiedId: 'qits-4',
+      projectId: 'p1',
+      title: 'Rename qits-x',
+      status: 'REFINED',
+      started: true,
+      active: false,
+      members: 1,
+    };
+    expect(campaignEntity(row).blocked).toBe(false);
+    expect(campaignEntity({ ...row, blocked: true }).blocked).toBe(true);
+  });
 });

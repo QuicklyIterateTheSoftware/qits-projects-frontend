@@ -21,6 +21,8 @@ import type {
   CommentEntriesResponse,
   CommentResponse,
   DispatchMode,
+  EntityBlockDto,
+  EntityBlockResponse,
   EntityDispatchAnswer,
   EntityDispatchStateDto,
   EntityDispatchStateResponse,
@@ -203,29 +205,34 @@ export class EntitiesApi {
   }
 
   /**
-   * Say that a ticket's phase cannot proceed, or that it can again.
+   * Say that an epic's, a ticket's or a campaign's phase cannot proceed, or that it can again.
    *
    * <p>A POST to its own door rather than a field on {@link update}, for {@link transition}'s reason:
-   * blocking is a thing that *happens* to a ticket — it writes a comment saying why, and the service
-   * is free to do more than set a column — where the edit is a restatement of the ticket's words.
+   * blocking is a thing that *happens* to an entity — it writes a comment saying why, and the service
+   * is free to do more than set a column — where the edit is a restatement of the entity's words.
    * Sending it through the edit would also make every other box on that form part of a block.
    *
+   * <p><b>The one entity door, not the ticket-scoped one</b> — `POST /entities/{id}/blocked` answers
+   * for every archetype that carries a lifecycle, where the retired `POST /tickets/{id}/blocked` only
+   * ever answered for a ticket. A feature or a task has none, and the service refuses one there with
+   * a 409, the same as a status with no phase running (VERIFIED, DONE, DROPPED).
+   *
    * <p><b>The reason is required to block and a note to unblock, and the asymmetry is the point.</b>
-   * A blocked ticket with no reason is a row that stops and does not say what it is waiting for,
+   * A blocked entity with no reason is a row that stops and does not say what it is waiting for,
    * which is the one thing anybody reading it afterwards needs; coming *back* from that is
    * self-explanatory — the thing it was waiting for arrived — so a note there is worth having and not
    * worth demanding. The caller withholds the press until there is a reason
    * ({@link ../project/entities-model#hasPhase} says where the press is offered at all), and the
    * service refuses a blank one regardless: offering correctly is not the same as being sure.
    *
-   * <p>The answer is the ticket, and it is the new subject exactly the way a transition's is — one
-   * row in, one row out, nothing else on the project can have moved.
+   * <p>The answer is the flag as the write left it, not the whole row: unlike {@link transition} the
+   * caller here already knows the rest of the row did not move, so there is nothing else to restate.
    */
-  async setBlocked(ticketId: string, blocked: boolean, reason = ''): Promise<TicketEntity> {
+  async setBlocked(entityId: string, blocked: boolean, reason = ''): Promise<EntityBlockDto> {
     const response = await firstValueFrom(
-      this.http.post<TicketResponse>(`${this.ticket(ticketId)}/blocked`, { blocked, reason }),
+      this.http.post<EntityBlockResponse>(`${this.entity(entityId)}/blocked`, { blocked, reason }),
     );
-    return ticketEntity(response.ticket);
+    return response.block;
   }
 
   /**
@@ -406,8 +413,12 @@ export class EntitiesApi {
     );
   }
 
+  private entity(entityId: string): string {
+    return `${this.base}/projects/api/entities/${encodeURIComponent(entityId)}`;
+  }
+
   private dispatchDoor(entityId: string): string {
-    return `${this.base}/projects/api/entities/${encodeURIComponent(entityId)}/dispatch`;
+    return `${this.entity(entityId)}/dispatch`;
   }
 
   private ticketsPath(projectId: string): string {

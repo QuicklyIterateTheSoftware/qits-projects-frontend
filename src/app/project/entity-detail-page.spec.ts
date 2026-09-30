@@ -10,7 +10,14 @@ import { Router, provideRouter } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
 import { provideQitsNavigationTree, type QitsNavigation } from '@qits/ui-components';
 import { routes } from '../app.routes';
-import type { EntityDispatchStateDto, EpicDto, FeatureDto, TaskDto, TicketDto } from '../api/dto';
+import type {
+  CampaignSummaryDto,
+  EntityDispatchStateDto,
+  EpicDto,
+  FeatureDto,
+  TaskDto,
+  TicketDto,
+} from '../api/dto';
 import { EVENT_SOURCE_FACTORY } from '../api/event-source';
 
 const AT = '2026-09-07T09:00:00Z';
@@ -184,7 +191,7 @@ const TICKET: TicketDto = {
 };
 
 /** A campaign on the desk: its listing row, and its full read with two members. */
-const CAMPAIGN_ROW = {
+const CAMPAIGN_ROW: CampaignSummaryDto = {
   id: 'c1',
   number: 430,
   qualifiedId: 'qits-430',
@@ -273,12 +280,16 @@ describe('EntityDetailPage', () => {
   let rooms: Record<string, object | null>;
   let registry: object;
   let ticketPatch: Partial<TicketDto>;
+  let epicPatch: Partial<EpicDto>;
+  let campaignRowPatch: Partial<typeof CAMPAIGN_ROW>;
   let failures: Record<string, { status: number; body: object }>;
 
   beforeEach(async () => {
     sent = [];
     registry = REGISTRY;
     ticketPatch = {};
+    epicPatch = {};
+    campaignRowPatch = {};
     failures = {};
     dispatchStates = {
       t1: stateOf(),
@@ -317,9 +328,11 @@ describe('EntityDetailPage', () => {
         entries: [{ project: { id: 'p1', name: 'Qits', slug: 'qits', description: null } }],
       };
     }
-    if (url === '/projects/api/projects/p1/epics') return { entries: [{ epic: EPIC }] };
+    if (url === '/projects/api/projects/p1/epics') return { entries: [{ epic: { ...EPIC, ...epicPatch } }] };
     if (url === '/projects/api/projects/p1/tickets') return { entries: [{ ticket: { ...TICKET, ...ticketPatch } }] };
-    if (url === '/projects/api/projects/p1/campaigns') return { campaigns: [CAMPAIGN_ROW] };
+    if (url === '/projects/api/projects/p1/campaigns') {
+      return { campaigns: [{ ...CAMPAIGN_ROW, ...campaignRowPatch }] };
+    }
     if (url === '/projects/api/campaigns/c1') return { campaign: CAMPAIGN };
     if (url === '/projects/api/campaigns/c1/progress') {
       return {
@@ -422,6 +435,15 @@ describe('EntityDetailPage', () => {
     }
     if (url === '/projects/api/epics/e1/transition') return { epic: EPIC, successor: null };
     if (url === '/projects/api/entities/transition') return {};
+    const blocked = /^\/projects\/api\/entities\/([^/]+)\/blocked$/.exec(url);
+    if (blocked && method === 'POST') {
+      const body = request.request.body as { blocked: boolean };
+      const archetype = blocked[1] === 'e1' ? 'EPIC' : blocked[1] === 'c1' ? 'CAMPAIGN' : 'TICKET';
+      if (blocked[1] === 'e1') epicPatch = { blocked: body.blocked };
+      if (blocked[1] === 't1') ticketPatch = { blocked: body.blocked };
+      if (blocked[1] === 'c1') campaignRowPatch = { blocked: body.blocked };
+      return { block: { entityId: blocked[1], archetype, status: 'REFINED', blocked: body.blocked } };
+    }
     throw new Error(`unanswered ${method} ${url}`);
   }
 
@@ -650,6 +672,75 @@ describe('EntityDetailPage', () => {
 
       expect(button('.refine').disabled).toBe(false);
       expect(button('.refine').textContent?.trim()).toBe('Open refinement');
+    });
+  });
+
+  /**
+   * Block and Unblock are offered on every lifecycle archetype now — an epic and a campaign as well
+   * as a ticket — through the one entity door, `POST /entities/{id}/blocked`.
+   */
+  describe('blocking', () => {
+    it('offers Block on an epic with a next phase, the same as on a ticket', async () => {
+      await open('/qits/work/qits-12');
+
+      expect(buttonNamed('Block')).toBeTruthy();
+    });
+
+    it('does not offer Block on a feature or a task, which have no lifecycle', async () => {
+      await open('/qits/work/qits-13');
+      expect(element().querySelectorAll('qits-button.block, qits-button.unblock')).toHaveLength(0);
+
+      await harness.navigateByUrl('/qits/work/qits-15');
+      await serve();
+      expect(element().querySelectorAll('qits-button.block, qits-button.unblock')).toHaveLength(0);
+    });
+
+    it('does not offer Block where the dispatch state names no next phase', async () => {
+      dispatchStates['e1'] = stateOf({ entityId: 'e1', archetype: 'EPIC', status: 'DONE', nextPhase: null });
+      await open('/qits/work/qits-12');
+
+      expect(element().querySelectorAll('qits-button.block, qits-button.unblock')).toHaveLength(0);
+    });
+
+    it('blocks an epic through the entity door, carrying the reason, and refreshes', async () => {
+      await open('/qits/work/qits-12');
+
+      buttonNamed('Block').click();
+      harness.detectChanges();
+      const note = element().querySelector<HTMLTextAreaElement>('.block-note')!;
+      note.value = 'Waiting on a design decision.';
+      note.dispatchEvent(new Event('input'));
+      harness.detectChanges();
+      sent = [];
+      button('.send-block').click();
+      await serve();
+
+      expect(writes()[0]).toEqual({
+        method: 'POST',
+        url: '/projects/api/entities/e1/blocked',
+        body: { blocked: true, reason: 'Waiting on a design decision.' },
+      });
+      // The reload after the write is what draws the badge — the write itself answers only the flag.
+      expect(element().querySelector('.badges .blocked')).toBeTruthy();
+      expect(buttonNamed('Unblock')).toBeTruthy();
+    });
+
+    it('shows the blocked badge for a blocked campaign, offers Unblock and sends no reason to unblock', async () => {
+      campaignRowPatch = { blocked: true };
+      await open('/qits/work/qits-430');
+
+      expect(element().querySelector('.badges .blocked')).toBeTruthy();
+      buttonNamed('Unblock').click();
+      harness.detectChanges();
+      sent = [];
+      button('.send-block').click();
+      await serve();
+
+      expect(writes()[0]).toEqual({
+        method: 'POST',
+        url: '/projects/api/entities/c1/blocked',
+        body: { blocked: false, reason: '' },
+      });
     });
   });
 

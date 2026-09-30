@@ -291,6 +291,12 @@ export interface EpicDto {
   readonly qualifiedId: string | null;
   readonly status: EntityStatus;
   /**
+   * Whether the phase behind the current status cannot proceed — {@link TicketDto.blocked}, rule
+   * for rule: orthogonal to status, cleared by any transition, and optional because it arrived after
+   * epics were already on the wire — absent means false.
+   */
+  readonly blocked?: boolean;
+  /**
    * The draft that replaced this one — set on a `DROPPED` epic that was superseded (the supersede
    * *operation* lands the epic DROPPED and names its successor here); null on every other.
    */
@@ -627,6 +633,23 @@ export interface TicketEntriesResponse {
 /** One ticket, wrapped — what every single-row write and read answers. */
 export interface TicketResponse {
   readonly ticket: TicketDto;
+}
+
+/**
+ * An entity's block flag as the write left it, with the archetype and status it belongs to —
+ * `POST /projects/api/entities/{id}/blocked`'s answer, for every archetype that carries one (an
+ * epic, a ticket or a campaign; a feature or a task has no lifecycle to block).
+ */
+export interface EntityBlockDto {
+  readonly entityId: string;
+  readonly archetype: string;
+  readonly status: EntityStatus;
+  readonly blocked: boolean;
+}
+
+/** The block flag, wrapped — the whole answer to the entity block door. */
+export interface EntityBlockResponse {
+  readonly block: EntityBlockDto;
 }
 
 /** One entity's comments, oldest first, which is the order a conversation is read in. */
@@ -1575,6 +1598,8 @@ export interface CampaignSummaryDto {
   readonly projectId: string;
   readonly title: string;
   readonly status: EntityStatus;
+  /** Whether the phase behind the current status cannot proceed — {@link TicketDto.blocked}, rule for rule. */
+  readonly blocked?: boolean;
   /** Whether it has ever been started. */
   readonly started: boolean;
   /** Whether its start is live now — leaving REFINED pauses it. */
@@ -1703,6 +1728,8 @@ export interface CampaignDto {
   readonly title: string;
   readonly description: string | null;
   readonly status: EntityStatus;
+  /** Whether the phase behind the current status cannot proceed — {@link TicketDto.blocked}, rule for rule. */
+  readonly blocked?: boolean;
   readonly start: CampaignStartDto | null;
   readonly members: readonly CampaignMemberDto[];
 }
@@ -1743,6 +1770,8 @@ export interface CampaignProgressCampaignDto {
   readonly qualifiedId: string | null;
   readonly title: string;
   readonly status: EntityStatus;
+  /** Whether the phase behind the current status cannot proceed — {@link TicketDto.blocked}, rule for rule. */
+  readonly blocked?: boolean;
   readonly start: CampaignStartDto | null;
 }
 

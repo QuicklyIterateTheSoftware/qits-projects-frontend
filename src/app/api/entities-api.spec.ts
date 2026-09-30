@@ -381,13 +381,16 @@ describe('EntitiesApi', () => {
     });
 
     /**
-     * Its own door, not a field on the edit: blocking is something that happens to a ticket, and a
+     * Its own door, not a field on the edit: blocking is something that happens to an entity, and a
      * block sent through the edit would drag every other box on that form along with it.
+     *
+     * <p>The entity door, not the retired ticket-scoped one — `POST /entities/{id}/blocked` is what
+     * every archetype with a lifecycle answers through now, a ticket included.
      */
-    it('blocks a ticket through the blocked verb, carrying the reason', async () => {
+    it('blocks an entity through the entity blocked verb, carrying the reason', async () => {
       const answer = api.setBlocked('t1', true, 'Waiting on qits-ci to redeploy.');
-      const request = http.expectOne('/projects/api/tickets/t1/blocked');
-      request.flush({ ticket: ticket({ blocked: true }) });
+      const request = http.expectOne('/projects/api/entities/t1/blocked');
+      request.flush({ block: { entityId: 't1', archetype: 'TICKET', status: 'REPORTED', blocked: true } });
 
       expect(request.request.method).toBe('POST');
       expect(request.request.body).toEqual({
@@ -400,11 +403,21 @@ describe('EntitiesApi', () => {
     /** The same door the other way, and the note is optional — coming back is self-explanatory. */
     it('unblocks through the same door, with or without a note', async () => {
       const answer = api.setBlocked('t1', false);
-      const request = http.expectOne('/projects/api/tickets/t1/blocked');
-      request.flush({ ticket: ticket({ blocked: false }) });
+      const request = http.expectOne('/projects/api/entities/t1/blocked');
+      request.flush({ block: { entityId: 't1', archetype: 'TICKET', status: 'REPORTED', blocked: false } });
 
       expect(request.request.body).toEqual({ blocked: false, reason: '' });
       expect((await answer).blocked).toBe(false);
+    });
+
+    /** Not ticket-scoped at all: the same verb answers for an epic, and for a campaign. */
+    it('blocks an epic through the same entity door, not a ticket-scoped one', async () => {
+      const answer = api.setBlocked('e1', true, 'Waiting on a design decision.');
+      const request = http.expectOne('/projects/api/entities/e1/blocked');
+      request.flush({ block: { entityId: 'e1', archetype: 'EPIC', status: 'REFINED', blocked: true } });
+
+      expect((await answer).archetype).toBe('EPIC');
+      expect((await answer).blocked).toBe(true);
     });
 
     /**

@@ -42,8 +42,9 @@ import { archetypeLabel, entityRoute } from './entity-nodes';
             <qits-badge [label]="type().label" [tone]="type().tone" />
           }
           <qits-badge class="status" [label]="badge().label" [tone]="badge().tone" />
-          <!-- Beside the status and never instead of it: blocked is a different fact. -->
-          @if (ticket()?.blocked) {
+          <!-- Beside the status and never instead of it: blocked is a different fact. Every
+               archetype on the desk carries the flag now, not only a ticket. -->
+          @if (entity().blocked) {
             <qits-badge class="blocked" [label]="blocked.label" [tone]="blocked.tone" />
           }
         </span>
