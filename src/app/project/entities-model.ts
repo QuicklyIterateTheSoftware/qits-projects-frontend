@@ -305,20 +305,27 @@ export function epicProgress(entity: EpicEntity): EpicProgress {
 }
 
 /**
- * How loudly each lifecycle word is drawn. **The tones say how finished, not how urgent.**
+ * How loudly each lifecycle word is drawn. **One palette, shared with the session names**: this table
+ * and `EntityStatusSquare` in qits-coding-agents (`AgentRemoteControl`) draw the same six statuses the
+ * same way, so a change to one is made to both.
  *
  * <p>A lookup and not the vocabulary: which words exist, and their order, is the served registry's
  * answer ({@link statusVocabulary}). A word missing here is drawn neutral with its own name as the
  * label, so a sixth word the service adds tomorrow reads correctly before anybody touches this table.
  *
- * <p>`REPORTED` is `warning` because it is a standing request nobody has picked up; `VERIFIED` is
- * `info` rather than `success` because it waits on a person to close it; `DONE` is `success`; and
- * `DROPPED` is neutral — work nobody is going to do is neither a failure nor an achievement.
+ * <p>`REPORTED` is grey — a standing request nobody has picked up; `REFINED` is `highlight` (purple);
+ * `IMPLEMENTED` is `info` (blue); `VERIFIED` is `warning` (yellow) because it waits on a person to
+ * close it; `DONE` is `success` (green); and `DROPPED` is neutral — work nobody is going to do is
+ * neither a failure nor an achievement. Red is reserved: it never names a status here, only
+ * {@link BLOCKED_BADGE}.
  */
 const STATUS_TONES: Readonly<Record<string, QitsBadgeTone>> = {
-  REPORTED: 'warning',
-  VERIFIED: 'info',
+  REPORTED: 'neutral',
+  REFINED: 'highlight',
+  IMPLEMENTED: 'info',
+  VERIFIED: 'warning',
   DONE: 'success',
+  DROPPED: 'neutral',
 };
 
 /**
@@ -339,9 +346,10 @@ export function statusLabel(status: EntityStatus): string {
 
 /**
  * The badge a blocked ticket carries **beside** its status, never instead of it: blocked says the
- * phase cannot proceed, which is a different fact from how far the ticket has got.
+ * phase cannot proceed, which is a different fact from how far the ticket has got. `danger` because
+ * red is otherwise unused among entity statuses — it names only this fact, nothing else.
  */
-export const BLOCKED_BADGE: StatusBadge = { label: 'blocked', tone: 'warning' };
+export const BLOCKED_BADGE: StatusBadge = { label: 'blocked', tone: 'danger' };
 
 /**
  * Every lifecycle word the service serves, in the order the work walks them — the union of each
