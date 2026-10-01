@@ -389,9 +389,11 @@ describe('entities model', () => {
       });
     });
 
-    it('tones how finished, keeping verified out of the done tone', () => {
-      expect(statusBadge('REPORTED').tone).toBe('warning');
-      expect(statusBadge('VERIFIED').tone).toBe('info');
+    it('tones the one palette shared with the session names', () => {
+      expect(statusBadge('REPORTED').tone).toBe('neutral');
+      expect(statusBadge('REFINED').tone).toBe('highlight');
+      expect(statusBadge('IMPLEMENTED').tone).toBe('info');
+      expect(statusBadge('VERIFIED').tone).toBe('warning');
       expect(statusBadge('DONE').tone).toBe('success');
       expect(statusBadge('DROPPED').tone).toBe('neutral');
     });
@@ -400,8 +402,8 @@ describe('entities model', () => {
       expect(statusBadge(null).label).toBe('no status');
     });
 
-    it('keeps blocked a badge of its own, and the two types apart', () => {
-      expect(BLOCKED_BADGE.tone).toBe('warning');
+    it('keeps blocked a badge of its own, red and apart from every status', () => {
+      expect(BLOCKED_BADGE.tone).toBe('danger');
       expect(ticketTypeBadge('BUG').tone).not.toBe(ticketTypeBadge('IMPROVEMENT').tone);
     });
 
