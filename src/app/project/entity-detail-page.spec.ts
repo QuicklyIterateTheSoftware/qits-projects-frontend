@@ -68,7 +68,11 @@ function spec(archetype: string, lifecycle: readonly string[], permitted: readon
   return {
     archetype,
     depth: archetype === 'TASK' ? 2 : archetype === 'FEATURE' ? 1 : 0,
-    mayBeRoot: archetype === 'EPIC' || archetype === 'TICKET',
+    // A campaign may sit at the top of a project too — this fixture only left it out because no test
+    // here used to read `mayBeRoot`. qits-763 made it load-bearing: the component gates the agent
+    // surface (Dispatch, Run the next phase, Refine) on it as well as on having a lifecycle, so that a
+    // feature or a task growing a status does not grow that surface along with it.
+    mayBeRoot: archetype !== 'FEATURE' && archetype !== 'TASK',
     required: ['TITLE'],
     requiredOnTransition: ['TITLE'],
     permitted,
@@ -113,6 +117,21 @@ const REGISTRY = {
       ['TITLE', 'SLUG', 'DESCRIPTION', 'REPOSITORY_ID', 'IMPLEMENTED_AT', 'DEPENDS_ON'],
     ),
   ],
+};
+
+/**
+ * The service after qits-763: a feature and a task hold the same eight-word lifecycle an epic or a
+ * ticket does. `mayBeRoot` stays false for both — that is the one thing that does not change — so the
+ * component must keep their pages free of Dispatch/Refine even though {@link REGISTRY}'s old signal
+ * for that, "has a lifecycle", no longer tells the two cases apart.
+ */
+const REGISTRY_WITH_FEATURE_LIFECYCLE = {
+  ...REGISTRY,
+  archetypes: REGISTRY.archetypes.map((entry) =>
+    entry.archetype === 'FEATURE' || entry.archetype === 'TASK'
+      ? spec(entry.archetype, WORDS, [...entry.permitted, 'STATUS'])
+      : entry,
+  ),
 };
 
 const EPIC: EpicDto = {
@@ -207,7 +226,14 @@ function campaignMember(id: string, qualified: string, position: number, groups:
   return {
     membershipId: `m-${id}`,
     position,
-    entity: { id, archetype: 'TICKET', qualifiedId: qualified, title: `Member ${qualified}`, status: 'REPORTED', blocked: false },
+    entity: {
+      id,
+      archetype: 'TICKET',
+      qualifiedId: qualified,
+      title: `Member ${qualified}`,
+      status: 'REPORTED',
+      blocked: false,
+    },
     claimedAt: null,
     joinedRunning: false,
     dispatchedAt: null,
@@ -281,6 +307,8 @@ describe('EntityDetailPage', () => {
   let registry: object;
   let ticketPatch: Partial<TicketDto>;
   let epicPatch: Partial<EpicDto>;
+  let featurePatch: Partial<FeatureDto>;
+  let taskDonePatch: Partial<TaskDto>;
   let campaignRowPatch: Partial<typeof CAMPAIGN_ROW>;
   let failures: Record<string, { status: number; body: object }>;
 
@@ -289,6 +317,8 @@ describe('EntityDetailPage', () => {
     registry = REGISTRY;
     ticketPatch = {};
     epicPatch = {};
+    featurePatch = {};
+    taskDonePatch = {};
     campaignRowPatch = {};
     failures = {};
     dispatchStates = {
@@ -328,8 +358,10 @@ describe('EntityDetailPage', () => {
         entries: [{ project: { id: 'p1', name: 'Qits', slug: 'qits', description: null } }],
       };
     }
-    if (url === '/projects/api/projects/p1/epics') return { entries: [{ epic: { ...EPIC, ...epicPatch } }] };
-    if (url === '/projects/api/projects/p1/tickets') return { entries: [{ ticket: { ...TICKET, ...ticketPatch } }] };
+    if (url === '/projects/api/projects/p1/epics')
+      return { entries: [{ epic: { ...EPIC, ...epicPatch } }] };
+    if (url === '/projects/api/projects/p1/tickets')
+      return { entries: [{ ticket: { ...TICKET, ...ticketPatch } }] };
     if (url === '/projects/api/projects/p1/campaigns') {
       return { campaigns: [{ ...CAMPAIGN_ROW, ...campaignRowPatch }] };
     }
@@ -337,18 +369,28 @@ describe('EntityDetailPage', () => {
     if (url === '/projects/api/campaigns/c1/progress') {
       return {
         progress: {
-          campaign: { id: 'c1', qualifiedId: 'qits-430', title: 'Rename qits-x', status: 'REFINED', start: null },
+          campaign: {
+            id: 'c1',
+            qualifiedId: 'qits-430',
+            title: 'Rename qits-x',
+            status: 'REFINED',
+            start: null,
+          },
           evaluator: { connected: true, lastSweepCompletedAt: null, stalled: false },
           members: [],
         },
       };
     }
     if (url === '/projects/api/campaigns/c1/transition') {
-      return { campaign: { ...CAMPAIGN, status: (request.request.body as { target: string }).target } };
+      return {
+        campaign: { ...CAMPAIGN, status: (request.request.body as { target: string }).target },
+      };
     }
-    if (url === '/projects/api/epics/e1/features') return { entries: [{ feature: FEATURE }] };
+    if (url === '/projects/api/epics/e1/features') {
+      return { entries: [{ feature: { ...FEATURE, ...featurePatch } }] };
+    }
     if (url === '/projects/api/features/f1/tasks') {
-      return { entries: [{ task: TASK_DONE }, { task: TASK_OPEN }] };
+      return { entries: [{ task: { ...TASK_DONE, ...taskDonePatch } }, { task: TASK_OPEN }] };
     }
     if (url === '/projects/api/entities/archetypes') return registry;
     if (url === '/projects/api/projects/p1/repositories') {
@@ -362,7 +404,13 @@ describe('EntityDetailPage', () => {
     if (dispatch && method === 'POST' && dispatch[1] === 'c1') {
       return {
         progress: {
-          campaign: { id: 'c1', qualifiedId: 'qits-430', title: 'Rename qits-x', status: 'REFINED', start: null },
+          campaign: {
+            id: 'c1',
+            qualifiedId: 'qits-430',
+            title: 'Rename qits-x',
+            status: 'REFINED',
+            start: null,
+          },
           evaluator: { connected: true, lastSweepCompletedAt: null, stalled: false },
           members: [],
         },
@@ -442,7 +490,9 @@ describe('EntityDetailPage', () => {
       if (blocked[1] === 'e1') epicPatch = { blocked: body.blocked };
       if (blocked[1] === 't1') ticketPatch = { blocked: body.blocked };
       if (blocked[1] === 'c1') campaignRowPatch = { blocked: body.blocked };
-      return { block: { entityId: blocked[1], archetype, status: 'REFINED', blocked: body.blocked } };
+      return {
+        block: { entityId: blocked[1], archetype, status: 'REFINED', blocked: body.blocked },
+      };
     }
     throw new Error(`unanswered ${method} ${url}`);
   }
@@ -559,6 +609,34 @@ describe('EntityDetailPage', () => {
       // No lifecycle, so no dispatching actions — the registry says so, not a list here.
       expect(element().querySelector('.flow')).toBeNull();
       expect(element().querySelector('.marker')?.textContent).toContain('open');
+    });
+
+    /**
+     * qits-763: once the registry gives a feature and a task a lifecycle, their badge is the status —
+     * not the marker — and the Dispatch/Refine surface still does not appear, because `mayBeRoot`
+     * stays false for both even though "has a lifecycle" no longer says so.
+     */
+    it('draws a feature’s own status once the registry serves one, with no dispatching actions', async () => {
+      registry = REGISTRY_WITH_FEATURE_LIFECYCLE;
+      featurePatch = { status: 'REFINED' };
+
+      await open('/qits/work/qits-13');
+
+      expect(element().querySelector('.status')?.textContent).toContain('refined');
+      expect(element().querySelector('.marker')).toBeNull();
+      expect(element().querySelector('.flow')).toBeNull();
+    });
+
+    it('draws a task’s own status in the epic’s tree once the registry serves one', async () => {
+      registry = REGISTRY_WITH_FEATURE_LIFECYCLE;
+      taskDonePatch = { status: 'VERIFIED' };
+
+      await open('/qits/work/qits-12');
+
+      const rows = Array.from(element().querySelectorAll<HTMLElement>('.tree .row'));
+      expect(
+        rows.map((row) => row.querySelector('.implemented-marker')?.textContent?.trim()),
+      ).toEqual(['open', 'verified', 'open']);
     });
 
     it('draws a task’s page: its repository, its dependency and its own history only', async () => {
@@ -696,7 +774,12 @@ describe('EntityDetailPage', () => {
     });
 
     it('does not offer Block where the dispatch state names no next phase', async () => {
-      dispatchStates['e1'] = stateOf({ entityId: 'e1', archetype: 'EPIC', status: 'DONE', nextPhase: null });
+      dispatchStates['e1'] = stateOf({
+        entityId: 'e1',
+        archetype: 'EPIC',
+        status: 'DONE',
+        nextPhase: null,
+      });
       await open('/qits/work/qits-12');
 
       expect(element().querySelectorAll('qits-button.block, qits-button.unblock')).toHaveLength(0);
@@ -857,7 +940,9 @@ describe('EntityDetailPage', () => {
 
       buttonNamed('Edit').click();
       harness.detectChanges();
-      const options = Array.from(element().querySelectorAll<HTMLOptionElement>('.edit-type option'));
+      const options = Array.from(
+        element().querySelectorAll<HTMLOptionElement>('.edit-type option'),
+      );
       expect(options.map((option) => option.value)).toEqual(['BUG', 'IMPROVEMENT']);
     });
 
@@ -867,7 +952,9 @@ describe('EntityDetailPage', () => {
 
       buttonNamed('Edit').click();
       harness.detectChanges();
-      const options = Array.from(element().querySelectorAll<HTMLOptionElement>('.edit-type option'));
+      const options = Array.from(
+        element().querySelectorAll<HTMLOptionElement>('.edit-type option'),
+      );
       expect(options.map((option) => option.value)).toEqual(['BUG', 'IMPROVEMENT', 'MAINTENANCE']);
     });
 
@@ -932,7 +1019,14 @@ describe('EntityDetailPage', () => {
       const labels = Array.from(element().querySelectorAll('button'))
         .filter((node) => !node.closest('.comments'))
         .map((node) => node.textContent?.trim());
-      for (const absent of ['Run the next phase', 'Refine', 'Open refinement', 'Edit', 'Reshape', 'Dispatch']) {
+      for (const absent of [
+        'Run the next phase',
+        'Refine',
+        'Open refinement',
+        'Edit',
+        'Reshape',
+        'Dispatch',
+      ]) {
         expect(labels).not.toContain(absent);
       }
       // A campaign has no refinement room, so none is looked for.

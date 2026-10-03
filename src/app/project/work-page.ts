@@ -39,10 +39,12 @@ interface FilterOption {
  * the one place and not a second place, and a link to a filtered desk is still a link to the desk.
  * The old addresses, `/<project>/epics` and `/<project>/tickets`, redirect here with the filter set.
  *
- * <p><b>The filter's options are read off the served registry</b>: every archetype that has a
- * lifecycle (a non-empty `legalStatuses`) is a root of work a desk lists; features and tasks are in
- * their epics' trees and are reached from there. Until the registry answers, the filter offers "All"
- * and whatever the address already names.
+ * <p><b>The filter's options are read off the served registry</b>: every archetype the registry marks
+ * `mayBeRoot` is a root of work a desk lists. That is deliberately not "has a lifecycle" — a feature
+ * and a task gained one (qits-763) without gaining a place at the top of a project, so the filter would
+ * offer them as desk roots the moment `legalStatuses` stopped being empty. They stay in their epics'
+ * trees and are reached from there. Until the registry answers, the filter offers "All" and whatever
+ * the address already names.
  *
  * <p><b>One front desk agent.</b> The refinement panel above the rows is the project's
  * conversation, and it is always the one desk's surface, `project.work` (qits-403) — whatever the
@@ -168,7 +170,7 @@ export class WorkPage {
     return archetype ? archetypeFilterParam(archetype) : null;
   });
 
-  /** The archetypes with a lifecycle, off the registry — see the class note. */
+  /** The archetypes that may sit at the top of a project, off the registry — see the class note. */
   private readonly served = signal<readonly string[]>([]);
 
   protected readonly options = computed<readonly FilterOption[]>(() => {
@@ -192,9 +194,7 @@ export class WorkPage {
       .registry()
       .then((registry) =>
         this.served.set(
-          registry.archetypes
-            .filter((spec) => spec.legalStatuses.length > 0)
-            .map((spec) => spec.archetype),
+          registry.archetypes.filter((spec) => spec.mayBeRoot).map((spec) => spec.archetype),
         ),
       )
       .catch(() => undefined);

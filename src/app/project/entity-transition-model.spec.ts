@@ -109,6 +109,36 @@ const WITH_STORY: ArchetypeRegistry = {
   ],
 };
 
+const WALK = [
+  'REPORTED',
+  'REFINED',
+  'IMPLEMENTING',
+  'IMPLEMENTED',
+  'VERIFYING',
+  'VERIFIED',
+  'DONE',
+  'DROPPED',
+];
+
+/**
+ * The service after qits-763: FEATURE and TASK get the same eight-word lifecycle and now require
+ * `STATUS` on a transition, same as EPIC and TICKET. {@link REGISTRY} stays the *before* fixture, so
+ * the two together are what prove `subjectsOf` runs against either release of the service.
+ */
+const REGISTRY_WITH_FEATURE_STATUS: ArchetypeRegistry = {
+  ...REGISTRY,
+  archetypes: REGISTRY.archetypes.map((spec) =>
+    spec.archetype === 'FEATURE' || spec.archetype === 'TASK'
+      ? {
+          ...spec,
+          requiredOnTransition: [...spec.requiredOnTransition, 'STATUS'],
+          permitted: [...spec.permitted, 'STATUS'],
+          legalStatuses: WALK,
+        }
+      : spec,
+  ),
+};
+
 function epicDto(over: Partial<EpicDto> = {}): EpicDto {
   return {
     id: 'e1',
@@ -527,10 +557,7 @@ describe('entity-transition-model', () => {
     });
 
     it('collects several fragments about one property, in the order they were written', () => {
-      const found = attributeViolations(
-        'title is blank; title is too long',
-        REGISTRY.properties,
-      );
+      const found = attributeViolations('title is blank; title is too long', REGISTRY.properties);
 
       expect(found.byProperty.get('TITLE')).toEqual(['title is blank', 'title is too long']);
     });
@@ -563,11 +590,11 @@ describe('entity-transition-model', () => {
     ];
 
     it('walks every level of the project into one flat list, in the read’s order', () => {
-      expect(ids(subjectsOf(entities))).toEqual(['e1', 'f1', 'k1', 't1']);
+      expect(ids(subjectsOf(REGISTRY, entities))).toEqual(['e1', 'f1', 'k1', 't1']);
     });
 
     it('names each row’s archetype and its parent', () => {
-      const [epic, feature, task, ticket] = subjectsOf(entities);
+      const [epic, feature, task, ticket] = subjectsOf(REGISTRY, entities);
 
       expect([epic.archetype, epic.parentId]).toEqual(['EPIC', null]);
       expect([feature.archetype, feature.parentId]).toEqual(['FEATURE', 'e1']);
@@ -577,7 +604,7 @@ describe('entity-transition-model', () => {
 
     /** The wire's two spellings of one idea, reconciled once so every rule above reads one name. */
     it('reads a feature’s implementedOn and a task’s implementedAt as one property', () => {
-      const [, feature, task] = subjectsOf(entities);
+      const [, feature, task] = subjectsOf(REGISTRY, entities);
 
       expect(feature.values['IMPLEMENTED_AT']).toBe(AT);
       expect(feature.values['DEPENDS_ON']).toBe('f0');
@@ -585,7 +612,7 @@ describe('entity-transition-model', () => {
     });
 
     it('carries a ticket’s whole shape, and an epic’s', () => {
-      const [epic, , , ticket] = subjectsOf(entities);
+      const [epic, , , ticket] = subjectsOf(REGISTRY, entities);
 
       expect(epic.values).toEqual({
         TITLE: 'Merge the entities',
@@ -606,23 +633,67 @@ describe('entity-transition-model', () => {
 
     /** Absent means "nothing is stored", which is exactly what the door means by it. */
     it('leaves a null or blank property out entirely', () => {
-      const [subjectRow] = subjectsOf([ticketEntity(ticketDto({ assignee: '  ', impetus: null }))]);
+      const [subjectRow] = subjectsOf(REGISTRY, [
+        ticketEntity(ticketDto({ assignee: '  ', impetus: null })),
+      ]);
 
       expect('ASSIGNEE' in subjectRow.values).toBe(false);
       expect('IMPETUS' in subjectRow.values).toBe(false);
     });
 
     it('carries the identifiers a picker draws, including a null qualified id', () => {
-      const [subjectRow] = subjectsOf([ticketEntity(ticketDto({ qualifiedId: null }))]);
+      const [subjectRow] = subjectsOf(REGISTRY, [ticketEntity(ticketDto({ qualifiedId: null }))]);
 
       expect(subjectRow.number).toBe(41);
       expect(subjectRow.qualifiedId).toBe(null);
     });
 
     it('carries the project each row belongs to, off the row itself', () => {
-      const rows = subjectsOf(entities);
+      const rows = subjectsOf(REGISTRY, entities);
 
       expect(rows.every((row) => row.projectId === 'p1')).toBe(true);
+    });
+
+    /**
+     * qits-763: a feature and a task may serve a status now, but this client is released ahead of the
+     * service, so {@link subjectsOf} must run correctly against either shape of the registry.
+     */
+    describe('STATUS on a feature or a task (qits-763)', () => {
+      const withStatus: readonly Entity[] = [
+        epicEntity(epicDto(), [
+          {
+            feature: featureDto({ status: 'IMPLEMENTING' }),
+            tasks: [taskDto({ status: 'VERIFIED' })],
+          },
+        ]),
+      ];
+
+      it('leaves STATUS off a feature and a task while the registry does not require it (the old service)', () => {
+        const [, feature, task] = subjectsOf(REGISTRY, withStatus);
+
+        expect('STATUS' in feature.values).toBe(false);
+        expect('STATUS' in task.values).toBe(false);
+      });
+
+      it('sends the row’s own status once the registry requires it (the new service)', () => {
+        const [, feature, task] = subjectsOf(REGISTRY_WITH_FEATURE_STATUS, withStatus);
+
+        expect(feature.values['STATUS']).toBe('IMPLEMENTING');
+        expect(task.values['STATUS']).toBe('VERIFIED');
+      });
+
+      it('defaults to REPORTED for a row the service has not migrated a status onto yet', () => {
+        const noStatus: readonly Entity[] = [
+          epicEntity(epicDto(), [
+            { feature: featureDto({ status: null }), tasks: [taskDto({ status: null })] },
+          ]),
+        ];
+
+        const [, feature, task] = subjectsOf(REGISTRY_WITH_FEATURE_STATUS, noStatus);
+
+        expect(feature.values['STATUS']).toBe('REPORTED');
+        expect(task.values['STATUS']).toBe('REPORTED');
+      });
     });
   });
 
@@ -696,7 +767,10 @@ describe('entity-transition-model', () => {
     it('never states a slug or a principal', () => {
       const body = draftToRequest(
         REGISTRY,
-        draft({ archetype: 'TICKET', values: { TITLE: 'A row', SLUG: 'a-row', CREATED_BY: 'kim' } }),
+        draft({
+          archetype: 'TICKET',
+          values: { TITLE: 'A row', SLUG: 'a-row', CREATED_BY: 'kim' },
+        }),
       );
 
       expect(body['slug']).toBeUndefined();
@@ -765,7 +839,7 @@ describe('entity-transition-model', () => {
   /** A field edit on the multi-entity door, now that the per-archetype PUTs are retired. */
   describe('restatement', () => {
     it('restates the whole row with the changed properties replaced', () => {
-      const [ticket] = subjectsOf([ticketEntity(ticketDto())]);
+      const [ticket] = subjectsOf(REGISTRY, [ticketEntity(ticketDto())]);
       expect(restatement(REGISTRY, ticket, { TITLE: 'Renamed' })).toEqual(
         draftToRequest(REGISTRY, {
           subject: ticket,
@@ -777,19 +851,22 @@ describe('entity-transition-model', () => {
     });
 
     it('clears a property changed to nothing, which is how an emptied box clears', () => {
-      const [ticket] = subjectsOf([ticketEntity(ticketDto({ assignee: 'kim' }))]);
+      const [ticket] = subjectsOf(REGISTRY, [ticketEntity(ticketDto({ assignee: 'kim' }))]);
       const request = restatement(REGISTRY, ticket, { ASSIGNEE: '  ' });
       expect('assignee' in request).toBe(false);
       expect(request['title']).toBe(ticket.values['TITLE']);
     });
 
     it('keeps a member in its place among its siblings, and a root without a position', () => {
-      const subjects = subjectsOf([
+      const subjects = subjectsOf(REGISTRY, [
         epicEntity(epicDto(), [{ feature: featureDto(), tasks: [] }]),
       ]);
       const feature = subjects.find((subject) => subject.id === 'f1')!;
       const epic = subjects.find((subject) => subject.id === 'e1')!;
-      expect(restatement(REGISTRY, feature, {}, 3).membership).toEqual({ parent: 'e1', position: 3 });
+      expect(restatement(REGISTRY, feature, {}, 3).membership).toEqual({
+        parent: 'e1',
+        position: 3,
+      });
       expect(restatement(REGISTRY, epic, {}, 3).membership).toEqual({ parent: null });
     });
   });

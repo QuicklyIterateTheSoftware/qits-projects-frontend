@@ -65,12 +65,7 @@ const TRANSITIONS = {
 const REGISTRY: ArchetypeRegistry = {
   properties: ['TITLE', 'STATUS'],
   serverOwned: [],
-  archetypes: [
-    spec('EPIC', WORDS),
-    spec('TICKET', WORDS),
-    spec('FEATURE', []),
-    spec('TASK', []),
-  ],
+  archetypes: [spec('EPIC', WORDS), spec('TICKET', WORDS), spec('FEATURE', []), spec('TASK', [])],
 };
 
 function spec(archetype: string, lifecycle: readonly string[]) {
@@ -336,6 +331,37 @@ describe('entities model', () => {
         tone: 'success',
       });
     });
+
+    /**
+     * qits-763: once the service serves a status for a feature or a task, that status is the badge —
+     * never the markers, and never the generic "implemented"/"open" words, even where the status
+     * happens to be further along than either marker would suggest.
+     */
+    it('prefers its own status over the markers once the service serves one', () => {
+      expect(taskStatus(task({ status: 'VERIFYING' }))).toEqual({
+        label: 'verifying',
+        tone: 'info',
+      });
+      expect(taskStatus(task({ status: 'VERIFIED', implementedAt: AT }))).toEqual({
+        label: 'verified',
+        tone: 'warning',
+      });
+      expect(featureStatus(feature({ status: 'DONE', implementedOn: AT }))).toEqual({
+        label: 'done',
+        tone: 'success',
+      });
+    });
+
+    it('falls back to the markers when status is null — the service before qits-763', () => {
+      expect(taskStatus(task({ status: null, implementedAt: AT }))).toEqual({
+        label: 'implemented',
+        tone: 'success',
+      });
+      expect(featureStatus(feature({ status: null, implementingOn: AT }))).toEqual({
+        label: 'implementing',
+        tone: 'info',
+      });
+    });
   });
 
   describe('epicStatus', () => {
@@ -597,7 +623,9 @@ describe('entities model', () => {
     it('draws a kind it has never met plainly', () => {
       const odd: ArchetypeRegistry = {
         ...REGISTRY,
-        archetypes: [{ ...spec('TICKET', ['A', 'B']), transitions: { A: [{ to: 'B', kind: 'X' }] } }],
+        archetypes: [
+          { ...spec('TICKET', ['A', 'B']), transitions: { A: [{ to: 'B', kind: 'X' }] } },
+        ],
       };
       expect(lifecycleMoves(odd, 'TICKET', 'A')).toEqual([
         { target: 'B', kind: 'X', label: 'Move to b', variant: 'ghost' },

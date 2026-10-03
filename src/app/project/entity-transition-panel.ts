@@ -151,7 +151,7 @@ export class EntityTransitionPanel {
         this.api.epicsAndTickets(projectId),
       ]);
       if (this.newest(projectId, attempt)) {
-        this.ground.set(ready({ registry, subjects: subjectsOf(entities) }));
+        this.ground.set(ready({ registry, subjects: subjectsOf(registry, entities) }));
       }
     } catch (error) {
       if (this.newest(projectId, attempt)) {

@@ -48,13 +48,16 @@ const REGISTRY = {
       legalStatuses: WORDS,
     },
     {
+      // qits-763: a feature carries a status of its own now, same as an epic or a ticket — and it
+      // must still not become a desk filter root. `mayBeRoot: false` is what the filter actually
+      // reads; `legalStatuses` is non-empty here precisely to prove the filter does not key off it.
       archetype: 'FEATURE',
       depth: 1,
       mayBeRoot: false,
       required: [],
       requiredOnTransition: [],
       permitted: [],
-      legalStatuses: [],
+      legalStatuses: WORDS,
     },
     {
       archetype: 'TASK',
@@ -63,7 +66,7 @@ const REGISTRY = {
       required: [],
       requiredOnTransition: [],
       permitted: [],
-      legalStatuses: [],
+      legalStatuses: WORDS,
     },
   ],
 };
@@ -196,13 +199,29 @@ describe('WorkPage', () => {
       return { campaign: { ...CAMPAIGN, slug: 'r', description: null, start: null, members: [] } };
     }
     if (url === '/projects/api/entities/c1/dispatch') {
-      return { state: { entityId: 'c1', archetype: 'CAMPAIGN', status: 'REFINED', nextPhase: 'start', blocked: false, dispatchable: true, mode: null } };
+      return {
+        state: {
+          entityId: 'c1',
+          archetype: 'CAMPAIGN',
+          status: 'REFINED',
+          nextPhase: 'start',
+          blocked: false,
+          dispatchable: true,
+          mode: null,
+        },
+      };
     }
     if (url === '/projects/api/projects/p1/repositories') return { entries: [], wrapper: null };
     if (url === '/projects/api/campaigns/c1/progress') {
       return {
         progress: {
-          campaign: { id: 'c1', qualifiedId: 'qits-430', title: 'Rename qits-x', status: 'REPORTED', start: null },
+          campaign: {
+            id: 'c1',
+            qualifiedId: 'qits-430',
+            title: 'Rename qits-x',
+            status: 'REPORTED',
+            start: null,
+          },
           evaluator: { connected: true, lastSweepCompletedAt: null, stalled: false },
           members: [],
         },
@@ -327,7 +346,7 @@ describe('WorkPage', () => {
     expect(TestBed.inject(Location).path()).toBe('/qits/work/qits-430');
   });
 
-  it('offers the filter’s options from the registry’s lifecycle archetypes', async () => {
+  it('offers the filter’s options from the registry’s root archetypes, even once features and tasks carry a status too (qits-763)', async () => {
     await open('/qits/work');
 
     const options = Array.from(element().querySelectorAll<HTMLAnchorElement>('.filter .option'));

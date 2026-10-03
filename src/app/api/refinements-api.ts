@@ -86,8 +86,10 @@ export class RefinementsApi {
   /**
    * Find the entity's room or make one — cutting (or adopting) `refining/<slug>` on the wrapper.
    *
-   * <p>Refused with a 409 for a feature or a task (no lifecycle), unless the entity is REPORTED, and
-   * while a dispatch runs on it. An existing room is always answered, whatever the entity's state.
+   * <p>Refused with a 409 for a feature or a task — refinement stays an epic's and a ticket's surface
+   * even once a feature and a task carry their own status (qits-763), since neither gets a refinement
+   * room or any other phase machinery of its own — unless the entity is REPORTED, and while a dispatch
+   * runs on it. An existing room is always answered, whatever the entity's state.
    */
   async openFor(entityId: string): Promise<RefinementDto> {
     const answer = await firstValueFrom(
@@ -106,9 +108,7 @@ export class RefinementsApi {
 
   /** One refinement with its full projection, git drift included. */
   async get(refinementId: number): Promise<RefinementDto> {
-    const answer = await firstValueFrom(
-      this.http.get<RefinementResponse>(this.url(refinementId)),
-    );
+    const answer = await firstValueFrom(this.http.get<RefinementResponse>(this.url(refinementId)));
     return answer.refinement;
   }
 
@@ -143,10 +143,7 @@ export class RefinementsApi {
   /** Replace the container. The server refuses with 400 unless the tree is provably clean. */
   async recreateContainer(refinementId: number): Promise<RefinementProcessResponse> {
     return firstValueFrom(
-      this.http.post<RefinementProcessResponse>(
-        `${this.url(refinementId)}/recreate-container`,
-        {},
-      ),
+      this.http.post<RefinementProcessResponse>(`${this.url(refinementId)}/recreate-container`, {}),
     );
   }
 

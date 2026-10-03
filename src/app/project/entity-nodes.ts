@@ -29,7 +29,10 @@ export interface EntityNode {
   readonly title: string;
   readonly slug: string;
   readonly description: string | null;
-  /** The lifecycle word, or null for an archetype with no lifecycle (feature, task). */
+  /**
+   * The lifecycle word, or null for a feature or a task on a server that has not grown one yet
+   * (qits-763) and for an archetype with no lifecycle at all (campaign's shorter set).
+   */
   readonly status: EntityStatus | null;
   /** The node above this one: a feature's epic, a task's feature. Null for a root. */
   readonly parentId: string | null;
@@ -84,7 +87,7 @@ export function flattenEntities(entities: readonly WorkItem[]): readonly EntityN
         title: feature.title,
         slug: feature.slug,
         description: feature.description,
-        status: null,
+        status: feature.status ?? null,
         parentId: feature.epicId,
         implementedAt: feature.implementedOn,
         repositoryId: null,
@@ -107,7 +110,7 @@ export function flattenEntities(entities: readonly WorkItem[]): readonly EntityN
           title: task.title,
           slug: task.slug,
           description: task.description,
-          status: null,
+          status: task.status ?? null,
           parentId: task.featureId,
           implementedAt: task.implementedAt,
           repositoryId: task.repositoryId,
