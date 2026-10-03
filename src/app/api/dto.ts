@@ -335,6 +335,13 @@ export interface EpicTransitionResponse {
  * says, so it is what this file says. Renaming one on the way in would leave every reader of this
  * client believing in a field no response carries, and the inconsistency is the service's to
  * settle — not this client's to paper over.
+ *
+ * <p><b>`status` (qits-763).</b> A feature now carries the same eight-word lifecycle as an epic or a
+ * ticket, through the one `/entities/{id}/status` door — but `implementedOn` and `implementingOn`
+ * stay, as history next to it rather than in place of it: they say *when* it got there, the status
+ * says *where it stands*. `status` is optional and reads null on a server that does not serve it yet
+ * (`legalStatuses` empty for FEATURE), which a reader falls back to those two markers for — see
+ * {@link ../project/entities-model#featureStatus}.
  */
 export interface FeatureDto {
   readonly id: string;
@@ -355,6 +362,11 @@ export interface FeatureDto {
   /** `<projectKey>-<number>`, or null. See {@link EpicDto.qualifiedId}, including why null draws nothing. */
   readonly qualifiedId: string | null;
   readonly dependsOnFeatureId: string | null;
+  /**
+   * The lifecycle word, or null on a server that has not grown one for FEATURE yet (qits-763).
+   * Optional for the same reason, so an older response simply omits it. See the class note.
+   */
+  readonly status?: EntityStatus | null;
   /** ISO-8601 instant, or null while the feature is open. The task's twin is `implementedAt`. */
   readonly implementedOn: string | null;
   /**
@@ -367,7 +379,13 @@ export interface FeatureDto {
   readonly updatedAt: string;
 }
 
-/** A task under a feature, in one repository. Completion is `implementedAt` — see {@link FeatureDto}. */
+/**
+ * A task under a feature, in one repository. Completion is `implementedAt` — see {@link FeatureDto}.
+ *
+ * <p><b>`status` (qits-763)</b> is the task's own twin of {@link FeatureDto.status}: the same
+ * eight-word lifecycle, the same optional-and-null-until-served shape, and the same markers kept as
+ * history beside it. See {@link ../project/entities-model#taskStatus}.
+ */
 export interface TaskDto {
   readonly id: string;
   readonly featureId: string;
@@ -382,6 +400,8 @@ export interface TaskDto {
   /** `<projectKey>-<number>`, or null. See {@link EpicDto.qualifiedId}. */
   readonly qualifiedId: string | null;
   readonly dependsOnTaskId: string | null;
+  /** The lifecycle word, or null — {@link FeatureDto.status}, rule for rule. */
+  readonly status?: EntityStatus | null;
   /** ISO-8601 instant, or null while the task is open. The feature's twin is `implementedOn`. */
   readonly implementedAt: string | null;
   /**
@@ -405,8 +425,8 @@ export interface TaskDto {
  * and a client that flattened it back into four records would be undoing the only honest statement the
  * wire makes about what an entity now is.
  *
- * <p><b>Nearly everything is nullable, and that is the archetype talking.</b> A feature has no status
- * and a ticket has no `implementedAt`; an epic has no repository. Rather than four partial types, the
+ * <p><b>Nearly everything is nullable, and that is the archetype talking.</b> A ticket has no
+ * `implementedAt` and an epic has no repository. Rather than four partial types, the
  * record carries every property and answers null for the ones this row's archetype does not permit —
  * which is the same statement `permitted` makes in the archetype registry, seen from the data's side.
  *
@@ -658,8 +678,9 @@ export interface TicketResponse {
 
 /**
  * An entity's block flag as the write left it, with the archetype and status it belongs to —
- * `POST /projects/api/entities/{id}/blocked`'s answer, for every archetype that carries one (an
- * epic, a ticket or a campaign; a feature or a task has no lifecycle to block).
+ * `POST /projects/api/entities/{id}/blocked`'s answer, for every archetype that carries one: an
+ * epic, a ticket or a campaign. A feature and a task stay refused (409) even once they carry a
+ * status of their own (qits-763) — blocking one was never in scope, lifecycle or not.
  */
 export interface EntityBlockDto {
   readonly entityId: string;

@@ -116,6 +116,21 @@ describe('entity nodes', () => {
     expect(ticketOf(epic)).toBeNull();
   });
 
+  /** qits-763: a feature and a task carry their own status once the service serves one. */
+  it('reads a feature’s and a task’s own status once the service serves one', () => {
+    const nodes = flattenEntities([
+      epicEntity(EPIC, [
+        {
+          feature: { ...FEATURE, status: 'IMPLEMENTING' },
+          tasks: [{ ...TASK, status: 'VERIFIED' }],
+        },
+      ]),
+    ]);
+
+    expect(nodes.find((node) => node.id === 'f1')?.status).toBe('IMPLEMENTING');
+    expect(nodes.find((node) => node.id === 'k1')?.status).toBe('VERIFIED');
+  });
+
   it('finds a node by its number, and its children in order', () => {
     expect(nodeByNumber(NODES, 14)?.id).toBe('k1');
     expect(nodeByNumber(NODES, 99)).toBeNull();

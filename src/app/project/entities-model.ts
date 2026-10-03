@@ -201,10 +201,7 @@ export function ofArchetype(
   entities: readonly Entity[],
   archetype: 'TICKET',
 ): readonly TicketEntity[];
-export function ofArchetype(
-  entities: readonly Entity[],
-  archetype: Archetype,
-): readonly Entity[] {
+export function ofArchetype(entities: readonly Entity[], archetype: Archetype): readonly Entity[] {
   return entities.filter((entity) => entity.archetype === archetype);
 }
 
@@ -255,24 +252,39 @@ const IMPLEMENTING: StatusBadge = { label: 'implementing', tone: 'info' };
 const OPEN: StatusBadge = { label: 'open', tone: 'neutral' };
 
 /**
- * A task is implemented once it has an `implementedAt`; implementing once `implementingAt` is set
- * and `implementedAt` is not — an implementing agent marks it started, see
- * {@link ../api/dto#TaskDto}; and open until either is set.
+ * A task's badge: its own lifecycle word once the service serves one (qits-763), the two markers
+ * otherwise.
+ *
+ * <p><b>The status is preferred, and read through {@link statusBadge} like an epic's or a ticket's</b>
+ * — so a task at `VERIFYING` or `DONE` reads as that word rather than being flattened to
+ * "implemented". <b>The markers are the fallback</b>, for a service that has not grown a status for
+ * TASK yet and so answers `status: null`: implemented once `implementedAt` is set, implementing once
+ * `implementingAt` is set and `implementedAt` is not, open until either is set. The two can never both
+ * apply to a live row — a server new enough to set a task's status sets it in the same transaction as
+ * the marker (qits-763) — so this is a compatibility seam, not a choice made every time.
  */
 export function taskStatus(
-  task: Pick<TaskDto, 'implementedAt' | 'implementingAt'>,
+  task: Pick<TaskDto, 'status' | 'implementedAt' | 'implementingAt'>,
 ): StatusBadge {
+  if (task.status) {
+    return statusBadge(task.status);
+  }
   if (task.implementedAt) {
     return IMPLEMENTED;
   }
   return task.implementingAt ? IMPLEMENTING : OPEN;
 }
 
-/** A feature is implemented once it has an `implementedOn`, implementing once `implementingOn` is
- * set and `implementedOn` is not — the wire's other spelling of the same pair. */
+/**
+ * A feature's badge: {@link taskStatus}'s twin, over `implementedOn`/`implementingOn` — the wire's
+ * other spelling of the same marker pair — rather than `implementedAt`/`implementingAt`.
+ */
 export function featureStatus(
-  feature: Pick<FeatureDto, 'implementedOn' | 'implementingOn'>,
+  feature: Pick<FeatureDto, 'status' | 'implementedOn' | 'implementingOn'>,
 ): StatusBadge {
+  if (feature.status) {
+    return statusBadge(feature.status);
+  }
   if (feature.implementedOn) {
     return IMPLEMENTED;
   }
@@ -393,8 +405,15 @@ export function statusVocabulary(registry: ArchetypeRegistry): readonly EntitySt
   return words;
 }
 
-/** The words one archetype may hold, or none for an archetype with no lifecycle (feature, task). */
-export function statusesOf(registry: ArchetypeRegistry, archetype: string): readonly EntityStatus[] {
+/**
+ * The words one archetype may hold, or none for an archetype with no lifecycle — campaign's shorter
+ * set, or a feature/task on a server that has not grown one yet (qits-763); every other archetype,
+ * including a feature and a task on a current server, answers the eight-word walk.
+ */
+export function statusesOf(
+  registry: ArchetypeRegistry,
+  archetype: string,
+): readonly EntityStatus[] {
   return specOf(registry, archetype)?.legalStatuses ?? [];
 }
 
@@ -402,7 +421,10 @@ export function statusesOf(registry: ArchetypeRegistry, archetype: string): read
  * One archetype's words **in walk order** — the served `lifecycle`, or `legalStatuses` on a server
  * that does not serve one yet. Empty for an archetype with no lifecycle.
  */
-export function lifecycleOf(registry: ArchetypeRegistry, archetype: string): readonly EntityStatus[] {
+export function lifecycleOf(
+  registry: ArchetypeRegistry,
+  archetype: string,
+): readonly EntityStatus[] {
   const spec = specOf(registry, archetype);
   return spec ? walkOf(spec) : [];
 }
@@ -462,10 +484,7 @@ export function groupByStatus<T extends StatusRow>(
       buckets.set(key, [entity]);
     }
   }
-  const order = [
-    ...vocabulary,
-    ...[...buckets.keys()].filter((key) => !vocabulary.includes(key)),
-  ];
+  const order = [...vocabulary, ...[...buckets.keys()].filter((key) => !vocabulary.includes(key))];
   return order
     .filter((key) => (buckets.get(key)?.length ?? 0) > 0)
     .map((key) => ({
@@ -621,9 +640,7 @@ export function entityBySlug(
   archetype: Archetype,
   slug: string,
 ): Entity | null {
-  return (
-    entities.find((entity) => entity.archetype === archetype && entity.slug === slug) ?? null
-  );
+  return entities.find((entity) => entity.archetype === archetype && entity.slug === slug) ?? null;
 }
 
 /**

@@ -55,6 +55,7 @@ import {
   taskStatus,
   ticketTypeBadge,
   type LifecycleMove,
+  type StatusBadge,
 } from './entities-model';
 import {
   ARCHETYPE_PARAM,
@@ -73,7 +74,7 @@ import {
   type EntityNode,
 } from './entity-nodes';
 import { EntityTransitionPanel } from './entity-transition-panel';
-import { restatement, subjectsOf } from './entity-transition-model';
+import { restatement, specOf, subjectsOf } from './entity-transition-model';
 import { EntityThread } from './entity-thread';
 import { WorkspaceLinks, workspaceAddress } from './workspace-links';
 
@@ -106,7 +107,8 @@ interface Ground {
 interface TreeRow {
   readonly node: EntityNode;
   readonly depth: 0 | 1;
-  readonly implemented: boolean;
+  /** The row's own badge: its status once the service serves one (qits-763), its marker otherwise. */
+  readonly badge: StatusBadge;
   readonly repository: string | null;
 }
 
@@ -129,8 +131,11 @@ interface TreeRow {
  *       and goes there. It is enabled where the dispatch state's next phase is `refine` — refinement
  *       *is* that phase — and an existing room is always offered as "Open refinement", whatever the
  *       status, because the service answers an existing room whatever the state.</li>
- *   <li>The three are absent for an archetype with no lifecycle (the registry's `legalStatuses` is
- *       empty: a feature, a task), which is also where the service would refuse them.</li>
+ *   <li>The three are absent for an archetype with no lifecycle at all — campaign's shorter set is
+ *       the only one left (qits-763 gave a feature and a task the eight-word walk too) — **and** for
+ *       a feature or a task regardless: {@link lifecycle} also requires `mayBeRoot`, because neither
+ *       gets the phase machinery the three actions are drawn from, which is also where the service
+ *       would refuse them.</li>
  * </ul>
  *
  * <p><b>Which status moves are offered is the served registry's `transitions`</b>, labelled by kind
@@ -270,7 +275,11 @@ interface TreeRow {
               [busy]="action() === 'dispatch:FLOW'"
               (pressed)="start()"
             >
-              {{ confirming() === 'start' ? 'Confirm ' + startLabel().toLowerCase() + '?' : startLabel() }}
+              {{
+                confirming() === 'start'
+                  ? 'Confirm ' + startLabel().toLowerCase() + '?'
+                  : startLabel()
+              }}
             </qits-button>
             @if (confirming() === 'start') {
               <qits-button variant="ghost" size="sm" (pressed)="confirming.set(null)">
@@ -328,7 +337,11 @@ interface TreeRow {
 
       <div class="actions moves">
         @if (n.archetype !== 'CAMPAIGN') {
-          <qits-button variant="secondary" [disabled]="action() !== null" (pressed)="startEditing()">
+          <qits-button
+            variant="secondary"
+            [disabled]="action() !== null"
+            (pressed)="startEditing()"
+          >
             Edit
           </qits-button>
         }
@@ -569,8 +582,8 @@ interface TreeRow {
                     <a class="child-title" [routerLink]="routeOf(row.node)">{{ row.node.title }}</a>
                     <qits-badge
                       class="implemented-marker"
-                      [label]="row.implemented ? 'implemented' : 'open'"
-                      [tone]="row.implemented ? 'success' : 'neutral'"
+                      [label]="row.badge.label"
+                      [tone]="row.badge.tone"
                     />
                     @if (row.repository; as repository) {
                       <span class="repo">{{ repository }}</span>
@@ -595,8 +608,8 @@ interface TreeRow {
                     <a class="child-title" [routerLink]="routeOf(child)">{{ child.title }}</a>
                     <qits-badge
                       class="implemented-marker"
-                      [label]="child.implementedAt ? 'implemented' : 'open'"
-                      [tone]="child.implementedAt ? 'success' : 'neutral'"
+                      [label]="nodeBadge(child).label"
+                      [tone]="nodeBadge(child).tone"
                     />
                     <span class="repo">{{ repositoryName(child.repositoryId) }}</span>
                   </li>
@@ -976,13 +989,22 @@ export class EntityDetailPage {
     this.ticket()?.type === 'MAINTENANCE' ? TYPES_WITH_MAINTENANCE : TYPES,
   );
 
-  /** A feature's or a task's implemented marker — what stands where a status would. */
+  /**
+   * A feature's or a task's fallback badge, for the `@else` branch above: drawn only while
+   * `node().status` is null, which {@link taskStatus} and {@link featureStatus} then read as "no
+   * status served yet" and answer from the markers instead — see the compatibility note on
+   * {@link ../api/dto#FeatureDto.status}.
+   */
   protected readonly marker = computed(() => {
     const node = this.node();
     if (node?.task) {
       return taskStatus(node.task);
     }
-    return featureStatus({ implementedOn: node?.feature?.implementedOn ?? null });
+    return featureStatus({
+      status: node?.feature?.status ?? null,
+      implementedOn: node?.feature?.implementedOn ?? null,
+      implementingOn: node?.feature?.implementingOn ?? null,
+    });
   });
 
   /** The words this node's archetype may hold — empty for an archetype with no lifecycle. */
@@ -992,8 +1014,26 @@ export class EntityDetailPage {
     return ground && node ? statusesOf(ground.registry, node.archetype) : [];
   });
 
-  /** Whether this node has a lifecycle — and so the three actions. The registry says, not a list. */
-  protected readonly lifecycle = computed(() => this.vocabulary().length > 0);
+  /**
+   * Whether this node has a lifecycle **and** the agent surface that goes with one — dispatch, the
+   * next-phase press, refine.
+   *
+   * <p>Not vocabulary alone, deliberately: qits-763 gives a feature and a task the same eight-word
+   * lifecycle an epic or a ticket has, but none of the phase machinery that runs behind it — the
+   * service keeps `PhaseAdvance`, dispatch and refinement refused for both archetypes. `mayBeRoot` is
+   * what the registry already uses to say "sits at the top of a project with its own phase", and it is
+   * true for exactly the three archetypes this section was ever drawn for — epic, ticket, campaign —
+   * so AND-ing it in is what keeps a feature's or a task's page from growing a Dispatch section merely
+   * because its status picker now has words in it.
+   */
+  protected readonly lifecycle = computed(() => {
+    if (this.vocabulary().length === 0) {
+      return false;
+    }
+    const ground = this.loaded();
+    const node = this.node();
+    return ground && node ? (specOf(ground.registry, node.archetype)?.mayBeRoot ?? false) : false;
+  });
 
   protected readonly moves = computed<readonly LifecycleMove[]>(() => {
     const node = this.node();
@@ -1003,7 +1043,9 @@ export class EntityDetailPage {
   /** Whether the node holds a final status — served, with no move out of it (`DONE`). */
   protected readonly final = computed(() => {
     const node = this.node();
-    return node ? isFinalStatus(this.loaded()?.registry ?? null, node.archetype, node.status) : false;
+    return node
+      ? isFinalStatus(this.loaded()?.registry ?? null, node.archetype, node.status)
+      : false;
   });
 
   protected readonly finalNote = computed(() => {
@@ -1148,20 +1190,39 @@ export class EntityDetailPage {
       rows.push({
         node: feature,
         depth: 0,
-        implemented: feature.implementedAt !== null,
+        badge: this.nodeBadge(feature),
         repository: null,
       });
       for (const task of childrenOf(ground.nodes, feature.id)) {
         rows.push({
           node: task,
           depth: 1,
-          implemented: task.implementedAt !== null,
+          badge: this.nodeBadge(task),
           repository: this.repositoryName(task.repositoryId),
         });
       }
     }
     return rows;
   });
+
+  /**
+   * A feature's or a task's row badge, wherever it is drawn as a child rather than as the page's own
+   * node — the tree under an epic, and the list under a feature. Its own status once the service
+   * serves one (qits-763), read through {@link taskStatus}/{@link featureStatus} exactly as the
+   * page's own {@link marker} is, so a reader sees the same word in both places.
+   */
+  protected nodeBadge(node: EntityNode): StatusBadge {
+    if (node.task) {
+      return taskStatus(node.task);
+    }
+    if (node.feature) {
+      return featureStatus(node.feature);
+    }
+    return {
+      label: node.implementedAt ? 'implemented' : 'open',
+      tone: node.implementedAt ? 'success' : 'neutral',
+    };
+  }
 
   /** The dossier this node owns: an epic's or a ticket's; a feature or a task has none. */
   protected readonly dossierOwner = computed<DossierOwner | null>(() => {
@@ -1299,7 +1360,10 @@ export class EntityDetailPage {
     ]);
   }
 
-  /** The dispatch state and the room, for a node with a lifecycle. Neither failing hides the page. */
+  /**
+   * The dispatch state and the room, for a node with the agent surface — see {@link lifecycle}.
+   * Neither failing hides the page.
+   */
   private async readFlow(node: EntityNode, attempt: number): Promise<void> {
     if (!this.lifecycle()) {
       this.state.set(null);
@@ -1491,7 +1555,9 @@ export class EntityDetailPage {
       return;
     }
     const root = node.entity ?? node.epic;
-    const subject = root ? subjectsOf([root]).find((candidate) => candidate.id === node.id) : null;
+    const subject = root
+      ? subjectsOf(ground.registry, [root]).find((candidate) => candidate.id === node.id)
+      : null;
     if (!subject) {
       return;
     }

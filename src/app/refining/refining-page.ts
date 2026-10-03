@@ -858,7 +858,7 @@ export class RefiningPage {
       insertion.attachment,
     );
     const registry = await this.archetypes.registry();
-    const subject = subjectsOf([entity]).find((candidate) => candidate.id === entity.id);
+    const subject = subjectsOf(registry, [entity]).find((candidate) => candidate.id === entity.id);
     if (!subject) return;
     await this.entitiesApi.transitionEntities(
       new Map([[entity.id, restatement(registry, subject, { DESCRIPTION: description })]]),

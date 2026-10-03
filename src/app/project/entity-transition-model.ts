@@ -172,7 +172,10 @@ export function legalParentsFor(
 }
 
 /** Every id at or below one row, by the parent links the candidates carry. Bounded by the list. */
-function descendantsOf(rootId: string, candidates: readonly TransitionSubject[]): ReadonlySet<string> {
+function descendantsOf(
+  rootId: string,
+  candidates: readonly TransitionSubject[],
+): ReadonlySet<string> {
   const beneath = new Set<string>([rootId]);
   // One pass per level at worst, and the budget is the list's own length, so a parent cycle in the
   // data runs out rather than spinning: each pass either adds a row or is the last one.
@@ -234,6 +237,28 @@ export function requiredFieldsFor(
     return [];
   }
   return spec.requiredOnTransition.filter((property) => !registry.serverOwned.includes(property));
+}
+
+/**
+ * **The `STATUS` value a subject of `archetype` carries into {@link subjectsOf}, or nothing.**
+ *
+ * <p>Sent only when the registry's own `requiredOnTransition` for this archetype names `STATUS` —
+ * never because the archetype's name is `FEATURE` or `TASK`. That is what lets this client run
+ * against the service both before and after it grows a lifecycle for those two (qits-763): against the
+ * old one, `requiredOnTransition` never names `STATUS` for them, this answers null, and
+ * {@link valuesOf} drops it exactly as it always has; against the new one it is required, and a row
+ * minted before the migration — null on the wire — is sent as `REPORTED`, the word a fresh row is
+ * minted with.
+ */
+function statusValue(
+  registry: ArchetypeRegistry,
+  archetype: string,
+  current: string | null | undefined,
+): string | null {
+  if (!requiredFieldsFor(registry, archetype).includes('STATUS')) {
+    return null;
+  }
+  return current ?? 'REPORTED';
 }
 
 /**
@@ -410,8 +435,19 @@ function namedProperty(fragment: string, properties: readonly string[]): string 
  *
  * <p>The order is the read's: each epic, then its features and their tasks, then the tickets — which
  * is the order a person scans a picker in, and the order the project's own reads arrive in.
+ *
+ * <p><b>`STATUS` on a feature or a task (qits-763) is read off the registry, never off the archetype
+ * name.</b> This client is released ahead of the service, so the registry a given project is served by
+ * may still answer `requiredOnTransition: []` for FEATURE and TASK — the restructure form must not send
+ * a property the door does not expect. {@link requiredFieldsFor} is the one question asked: when it
+ * names `STATUS`, the subject carries the row's own status, or `REPORTED` for a row that has none yet
+ * (a feature or a task minted before the service grew a status, which `FeatureDto.status` and
+ * `TaskDto.status` answer null for) — the same default a fresh row is minted with.
  */
-export function subjectsOf(entities: readonly Entity[]): readonly TransitionSubject[] {
+export function subjectsOf(
+  registry: ArchetypeRegistry,
+  entities: readonly Entity[],
+): readonly TransitionSubject[] {
   const subjects: TransitionSubject[] = [];
   for (const entity of entities) {
     if (entity.archetype === 'EPIC') {
@@ -445,6 +481,7 @@ export function subjectsOf(entities: readonly Entity[]): readonly TransitionSubj
             TITLE: feature.title,
             SLUG: feature.slug,
             DESCRIPTION: feature.description,
+            STATUS: statusValue(registry, 'FEATURE', feature.status),
             IMPLEMENTED_AT: feature.implementedOn,
             DEPENDS_ON: feature.dependsOnFeatureId,
           }),
@@ -462,6 +499,7 @@ export function subjectsOf(entities: readonly Entity[]): readonly TransitionSubj
               TITLE: task.title,
               SLUG: task.slug,
               DESCRIPTION: task.description,
+              STATUS: statusValue(registry, 'TASK', task.status),
               REPOSITORY_ID: task.repositoryId,
               IMPLEMENTED_AT: task.implementedAt,
               DEPENDS_ON: task.dependsOnTaskId,
