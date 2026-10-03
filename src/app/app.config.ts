@@ -26,10 +26,11 @@ import { routes } from './app.routes';
 // none.
 //
 // `provideQitsBuilds` puts the pending-builds bolt beside the picker: a popover of what qits-ci is
-// building right now, from `GET /ci/api/runs/active`. Same-origin like the two reads above — the
-// edge routes `/ci` on every host — so it needs the `HttpClient` too and names no origin of its
-// own. Providing it is what puts the bolt there, exactly as no project source means no picker.
-// Closed, it asks nothing at all; it polls only for as long as a reader keeps the panel open.
+// building right now, from `GET /ci/api/runs/active` on qits-ci's own origin, which the library
+// reads from the navigation — the edge routes `/ci` on qits-ci's host only — so it needs the
+// `HttpClient` too and this app composes no hostname. Providing it is what puts the bolt there,
+// exactly as no project source means no picker. Closed, it asks nothing at all; it polls only for
+// as long as a reader keeps the panel open.
 export const appConfig: ApplicationConfig = {
   providers: [
     provideBrowserGlobalErrorListeners(),
