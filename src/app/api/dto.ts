@@ -240,11 +240,14 @@ export interface WrapperDto {
  * `REFINED`, `IMPLEMENTED`, `VERIFIED`, `DONE`, plus `DROPPED`. The status is what has been
  * *achieved*; the phase that runs while it holds is what happens next.
  *
- * <p><b>`IMPLEMENTING` (qits-749) is the one platform-set exception to that.</b> It sits between
- * `REFINED` and `IMPLEMENTED` for an epic or a ticket — never a campaign — and the service, not a
- * person, writes it: the moment a dispatch is pressed, to record that an implementation was
- * started. It can also be skipped over entirely: the `SKIP` transition `kind` moves `REFINED`
- * straight to `IMPLEMENTED`, with no `IMPLEMENTING` in between.
+ * <p><b>`IMPLEMENTING` and `VERIFYING` (qits-749) are the platform-set exceptions to that.</b> Each
+ * sits between the pair of ordinary words it bridges — `IMPLEMENTING` between `REFINED` and
+ * `IMPLEMENTED`, `VERIFYING` between `IMPLEMENTED` and `VERIFIED` — for an epic or a ticket, never
+ * a campaign, and the service, not a person, writes them: the moment a dispatch is pressed, to
+ * record that an implementation or a verification was started. Either can also be skipped over
+ * entirely: the `SKIP` transition `kind` moves `REFINED` straight to `IMPLEMENTED` with no
+ * `IMPLEMENTING` in between, or `IMPLEMENTED` straight to `VERIFIED` with no `VERIFYING` in
+ * between.
  *
  * <p><b>A plain string, and not a union of today's six.</b> The vocabulary is the service's: the
  * served archetype registry (`GET /entities/archetypes`, each archetype's `legalStatuses`) is where a

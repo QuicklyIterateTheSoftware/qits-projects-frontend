@@ -28,14 +28,15 @@ const KINDS: readonly { readonly value: CriterionKind; readonly label: string }[
 /**
  * The words a member can be waited on to reach. REPORTED is where every member starts.
  *
- * <p>`IMPLEMENTING` (qits-749) is in the walk here too: this list is generic over the entity
- * status lifecycle, and a campaign's members are epics and tickets — the two archetypes that hold
- * `IMPLEMENTING` — never a campaign itself.
+ * <p>`IMPLEMENTING` and `VERIFYING` (qits-749) are in the walk here too: this list is generic over
+ * the entity status lifecycle, and a campaign's members are epics and tickets — the two archetypes
+ * that hold them — never a campaign itself, which a criterion can never set these on.
  */
 const STATUSES: readonly EntityStatus[] = [
   'REFINED',
   'IMPLEMENTING',
   'IMPLEMENTED',
+  'VERIFYING',
   'VERIFIED',
   'DONE',
 ];

@@ -332,16 +332,18 @@ export function epicProgress(entity: EpicEntity): EpicProgress {
  * <p>`REPORTED` is grey — a standing request nobody has picked up; `REFINED` is `highlight` (purple);
  * `IMPLEMENTING` is `info` (blue), the same tone as the tree's own in-progress badge — both say work
  * is actively under way; `IMPLEMENTED` also reads `info`, since it is the state `IMPLEMENTING` leads
- * straight into rather than a different kind of thing; `VERIFIED` is `warning` (yellow) because it
- * waits on a person to close it; `DONE` is `success` (green); and `DROPPED` is neutral — work nobody
- * is going to do is neither a failure nor an achievement. Red is reserved: it never names a status
- * here, only {@link BLOCKED_BADGE}.
+ * straight into rather than a different kind of thing; `VERIFYING` is `info` too, for the same reason
+ * — it is work under way, this time the platform's own verify dispatch rather than an agent's;
+ * `VERIFIED` is `warning` (yellow) because it waits on a person to close it; `DONE` is `success`
+ * (green); and `DROPPED` is neutral — work nobody is going to do is neither a failure nor an
+ * achievement. Red is reserved: it never names a status here, only {@link BLOCKED_BADGE}.
  */
 const STATUS_TONES: Readonly<Record<string, QitsBadgeTone>> = {
   REPORTED: 'neutral',
   REFINED: 'highlight',
   IMPLEMENTING: 'info',
   IMPLEMENTED: 'info',
+  VERIFYING: 'info',
   VERIFIED: 'warning',
   DONE: 'success',
   DROPPED: 'neutral',
@@ -513,8 +515,9 @@ export interface LifecycleMove {
  *
  * <p>The label and weight come from the kind: `FORWARD` is "Mark <word>" and primary, `BACK` is a
  * de-emphasised "Back to <word>", `DROP` is "Drop", `REOPEN` "Reopen", and `SKIP` — `REFINED` to
- * `IMPLEMENTED` directly, with no `IMPLEMENTING` in between — is "Skip to <word>". A kind this
- * client has not met is drawn plainly as "Move to <word>".
+ * `IMPLEMENTED` directly with no `IMPLEMENTING` in between, or `IMPLEMENTED` to `VERIFIED` directly
+ * with no `VERIFYING` in between — is "Skip to <word>". A kind this client has not met is drawn
+ * plainly as "Move to <word>".
  */
 export function lifecycleMoves(
   registry: ArchetypeRegistry | null,

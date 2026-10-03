@@ -420,6 +420,7 @@ describe('entities model', () => {
       expect(statusBadge('REFINED').tone).toBe('highlight');
       expect(statusBadge('IMPLEMENTING').tone).toBe('info');
       expect(statusBadge('IMPLEMENTED').tone).toBe('info');
+      expect(statusBadge('VERIFYING').tone).toBe('info');
       expect(statusBadge('VERIFIED').tone).toBe('warning');
       expect(statusBadge('DONE').tone).toBe('success');
       expect(statusBadge('DROPPED').tone).toBe('neutral');
