@@ -355,9 +355,9 @@ export interface FeatureDto {
   /** ISO-8601 instant, or null while the feature is open. The task's twin is `implementedAt`. */
   readonly implementedOn: string | null;
   /**
-   * ISO-8601 instant, stamped by the platform the moment a dispatch is pressed — see
-   * `EntityStatus`'s `IMPLEMENTING` note. Optional: absent on a server that does not serve it yet,
-   * which reads the same as null. The task's twin is `implementingAt`.
+   * ISO-8601 instant at which work on the feature started — set once one of its tasks is marked with
+   * `mark_task_implementing`. Optional: absent on a server that does not serve it yet, which reads
+   * the same as null. The task's twin is `implementingAt`.
    */
   readonly implementingOn?: string | null;
   readonly createdAt: string;
@@ -382,9 +382,9 @@ export interface TaskDto {
   /** ISO-8601 instant, or null while the task is open. The feature's twin is `implementedOn`. */
   readonly implementedAt: string | null;
   /**
-   * ISO-8601 instant, stamped by the platform the moment a dispatch is pressed — see
-   * `EntityStatus`'s `IMPLEMENTING` note. Optional: absent on a server that does not serve it yet,
-   * which reads the same as null. The feature's twin is `implementingOn`.
+   * ISO-8601 instant at which an implementing agent started the task (`mark_task_implementing`);
+   * skippable, so a task may go straight to `implementedAt`. Optional: absent on a server that does
+   * not serve it yet, which reads the same as null. The feature's twin is `implementingOn`.
    */
   readonly implementingAt?: string | null;
   readonly createdAt: string;

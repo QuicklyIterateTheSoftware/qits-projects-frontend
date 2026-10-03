@@ -256,8 +256,8 @@ const OPEN: StatusBadge = { label: 'open', tone: 'neutral' };
 
 /**
  * A task is implemented once it has an `implementedAt`; implementing once `implementingAt` is set
- * and `implementedAt` is not — the platform stamps `implementingAt` the moment a dispatch is
- * pressed, see {@link ../api/dto#TaskDto}; and open until either is set.
+ * and `implementedAt` is not — an implementing agent marks it started, see
+ * {@link ../api/dto#TaskDto}; and open until either is set.
  */
 export function taskStatus(
   task: Pick<TaskDto, 'implementedAt' | 'implementingAt'>,
