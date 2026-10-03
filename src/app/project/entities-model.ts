@@ -334,8 +334,10 @@ export function epicProgress(entity: EpicEntity): EpicProgress {
 
 /**
  * How loudly each lifecycle word is drawn. **One palette, shared with the session names**: this table
- * and `EntityStatusSquare` in qits-coding-agents (`AgentRemoteControl`) draw the same six statuses the
- * same way, so a change to one is made to both.
+ * and `EntityStatusSquare` in qits-coding-agents (`AgentRemoteControl`) draw the same statuses the
+ * same way, except `VERIFIED` — the session name marks it with a check mark rather than a square,
+ * while this badge stays `warning`, a deliberate divergence (qits-758). Apart from that one status, a
+ * change to one is made to both.
  *
  * <p>A lookup and not the vocabulary: which words exist, and their order, is the served registry's
  * answer ({@link statusVocabulary}). A word missing here is drawn neutral with its own name as the
