@@ -251,16 +251,32 @@ export interface StatusBadge {
 
 const IMPLEMENTED: StatusBadge = { label: 'implemented', tone: 'success' };
 const IN_PROGRESS: StatusBadge = { label: 'in progress', tone: 'info' };
+const IMPLEMENTING: StatusBadge = { label: 'implementing', tone: 'info' };
 const OPEN: StatusBadge = { label: 'open', tone: 'neutral' };
 
-/** A task is implemented once it has an `implementedAt`, and open until then. */
-export function taskStatus(task: Pick<TaskDto, 'implementedAt'>): StatusBadge {
-  return task.implementedAt ? IMPLEMENTED : OPEN;
+/**
+ * A task is implemented once it has an `implementedAt`; implementing once `implementingAt` is set
+ * and `implementedAt` is not — the platform stamps `implementingAt` the moment a dispatch is
+ * pressed, see {@link ../api/dto#TaskDto}; and open until either is set.
+ */
+export function taskStatus(
+  task: Pick<TaskDto, 'implementedAt' | 'implementingAt'>,
+): StatusBadge {
+  if (task.implementedAt) {
+    return IMPLEMENTED;
+  }
+  return task.implementingAt ? IMPLEMENTING : OPEN;
 }
 
-/** A feature is implemented once it has an `implementedOn` — the wire's other spelling. */
-export function featureStatus(feature: Pick<FeatureDto, 'implementedOn'>): StatusBadge {
-  return feature.implementedOn ? IMPLEMENTED : OPEN;
+/** A feature is implemented once it has an `implementedOn`, implementing once `implementingOn` is
+ * set and `implementedOn` is not — the wire's other spelling of the same pair. */
+export function featureStatus(
+  feature: Pick<FeatureDto, 'implementedOn' | 'implementingOn'>,
+): StatusBadge {
+  if (feature.implementedOn) {
+    return IMPLEMENTED;
+  }
+  return feature.implementingOn ? IMPLEMENTING : OPEN;
 }
 
 /**
@@ -314,14 +330,17 @@ export function epicProgress(entity: EpicEntity): EpicProgress {
  * label, so a sixth word the service adds tomorrow reads correctly before anybody touches this table.
  *
  * <p>`REPORTED` is grey — a standing request nobody has picked up; `REFINED` is `highlight` (purple);
- * `IMPLEMENTED` is `info` (blue); `VERIFIED` is `warning` (yellow) because it waits on a person to
- * close it; `DONE` is `success` (green); and `DROPPED` is neutral — work nobody is going to do is
- * neither a failure nor an achievement. Red is reserved: it never names a status here, only
- * {@link BLOCKED_BADGE}.
+ * `IMPLEMENTING` is `info` (blue), the same tone as the tree's own in-progress badge — both say work
+ * is actively under way; `IMPLEMENTED` also reads `info`, since it is the state `IMPLEMENTING` leads
+ * straight into rather than a different kind of thing; `VERIFIED` is `warning` (yellow) because it
+ * waits on a person to close it; `DONE` is `success` (green); and `DROPPED` is neutral — work nobody
+ * is going to do is neither a failure nor an achievement. Red is reserved: it never names a status
+ * here, only {@link BLOCKED_BADGE}.
  */
 const STATUS_TONES: Readonly<Record<string, QitsBadgeTone>> = {
   REPORTED: 'neutral',
   REFINED: 'highlight',
+  IMPLEMENTING: 'info',
   IMPLEMENTED: 'info',
   VERIFIED: 'warning',
   DONE: 'success',
@@ -493,8 +512,9 @@ export interface LifecycleMove {
  * none either — a guessed move is a move the server may refuse, or worse, one it would have hidden.
  *
  * <p>The label and weight come from the kind: `FORWARD` is "Mark <word>" and primary, `BACK` is a
- * de-emphasised "Back to <word>", `DROP` is "Drop" and `REOPEN` "Reopen". A kind this client has not
- * met is drawn plainly as "Move to <word>".
+ * de-emphasised "Back to <word>", `DROP` is "Drop", `REOPEN` "Reopen", and `SKIP` — `REFINED` to
+ * `IMPLEMENTED` directly, with no `IMPLEMENTING` in between — is "Skip to <word>". A kind this
+ * client has not met is drawn plainly as "Move to <word>".
  */
 export function lifecycleMoves(
   registry: ArchetypeRegistry | null,
@@ -531,6 +551,8 @@ function drawn(kind: string, target: EntityStatus): Pick<LifecycleMove, 'label' 
       return { label: 'Drop', variant: 'ghost' };
     case 'REOPEN':
       return { label: 'Reopen', variant: 'secondary' };
+    case 'SKIP':
+      return { label: `Skip to ${statusLabel(target)}`, variant: 'ghost' };
     default:
       return { label: `Move to ${statusLabel(target)}`, variant: 'ghost' };
   }

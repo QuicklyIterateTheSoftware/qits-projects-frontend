@@ -240,6 +240,12 @@ export interface WrapperDto {
  * `REFINED`, `IMPLEMENTED`, `VERIFIED`, `DONE`, plus `DROPPED`. The status is what has been
  * *achieved*; the phase that runs while it holds is what happens next.
  *
+ * <p><b>`IMPLEMENTING` (qits-749) is the one platform-set exception to that.</b> It sits between
+ * `REFINED` and `IMPLEMENTED` for an epic or a ticket — never a campaign — and the service, not a
+ * person, writes it: the moment a dispatch is pressed, to record that an implementation was
+ * started. It can also be skipped over entirely: the `SKIP` transition `kind` moves `REFINED`
+ * straight to `IMPLEMENTED`, with no `IMPLEMENTING` in between.
+ *
  * <p><b>A plain string, and not a union of today's six.</b> The vocabulary is the service's: the
  * served archetype registry (`GET /entities/archetypes`, each archetype's `legalStatuses`) is where a
  * screen reads which words exist and in what order, so a word the service adds reaches the badges,
@@ -348,6 +354,12 @@ export interface FeatureDto {
   readonly dependsOnFeatureId: string | null;
   /** ISO-8601 instant, or null while the feature is open. The task's twin is `implementedAt`. */
   readonly implementedOn: string | null;
+  /**
+   * ISO-8601 instant, stamped by the platform the moment a dispatch is pressed — see
+   * `EntityStatus`'s `IMPLEMENTING` note. Optional: absent on a server that does not serve it yet,
+   * which reads the same as null. The task's twin is `implementingAt`.
+   */
+  readonly implementingOn?: string | null;
   readonly createdAt: string;
   readonly updatedAt: string;
 }
@@ -369,6 +381,12 @@ export interface TaskDto {
   readonly dependsOnTaskId: string | null;
   /** ISO-8601 instant, or null while the task is open. The feature's twin is `implementedOn`. */
   readonly implementedAt: string | null;
+  /**
+   * ISO-8601 instant, stamped by the platform the moment a dispatch is pressed — see
+   * `EntityStatus`'s `IMPLEMENTING` note. Optional: absent on a server that does not serve it yet,
+   * which reads the same as null. The feature's twin is `implementingOn`.
+   */
+  readonly implementingAt?: string | null;
   readonly createdAt: string;
   readonly updatedAt: string;
 }

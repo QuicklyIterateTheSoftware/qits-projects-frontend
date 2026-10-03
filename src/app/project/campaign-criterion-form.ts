@@ -25,8 +25,20 @@ const KINDS: readonly { readonly value: CriterionKind; readonly label: string }[
   { value: 'APPROVAL', label: 'A person approves' },
 ];
 
-/** The words a member can be waited on to reach. REPORTED is where every member starts. */
-const STATUSES: readonly EntityStatus[] = ['REFINED', 'IMPLEMENTED', 'VERIFIED', 'DONE'];
+/**
+ * The words a member can be waited on to reach. REPORTED is where every member starts.
+ *
+ * <p>`IMPLEMENTING` (qits-749) is in the walk here too: this list is generic over the entity
+ * status lifecycle, and a campaign's members are epics and tickets — the two archetypes that hold
+ * `IMPLEMENTING` — never a campaign itself.
+ */
+const STATUSES: readonly EntityStatus[] = [
+  'REFINED',
+  'IMPLEMENTING',
+  'IMPLEMENTED',
+  'VERIFIED',
+  'DONE',
+];
 
 /**
  * **The four typed add-forms of the criteria editor** (qits-419) — one per catalogue kind, and no raw

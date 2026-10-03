@@ -310,6 +310,32 @@ describe('entities model', () => {
         tone: 'success',
       });
     });
+
+    /** `implementingAt`/`implementingOn` are the platform's own marker, stamped at dispatch. */
+    it('reads a task as implementing once implementingAt is set and implementedAt is not', () => {
+      expect(taskStatus(task({ implementingAt: AT }))).toEqual({
+        label: 'implementing',
+        tone: 'info',
+      });
+    });
+
+    it('reads a feature as implementing once implementingOn is set and implementedOn is not', () => {
+      expect(featureStatus(feature({ implementingOn: AT }))).toEqual({
+        label: 'implementing',
+        tone: 'info',
+      });
+    });
+
+    it('prefers implemented over implementing when both markers are set', () => {
+      expect(taskStatus(task({ implementingAt: AT, implementedAt: AT }))).toEqual({
+        label: 'implemented',
+        tone: 'success',
+      });
+      expect(featureStatus(feature({ implementingOn: AT, implementedOn: AT }))).toEqual({
+        label: 'implemented',
+        tone: 'success',
+      });
+    });
   });
 
   describe('epicStatus', () => {
@@ -392,6 +418,7 @@ describe('entities model', () => {
     it('tones the one palette shared with the session names', () => {
       expect(statusBadge('REPORTED').tone).toBe('neutral');
       expect(statusBadge('REFINED').tone).toBe('highlight');
+      expect(statusBadge('IMPLEMENTING').tone).toBe('info');
       expect(statusBadge('IMPLEMENTED').tone).toBe('info');
       expect(statusBadge('VERIFIED').tone).toBe('warning');
       expect(statusBadge('DONE').tone).toBe('success');
@@ -542,6 +569,28 @@ describe('entities model', () => {
         expect(lifecycleMoves(registry, 'TICKET', word)).toEqual([]);
       }
       expect(isFinalStatus(registry, 'TICKET', 'DONE')).toBe(false);
+    });
+
+    /** `SKIP` (qits-749): REFINED straight to IMPLEMENTED, with no IMPLEMENTING in between. */
+    it('labels a skip step as skipping to its target', () => {
+      const withSkip: ArchetypeRegistry = {
+        ...REGISTRY,
+        archetypes: [
+          {
+            ...spec('TICKET', WORDS),
+            transitions: {
+              ...TRANSITIONS,
+              REFINED: [...TRANSITIONS.REFINED, { to: 'IMPLEMENTED', kind: 'SKIP' }],
+            },
+          },
+        ],
+      };
+      expect(lifecycleMoves(withSkip, 'TICKET', 'REFINED')).toEqual([
+        { target: 'IMPLEMENTED', kind: 'FORWARD', label: 'Mark implemented', variant: 'primary' },
+        { target: 'REPORTED', kind: 'BACK', label: 'Back to reported', variant: 'ghost' },
+        { target: 'DROPPED', kind: 'DROP', label: 'Drop', variant: 'ghost' },
+        { target: 'IMPLEMENTED', kind: 'SKIP', label: 'Skip to implemented', variant: 'ghost' },
+      ]);
     });
 
     it('draws a kind it has never met plainly', () => {
