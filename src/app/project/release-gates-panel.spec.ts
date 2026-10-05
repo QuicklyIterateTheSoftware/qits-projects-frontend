@@ -482,6 +482,27 @@ describe('ReleaseGatesPanel', () => {
       expect(element().querySelector('.approval')?.classList).toContain('declined');
       expect(text()).toContain('Not this week');
     });
+
+    /** Why the gate applies at all — the service's own sentence, drawn beneath the gate's line. */
+    it('shows why the gate applies when the service says so', async () => {
+      await mount(
+        gated({
+          gates: [{ kind: 'APPROVAL', state: 'PENDING', detail: 'configured by manual-review' }],
+        }),
+        [build()],
+      );
+
+      expect(element().querySelector('.reason')?.textContent).toContain(
+        'configured by manual-review',
+      );
+    });
+
+    /** No reason to show, and no empty line in its place — absent, null, and blank all read alike. */
+    it('draws no reason line where the service has none to give', async () => {
+      await mount(gated(), [build()]);
+
+      expect(element().querySelector('.reason')).toBeNull();
+    });
   });
 
   describe('the ask', () => {

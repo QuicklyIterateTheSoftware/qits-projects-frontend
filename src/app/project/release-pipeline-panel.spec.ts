@@ -554,6 +554,36 @@ describe('ReleasePipelinePanel', () => {
 
       expect(buttons()).toHaveLength(0);
     });
+
+    /** Why the gate applies at all rides beneath its line, the same as any other gate's detail. */
+    it('shows why the approval gate applies when the service says so', async () => {
+      await mount(
+        piped({
+          phases: [phase('QA', 'SUCCESS', { runId: 'run-9' })],
+          gates: [
+            gate('QA_PUBLISH', 'CI', 'PASSED'),
+            gate(
+              'QA_PUBLISH',
+              'APPROVAL',
+              'PENDING',
+              'changes .config/qits/: .config/qits/release.yml',
+            ),
+          ],
+        }),
+        [build()],
+      );
+
+      expect(element().querySelector('.gate.is-waiting .detail')?.textContent).toContain(
+        'changes .config/qits/',
+      );
+    });
+
+    /** No reason to show, and no empty line in its place. */
+    it('draws no detail line on the approval gate where the service has none to give', async () => {
+      await mount(gated(), [build()]);
+
+      expect(element().querySelector('.gate.is-waiting .detail')).toBeNull();
+    });
   });
 
   describe('a service that reports no pipeline', () => {

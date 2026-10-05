@@ -168,6 +168,9 @@ type Decision = 'approve' | 'decline';
           @if (request().approvalNote; as note) {
             <p class="note">{{ note }}</p>
           }
+          @if (approvalDetail(); as detail) {
+            <p class="reason">{{ detail }}</p>
+          }
         </div>
 
         @if (askable()) {
@@ -307,6 +310,13 @@ type Decision = 'approve' | 'decline';
       flex-basis: 100%;
       margin: 0.15rem 0 0;
       color: #374151;
+      overflow-wrap: anywhere;
+    }
+    .reason {
+      flex-basis: 100%;
+      margin: 0.15rem 0 0;
+      font-size: 0.8rem;
+      color: #6b7280;
       overflow-wrap: anywhere;
     }
     .approval.declined,
@@ -486,6 +496,16 @@ export class ReleaseGatesPanel {
       return 'Approval';
     }
     return this.declined() ? '✗ Approval' : '✓ Approval';
+  });
+
+  /**
+   * Why the approval gate applies at all — the service's own sentence, e.g. `configured by
+   * manual-review` or naming the `.config/qits/` paths that changed — or null where it has nothing
+   * to add, which is every request answered by a service older than the field.
+   */
+  protected readonly approvalDetail = computed(() => {
+    const detail = this.gate('APPROVAL')?.detail;
+    return detail && detail.trim() !== '' ? detail : null;
   });
 
   /**

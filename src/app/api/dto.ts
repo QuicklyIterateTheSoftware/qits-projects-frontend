@@ -1259,6 +1259,13 @@ export interface ReleaseRequestDto {
 export interface ReleaseGateDto {
   readonly kind: string;
   readonly state: string;
+  /**
+   * Why this gate applies — set only on `APPROVAL`, e.g. `configured by manual-review` or
+   * `changes .config/qits/: .config/qits/release.yml, .config/qits/deployments.yml`, the two joined
+   * with `; ` where both are true. Absent or null everywhere else, and on an answer from a service
+   * build older than the field.
+   */
+  readonly detail?: string | null;
 }
 
 /**
@@ -1335,7 +1342,10 @@ export interface ReleasePhaseDto {
  * platform as broken.
  *
  * <p>`detail` is the service's own sentence about this gate — which run, which deployment, which
- * person — or null where it has nothing to add beyond the state.
+ * person, or, on `APPROVAL`, why it applies at all (`configured by manual-review`, or
+ * `changes .config/qits/: .config/qits/release.yml, .config/qits/deployments.yml`, the two joined
+ * with `; ` where both are true) — or null where it has nothing to add beyond the state. Optional
+ * on an answer from a service build older than the field.
  */
 export interface ReleasePipelineGateDto {
   readonly between: 'QA_PUBLISH' | 'PUBLISH_DEPLOY' | 'DEPLOY_FINALIZED';
@@ -1343,7 +1353,7 @@ export interface ReleasePipelineGateDto {
   readonly kind: string;
   /** `PENDING`, `PASSED`, `FAILED`, `UNKNOWN` — open, and `PENDING` is a wait rather than a no. */
   readonly state: string;
-  readonly detail: string | null;
+  readonly detail?: string | null;
 }
 
 /**
