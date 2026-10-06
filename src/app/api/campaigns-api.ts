@@ -60,7 +60,11 @@ export class CampaignsApi {
     return response.campaign;
   }
 
-  /** A lifecycle step. REFINED readies it to be started; leaving REFINED pauses a started one. */
+  /**
+   * A lifecycle step. REFINED or READY_FOR_DEV readies it to be started (qits-887); moving between
+   * the two neither starts nor pauses it — the start press is the only start — and leaving both
+   * (back to REPORTED, DROPPED, or on to IMPLEMENTED) pauses a started one.
+   */
   async transition(id: string, target: EntityStatus): Promise<CampaignDto> {
     const response = await firstValueFrom(
       this.http.post<CampaignResponse>(`${this.campaign(id)}/transition`, { target }),

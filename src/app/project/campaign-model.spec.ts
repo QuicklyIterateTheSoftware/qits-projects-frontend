@@ -6,6 +6,7 @@ import {
   criterionSentence,
   deploymentCriterion,
   editableMember,
+  membershipEditable,
   entityStatusCriterion,
   memberRefs,
   releaseCriterion,
@@ -204,6 +205,16 @@ describe('campaign-model', () => {
       editableMember(member('a', 'qits-1', [], { claimedAt: '2026-09-27T09:00:00Z' }), 'REFINED'),
     ).toBe(false);
     expect(editableMember(member('a', 'qits-1'), 'IMPLEMENTED')).toBe(false);
+  });
+
+  /** qits-887: the service's CampaignService.EDITABLE — READY_FOR_DEV is still being shaped. */
+  it('takes membership edits at REPORTED, REFINED and READY_FOR_DEV, and nowhere else', () => {
+    expect(membershipEditable('REPORTED')).toBe(true);
+    expect(membershipEditable('REFINED')).toBe(true);
+    expect(membershipEditable('READY_FOR_DEV')).toBe(true);
+    expect(membershipEditable('IMPLEMENTED')).toBe(false);
+    expect(membershipEditable('DROPPED')).toBe(false);
+    expect(membershipEditable(null)).toBe(false);
   });
 
   it('draws a listing row as a desk item', () => {

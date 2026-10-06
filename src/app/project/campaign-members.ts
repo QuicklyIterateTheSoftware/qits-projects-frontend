@@ -112,7 +112,7 @@ interface Adding {
         @if (!editable()) {
           <p class="note locked">
             Membership is fixed at {{ c.status.toLowerCase() }} — it is edited while the campaign is
-            reported or refined.
+            reported, refined or ready for dev.
           </p>
         }
         @if (c.members.length === 0) {

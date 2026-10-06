@@ -1678,7 +1678,7 @@ export interface CampaignSummaryDto {
   readonly blocked?: boolean;
   /** Whether it has ever been started. */
   readonly started: boolean;
-  /** Whether its start is live now — leaving REFINED pauses it. */
+  /** Whether its start is live now — leaving REFINED and READY_FOR_DEV both pauses it. */
   readonly active: boolean;
   /** How many members it gathers. */
   readonly members: number;

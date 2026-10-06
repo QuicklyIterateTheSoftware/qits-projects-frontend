@@ -1421,6 +1421,38 @@ describe('EntityDetailPage', () => {
       expect(buttonNamed('Start campaign').disabled).toBe(true);
     });
 
+    /** qits-887: READY_FOR_DEV is a start's status too, as the dispatch state answers it. */
+    it('offers Start on a READY_FOR_DEV campaign the state calls startable', async () => {
+      campaignRowPatch = { status: 'READY_FOR_DEV' };
+      dispatchStates['c1'] = stateOf({
+        entityId: 'c1',
+        archetype: 'CAMPAIGN',
+        status: 'READY_FOR_DEV',
+        nextPhase: 'start',
+      });
+      await open('/qits/work/qits-430');
+
+      expect(buttonNamed('Start campaign').disabled).toBe(false);
+      expect(element().querySelector('.flow-note')?.textContent).toContain(
+        'A press starts the campaign.',
+      );
+    });
+
+    it('names both statuses a campaign starts from where it cannot start', async () => {
+      dispatchStates['c1'] = stateOf({
+        entityId: 'c1',
+        archetype: 'CAMPAIGN',
+        status: 'REPORTED',
+        nextPhase: 'start',
+        dispatchable: false,
+      });
+      await open('/qits/work/qits-430');
+
+      expect(element().querySelector('.flow-note')?.textContent).toContain(
+        'a campaign starts from refined or ready for dev',
+      );
+    });
+
     it('shows a non-admin’s 403 the way the dispatch press does', async () => {
       failures['POST /projects/api/entities/c1/dispatch'] = {
         status: 403,

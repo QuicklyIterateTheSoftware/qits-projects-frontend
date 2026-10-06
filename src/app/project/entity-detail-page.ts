@@ -1261,7 +1261,7 @@ export class EntityDetailPage {
           : 'A press starts the campaign.';
       }
       return state.status
-        ? `Nothing to start at ${statusLabel(state.status)} — a campaign starts from refined.`
+        ? `Nothing to start at ${statusLabel(state.status)} — a campaign starts from refined or ready for dev.`
         : 'Nothing to start.';
     }
     if (state.dispatchable && state.nextPhase) {

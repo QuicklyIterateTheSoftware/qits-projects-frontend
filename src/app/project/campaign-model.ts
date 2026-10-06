@@ -308,11 +308,16 @@ export function editableMember(
 }
 
 /**
- * Add, move, remove and condition are taken while the campaign is REPORTED or REFINED — the service's
- * `CampaignService.EDITABLE`, which this follows; a change to one is made to both.
+ * The campaign statuses a membership is still being shaped at — the service's
+ * `CampaignService.EDITABLE`, which this follows; a change to one is made to both. READY_FOR_DEV
+ * (qits-887) is among them: it says every member is ready for development, not that the campaign
+ * has started, so it is shaped there exactly as at REFINED.
  */
+const EDITABLE: ReadonlySet<EntityStatus> = new Set(['REPORTED', 'REFINED', 'READY_FOR_DEV']);
+
+/** Add, move, remove and condition are taken while the campaign is REPORTED, REFINED or READY_FOR_DEV. */
 export function membershipEditable(campaignStatus: EntityStatus | null): boolean {
-  return campaignStatus === 'REPORTED' || campaignStatus === 'REFINED';
+  return campaignStatus !== null && EDITABLE.has(campaignStatus);
 }
 
 // ---- progress ----------------------------------------------------------------------------------
