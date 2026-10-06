@@ -152,7 +152,8 @@ interface TreeRow {
  * `POST /epics/{id}/transition` — and not the multi-entity transition. The lifecycle door is what runs
  * the step (adjacency, the implemented stamping at IMPLEMENTED, discarding the room a resolving move
  * ends) and then the phase advance; the multi-entity door restates a row's shape and runs none of it.
- * **Field edits and reshapes** — title, description, impetus, type, assignee; promote, demote,
+ * **Field edits and reshapes** — title, description, impetus, type, assignee (wherever the registry
+ * permits it: a ticket, and an epic from qits-887 on); promote, demote,
  * reparent — **go through `POST /entities/transition`**, a restatement of the whole row, which is
  * what replaced the retired `PUT /epics/{id}` and `PUT /tickets/{id}`.
  *
@@ -252,9 +253,11 @@ interface TreeRow {
             <a [routerLink]="routeOf(next)">{{ label(next) }}</a>
           </dd>
         }
-        @if (ticket(); as row) {
+        @if (assigneePermitted()) {
           <dt>Assignee</dt>
-          <dd class="assignee">{{ row.assignee || none }}</dd>
+          <dd class="assignee">{{ assignee() || none }}</dd>
+        }
+        @if (ticket(); as row) {
           <dt>Reported by</dt>
           <dd class="reporter">{{ row.createdBy || none }}</dd>
         }
@@ -469,7 +472,7 @@ interface TreeRow {
               (input)="draftDescription.set(value($event))"
             ></textarea>
           </label>
-          @if (ticket()) {
+          @if (assigneePermitted()) {
             <label class="field">
               <span class="label" id="edit-assignee-label">Assignee</span>
               <input
@@ -1172,6 +1175,18 @@ export class EntityDetailPage {
     return node ? lifecycleMoves(this.loaded()?.registry ?? null, node.archetype, node.status) : [];
   });
 
+  /**
+   * Whether the registry lets this node's archetype carry an assignee — a ticket's always has, an
+   * epic's does from qits-887 on. Read off `permitted`, never the archetype's name.
+   */
+  protected readonly assigneePermitted = computed(() => {
+    const node = this.node();
+    return node ? permits(this.loaded()?.registry ?? null, node.archetype, 'ASSIGNEE') : false;
+  });
+
+  /** Who is on it — an epic's or a ticket's assignee, null when nobody has said. */
+  protected readonly assignee = computed(() => this.node()?.entity?.assignee ?? null);
+
   /** Whether the registry lets this node's archetype carry acceptance criteria (qits-887). */
   protected readonly criteriaPermitted = computed(() => {
     const node = this.node();
@@ -1704,7 +1719,7 @@ export class EntityDetailPage {
     this.draftDescription.set(node.description ?? '');
     this.draftImpetus.set(ticket?.impetus ?? '');
     this.draftType.set(ticket?.type ?? 'BUG');
-    this.draftAssignee.set(ticket?.assignee ?? '');
+    this.draftAssignee.set(this.assignee() ?? '');
     this.draftCriteria.set([...this.criteria()]);
     this.actionFailure.set(null);
     this.blocking.set(null);
@@ -1735,6 +1750,8 @@ export class EntityDetailPage {
     if (this.ticket()) {
       changes['IMPETUS'] = this.draftImpetus().trim();
       changes['TICKET_TYPE'] = this.draftType();
+    }
+    if (this.assigneePermitted()) {
       changes['ASSIGNEE'] = this.draftAssignee().trim() || null;
     }
     const position = node.parentId

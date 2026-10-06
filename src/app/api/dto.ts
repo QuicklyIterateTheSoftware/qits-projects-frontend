@@ -323,6 +323,12 @@ export interface EpicDto {
    * {@link ../project/entities-model#criterionProblems} for the item rules.
    */
   readonly acceptanceCriteria?: readonly string[] | null;
+  /**
+   * Who is on it — {@link TicketDto.assignee}, rule for rule: free text, null when nobody has said.
+   * Optional because an epic carries it only from qits-887 on, where the service writes the
+   * dispatched agent's identity into it on every press; absent reads as nobody.
+   */
+  readonly assignee?: string | null;
   readonly createdAt: string;
   readonly updatedAt: string;
   /** Every workspace cut for this epic — {@link TicketDto.workspaces}, rule for rule. */

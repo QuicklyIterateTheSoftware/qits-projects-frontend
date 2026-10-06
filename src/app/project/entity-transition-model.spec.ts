@@ -850,6 +850,11 @@ describe('entity-transition-model', () => {
     };
     const criteria = ['It reads **cancelled**.', 'It is red'];
 
+    it('carries an epic’s assignee (qits-887), so a restatement never clears it', () => {
+      const [epic] = subjectsOf(permitting, [epicEntity(epicDto({ assignee: 'coding-agent-7' }))]);
+      expect(epic.values['ASSIGNEE']).toBe('coding-agent-7');
+    });
+
     it('carries the stored list on the subject, and leaves an empty one out', () => {
       const [epic] = subjectsOf(permitting, [
         epicEntity(epicDto({ acceptanceCriteria: criteria })),

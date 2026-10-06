@@ -111,6 +111,11 @@ export interface EpicEntity extends EntityFields {
   readonly status: EntityStatus;
   /** The draft that replaced this one: set on a superseded (so `DROPPED`) epic, null on every other. */
   readonly supersededByEpicId: string | null;
+  /**
+   * Who is on it (qits-887) — the agent the last press dispatched, or a name somebody wrote. Null
+   * when nobody has said; optional so a row built by hand need not restate it.
+   */
+  readonly assignee?: string | null;
   readonly features: readonly FeatureNode[];
 }
 
@@ -154,6 +159,7 @@ export function epicEntity(epic: EpicDto, features: readonly FeatureNode[] = [])
     blocked: epic.blocked ?? false,
     status: epic.status,
     supersededByEpicId: epic.supersededByEpicId,
+    assignee: epic.assignee ?? null,
     acceptanceCriteria: epic.acceptanceCriteria ?? [],
     features,
   };

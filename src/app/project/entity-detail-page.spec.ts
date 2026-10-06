@@ -1057,6 +1057,70 @@ describe('EntityDetailPage', () => {
     });
   });
   /**
+   * qits-887: the assignee is drawn and edited wherever the registry permits `ASSIGNEE` — an epic
+   * too, once the service says so — never by archetype.
+   */
+  describe('the assignee', () => {
+    const permittingEpic = () => ({
+      ...REGISTRY,
+      archetypes: REGISTRY.archetypes.map((entry) =>
+        entry.archetype === 'EPIC'
+          ? { ...entry, permitted: [...entry.permitted, 'ASSIGNEE'] }
+          : entry,
+      ),
+    });
+
+    it('draws an epic’s assignee where the registry permits it', async () => {
+      registry = permittingEpic();
+      epicPatch = { assignee: 'coding-agent-7' };
+      await open('/qits/work/qits-12');
+
+      expect(element().querySelector('.assignee')?.textContent).toBe('coding-agent-7');
+      expect(element().querySelector('.reporter')).toBeNull();
+    });
+
+    it('draws no assignee on an archetype the registry does not permit one', async () => {
+      epicPatch = { assignee: 'coding-agent-7' };
+      await open('/qits/work/qits-12');
+
+      expect(element().querySelector('.assignee')).toBeNull();
+      buttonNamed('Edit').click();
+      harness.detectChanges();
+      expect(element().querySelector('.edit-assignee')).toBeNull();
+    });
+
+    it('edits an epic’s assignee, and a restatement keeps one it did not touch', async () => {
+      registry = permittingEpic();
+      epicPatch = { assignee: 'coding-agent-7' };
+      await open('/qits/work/qits-12');
+
+      buttonNamed('Edit').click();
+      harness.detectChanges();
+      expect(element().querySelector<HTMLInputElement>('.edit-assignee')!.value).toBe(
+        'coding-agent-7',
+      );
+      button('.save').click();
+      await serve();
+      expect((writes()[0].body as Record<string, Record<string, unknown>>)['e1']['assignee']).toBe(
+        'coding-agent-7',
+      );
+
+      sent = [];
+      buttonNamed('Edit').click();
+      harness.detectChanges();
+      const box = element().querySelector<HTMLInputElement>('.edit-assignee')!;
+      box.value = 'kim';
+      box.dispatchEvent(new Event('input'));
+      harness.detectChanges();
+      button('.save').click();
+      await serve();
+      expect((writes()[0].body as Record<string, Record<string, unknown>>)['e1']['assignee']).toBe(
+        'kim',
+      );
+    });
+  });
+
+  /**
    * qits-887: the acceptance criteria — drawn and edited only where the registry permits them, saved
    * whole through the merge patch, closed from READY_FOR_DEV on; and a gated move says so.
    */

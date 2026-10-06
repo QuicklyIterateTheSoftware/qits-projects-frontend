@@ -475,6 +475,7 @@ export function subjectsOf(
           DESCRIPTION: entity.description,
           STATUS: entity.status,
           SUPERSEDED_BY: entity.supersededByEpicId,
+          ASSIGNEE: entity.assignee ?? null,
         }),
         lists: listsOf({ ACCEPTANCE_CRITERIA: entity.acceptanceCriteria }),
       });
