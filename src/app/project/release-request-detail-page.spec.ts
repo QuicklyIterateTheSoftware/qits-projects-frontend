@@ -5,20 +5,24 @@ import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
+import { of } from 'rxjs';
 import {
   QITS_REPOSITORIES,
+  QitsReportsClient,
   provideQitsNavigationTree,
   provideQitsProjectList,
   provideQitsRepositoryList,
   provideQitsScope,
   type QitsNavigation,
   type QitsRepositoriesSource,
+  type QitsRunReportsDto,
 } from '@qits/ui-components';
 import { routes } from '../app.routes';
 import type {
   CommitBuildStatusDto,
   ListCommitBuildsResponse,
   ReleaseArtifactsResponse,
+  ReleasePhaseDto,
   ReleasePipelineDto,
   ReleaseRequestCommitsResponse,
   ReleaseRequestDto,
@@ -177,6 +181,69 @@ const NOTHING_PUBLISHED: ReleaseArtifactsResponse = {
   artifacts: [],
   detail: null,
 };
+
+function runReportsDto(
+  runId: string,
+  overrides: Partial<QitsRunReportsDto> = {},
+): QitsRunReportsDto {
+  return {
+    runId,
+    commitSha: '20c377ee71fabe6f32429d1506989efecec7798b',
+    releaseRequestId: 'r1',
+    baseline: null,
+    reports: [],
+    ...overrides,
+  };
+}
+
+/** One pipeline with a QA phase and a DEPLOY phase, each carrying whatever id and state a test needs. */
+function pipelineWith(
+  qaRunId: string | null,
+  qaState: ReleasePhaseDto['state'] = 'SUCCESS',
+  deployRunId: string | null = 'deploy-9',
+): ReleasePipelineDto {
+  return {
+    phases: [
+      { phase: 'QA', state: qaState, runId: qaRunId, startedAt: null, finishedAt: null },
+      { phase: 'DEPLOY', state: 'SUCCESS', runId: deployRunId, startedAt: null, finishedAt: null },
+    ],
+    gates: [],
+  };
+}
+
+/**
+ * A fake of the library's `QitsReportsClient` — the seam the library's own doc comment names for
+ * exactly this: "a story or a spec replaces the whole read with `{ provide: QitsReportsClient,
+ * useValue: fake }`". `<qits-run-reports>` reads qits-ci's own origin, never this page's project
+ * API, so there is no `HttpTestingController` request to flush for it — only this fake's call log
+ * says whether the area read, and for which run.
+ */
+class FakeReportsClient {
+  readonly runReportsCalls: string[] = [];
+
+  constructor(private readonly run: QitsRunReportsDto) {}
+
+  origin() {
+    return of('');
+  }
+
+  runReports(runId: string) {
+    this.runReportsCalls.push(runId);
+    return of(this.run);
+  }
+
+  report() {
+    return of({ id: 'rep-1', kind: 'test-results', kindVersion: 1, payload: {} } as never);
+  }
+
+  baseline() {
+    return of(null);
+  }
+
+  baselineReports() {
+    return of([]);
+  }
+}
 
 /**
  * One release request, whole.
@@ -730,6 +797,91 @@ describe('ReleaseRequestDetailPage', () => {
       expect(page().querySelector('.pipeline')).toBeNull();
       expect(page().querySelector('.gates')).not.toBeNull();
       expect(page().textContent).toContain('No verdict yet');
+    });
+  });
+
+  /**
+   * The Reports section on the Overview tab (qits-994). `<qits-run-reports>` is handed the QA
+   * phase's run id and nothing else — never the DEPLOY phase's, which names a deployment request in
+   * a different service — and the fake `QitsReportsClient` these tests provide is the seam the
+   * library itself documents for proving that without a real qits-ci to answer.
+   */
+  describe('the QA run reports', () => {
+    it('hands the area the QA phase run id', async () => {
+      const fake = new FakeReportsClient(runReportsDto('run-9'));
+      withRepositories({ provide: QitsReportsClient, useValue: fake });
+      await open();
+      await answer(request({ pipeline: pipelineWith('run-9') }));
+
+      expect(page().querySelector('qits-run-reports')).not.toBeNull();
+      expect(page().textContent).not.toContain('No QA run yet');
+      expect(fake.runReportsCalls).toEqual(['run-9']);
+    });
+
+    it('says "No QA run yet" when the QA phase has no run', async () => {
+      const fake = new FakeReportsClient(runReportsDto('unused'));
+      withRepositories({ provide: QitsReportsClient, useValue: fake });
+      await open();
+      await answer(request({ pipeline: pipelineWith(null, 'PENDING') }));
+
+      expect(page().querySelector('qits-run-reports')).toBeNull();
+      expect(page().textContent).toContain('No QA run yet');
+      expect(fake.runReportsCalls).toEqual([]);
+    });
+
+    /**
+     * The DEPLOY phase carries a run id of its own — a deployment request id in qits-deployments,
+     * not a qits-ci run — and the page must never read it as one just because the QA phase has none.
+     */
+    it('never reads the DEPLOY phase run id', async () => {
+      const fake = new FakeReportsClient(runReportsDto('deploy-9'));
+      withRepositories({ provide: QitsReportsClient, useValue: fake });
+      await open();
+      await answer(request({ pipeline: pipelineWith(null, 'PENDING', 'deploy-9') }));
+
+      expect(page().querySelector('qits-run-reports')).toBeNull();
+      expect(fake.runReportsCalls).toEqual([]);
+    });
+
+    /**
+     * Three polls, one read apiece's worth of area traffic: the area's own bind-time read when the
+     * QA run id first arrives, nothing while the poll keeps repeating a still-running phase, exactly
+     * one `reload()` the moment that phase turns terminal, and nothing again once it stays terminal.
+     */
+    it('costs no extra report request per poll tick', async () => {
+      const fake = new FakeReportsClient(runReportsDto('run-9'));
+      withRepositories({ provide: QitsReportsClient, useValue: fake });
+      await open();
+      await answer(request({ state: 'PENDING', pipeline: pipelineWith('run-9', 'RUNNING') }));
+
+      expect(fake.runReportsCalls).toEqual(['run-9']);
+
+      // The poll repeats the same still-running phase. Nothing on screen changed, so neither the
+      // area's own "reads when runId changes" rule nor this page's reload-on-terminal has anything
+      // to do.
+      await vi.advanceTimersByTimeAsync(RELEASE_REQUESTS_POLL_MS);
+      http.expectOne(REQUEST).flush({
+        request: request({ state: 'PENDING', pipeline: pipelineWith('run-9', 'RUNNING') }),
+      });
+      await settle();
+      expect(fake.runReportsCalls).toEqual(['run-9']);
+
+      // The QA phase turns terminal on this poll — the one moment the page itself asks the area to
+      // read again, because the run's reports may only just be complete.
+      await vi.advanceTimersByTimeAsync(RELEASE_REQUESTS_POLL_MS);
+      http.expectOne(REQUEST).flush({
+        request: request({ state: 'PENDING', pipeline: pipelineWith('run-9', 'SUCCESS') }),
+      });
+      await settle();
+      expect(fake.runReportsCalls).toEqual(['run-9', 'run-9']);
+
+      // A further poll that keeps reporting the same terminal state must not call reload() again.
+      await vi.advanceTimersByTimeAsync(RELEASE_REQUESTS_POLL_MS);
+      http.expectOne(REQUEST).flush({
+        request: request({ state: 'PENDING', pipeline: pipelineWith('run-9', 'SUCCESS') }),
+      });
+      await settle();
+      expect(fake.runReportsCalls).toEqual(['run-9', 'run-9']);
     });
   });
 

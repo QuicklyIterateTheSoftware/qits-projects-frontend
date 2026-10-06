@@ -6,6 +6,7 @@ import {
   provideQitsNavigation,
   provideQitsProjects,
   provideQitsScope,
+  provideQitsStandardReportKinds,
 } from '@qits/ui-components';
 
 import { routes } from './app.routes';
@@ -31,6 +32,11 @@ import { routes } from './app.routes';
 // `HttpClient` too and this app composes no hostname. Providing it is what puts the bolt there,
 // exactly as no project source means no picker. Closed, it asks nothing at all; it polls only for
 // as long as a reader keeps the panel open.
+//
+// `provideQitsStandardReportKinds` registers the two first report kinds' views — `test-results` and
+// `coverage` — with `<qits-run-reports>`, the generic report area the release request detail page
+// hosts for the QA run. Without it the area would still draw every highlight, but a section opened
+// on either kind would fall back to "no view for this report kind here".
 export const appConfig: ApplicationConfig = {
   providers: [
     provideBrowserGlobalErrorListeners(),
@@ -40,5 +46,6 @@ export const appConfig: ApplicationConfig = {
     provideQitsProjects(),
     provideQitsScope('repository'),
     provideQitsBuilds(),
+    provideQitsStandardReportKinds(),
   ],
 };
