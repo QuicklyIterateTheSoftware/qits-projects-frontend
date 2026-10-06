@@ -7,6 +7,7 @@ import {
 import { TestBed, type ComponentFixture } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import type { CampaignDto, CampaignMemberDto, CriterionDto } from '../api/dto';
+import { progressOfSummary, workOfCampaign } from '../../testing/work-fixtures';
 import { CampaignMembers } from './campaign-members';
 
 const AT = '2026-09-27T09:00:00Z';
@@ -124,8 +125,30 @@ describe('CampaignMembers', () => {
       fixture.detectChanges();
       await fixture.whenStable();
       await new Promise((resolve) => setTimeout(resolve, 0));
-      for (const request of http.match('/projects/api/campaigns/c1')) {
-        request.flush({ campaign: current });
+      // The campaign's read is three: the entity, its members, and its start off the progress.
+      for (const request of http.match({ method: 'GET', url: '/projects/api/work/c1' })) {
+        request.flush({
+          ...workOfCampaign({ ...current, members: current.members.length }),
+          slug: current.slug,
+          description: current.description,
+        });
+      }
+      for (const request of http.match({ method: 'GET', url: '/projects/api/work/c1/members' })) {
+        request.flush({ members: current.members });
+      }
+      for (const request of http.match({ method: 'GET', url: '/projects/api/work/c1/progress' })) {
+        request.flush({
+          progress: {
+            ...progressOfSummary({ ...current, members: 0 }),
+            campaign: {
+              id: current.id,
+              qualifiedId: current.qualifiedId,
+              title: current.title,
+              status: current.status,
+              start: current.start,
+            },
+          },
+        });
       }
     }
     fixture.detectChanges();
@@ -175,7 +198,7 @@ describe('CampaignMembers', () => {
 
   it('deletes the seeded row in one click: the PUT drops it and its emptied group', async () => {
     press(row('b'), '.remove-criterion');
-    const put = http.expectOne('/projects/api/campaigns/c1/members/m-b/condition');
+    const put = http.expectOne('/projects/api/work/c1/members/m-b/condition');
     expect(put.request.method).toBe('PUT');
     expect(put.request.body).toEqual({ groups: [] });
     answer(put, { member: { ...current.members[1], groups: [] } });
@@ -189,7 +212,7 @@ describe('CampaignMembers', () => {
 
   it('drops only the group its last criterion leaves empty, keeping the others by id', async () => {
     press(row('c'), '[data-group="g-c1"] .remove-criterion');
-    const put = http.expectOne('/projects/api/campaigns/c1/members/m-c/condition');
+    const put = http.expectOne('/projects/api/work/c1/members/m-c/condition');
     expect(put.request.body).toEqual({
       groups: [{ criteria: [{ id: 'k-ok', kind: 'APPROVAL', predicate: {} }] }],
     });
@@ -199,12 +222,12 @@ describe('CampaignMembers', () => {
 
   it('reorders with ↑ and ↓ through moveMember, and sends no condition', async () => {
     press(row('c'), '.up');
-    const move = http.expectOne('/projects/api/campaigns/c1/members/m-c/position');
+    const move = http.expectOne('/projects/api/work/c1/members/m-c/position');
     expect(move.request.method).toBe('PUT');
     expect(move.request.body).toEqual({ position: 1 });
     const [a, b, c] = current.members;
     current = { ...current, members: [a, { ...c, position: 1 }, { ...b, position: 2 }] };
-    answer(move, { campaign: current });
+    answer(move, { members: current.members });
     await settle();
 
     expect(http.match((request) => request.url.endsWith('/condition'))).toEqual([]);
@@ -221,7 +244,7 @@ describe('CampaignMembers', () => {
     kind.dispatchEvent(new Event('change'));
     fixture.detectChanges();
     press(form, '.save-criterion');
-    const and = http.expectOne('/projects/api/campaigns/c1/members/m-b/condition');
+    const and = http.expectOne('/projects/api/work/c1/members/m-b/condition');
     expect(and.request.body).toEqual({
       groups: [
         {
@@ -240,7 +263,7 @@ describe('CampaignMembers', () => {
     // The member picker defaults to the previous member.
     expect(orForm.querySelector<HTMLSelectElement>('.target')?.value).toBe('a');
     press(orForm, '.save-criterion');
-    const or = http.expectOne('/projects/api/campaigns/c1/members/m-b/condition');
+    const or = http.expectOne('/projects/api/work/c1/members/m-b/condition');
     expect(or.request.body).toEqual({
       groups: [
         {
@@ -270,7 +293,7 @@ describe('CampaignMembers', () => {
     expect(offered).toEqual(['e9', 't8']);
 
     press(element(), '.add');
-    const auto = http.expectOne('/projects/api/campaigns/c1/members');
+    const auto = http.expectOne('/projects/api/work/c1/members');
     expect(auto.request.body).toEqual({ entityId: 'e9' });
     answer(auto, { member: member('e9', 'qits-9', 3, { joinedRunning: true }) });
     await settle();
@@ -283,7 +306,7 @@ describe('CampaignMembers', () => {
     inFlight.dispatchEvent(new Event('change'));
     fixture.detectChanges();
     press(element(), '.add');
-    const no = http.expectOne('/projects/api/campaigns/c1/members');
+    const no = http.expectOne('/projects/api/work/c1/members');
     expect(no.request.body).toEqual({ entityId: 'e9', inFlight: false });
     answer(no, { member: member('e9', 'qits-9', 3) });
     await settle();
@@ -291,9 +314,9 @@ describe('CampaignMembers', () => {
 
   it('removes an unclaimed member on a second press, and shows a 409 as the service said it', async () => {
     press(row('a'), '.remove-member');
-    expect(http.match('/projects/api/campaigns/c1/members/m-a')).toEqual([]);
+    expect(http.match('/projects/api/work/c1/members/m-a')).toEqual([]);
     press(row('a'), '.remove-member');
-    const remove = http.expectOne('/projects/api/campaigns/c1/members/m-a');
+    const remove = http.expectOne('/projects/api/work/c1/members/m-a');
     expect(remove.request.method).toBe('DELETE');
     remove.flush(
       {

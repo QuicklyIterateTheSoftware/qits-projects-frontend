@@ -6,9 +6,37 @@ import { TestBed } from '@angular/core/testing';
 import { Router, provideRouter } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
 import { routes } from '../app.routes';
+import type { EpicDto, TicketDto } from '../api/dto';
 import { EVENT_SOURCE_FACTORY } from '../api/event-source';
+import { workAnswer } from '../../testing/work-fixtures';
 
 const AT = '2026-09-07T09:00:00Z';
+
+/** A ticket and an epic sharing nothing but the project. */
+const TICKET: Partial<TicketDto> = {
+  id: 't1',
+  projectId: 'p1',
+  title: 'The badge',
+  slug: 'cancelled-badge',
+  number: 41,
+  qualifiedId: 'qits-41',
+  type: 'BUG',
+  status: 'REPORTED',
+  createdAt: AT,
+  updatedAt: AT,
+};
+
+const EPIC: Partial<EpicDto> = {
+  id: 'e1',
+  projectId: 'p1',
+  title: 'One desk',
+  slug: 'one-desk',
+  number: 12,
+  qualifiedId: 'qits-12',
+  status: 'REPORTED',
+  createdAt: AT,
+  updatedAt: AT,
+};
 
 /**
  * The old slug addresses keep working (qits-397): a ticket's page and an epic's refining room resolve
@@ -60,30 +88,16 @@ describe('EntitySlugResolver', () => {
     await harness.navigateByUrl('/qits/tickets/cancelled-badge?page=notes');
     await projectList();
 
-    // One read, of the ticket archetype alone.
-    http.expectOne('/projects/api/projects/p1/tickets').flush({
-      entries: [
-        {
-          ticket: {
-            id: 't1',
-            projectId: 'p1',
-            title: 'The badge',
-            slug: 'cancelled-badge',
-            number: 41,
-            qualifiedId: 'qits-41',
-            type: 'BUG',
-            status: 'REPORTED',
-            assignee: null,
-            createdBy: null,
-            impetus: 'x',
-            description: null,
-            createdAt: AT,
-            updatedAt: AT,
-            workspaces: [],
-          },
-        },
-      ],
-    });
+    // One read: the listing's summary rows are enough to resolve an address.
+    http
+      .expectOne('/projects/api/projects/p1/work')
+      .flush(
+        workAnswer(
+          'p1',
+          { epics: [EPIC], tickets: [TICKET] },
+          '/projects/api/projects/p1/work',
+        ) as object,
+      );
     await settle();
 
     expect(navigate).toHaveBeenCalledWith(['/', 'qits', 'work', 'qits-41'], {
@@ -98,28 +112,15 @@ describe('EntitySlugResolver', () => {
     await harness.navigateByUrl('/qits/epics/one-desk/refining?tab=chat');
     await projectList();
 
-    http.expectOne('/projects/api/projects/p1/epics').flush({
-      entries: [
-        {
-          epic: {
-            id: 'e1',
-            projectId: 'p1',
-            title: 'One desk',
-            slug: 'one-desk',
-            description: null,
-            number: 12,
-            qualifiedId: 'qits-12',
-            status: 'REPORTED',
-            supersededByEpicId: null,
-            createdAt: AT,
-            updatedAt: AT,
-            workspaces: [],
-          },
-        },
-      ],
-    });
-    await settle();
-    http.expectOne('/projects/api/epics/e1/features').flush({ entries: [] });
+    http
+      .expectOne('/projects/api/projects/p1/work')
+      .flush(
+        workAnswer(
+          'p1',
+          { epics: [EPIC], tickets: [TICKET] },
+          '/projects/api/projects/p1/work',
+        ) as object,
+      );
     await settle();
 
     expect(navigate).toHaveBeenCalledWith(['/', 'qits', 'work', 'qits-12', 'refinement'], {
@@ -132,7 +133,7 @@ describe('EntitySlugResolver', () => {
   it('says so for a slug nobody has, rather than guessing', async () => {
     await harness.navigateByUrl('/qits/tickets/nobody');
     await projectList();
-    http.expectOne('/projects/api/projects/p1/tickets').flush({ entries: [] });
+    http.expectOne('/projects/api/projects/p1/work').flush({ entities: [] });
     await settle();
 
     expect(harness.fixture.nativeElement.textContent).toContain(

@@ -1,4 +1,5 @@
 import { Marked, Renderer } from 'marked';
+import { STORED_DOSSIER_ASSET, dossierAssetContentUrl } from '../api/dossier-api';
 
 const SAFE_LINK_SCHEMES = new Set(['http', 'https', 'mailto']);
 const SAFE_IMAGE_SCHEMES = new Set(['http', 'https']);
@@ -28,9 +29,6 @@ export interface DossierFigures {
   readonly kinds: ReadonlyMap<string, 'IMAGE' | 'DESIGN'>;
 }
 
-/** The URL shape the inline door writes into a page's markdown. */
-const DOSSIER_ASSET = /^\/epics\/([A-Za-z0-9._~-]+)\/dossier-assets\/([A-Za-z0-9._~-]+)\/content$/;
-
 /**
  * The asset id this URL names, if it is a DESIGN of the epic being rendered.
  *
@@ -39,7 +37,7 @@ const DOSSIER_ASSET = /^\/epics\/([A-Za-z0-9._~-]+)\/dossier-assets\/([A-Za-z0-9
  */
 function framedDesign(href: string): string | null {
   if (!figures) return null;
-  const match = DOSSIER_ASSET.exec(href);
+  const match = STORED_DOSSIER_ASSET.exec(href);
   if (!match || match[1] !== figures.epicId) return null;
   return figures.kinds.get(match[2]) === 'DESIGN' ? match[2] : null;
 }
@@ -53,19 +51,30 @@ renderer.link = function (token) {
   return `<a href="${escapeHtml(token.href)}"${title}>${this.parser.parseInline(token.tokens)}</a>`;
 };
 
+/**
+ * Where an image is fetched from. A stored figure URL ({@link STORED_DOSSIER_ASSET}) is relative to
+ * qits-projects' API and keeps the retired epic route's spelling, so it is resolved to the `/work`
+ * content route; every other URL is used as written.
+ */
+function imageSource(href: string): string {
+  const match = STORED_DOSSIER_ASSET.exec(href);
+  return match ? dossierAssetContentUrl(match[1], match[2]) : href;
+}
+
 renderer.image = (token) => {
   if (!safeImageUrl(token.href)) return escapeHtml(token.raw);
   const title = token.title ? ` title="${escapeHtml(token.title)}"` : '';
+  const src = escapeHtml(imageSource(token.href));
   if (framedDesign(token.href)) {
     // Sandboxed, and never with `allow-same-origin`. The response carries `Content-Security-Policy:
     // sandbox` too, which is what covers the URL being opened directly; this attribute covers the
     // frame.
     return (
-      `<iframe src="${escapeHtml(token.href)}" sandbox loading="lazy"` +
+      `<iframe src="${src}" sandbox loading="lazy"` +
       ` title="${escapeHtml(token.text)}"${title}></iframe>`
     );
   }
-  return `<img src="${escapeHtml(token.href)}" alt="${escapeHtml(token.text)}"${title}>`;
+  return `<img src="${src}" alt="${escapeHtml(token.text)}"${title}>`;
 };
 
 const markdown = new Marked({

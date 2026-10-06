@@ -475,6 +475,7 @@ export class CampaignMembers {
   private readonly api = inject(CampaignsApi);
   private readonly events = inject(ProjectEvents);
 
+  /** The campaign's qualified id (or its id) — what `/work` addresses it by. */
   readonly campaignId = input.required<string>();
 
   /** The project's slug, which a member's link is spelled with. */
@@ -555,12 +556,14 @@ export class CampaignMembers {
 
   // ---- presses ------------------------------------------------------------------------------------
 
-  /** ↑ or ↓: order only. `moveMember` answers the campaign, which replaces the rows. */
+  /** ↑ or ↓: order only. `moveMember` answers the members, which replace the rows. */
   protected async move(member: CampaignMemberDto, position: number): Promise<void> {
     await this.run(`move:${member.membershipId}`, async () => {
-      this.campaign.set(
-        ready(await this.api.moveMember(this.campaignId(), member.membershipId, position)),
-      );
+      const members = await this.api.moveMember(this.campaignId(), member.membershipId, position);
+      const campaign = this.loaded();
+      if (campaign) {
+        this.campaign.set(ready({ ...campaign, members }));
+      }
     });
   }
 

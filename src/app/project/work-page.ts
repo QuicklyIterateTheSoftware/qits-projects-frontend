@@ -9,7 +9,7 @@ import {
 import { toSignal } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, Router, RouterLink, convertToParamMap } from '@angular/router';
 import { ArchetypesApi } from '../api/archetypes-api';
-import type { CampaignDto } from '../api/dto';
+import type { WorkEntityDto } from '../api/work';
 import { ProjectParam } from '../nav/project-param';
 import { RefinementPanel } from './agent/refinement-panel';
 import {
@@ -209,7 +209,7 @@ export class WorkPage {
    * A campaign was opened: go to its page, where its members and their conditions are authored — an
    * empty campaign on the desk is not somewhere anybody can do anything with it.
    */
-  protected campaignOpened(campaign: CampaignDto): void {
+  protected campaignOpened(campaign: WorkEntityDto): void {
     void this.router.navigate(entityRoute(this.projectSlug(), campaign) as string[]);
   }
 }

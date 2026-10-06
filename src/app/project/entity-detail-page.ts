@@ -13,8 +13,8 @@ import { toSignal } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, Router, RouterLink, convertToParamMap } from '@angular/router';
 import { QitsAppLinks, QitsBadge, QitsButton } from '@qits/ui-components';
 import { ArchetypesApi, type ArchetypeRegistry } from '../api/archetypes-api';
-import { CampaignsApi } from '../api/campaigns-api';
 import { DossierApi, epicDossier, ticketDossier, type DossierOwner } from '../api/dossier-api';
+import { workRef } from '../api/work';
 import type {
   AuditEntryDto,
   DispatchMode,
@@ -129,10 +129,10 @@ interface TreeRow {
  *
  * <ul>
  *   <li><b>Dispatch</b> (`FLOW`) and <b>Run the next phase</b> (`PHASE`) go to the one dispatching
- *       door, `POST /entities/{id}/dispatch`. Whether they are enabled, and which phase they would
- *       start, is `GET /entities/{id}/dispatch`'s answer — `dispatchable` and `nextPhase` — so this
+ *       door, `POST /work/{q}/dispatch`. Whether they are enabled, and which phase they would
+ *       start, is `GET /work/{q}/dispatch`'s answer — `dispatchable` and `nextPhase` — so this
  *       page never maps a status to a phase itself.</li>
- *   <li><b>Refine</b> opens the entity's refinement room through `POST /entities/{id}/refinement`
+ *   <li><b>Refine</b> opens the entity's refinement room through `POST /work/{q}/refinement`
  *       and goes there. It is enabled where the dispatch state's next phase is `refine` — refinement
  *       *is* that phase — and an existing room is always offered as "Open refinement", whatever the
  *       status, because the service answers an existing room whatever the state.</li>
@@ -148,27 +148,30 @@ interface TreeRow {
  * them. A status with no moves (`DONE`) is final and says so instead; a registry that serves no
  * `transitions` draws no moves at all rather than guessing.
  *
- * <p><b>Status moves use the archetype's lifecycle door</b> — `POST /tickets/{id}/transition`,
- * `POST /epics/{id}/transition` — and not the multi-entity transition. The lifecycle door is what runs
+ * <p><b>Every path here names the node by its qualified id</b> — `/work/{q}/…` (epic qits-965); see
+ * {@link ref}.
+ *
+ * <p><b>Status moves use the lifecycle door</b> — `POST /work/{q}/status`, every archetype's — and
+ * not the multi-entity transition. The lifecycle door is what runs
  * the step (adjacency, the implemented stamping at IMPLEMENTED, discarding the room a resolving move
  * ends) and then the phase advance; the multi-entity door restates a row's shape and runs none of it.
  * **Field edits and reshapes** — title, description, impetus, type, assignee (wherever the registry
  * permits it: a ticket, and an epic from qits-887 on); promote, demote,
- * reparent — **go through `POST /entities/transition`**, a restatement of the whole row, which is
+ * reparent — **go through `POST /work/transition`**, a restatement of the whole row, which is
  * what replaced the retired `PUT /epics/{id}` and `PUT /tickets/{id}`.
  *
  * <p><b>Acceptance criteria</b> (qits-887) are drawn, and edited in the edit form, wherever the
  * registry permits `ACCEPTANCE_CRITERIA` on the archetype — never by the archetype's name, so the
  * section appears the day the service permits it. They are saved as one whole list through
- * `PATCH /entities/{id}` (a merge patch; `null` clears), and the editor is closed from
+ * `PATCH /work/{q}` (a merge patch; `null` clears), and the editor is closed from
  * `READY_FOR_DEV` on, where the service freezes them. A move the registry serves with `gates` says
  * so beside its button ("needs acceptance criteria", "needs a person"); the gate itself is the
  * service's, and its 409 is shown as worded.
  *
  * <p><b>A campaign</b> (qits-419, qits-420) is a root with a lifecycle and a body of its own: how
  * it is running ({@link CampaignProgress}), and its members, their order and their conditions
- * ({@link CampaignMembers}). Its status moves go through its own
- * door (`POST /campaigns/{id}/transition` — the multi-entity door refuses a campaign); its one
+ * ({@link CampaignMembers}). Its status moves go through the same lifecycle door
+ * (`POST /work/{q}/status` — the multi-entity door refuses a campaign); its one
  * dispatching press is <b>Start campaign</b> (or <b>Re-check members</b> once started), asked twice
  * because it authorises every ungated dispatch in the campaign; and *Run the next phase*, *Refine*,
  * *Edit* and *Reshape* are not offered, because the service would refuse every one of them.
@@ -623,14 +626,14 @@ interface TreeRow {
         <h2>{{ ticket() ? 'The work' : 'Description' }}</h2>
         @if (n.archetype === 'CAMPAIGN') {
           <app-campaign-members
-            [campaignId]="n.id"
+            [campaignId]="ref(n)"
             [projectSlug]="projectSlug()"
             [entities]="campaignCandidates()"
             [repositories]="repositoryList()"
             [revision]="revision()"
           />
           <app-campaign-progress
-            [campaignId]="n.id"
+            [campaignId]="ref(n)"
             [projectSlug]="projectSlug()"
             [revision]="revision()"
           />
@@ -742,7 +745,7 @@ interface TreeRow {
           }
         }
 
-        <app-entity-thread [entityId]="n.id" [archetype]="n.archetype" />
+        <app-entity-thread [entityId]="ref(n)" [archetype]="n.archetype" />
       </section>
 
       <details class="history">
@@ -1017,7 +1020,6 @@ export class EntityDetailPage {
   private readonly api = inject(EntitiesApi);
   private readonly projects = inject(ProjectsApi);
   private readonly refinements = inject(RefinementsApi);
-  private readonly campaigns = inject(CampaignsApi);
   private readonly archetypes = inject(ArchetypesApi);
   private readonly dossier = inject(DossierApi);
   private readonly events = inject(ProjectEvents);
@@ -1409,9 +1411,9 @@ export class EntityDetailPage {
   protected readonly dossierOwner = computed<DossierOwner | null>(() => {
     const node = this.node();
     if (node?.archetype === 'EPIC') {
-      return epicDossier(node.id);
+      return epicDossier(node.id, node.qualifiedId);
     }
-    return node?.archetype === 'TICKET' ? ticketDossier(node.id) : null;
+    return node?.archetype === 'TICKET' ? ticketDossier(node.id, node.qualifiedId) : null;
   });
 
   protected readonly hasDossier = computed(() => this.dossierPages().length > 0);
@@ -1553,10 +1555,10 @@ export class EntityDetailPage {
     }
     // A campaign has no refinement room — its members are refined, not it.
     const [state, room] = await Promise.all([
-      this.api.dispatchState(node.id).catch(() => null),
+      this.api.dispatchState(this.ref(node)).catch(() => null),
       node.archetype === 'CAMPAIGN'
         ? Promise.resolve(null)
-        : this.refinements.findFor(node.id).catch(() => null),
+        : this.refinements.findFor(this.ref(node)).catch(() => null),
     ]);
     if (attempt === this.attempt) {
       this.state.set(state);
@@ -1567,7 +1569,8 @@ export class EntityDetailPage {
   async readAudit(quiet = false): Promise<void> {
     const node = this.node();
     // A campaign's writes are audited under its own id, the way an epic's tree is under the epic's.
-    const key = node?.entity?.id ?? node?.epic?.id ?? node?.campaign?.id ?? null;
+    const root = node?.entity ?? node?.epic ?? node?.campaign ?? null;
+    const key = root ? workRef(root) : null;
     if (!key) {
       this.audit.set(ready([]));
       return;
@@ -1621,7 +1624,7 @@ export class EntityDetailPage {
       return;
     }
     await this.run(`dispatch:${mode}`, async () => {
-      const answer = await this.api.dispatch(node.id, mode);
+      const answer = await this.api.dispatch(this.ref(node), mode);
       this.dispatched.set('dispatch' in answer ? answer.dispatch : null);
       await this.load(true);
     });
@@ -1646,7 +1649,7 @@ export class EntityDetailPage {
     }
     this.confirming.set(null);
     await this.run('dispatch:FLOW', async () => {
-      await this.api.dispatch(node.id, 'FLOW');
+      await this.api.dispatch(this.ref(node), 'FLOW');
       this.revision.update((count) => count + 1);
       await this.load(true);
     });
@@ -1660,7 +1663,7 @@ export class EntityDetailPage {
     }
     await this.run('refine', async () => {
       if (!this.room()) {
-        this.room.set(await this.refinements.openFor(node.id));
+        this.room.set(await this.refinements.openFor(this.ref(node)));
       }
       await this.router.navigate(refinementRoute(this.projectSlug(), node) as string[]);
     });
@@ -1676,20 +1679,17 @@ export class EntityDetailPage {
     }
     this.blocking.set(null);
     await this.run(`move:${step.target}`, async () => {
-      if (node.archetype === 'TICKET') {
-        await this.api.transition(node.id, step.target);
-      } else if (node.archetype === 'CAMPAIGN') {
-        // The campaign's own door is the only one that moves its status (qits-413).
-        await this.campaigns.transition(node.id, step.target);
+      // One lifecycle door for every archetype (`POST /work/{q}/status`); a campaign's move also
+      // re-reads its members and progress.
+      await this.api.transition(this.ref(node), step.target);
+      if (node.archetype === 'CAMPAIGN') {
         this.revision.update((count) => count + 1);
-      } else {
-        await this.projects.transitionEpic(node.id, step.target);
       }
       await this.load(true);
     });
   }
 
-  /** Supersede the epic — asked twice — and go to the successor draft it answers. */
+  /** Supersede the epic — asked twice — and go to the successor draft its answer names. */
   protected async supersede(): Promise<void> {
     const node = this.node();
     if (!node || this.action()) {
@@ -1701,10 +1701,11 @@ export class EntityDetailPage {
     }
     this.confirming.set(null);
     await this.run('supersede', async () => {
-      const answer = await this.projects.transitionEpic(node.id, 'SUPERSEDED');
+      const answer = await this.api.transition(this.ref(node), 'SUPERSEDED');
       await this.load(true);
-      if (answer.successor) {
-        await this.router.navigate(entityRoute(this.projectSlug(), answer.successor) as string[]);
+      const successor = nodeById(this.loaded()?.nodes ?? [], answer.supersededBy);
+      if (successor) {
+        await this.router.navigate(entityRoute(this.projectSlug(), successor) as string[]);
       }
     });
   }
@@ -1727,7 +1728,7 @@ export class EntityDetailPage {
   }
 
   /**
-   * Save the edit as a restatement of the row on `POST /entities/transition` — the door that replaced
+   * Save the edit as a restatement of the row on `POST /work/transition` — the door that replaced
    * the retired PUTs. An emptied box clears its property; see {@link restatement}.
    */
   protected async save(): Promise<void> {
@@ -1768,7 +1769,7 @@ export class EntityDetailPage {
     await this.run('save', async () => {
       if (criteriaChanged) {
         // The whole list through the merge patch; an emptied list clears it.
-        await this.api.patch(node.id, {
+        await this.api.patch(this.ref(node), {
           acceptanceCriteria: criteria.length > 0 ? criteria : null,
         });
       }
@@ -1832,7 +1833,7 @@ export class EntityDetailPage {
       return;
     }
     await this.run('blocked', async () => {
-      await this.api.setBlocked(node.id, mode === 'block', this.blockNote().trim());
+      await this.api.setBlocked(this.ref(node), mode === 'block', this.blockNote().trim());
       this.blocking.set(null);
       this.blockNote.set('');
       await this.load(true);
@@ -1857,7 +1858,7 @@ export class EntityDetailPage {
     }
     this.confirming.set(null);
     await this.run('delete', async () => {
-      await this.api.remove(node.id);
+      await this.api.remove(this.ref(node));
       await this.router.navigate(this.deskRoute() as string[]);
     });
   }
@@ -1875,6 +1876,11 @@ export class EntityDetailPage {
   }
 
   // ---- helpers ----------------------------------------------------------------------------------
+
+  /** The segment `/work` addresses this node by: its qualified id (or its id, lacking one). */
+  protected ref(node: Pick<EntityNode, 'id' | 'qualifiedId'>): string {
+    return workRef(node);
+  }
 
   protected routeOf(node: EntityNode): readonly string[] {
     return entityRoute(this.projectSlug(), node);

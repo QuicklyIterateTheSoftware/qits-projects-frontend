@@ -2,6 +2,7 @@ import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
 import type { EntityTransitionRequest } from '../project/entity-transition-model';
+import { workAnswer, workOfTicket, type WorkFixture } from '../../testing/work-fixtures';
 import { EntitiesApi } from './entities-api';
 import type { CommentDto, EpicDto, FeatureDto, TaskDto, TicketDto } from './dto';
 
@@ -93,26 +94,18 @@ const settle = async () => {
 };
 
 /**
- * The entities' transport, and the four things about it that are easy to get wrong.
+ * The entities' transport on the `/work` surface (epic qits-965), and the things about it that are
+ * easy to get wrong.
  *
- * **The archetype is a filter on one read, and it decides which endpoints are called at all.** There
- * is no unified list on the wire — the service kept the contract byte-identical through the
- * migration — so this class is where "the project's entities" is assembled out of `…/epics` and
- * `…/tickets`. A filter that read both regardless would make each desk pay for the other's fan-out,
- * and a fan-out issued per row rather than per level would turn one screen into dozens of requests.
+ * **One listing, the archetype a filter on it.** `GET /projects/{project}/work` answers the whole
+ * tree; each root is then read whole (the listing is a summary) with its workspaces, an epic's
+ * features and tasks from `…/children`, and a campaign's summary from its progress — in parallel
+ * across the roots, never one after the other.
  *
- * **Two path families.** A list and a create hang under their parent, because that is the only place
- * the parent is known; everything about an existing row is addressed by that row's own id at the top
- * level. Getting the second one wrong produces a URL the service answers 404 for, which reads on
- * screen as a ticket that has vanished.
+ * **Everything about an existing row is addressed by its qualified id** at `/work/{q}`. Getting it
+ * wrong produces a URL the service answers 404 for, which reads on screen as a row that vanished.
  *
- * **The envelope is unwrapped here, once.** Every read answers `{"entries":[{"ticket":…}]}` or
- * `{"ticket":…}`, and no page above this file has ever seen either — so a method that forgot to
- * unwrap would hand a screen an object with one key on it.
- *
- * **The clears are booleans beside the values, not nulls instead of them.** A partial update reads an
- * absent field as untouched, so "empty this" needs a spelling of its own; a body that sent
- * `description: ''` would store an empty string where the reader meant nothing.
+ * **The envelope is unwrapped here, once**, so no page above this file sees one.
  */
 const CAMPAIGN = {
   id: 'c1',
@@ -140,31 +133,47 @@ describe('EntitiesApi', () => {
 
   afterEach(() => http.verify());
 
-  describe('the one read, filtered by archetype', () => {
-    it('lists a project’s tickets as entities, unwrapped and stamped TICKET', async () => {
-      const answer = api.list('p1', 'TICKET');
-      const request = http.expectOne('/projects/api/projects/p1/tickets');
-      request.flush({ entries: [{ ticket: ticket() }, { ticket: ticket({ id: 't2' }) }] });
+  /** Answer every `/work` read of the fixture project, round after round, and say what was read. */
+  async function serve(fixture: WorkFixture): Promise<string[]> {
+    const urls: string[] = [];
+    for (let round = 0; round < 6; round += 1) {
+      await settle();
+      for (const request of http.match(() => true)) {
+        const answer = workAnswer('p1', fixture, request.request.url, request.request.method);
+        if (!answer) throw new Error(`unanswered ${request.request.url}`);
+        urls.push(request.request.url);
+        request.flush(answer);
+      }
+    }
+    return urls;
+  }
 
-      expect(request.request.method).toBe('GET');
+  describe('the one read, filtered by archetype', () => {
+    it('lists a project’s tickets as entities, read whole and stamped TICKET', async () => {
+      const answer = api.list('p1', 'TICKET');
+      const urls = await serve({
+        epics: [epic()],
+        tickets: [
+          ticket({ description: 'The **badge**.' }),
+          ticket({ id: 't2', qualifiedId: 'qits-42' }),
+        ],
+      });
+
       const rows = await answer;
       expect(rows.map((row) => row.archetype)).toEqual(['TICKET', 'TICKET']);
       expect(rows.map((row) => row.id)).toEqual(['t1', 't2']);
       expect(rows[0].qualifiedId).toBe('qits-41');
-    });
-
-    /** Asking for tickets must not touch the epics' three routes. `http.verify()` is the assertion. */
-    it('reads nothing but the tickets when the tickets are what was asked for', async () => {
-      const answer = api.list('p1', 'TICKET');
-      http.expectOne('/projects/api/projects/p1/tickets').flush({ entries: [] });
-
-      expect(await answer).toEqual([]);
-      expect(http.match('/projects/api/projects/p1/epics')).toEqual([]);
+      // The listing has no description; the whole read does.
+      expect(rows[0].description).toBe('The **badge**.');
+      expect(urls).toContain('/projects/api/work/qits-41');
+      expect(urls).toContain('/projects/api/work/qits-41/workspaces');
+      // The epic is in the listing, but nothing about it is read for the tickets desk.
+      expect(urls.filter((url) => url.includes('qits-12'))).toEqual([]);
     });
 
     it('answers an empty list for a project with none, rather than translating a 404', async () => {
       const answer = api.list('p1', 'TICKET');
-      http.expectOne('/projects/api/projects/p1/tickets').flush({ entries: [] });
+      await serve({});
 
       expect(await answer).toEqual([]);
     });
@@ -172,7 +181,7 @@ describe('EntitiesApi', () => {
     /** Project ids reach this from a URL, so one that needs escaping has to survive the trip. */
     it('escapes the project id rather than pasting it into the path', async () => {
       const answer = api.list('a/b', 'TICKET');
-      http.expectOne('/projects/api/projects/a%2Fb/tickets').flush({ entries: [] });
+      http.expectOne('/projects/api/projects/a%2Fb/work').flush({ entities: [] });
 
       await answer;
     });
@@ -183,54 +192,69 @@ describe('EntitiesApi', () => {
      */
     it('assembles an epic with its features and their tasks, as one entity', async () => {
       const answer = api.list('p1', 'EPIC');
-      http.expectOne('/projects/api/projects/p1/epics').flush({ entries: [{ epic: epic() }] });
-      await settle();
-      http
-        .expectOne('/projects/api/epics/e1/features')
-        .flush({ entries: [{ feature: feature() }] });
-      await settle();
-      http.expectOne('/projects/api/features/f1/tasks').flush({ entries: [{ task: task() }] });
+      const urls = await serve({
+        epics: [
+          {
+            epic: epic({
+              workspaces: [
+                { workspaceRowId: 7, repositoryId: 'r1', workspaceId: 'w', branch: 'epic/x' },
+              ],
+            }),
+            features: [{ feature: feature({ description: 'the feature' }), tasks: [task()] }],
+          },
+        ],
+        tickets: [ticket()],
+      });
 
       const [entity] = await answer;
       expect(entity.archetype).toBe('EPIC');
       expect(entity.id).toBe('e1');
       expect(entity.qualifiedId).toBe('qits-12');
+      expect(entity.workspaces.map((workspace) => workspace.workspaceRowId)).toEqual([7]);
       expect(entity.archetype === 'EPIC' && entity.features).toHaveLength(1);
+      expect(entity.archetype === 'EPIC' && entity.features[0].feature.description).toBe(
+        'the feature',
+      );
       expect(entity.archetype === 'EPIC' && entity.features[0].tasks[0].id).toBe('k1');
-    });
-
-    /** Asking for epics must not read the tickets either — the filter cuts both ways. */
-    it('reads nothing but the plan when the epics are what was asked for', async () => {
-      const answer = api.list('p1', 'EPIC');
-      http.expectOne('/projects/api/projects/p1/epics').flush({ entries: [] });
-
-      expect(await answer).toEqual([]);
-      expect(http.match('/projects/api/projects/p1/tickets')).toEqual([]);
+      expect(urls).toContain('/projects/api/work/qits-12/children');
+      expect(urls).toContain('/projects/api/work/qits-13/children');
     });
 
     /**
-     * No filter means everything, and the reads go out **together**: a caller asking for the
-     * project's whole body of work pays one round trip per archetype, not one per row and not one
-     * after the other. Campaigns are roots of work too (qits-419), so they are part of "everything".
+     * No filter means every root, and the reads about them go out **together**: one round trip for
+     * the listing, then one for the roots — not one per row after the other. Campaigns are roots of
+     * work too (qits-419), so they are part of "everything".
      */
-    it('reads every archetype in parallel when no archetype is named', async () => {
+    it('reads every root in parallel when no archetype is named', async () => {
+      const fixture = { epics: [epic()], tickets: [ticket()], campaigns: [CAMPAIGN] };
       const answer = api.list('p1');
-      const epics = http.expectOne('/projects/api/projects/p1/epics');
-      const tickets = http.expectOne('/projects/api/projects/p1/tickets');
-      const campaigns = http.expectOne('/projects/api/projects/p1/campaigns');
-      epics.flush({ entries: [{ epic: epic() }] });
-      tickets.flush({ entries: [{ ticket: ticket() }] });
-      campaigns.flush({ campaigns: [CAMPAIGN] });
+      http
+        .expectOne('/projects/api/projects/p1/work')
+        .flush(workAnswer('p1', fixture, '/projects/api/projects/p1/work') as object);
       await settle();
-      http.expectOne('/projects/api/epics/e1/features').flush({ entries: [] });
+      // One round after the listing, every root's reads are already out together.
+      const round = http.match(() => true);
+      expect(round.map((request) => request.request.url)).toEqual(
+        expect.arrayContaining([
+          '/projects/api/work/qits-12',
+          '/projects/api/work/qits-12/workspaces',
+          '/projects/api/work/qits-12/children',
+          '/projects/api/work/qits-41',
+          '/projects/api/work/qits-41/workspaces',
+          '/projects/api/work/qits-430/progress',
+        ]),
+      );
+      for (const request of round) {
+        request.flush(workAnswer('p1', fixture, request.request.url) as object);
+      }
 
       const rows = await answer;
       expect(rows.map((row) => row.archetype)).toEqual(['EPIC', 'TICKET', 'CAMPAIGN']);
     });
 
-    it('reads nothing but the campaigns when the campaigns are what was asked for', async () => {
+    it('summarises a campaign from its progress, reading nothing else about it', async () => {
       const answer = api.list('p1', 'CAMPAIGN');
-      http.expectOne('/projects/api/projects/p1/campaigns').flush({ campaigns: [CAMPAIGN] });
+      const urls = await serve({ tickets: [ticket()], campaigns: [CAMPAIGN] });
 
       const rows = await answer;
       expect(rows).toEqual([
@@ -241,9 +265,24 @@ describe('EntitiesApi', () => {
           qualifiedId: 'qits-430',
           status: 'REFINED',
           members: 3,
+          started: false,
         }),
       ]);
-      expect(http.match(() => true)).toEqual([]);
+      expect(urls).toEqual([
+        '/projects/api/projects/p1/work',
+        '/projects/api/work/qits-430/progress',
+      ]);
+    });
+
+    it('leaves the epics’ features and tasks to the epic, never listing them as roots', async () => {
+      const answer = api.epicsAndTickets('p1');
+      await serve({
+        epics: [{ epic: epic(), features: [{ feature: feature(), tasks: [task()] }] }],
+        tickets: [ticket()],
+        campaigns: [CAMPAIGN],
+      });
+
+      expect((await answer).map((row) => row.archetype)).toEqual(['EPIC', 'TICKET']);
     });
   });
 
@@ -260,9 +299,9 @@ describe('EntitiesApi', () => {
       ],
     ]);
 
-    it('posts the map as an object keyed by entity id, at the entities path', async () => {
+    it('posts the map as an object keyed by entity, at the work transition path', async () => {
       const answer = api.transitionEntities(request);
-      const posted = http.expectOne('/projects/api/entities/transition');
+      const posted = http.expectOne('/projects/api/work/transition');
       posted.flush({ f1: { id: 'f1', archetype: 'EPIC' }, k1: { id: 'k1', archetype: 'FEATURE' } });
 
       expect(posted.request.method).toBe('POST');
@@ -281,7 +320,7 @@ describe('EntitiesApi', () => {
     it('answers the written post-state by id', async () => {
       const answer = api.transitionEntities(request);
       http
-        .expectOne('/projects/api/entities/transition')
+        .expectOne('/projects/api/work/transition')
         .flush({ f1: { id: 'f1', archetype: 'EPIC', parent: null } });
 
       expect((await answer).get('f1')?.archetype).toBe('EPIC');
@@ -291,7 +330,7 @@ describe('EntitiesApi', () => {
     it('rejects with the service’s whole sentence when the request is refused', async () => {
       const answer = api.transitionEntities(request);
       http
-        .expectOne('/projects/api/entities/transition')
+        .expectOne('/projects/api/work/transition')
         .flush(
           { message: 'a TASK requires repository id; a EPIC has no impetus' },
           { status: 400, statusText: 'Bad Request' },
@@ -304,8 +343,8 @@ describe('EntitiesApi', () => {
     });
   });
 
-  describe('the ticket writes', () => {
-    it('posts a new ticket under its project and answers the entity', async () => {
+  describe('the writes about one entity', () => {
+    it('posts a new ticket to POST /work and answers the entity', async () => {
       const answer = api.create('p1', {
         title: 'The cancelled badge is the wrong colour',
         impetus: 'The badge reads as success when a run is cancelled.',
@@ -313,14 +352,16 @@ describe('EntitiesApi', () => {
         description: 'It reads as **success**.',
         assignee: 'kim',
       });
-      const request = http.expectOne('/projects/api/projects/p1/tickets');
-      request.flush({ ticket: ticket() }, { status: 201, statusText: 'Created' });
+      const request = http.expectOne('/projects/api/work');
+      request.flush(workOfTicket(ticket()), { status: 201, statusText: 'Created' });
 
       expect(request.request.method).toBe('POST');
       expect(request.request.body).toEqual({
+        archetype: 'TICKET',
+        project: 'p1',
         title: 'The cancelled badge is the wrong colour',
         impetus: 'The badge reads as success when a run is cancelled.',
-        type: 'BUG',
+        ticketType: 'BUG',
         description: 'It reads as **success**.',
         assignee: 'kim',
       });
@@ -335,21 +376,24 @@ describe('EntitiesApi', () => {
         impetus: 'The ticket cards should be easier to scan.',
         type: 'IMPROVEMENT',
       });
-      const request = http.expectOne('/projects/api/projects/p1/tickets');
-      request.flush({ ticket: ticket({ type: 'IMPROVEMENT' }) });
+      const request = http.expectOne('/projects/api/work');
+      request.flush(workOfTicket(ticket({ type: 'IMPROVEMENT' })));
 
       expect(request.request.body).toEqual({
+        archetype: 'TICKET',
+        project: 'p1',
         title: 'Tidy the spacing',
         impetus: 'The ticket cards should be easier to scan.',
-        type: 'IMPROVEMENT',
+        ticketType: 'IMPROVEMENT',
       });
-      await answer;
+      expect((await answer).type).toBe('IMPROVEMENT');
     });
 
-    it('reads one ticket by id, at the top level rather than under its project', async () => {
-      const answer = api.get('t1');
-      const request = http.expectOne('/projects/api/tickets/t1');
-      request.flush({ ticket: ticket() });
+    it('reads one ticket by its qualified id, with its workspaces', async () => {
+      const answer = api.get('qits-41');
+      const request = http.expectOne('/projects/api/work/qits-41');
+      request.flush(workOfTicket(ticket()));
+      http.expectOne('/projects/api/work/qits-41/workspaces').flush({ workspaces: [] });
 
       expect(request.request.method).toBe('GET');
       expect((await answer).slug).toBe('the-cancelled-badge-is-the-wrong-colour');
@@ -360,37 +404,27 @@ describe('EntitiesApi', () => {
       expect('update' in api).toBe(false);
     });
 
-    it('moves a ticket along the lifecycle through the transition verb, not a field edit', async () => {
-      const answer = api.transition('t1', 'REFINED');
-      const request = http.expectOne('/projects/api/tickets/t1/transition');
-      request.flush({ ticket: ticket({ status: 'REFINED' }) });
+    it('moves an entity along the lifecycle through the status door, not a field edit', async () => {
+      const answer = api.transition('qits-41', 'REFINED');
+      const request = http.expectOne('/projects/api/work/qits-41/status');
+      request.flush({ ...workOfTicket(ticket({ status: 'REFINED' })), statusBefore: 'REPORTED' });
 
       expect(request.request.method).toBe('POST');
       expect(request.request.body).toEqual({ target: 'REFINED' });
       expect((await answer).status).toBe('REFINED');
-    });
-
-    /** Backwards is the same door: nothing is terminal, so a closed ticket walks back the way it came. */
-    it('moves it back through the same verb, the other way', async () => {
-      const answer = api.transition('t1', 'VERIFIED');
-      const request = http.expectOne('/projects/api/tickets/t1/transition');
-      request.flush({ ticket: ticket({ status: 'VERIFIED' }) });
-
-      expect(request.request.body).toEqual({ target: 'VERIFIED' });
-      expect((await answer).status).toBe('VERIFIED');
+      expect(http.match('/projects/api/work/transition')).toEqual([]);
     });
 
     /**
      * Its own door, not a field on the edit: blocking is something that happens to an entity, and a
      * block sent through the edit would drag every other box on that form along with it.
-     *
-     * <p>The entity door, not the retired ticket-scoped one — `POST /entities/{id}/blocked` is what
-     * every archetype with a lifecycle answers through now, a ticket included.
      */
-    it('blocks an entity through the entity blocked verb, carrying the reason', async () => {
-      const answer = api.setBlocked('t1', true, 'Waiting on qits-ci to redeploy.');
-      const request = http.expectOne('/projects/api/entities/t1/blocked');
-      request.flush({ block: { entityId: 't1', archetype: 'TICKET', status: 'REPORTED', blocked: true } });
+    it('blocks an entity through its blocked door, carrying the reason', async () => {
+      const answer = api.setBlocked('qits-41', true, 'Waiting on qits-ci to redeploy.');
+      const request = http.expectOne('/projects/api/work/qits-41/blocked');
+      request.flush({
+        block: { entityId: 't1', archetype: 'TICKET', status: 'REPORTED', blocked: true },
+      });
 
       expect(request.request.method).toBe('POST');
       expect(request.request.body).toEqual({
@@ -402,22 +436,14 @@ describe('EntitiesApi', () => {
 
     /** The same door the other way, and the note is optional — coming back is self-explanatory. */
     it('unblocks through the same door, with or without a note', async () => {
-      const answer = api.setBlocked('t1', false);
-      const request = http.expectOne('/projects/api/entities/t1/blocked');
-      request.flush({ block: { entityId: 't1', archetype: 'TICKET', status: 'REPORTED', blocked: false } });
+      const answer = api.setBlocked('qits-41', false);
+      const request = http.expectOne('/projects/api/work/qits-41/blocked');
+      request.flush({
+        block: { entityId: 't1', archetype: 'TICKET', status: 'REPORTED', blocked: false },
+      });
 
       expect(request.request.body).toEqual({ blocked: false, reason: '' });
       expect((await answer).blocked).toBe(false);
-    });
-
-    /** Not ticket-scoped at all: the same verb answers for an epic, and for a campaign. */
-    it('blocks an epic through the same entity door, not a ticket-scoped one', async () => {
-      const answer = api.setBlocked('e1', true, 'Waiting on a design decision.');
-      const request = http.expectOne('/projects/api/entities/e1/blocked');
-      request.flush({ block: { entityId: 'e1', archetype: 'EPIC', status: 'REFINED', blocked: true } });
-
-      expect((await answer).archetype).toBe('EPIC');
-      expect((await answer).blocked).toBe(true);
     });
 
     /**
@@ -425,32 +451,45 @@ describe('EntitiesApi', () => {
      * `undefined` would have every reader of it remembering which way the missing value falls.
      */
     it('reads a ticket with no blocked field as not blocked', async () => {
-      const answer = api.get('t1');
-      http.expectOne('/projects/api/tickets/t1').flush({ ticket: ticket() });
+      const answer = api.get('qits-41');
+      const unblocked: Record<string, unknown> = { ...workOfTicket(ticket()) };
+      delete unblocked['blocked'];
+      http.expectOne('/projects/api/work/qits-41').flush(unblocked);
+      http.expectOne('/projects/api/work/qits-41/workspaces').flush({ workspaces: [] });
 
       expect((await answer).blocked).toBe(false);
     });
 
-    /**
-     * A status step stays on the lifecycle door: the multi-entity transition restates a row's shape
-     * and runs no lifecycle (no adjacency, no phase advance, no resolving move).
-     */
-    it('addresses one ticket rather than the multi-entity transition', async () => {
-      const answer = api.transition('t1', 'REFINED');
-      http.expectOne('/projects/api/tickets/t1/transition').flush({ ticket: ticket() });
+    it('patches an entity as a merge patch', async () => {
+      const answer = api.patch('qits-41', { acceptanceCriteria: ['It works.'] });
+      const request = http.expectOne('/projects/api/work/qits-41');
+      request.flush(workOfTicket(ticket({ acceptanceCriteria: ['It works.'] })));
 
-      await answer;
-      expect(http.match('/projects/api/entities/transition')).toEqual([]);
+      expect(request.request.method).toBe('PATCH');
+      // A merge patch, sent as plain JSON — see the note above `EntitiesApi`.
+    expect(request.request.headers.has('Content-Type')).toBe(false);
+      expect((await answer).acceptanceCriteria).toEqual(['It works.']);
     });
 
     /** The `success` body adds nothing a 200 has not said, so it is dropped rather than returned. */
-    it('deletes a ticket and drops the body that only says it worked', async () => {
-      const answer = api.remove('t1');
-      const request = http.expectOne('/projects/api/tickets/t1');
+    it('deletes an entity and drops the body that only says it worked', async () => {
+      const answer = api.remove('qits-41');
+      const request = http.expectOne('/projects/api/work/qits-41');
       request.flush({ success: true });
 
       expect(request.request.method).toBe('DELETE');
       await expect(answer).resolves.toBeUndefined();
+    });
+
+    it('reads the workspaces a dispatch stood on its branch', async () => {
+      const answer = api.workspaces('qits-41');
+      http.expectOne('/projects/api/work/qits-41/workspaces').flush({
+        workspaces: [
+          { workspaceRowId: 7, repositoryId: 'r1', workspaceId: 'w', branch: 'ticket/x' },
+        ],
+      });
+
+      expect((await answer).map((workspace) => workspace.branch)).toEqual(['ticket/x']);
     });
   });
 
@@ -469,8 +508,8 @@ describe('EntitiesApi', () => {
     };
 
     it('posts Dispatch as FLOW to the entity door, and unwraps the dispatch', async () => {
-      const dispatched = api.dispatch('t1', 'FLOW');
-      const request = http.expectOne('/projects/api/entities/t1/dispatch');
+      const dispatched = api.dispatch('qits-41', 'FLOW');
+      const request = http.expectOne('/projects/api/work/qits-41/dispatch');
       request.flush({ dispatch: answer });
 
       expect(request.request.method).toBe('POST');
@@ -479,8 +518,8 @@ describe('EntitiesApi', () => {
     });
 
     it('posts Run the next phase as PHASE to the same door', async () => {
-      const dispatched = api.dispatch('e1', 'PHASE');
-      const request = http.expectOne('/projects/api/entities/e1/dispatch');
+      const dispatched = api.dispatch('qits-12', 'PHASE');
+      const request = http.expectOne('/projects/api/work/qits-12/dispatch');
       request.flush({ dispatch: { ...answer, entityId: 'e1', archetype: 'EPIC', mode: 'PHASE' } });
 
       expect(request.request.body).toEqual({ mode: 'PHASE' });
@@ -491,12 +530,18 @@ describe('EntitiesApi', () => {
     /** On a campaign the press is its start (qits-417), and the answer is its progress instead. */
     it('answers a campaign’s start as its progress, discriminated by key', async () => {
       const progress = {
-        campaign: { id: 'c1', qualifiedId: 'qits-430', title: 'Rename', status: 'REFINED', start: null },
+        campaign: {
+          id: 'c1',
+          qualifiedId: 'qits-430',
+          title: 'Rename',
+          status: 'REFINED',
+          start: null,
+        },
         evaluator: { connected: true, lastSweepCompletedAt: null, stalled: false },
         members: [],
       };
-      const dispatched = api.dispatch('c1', 'FLOW');
-      http.expectOne('/projects/api/entities/c1/dispatch').flush({ progress });
+      const dispatched = api.dispatch('qits-430', 'FLOW');
+      http.expectOne('/projects/api/work/qits-430/dispatch').flush({ progress });
 
       const envelope = await dispatched;
       expect('progress' in envelope).toBe(true);
@@ -504,8 +549,8 @@ describe('EntitiesApi', () => {
     });
 
     it('never calls the retired per-archetype dispatch doors', async () => {
-      const dispatched = api.dispatch('t1', 'FLOW');
-      http.expectOne('/projects/api/entities/t1/dispatch').flush({ dispatch: answer });
+      const dispatched = api.dispatch('qits-41', 'FLOW');
+      http.expectOne('/projects/api/work/qits-41/dispatch').flush({ dispatch: answer });
       await dispatched;
 
       expect(http.match(() => true)).toEqual([]);
@@ -514,7 +559,7 @@ describe('EntitiesApi', () => {
 
     it('reads what a press would start, unwrapping the state', async () => {
       const state = api.dispatchState('a/b');
-      const request = http.expectOne('/projects/api/entities/a%2Fb/dispatch');
+      const request = http.expectOne('/projects/api/work/a%2Fb/dispatch');
       request.flush({
         state: {
           entityId: 'a/b',
@@ -531,10 +576,10 @@ describe('EntitiesApi', () => {
       expect((await state).nextPhase).toBe('implement');
     });
 
-    /** The audit's key is a subtree key: an epic's id for its tree, a ticket's own for a ticket. */
-    it('reads the audit subtree by its key', async () => {
-      const entries = api.audit('t1');
-      const request = http.expectOne('/projects/api/epics/t1/audit');
+    /** A root's audit answers its whole subtree. */
+    it('reads the audit by the entity’s qualified id', async () => {
+      const entries = api.audit('qits-41');
+      const request = http.expectOne('/projects/api/work/qits-41/audit');
       request.flush({
         entries: [
           {
@@ -556,8 +601,8 @@ describe('EntitiesApi', () => {
 
   describe('the comments', () => {
     it('lists an entity’s comments under it, unwrapped — any archetype, not only a ticket', async () => {
-      const answer = api.comments('e1');
-      const request = http.expectOne('/projects/api/entities/e1/comments');
+      const answer = api.comments('qits-12');
+      const request = http.expectOne('/projects/api/work/qits-12/comments');
       request.flush({ entries: [{ comment: comment() }] });
 
       expect(request.request.method).toBe('GET');
@@ -566,8 +611,8 @@ describe('EntitiesApi', () => {
 
     /** The author is stamped from the session, so a client that sent one would be asserting it. */
     it('posts only the body, because the author is the server’s to stamp', async () => {
-      const answer = api.addComment('e1', 'Reproduced on dev.');
-      const request = http.expectOne('/projects/api/entities/e1/comments');
+      const answer = api.addComment('qits-12', 'Reproduced on dev.');
+      const request = http.expectOne('/projects/api/work/qits-12/comments');
       request.flush({ comment: comment() }, { status: 201, statusText: 'Created' });
 
       expect(request.request.method).toBe('POST');
@@ -576,23 +621,24 @@ describe('EntitiesApi', () => {
     });
 
     /**
-     * A comment is addressed by its own id, at its own path — not under the entity it is on — and
-     * the edit travels as a JSON merge patch, the only property it carries being `body`.
+     * A comment is addressed under the entity it is on, and the edit travels as a JSON merge patch,
+     * the only property it carries being `body`.
      */
-    it('patches a comment edit at comments/<id>, as a merge patch', async () => {
-      const answer = api.updateComment('c1', 'Reproduced on dev and on stage.');
-      const request = http.expectOne('/projects/api/comments/c1');
+    it('patches a comment edit at <entity>/comments/<id>, as a merge patch', async () => {
+      const answer = api.updateComment('qits-12', 'c1', 'Reproduced on dev and on stage.');
+      const request = http.expectOne('/projects/api/work/qits-12/comments/c1');
       request.flush({ comment: comment({ body: 'Reproduced on dev and on stage.' }) });
 
       expect(request.request.method).toBe('PATCH');
       expect(request.request.body).toEqual({ body: 'Reproduced on dev and on stage.' });
-      expect(request.request.headers.get('Content-Type')).toBe('application/merge-patch+json');
+      // A merge patch, sent as plain JSON — see the note above `EntitiesApi`.
+    expect(request.request.headers.has('Content-Type')).toBe(false);
       expect((await answer).body).toBe('Reproduced on dev and on stage.');
     });
 
     it('deletes a comment at the same address, and drops the body', async () => {
-      const answer = api.removeComment('c1');
-      const request = http.expectOne('/projects/api/comments/c1');
+      const answer = api.removeComment('qits-12', 'c1');
+      const request = http.expectOne('/projects/api/work/qits-12/comments/c1');
       request.flush({ success: true });
 
       expect(request.request.method).toBe('DELETE');
@@ -600,15 +646,15 @@ describe('EntitiesApi', () => {
     });
 
     it('escapes a comment id rather than pasting it into the path', async () => {
-      const answer = api.removeComment('a/b');
-      http.expectOne('/projects/api/comments/a%2Fb').flush({ success: true });
+      const answer = api.removeComment('qits-12', 'a/b');
+      http.expectOne('/projects/api/work/qits-12/comments/a%2Fb').flush({ success: true });
 
       await answer;
     });
 
     it('escapes an entity id rather than pasting it into the path', async () => {
       const answer = api.comments('a/b');
-      http.expectOne('/projects/api/entities/a%2Fb/comments').flush({ entries: [] });
+      http.expectOne('/projects/api/work/a%2Fb/comments').flush({ entries: [] });
 
       await answer;
     });

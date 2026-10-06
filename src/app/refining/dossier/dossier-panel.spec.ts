@@ -235,7 +235,7 @@ describe('DossierPanel', () => {
   it("lists a ticket's pages from under the ticket and renders one", async () => {
     await open([page({ epicId: null, ticketId: 't1' })], ticketDossier('t1'));
 
-    expect(api.list).toHaveBeenCalledWith({ kind: 'ticket', id: 't1' });
+    expect(api.list).toHaveBeenCalledWith({ kind: 'ticket', id: 't1', ref: 't1' });
     expect(pageButtons().map((node) => node.textContent?.trim())).toEqual(['The claim loop']);
     expect(rendered()?.innerHTML).toContain('How it turns.');
   });
@@ -253,7 +253,7 @@ describe('DossierPanel', () => {
     await settle();
 
     expect(api.write).toHaveBeenCalledWith(
-      { kind: 'ticket', id: 't1' },
+      { kind: 'ticket', id: 't1', ref: 't1' },
       expect.objectContaining({ slug: 'the-claim-loop' }),
       { body: 'the root cause', version: 2 },
     );

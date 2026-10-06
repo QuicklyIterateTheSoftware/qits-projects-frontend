@@ -256,7 +256,7 @@ export interface WrapperDto {
  * between.
  *
  * <p><b>A plain string, and not a union of today's words.</b> The vocabulary is the service's: the
- * served archetype registry (`GET /entities/archetypes`, each archetype's `lifecycle`) is where a
+ * served archetype registry (`GET /work/archetypes`, each archetype's `lifecycle`) is where a
  * screen reads which words exist and in what order, so a word the service adds reaches the badges,
  * the desk's sections and the status moves without this file changing. A union here would be a
  * second copy of that list, and the copy that was not updated would be the one drawn — which is
@@ -266,6 +266,10 @@ export type EntityStatus = string;
 
 /**
  * An epic: the backbone of a change to the platform.
+ *
+ * <p>The client's record, no longer a wire shape of its own: `epicOf` in `work.ts` assembles it from
+ * the `/work` surface's merged entity (and its workspaces), as `ticketOf`, `featureOf` and `taskOf`
+ * do {@link TicketDto}, {@link FeatureDto} and {@link TaskDto}.
  *
  * An epic may hold features and a feature may hold tasks, so the three together are the plan for a
  * change rather than three unrelated lists. `slug` is the git-safe identity the branch convention
@@ -319,7 +323,7 @@ export interface EpicDto {
   /**
    * What has to be true for the work to be accepted (qits-887) — a list of one-line Markdown items,
    * in order. Optional because it arrived after epics were on the wire: absent (an older service) or
-   * null reads as none. Written as a whole list through `PATCH /entities/{id}`; see
+   * null reads as none. Written as a whole list through `PATCH /work/{q}`; see
    * {@link ../project/entities-model#criterionProblems} for the item rules.
    */
   readonly acceptanceCriteria?: readonly string[] | null;
@@ -336,18 +340,6 @@ export interface EpicDto {
 }
 
 /**
- * What a transition came to: the epic in its new state, and the draft it spawned.
- *
- * `successor` is a second row, not a field of the first, because superseding **creates** an epic —
- * a fresh `REPORTED` copy of the frozen scope. Every other transition answers a null there, so a
- * caller that assumed a successor would invent one for an abandonment.
- */
-export interface EpicTransitionResponse {
-  readonly epic: EpicDto;
-  readonly successor: EpicDto | null;
-}
-
-/**
  * A feature under an epic. `dependsOnFeatureId` names a sibling that has to land first.
  *
  * <p><b>Completion is `implementedOn` here and `implementedAt` on a task.</b> That is what the wire
@@ -356,7 +348,7 @@ export interface EpicTransitionResponse {
  * settle — not this client's to paper over.
  *
  * <p><b>`status` (qits-763).</b> A feature now carries the same eight-word lifecycle as an epic or a
- * ticket, through the one `/entities/{id}/status` door — but `implementedOn` and `implementingOn`
+ * ticket, through the one `/work/{q}/status` door — but `implementedOn` and `implementingOn`
  * stay, as history next to it rather than in place of it: they say *when* it got there, the status
  * says *where it stands*. `status` is optional and reads null on a server that does not serve it yet
  * (`legalStatuses` empty for FEATURE), which a reader falls back to those two markers for — see
@@ -433,54 +425,6 @@ export interface TaskDto {
   readonly updatedAt: string;
 }
 
-/**
- * **One entity as it stands after a transition wrote it** — the unified row, every archetype's fields
- * on one record.
- *
- * <p>This is the only place the merged entity appears on the wire as itself. Every *read* is still
- * archetype-shaped — `EpicDto`, `TicketDto`, `FeatureDto`, `TaskDto`, on the four routes they always
- * had — because the service migrated the data and deliberately left the read contract byte-identical.
- * The transition door is the one endpoint that came *after* the merge, so it answers the merged shape,
- * and a client that flattened it back into four records would be undoing the only honest statement the
- * wire makes about what an entity now is.
- *
- * <p><b>Nearly everything is nullable, and that is the archetype talking.</b> A ticket has no
- * `implementedAt` and an epic has no repository. Rather than four partial types, the
- * record carries every property and answers null for the ones this row's archetype does not permit —
- * which is the same statement `permitted` makes in the archetype registry, seen from the data's side.
- *
- * <p>`parent` and `position` are the membership as it was written. A root answers a null parent.
- */
-export interface EntityStateDto {
-  readonly id: string;
-  readonly archetype: string;
-  readonly projectId: string;
-  /** The per-project counter — {@link EpicDto.number}. */
-  readonly number: number;
-  /** `<projectKey>-<number>`, or null. See {@link EpicDto.qualifiedId}: a null draws nothing. */
-  readonly qualifiedId: string | null;
-  readonly title: string;
-  readonly slug: string;
-  /** What the slug is unique *within* — which is why a reparent can collide on one. */
-  readonly slugScope: string | null;
-  readonly description: string | null;
-  readonly status: string | null;
-  readonly ticketType: string | null;
-  readonly impetus: string | null;
-  readonly assignee: string | null;
-  readonly createdBy: string | null;
-  readonly supersededBy: string | null;
-  readonly repositoryId: string | null;
-  readonly implementedAt: string | null;
-  readonly dependsOn: string | null;
-  /** {@link EpicDto.acceptanceCriteria}; absent on a service older than qits-887. */
-  readonly acceptanceCriteria?: readonly string[] | null;
-  readonly parent: string | null;
-  readonly position: number | null;
-  readonly createdAt: string;
-  readonly updatedAt: string;
-}
-
 /** projects' list envelope: entries, each wrapping the thing it lists. */
 export interface ProjectEntriesResponse {
   readonly entries: readonly { readonly project: ProjectDto }[];
@@ -502,25 +446,6 @@ export interface ProjectEntriesResponse {
 export interface RepositoryEntriesResponse {
   readonly entries: readonly { readonly repository: RepositoryDto; readonly declared: boolean }[];
   readonly wrapper: WrapperDto | null;
-}
-
-/**
- * The same envelope at each level of the plan, and **the entry key is the level's own name**:
- * `epic`, then `feature`, then `task`. They are mirrored one by one rather than folded into a
- * generic wrapper, because the key is the part a generic type would have to guess.
- */
-export interface EpicEntriesResponse {
-  readonly entries: readonly { readonly epic: EpicDto }[];
-}
-
-/** One epic's features. */
-export interface FeatureEntriesResponse {
-  readonly entries: readonly { readonly feature: FeatureDto }[];
-}
-
-/** One feature's tasks. */
-export interface TaskEntriesResponse {
-  readonly entries: readonly { readonly task: TaskDto }[];
 }
 
 /**
@@ -683,25 +608,8 @@ export interface CommentDto {
 }
 
 /**
- * One project's tickets, in the same entries envelope every list on this service uses — and with
- * the level's own name as the entry key, exactly as `epic`, `feature` and `task` are.
- *
- * The server sorts these **createdAt ascending**. The overview re-orders them itself rather than
- * asking for another sort: the two sections it draws want newest-first, and a client that trusted
- * an order it did not impose would silently draw the wrong one the day the server's changed.
- */
-export interface TicketEntriesResponse {
-  readonly entries: readonly { readonly ticket: TicketDto }[];
-}
-
-/** One ticket, wrapped — what every single-row write and read answers. */
-export interface TicketResponse {
-  readonly ticket: TicketDto;
-}
-
-/**
  * An entity's block flag as the write left it, with the archetype and status it belongs to —
- * `POST /projects/api/entities/{id}/blocked`'s answer, for every archetype that carries one: an
+ * `POST /projects/api/work/{q}/blocked`'s answer, for every archetype that carries one: an
  * epic, a ticket or a campaign. A feature and a task stay refused (409) even once they carry a
  * status of their own (qits-763) — blocking one was never in scope, lifecycle or not.
  */
@@ -755,7 +663,7 @@ export type DispatchPhase = string;
 export type AgentLaunch = 'SCHEDULED' | 'SKIPPED_RUNNING';
 
 /**
- * Where one press of Dispatch or Run the next phase put an agent — `POST /entities/{id}/dispatch`.
+ * Where one press of Dispatch or Run the next phase put an agent — `POST /work/{q}/dispatch`.
  *
  * <p><b>`workspaceRowId` is a number and `repositoryId` is a string</b>, which is qits-workspaces'
  * own split: together they are the workspace's address there,
@@ -779,7 +687,7 @@ export interface EntityDispatchDto {
   readonly agentLaunch: AgentLaunch;
 }
 
-/** One dispatch, wrapped — the whole answer to `POST /projects/api/entities/{id}/dispatch`. */
+/** One dispatch, wrapped — the whole answer to `POST /projects/api/work/{q}/dispatch`. */
 export interface EntityDispatchResponse {
   readonly dispatch: EntityDispatchDto;
 }
@@ -789,13 +697,13 @@ export interface EntityDispatchResponse {
  *
  * <p>On an epic or a ticket it is `{dispatch}`: where the agent went. On a campaign the press is the
  * campaign's *start* (qits-417), and it answers `{progress}` — the same wrapper
- * `GET /campaigns/{id}/progress` answers — because a start dispatches nothing itself; it authorises
+ * `GET /work/{q}/progress` answers — because a start dispatches nothing itself; it authorises
  * the members to run. `'progress' in answer` is the narrowing.
  */
 export type EntityDispatchAnswer = EntityDispatchResponse | CampaignProgressResponse;
 
 /**
- * What a press *would* do, read before anybody presses — `GET /entities/{id}/dispatch`.
+ * What a press *would* do, read before anybody presses — `GET /work/{q}/dispatch`.
  *
  * <p>This is what decides whether Dispatch and Run the next phase are offered and what they say:
  * `dispatchable` false (a VERIFIED, DONE or DROPPED entity, a blocked ticket, a feature or a task)
@@ -815,7 +723,7 @@ export interface EntityDispatchStateDto {
   readonly mode: DispatchMode | null;
 }
 
-/** The state, wrapped — the whole answer to `GET /projects/api/entities/{id}/dispatch`. */
+/** The state, wrapped — the whole answer to `GET /projects/api/work/{q}/dispatch`. */
 export interface EntityDispatchStateResponse {
   readonly state: EntityDispatchStateDto;
 }
@@ -824,7 +732,7 @@ export interface EntityDispatchStateResponse {
  * One row of an entity's history, as the audit log keeps it.
  *
  * <p>`epicId` is the log's **subtree key**, not literally an epic: a ticket's rows carry the ticket's
- * id there, a feature's and a task's their epic's. That is why one read of `GET /epics/{key}/audit`
+ * id there, a feature's and a task's their epic's. That is why one read of `GET /work/{q}/audit`
  * answers a whole tree, and why a feature's page filters the answer by `entityId`. `snapshot` is the
  * row as JSON after the write, which the page does not parse.
  */
@@ -1659,13 +1567,13 @@ export interface ReleaseArtifactsResponse {
 // ---- campaigns (qits-413 … qits-418) ------------------------------------------------------------
 
 /**
- * **A campaign in a project's listing** — `GET /projects/{projectId}/campaigns` answers
- * `{"campaigns": [CampaignSummaryDto…]}`, oldest first.
+ * **A campaign as a desk row** — assembled by the client (`campaignSummaryOf` in `work.ts`) from the
+ * campaign's row in `GET /projects/{project}/work` and its `GET /work/{q}/progress`: the retired
+ * `GET /projects/{id}/campaigns` summary, field for field.
  *
  * <p>A campaign is a root of work on the one desk, like an epic or a ticket, but it gathers other
- * entities rather than holding a tree of its own. The listing carries **no timestamps, no slug and no
- * description** — the service ships exactly these fields — so a desk card draws what is here and the
- * detail page reads {@link CampaignDto} for the rest.
+ * entities rather than holding a tree of its own. A desk card draws what is here and the detail page
+ * reads {@link CampaignDto} for the rest.
  */
 export interface CampaignSummaryDto {
   readonly id: string;
@@ -1682,10 +1590,6 @@ export interface CampaignSummaryDto {
   readonly active: boolean;
   /** How many members it gathers. */
   readonly members: number;
-}
-
-export interface CampaignsResponse {
-  readonly campaigns: readonly CampaignSummaryDto[];
 }
 
 /** A campaign's start; null on a campaign never started. */
@@ -1810,10 +1714,6 @@ export interface CampaignDto {
   readonly members: readonly CampaignMemberDto[];
 }
 
-export interface CampaignResponse {
-  readonly campaign: CampaignDto;
-}
-
 export interface CampaignMemberResponse {
   readonly member: CampaignMemberDto;
 }
@@ -1909,8 +1809,8 @@ export interface CampaignProgressDto {
 }
 
 /**
- * `GET /campaigns/{id}/progress`'s answer — and what the start press
- * (`POST /entities/{id}/dispatch` on a campaign) answers too.
+ * `GET /work/{q}/progress`'s answer — and what the start press
+ * (`POST /work/{q}/dispatch` on a campaign) answers too.
  */
 export interface CampaignProgressResponse {
   readonly progress: CampaignProgressDto;

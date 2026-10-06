@@ -308,17 +308,20 @@ describe('the remaining blocks', () => {
     const line = (epicId: string, assetId: string) =>
       `![A figure](/epics/${epicId}/dossier-assets/${assetId}/content)`;
 
-    it('draws an IMAGE asset as an image', () => {
+    /** The stored URL keeps the retired epic route's spelling; it is fetched from `/work`. */
+    it('draws an IMAGE asset as an image, from the work content route', () => {
       const html = renderMarkdown(line('e1', 'a1'), figures);
 
-      expect(html).toContain('<img src="/epics/e1/dossier-assets/a1/content"');
+      expect(html).toContain('<img src="/projects/api/work/e1/dossier-assets/a1/content"');
       expect(html).not.toContain('<iframe');
     });
 
     it('frames a DESIGN asset, sandboxed and never same-origin', () => {
       const html = renderMarkdown(line('e1', 'a2'), figures);
 
-      expect(html).toContain('<iframe src="/epics/e1/dossier-assets/a2/content" sandbox');
+      expect(html).toContain(
+        '<iframe src="/projects/api/work/e1/dossier-assets/a2/content" sandbox',
+      );
       expect(html).not.toContain('allow-same-origin');
       expect(html).toContain('title="A figure"');
     });

@@ -3,6 +3,7 @@ import { HttpTestingController, provideHttpClientTesting } from '@angular/common
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import type { ArchetypeRegistry } from '../api/archetypes-api';
 import type { EpicDto, TicketDto } from '../api/dto';
+import { workAnswer } from '../../testing/work-fixtures';
 import { EntityTransitionPanel } from './entity-transition-panel';
 
 const AT = '2026-09-19T09:00:00Z';
@@ -26,15 +27,7 @@ const REGISTRY: ArchetypeRegistry = {
       mayBeRoot: true,
       required: ['TITLE', 'STATUS', 'TICKET_TYPE', 'IMPETUS'],
       requiredOnTransition: ['TITLE', 'STATUS', 'TICKET_TYPE', 'IMPETUS'],
-      permitted: [
-        'TITLE',
-        'SLUG',
-        'DESCRIPTION',
-        'STATUS',
-        'TICKET_TYPE',
-        'IMPETUS',
-        'ASSIGNEE',
-      ],
+      permitted: ['TITLE', 'SLUG', 'DESCRIPTION', 'STATUS', 'TICKET_TYPE', 'IMPETUS', 'ASSIGNEE'],
       legalStatuses: ['REPORTED', 'DONE'],
     },
     {
@@ -111,14 +104,17 @@ describe('EntityTransitionPanel', () => {
     }
   }
 
-  /** The registry, the epics, their features and the tickets — the panel's whole ground. */
+  /** The registry and the project's work, read the `/work` way — the panel's whole ground. */
   async function flushGround(): Promise<void> {
-    http.expectOne('/projects/api/entities/archetypes').flush(REGISTRY);
-    http.expectOne('/projects/api/projects/p1/epics').flush({ entries: [{ epic: EPIC }] });
-    http.expectOne('/projects/api/projects/p1/tickets').flush({ entries: [{ ticket: TICKET }] });
-    await settle();
-    http.expectOne('/projects/api/epics/e1/features').flush({ entries: [] });
-    await settle();
+    http.expectOne('/projects/api/work/archetypes').flush(REGISTRY);
+    for (let round = 0; round < 3; round += 1) {
+      for (const request of http.match(() => true)) {
+        request.flush(
+          workAnswer('p1', { epics: [EPIC], tickets: [TICKET] }, request.request.url) as object,
+        );
+      }
+      await settle();
+    }
   }
 
   function element(): HTMLElement {
@@ -148,10 +144,9 @@ describe('EntityTransitionPanel', () => {
   it('shows one loading state for the whole ground, and one retry when it fails', async () => {
     await mount();
     http
-      .expectOne('/projects/api/entities/archetypes')
+      .expectOne('/projects/api/work/archetypes')
       .flush({ message: 'no' }, { status: 503, statusText: 'Unavailable' });
-    http.expectOne('/projects/api/projects/p1/epics').flush({ entries: [] });
-    http.expectOne('/projects/api/projects/p1/tickets').flush({ entries: [] });
+    http.expectOne('/projects/api/projects/p1/work').flush({ entities: [] });
     await settle();
 
     expect(element().textContent).toContain('Could not load the entity model');
@@ -164,7 +159,7 @@ describe('EntityTransitionPanel', () => {
     apply().click();
     await settle();
 
-    const request = http.expectOne('/projects/api/entities/transition');
+    const request = http.expectOne('/projects/api/work/transition');
     expect(request.request.method).toBe('POST');
     expect(request.request.body).toEqual({
       t1: {
@@ -193,7 +188,7 @@ describe('EntityTransitionPanel', () => {
     apply().click();
     await settle();
     http
-      .expectOne('/projects/api/entities/transition')
+      .expectOne('/projects/api/work/transition')
       .flush({ message: 'a TICKET requires impetus' }, { status: 400, statusText: 'Bad Request' });
     await settle();
 
@@ -210,7 +205,7 @@ describe('EntityTransitionPanel', () => {
     apply().click();
     await settle();
     http
-      .expectOne('/projects/api/entities/transition')
+      .expectOne('/projects/api/work/transition')
       .flush(null, { status: 503, statusText: 'Unavailable' });
     await settle();
 

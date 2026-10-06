@@ -14,10 +14,10 @@ import { QitsBadge, QitsButton } from '@qits/ui-components';
 import { ArchetypesApi, type ArchetypeRegistry } from '../api/archetypes-api';
 import { DesignsApi } from '../api/designs-api';
 import { epicDossier, ticketDossier, type DossierOwner } from '../api/dossier-api';
+import { workRef } from '../api/work';
 import { EntitiesApi } from '../api/entities-api';
 import { WorkspaceDaemonApi } from '../api/workspace-daemon-api';
 import { WorkspaceEvents, anyOf } from '../api/workspace-events';
-import { ProjectsApi } from '../api/projects-api';
 import { RefinementsApi, type RefinementDto } from '../api/refinements-api';
 import { ProjectParam } from '../nav/project-param';
 import {
@@ -213,7 +213,6 @@ export class RefiningPage {
   private readonly memory = inject(AgentActivityMemory);
   private readonly router = inject(Router);
   private readonly picked = inject(PickedContext);
-  private readonly projects = inject(ProjectsApi);
   private readonly designs = inject(DesignsApi);
   private readonly designSelection = inject(DesignSelection);
   private readonly sketchSelection = inject(SketchSelection);
@@ -790,7 +789,7 @@ export class RefiningPage {
     this.starting.set(true);
     this.startFailure.set(null);
     try {
-      await this.refining.open(subject.node.id);
+      await this.refining.open(workRef(subject.node));
       await this.loadRefinements(this.projectId());
     } catch (error) {
       this.startFailure.set(describeError(error));
@@ -937,11 +936,7 @@ export class RefiningPage {
     this.resolutionPending.set(move.target);
     this.resolutionFailure.set(null);
     try {
-      if (node.archetype === 'TICKET') {
-        await this.entitiesApi.transition(node.id, move.target);
-      } else {
-        await this.projects.transitionEpic(node.id, move.target);
-      }
+      await this.entitiesApi.transition(workRef(node), move.target);
       await this.router.navigate(entityRoute(this.projectSlug(), node) as string[]);
     } catch (error) {
       this.resolutionFailure.set(describeError(error));
@@ -974,7 +969,9 @@ export class RefiningPage {
   /** The dossier this room writes: the epic's, or the ticket's. */
   protected dossierOwner(): DossierOwner {
     const node = this.resolved()?.node;
-    return node?.archetype === 'TICKET' ? ticketDossier(node.id) : epicDossier(node?.id ?? '');
+    return node?.archetype === 'TICKET'
+      ? ticketDossier(node.id, node.qualifiedId)
+      : epicDossier(node?.id ?? '', node?.qualifiedId);
   }
 
   /**

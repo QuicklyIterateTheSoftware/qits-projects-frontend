@@ -1,1 +1,39 @@
+# How this repository releases: the `spa-frontend` archetype's QA slot (`release-request:`, from
+# `.config/qits/release-archetypes/spa-frontend.yml` in qits-ci) — install, lint, test (the pact
+# specs included), build — plus a `release:` slot of its own, which exists ONLY to publish the
+# consumer pact below.
+#
+# THE PACT (epic qits-965) is declared as a contract, keyed by the provider's repository name. It
+# sits in `pacts/` as `qits-projects-frontend_qits-projects-service.json`, written by the
+# `src/app/api/*.pact.spec.ts` specs (regenerate with `QITS_GOLDEN_UPDATE=true npm test`); qits-ci
+# packs `pacts/*_qits-projects-service.json` into the maven jar
+# eu.wohlben.qits:qits-projects-frontend-pacts-qits-projects-service, which qits-projects-service
+# verifies in its own gate. A contract package is `if-changed` by definition: a release whose pact
+# did not change publishes nothing.
+#
+# `application:` IS THE APPLICATION THIS SPA BELONGS TO, `qits-projects`. The SPA ships no image and
+# is no deployable of its own: qits-projects-service carries it as its Quinoa `webui` submodule and
+# serves it from the `qits-projects` application. The pact package's coordinate is spelled with the
+# two REPOSITORY names, never this one; `application:` only names the application in the package's
+# description.
+#
+# WHY THERE IS A `release:` SLOT. The platform publishes contract packages from the release slot's
+# last step (the composed postlude), and `spa-frontend` has no release slot — a frontend publishes
+# nothing else — so `contracts:` alone composes to UNCOMPOSABLE ("declares contracts but neither it
+# nor its archetype declares any 'release' step") and no run at all. Declaring the slot replaces
+# only the archetype's (empty) release phase; the QA slot is still the archetype's. The step builds
+# nothing: the pact is committed, and the postlude packs and publishes it.
 archetype: spa-frontend
+
+contracts:
+  application: qits-projects
+  pacts:
+    qits-projects-service: { packages: [maven] }
+
+release:
+
+  - image: qits/build-images/node-base:latest
+    timeout-seconds: 600
+    script: |
+      # The committed pact is the whole input; the platform postlude below publishes it.
+      ls pacts/*_qits-projects-service.json

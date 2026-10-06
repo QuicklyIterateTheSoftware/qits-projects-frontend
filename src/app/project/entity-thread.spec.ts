@@ -33,7 +33,7 @@ describe('EntityThread', () => {
     });
     http = TestBed.inject(HttpTestingController);
     fixture = TestBed.createComponent(EntityThread);
-    fixture.componentRef.setInput('entityId', 't1');
+    fixture.componentRef.setInput('entityId', 'qits-41');
     fixture.componentRef.setInput('archetype', 'TICKET');
     fixture.detectChanges();
   });
@@ -52,7 +52,7 @@ describe('EntityThread', () => {
 
   async function answer(comments: readonly CommentDto[]): Promise<void> {
     http
-      .expectOne('/projects/api/entities/t1/comments')
+      .expectOne('/projects/api/work/qits-41/comments')
       .flush({ entries: comments.map((value) => ({ comment: value })) });
     await settle();
   }
@@ -86,7 +86,7 @@ describe('EntityThread', () => {
 
     const request = http.expectOne(
       (candidate) =>
-        candidate.method === 'POST' && candidate.url === '/projects/api/entities/t1/comments',
+        candidate.method === 'POST' && candidate.url === '/projects/api/work/qits-41/comments',
     );
     expect(request.request.body).toEqual({ body: 'Reproduced on dev.' });
     request.flush({ comment: comment({ body: 'Reproduced on dev.' }) });
@@ -116,10 +116,12 @@ describe('EntityThread', () => {
     await settle();
 
     const request = http.expectOne(
-      (candidate) => candidate.method === 'PATCH' && candidate.url === '/projects/api/comments/c1',
+      (candidate) =>
+        candidate.method === 'PATCH' && candidate.url === '/projects/api/work/qits-41/comments/c1',
     );
     expect(request.request.body).toEqual({ body: 'Reproduced on dev and on stage.' });
-    expect(request.request.headers.get('Content-Type')).toBe('application/merge-patch+json');
+    // A merge patch, sent as plain JSON — see the note above `EntitiesApi`.
+    expect(request.request.headers.has('Content-Type')).toBe(false);
     request.flush({ comment: comment({ body: 'Reproduced on dev and on stage.' }) });
     await settle();
     await answer([comment({ body: 'Reproduced on dev and on stage.' })]);
@@ -131,7 +133,7 @@ describe('EntityThread', () => {
 
   it('says the thread could not be read, with its own retry', async () => {
     http
-      .expectOne('/projects/api/entities/t1/comments')
+      .expectOne('/projects/api/work/qits-41/comments')
       .flush({ message: 'down' }, { status: 503, statusText: 'Down' });
     await settle();
 

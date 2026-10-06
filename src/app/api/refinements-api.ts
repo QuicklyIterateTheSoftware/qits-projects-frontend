@@ -72,8 +72,9 @@ interface ActiveProcessResponse {
  * The refinement lifecycle surface of qits-projects — everything the refining route used to take
  * from `/workspaces/api/**`, on this SPA's own service.
  *
- * **Find-or-create is one idempotent POST keyed by the entity** — `POST /entities/{id}/refinement`,
- * for an epic or a ticket alike (qits-395). A `refining/<slug>` branch already on the origin is
+ * **Find-or-create is one idempotent POST keyed by the entity** — `POST /work/{q}/refinement`, by
+ * qualified id (epic qits-965), for an epic or a ticket alike (qits-395). A `refining/<slug>` branch
+ * already on the origin is
  * adopted, an entity that already has a room answers it, and two racing opens are settled by a unique
  * constraint rather than by client choreography. The old `POST /refinements {"epicId"}` door is not
  * called from here any more; the service removes it in its next release.
@@ -91,17 +92,17 @@ export class RefinementsApi {
    * room or any other phase machinery of its own — unless the entity is REPORTED, and while a dispatch
    * runs on it. An existing room is always answered, whatever the entity's state.
    */
-  async openFor(entityId: string): Promise<RefinementDto> {
+  async openFor(ref: string): Promise<RefinementDto> {
     const answer = await firstValueFrom(
-      this.http.post<RefinementResponse>(this.entityDoor(entityId), {}),
+      this.http.post<RefinementResponse>(this.entityDoor(ref), null),
     );
     return answer.refinement;
   }
 
-  /** The entity's room, or null when there is none. Never creates. */
-  async findFor(entityId: string): Promise<RefinementDto | null> {
+  /** The entity's room, or null when there is none. Never creates — `GET /work/{q}/refinement`. */
+  async findFor(ref: string): Promise<RefinementDto | null> {
     const answer = await firstValueFrom(
-      this.http.get<EntityRefinementResponse>(this.entityDoor(entityId)),
+      this.http.get<EntityRefinementResponse>(this.entityDoor(ref)),
     );
     return answer?.refinement ?? null;
   }
@@ -160,8 +161,9 @@ export class RefinementsApi {
     return answer.technicalProcessId ?? null;
   }
 
-  private entityDoor(entityId: string): string {
-    return `${this.base}/projects/api/entities/${encodeURIComponent(entityId)}/refinement`;
+  /** `ref` is the entity's qualified id, or its id for a row that has none. */
+  private entityDoor(ref: string): string {
+    return `${this.base}/projects/api/work/${encodeURIComponent(ref)}/refinement`;
   }
 
   private url(refinementId: number): string {

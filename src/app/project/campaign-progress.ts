@@ -39,7 +39,7 @@ const EVALUATOR_DOWN =
 /**
  * **How a campaign is running** — the watching half of the CAMPAIGN body (qits-420).
  *
- * <p>It reads `GET /campaigns/{id}/progress` and nothing else, and reads it again on every `epics`
+ * <p>It reads `GET /work/{q}/progress` and nothing else, and reads it again on every `epics`
  * hint (every campaign write fires one) and every {@link revision} the page bumps after its own
  * presses. There is no polling and no topic of its own.
  *
@@ -306,6 +306,7 @@ export class CampaignProgress {
   private readonly api = inject(CampaignsApi);
   private readonly events = inject(ProjectEvents);
 
+  /** The campaign's qualified id (or its id) — what `/work` addresses it by. */
   readonly campaignId = input.required<string>();
 
   /** The project's slug, which a member's link is spelled with. */

@@ -1,7 +1,14 @@
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
-import { DossierApi, epicDossier, ticketDossier, type DossierPageDto } from './dossier-api';
+import {
+  DossierApi,
+  STORED_DOSSIER_ASSET,
+  dossierAssetContentUrl,
+  epicDossier,
+  ticketDossier,
+  type DossierPageDto,
+} from './dossier-api';
 
 const page = (over: Partial<DossierPageDto> = {}): DossierPageDto => ({
   id: 'p1',
@@ -24,10 +31,10 @@ const page = (over: Partial<DossierPageDto> = {}): DossierPageDto => ({
  * panel holding the person's text and nothing to compare it against.
  */
 describe('DossierApi', () => {
-  const URL = '/projects/api/epics/e1/dossier';
-  const TICKET_URL = '/projects/api/tickets/t1/dossier';
-  const epic = epicDossier('e1');
-  const ticket = ticketDossier('t1');
+  const URL = '/projects/api/work/qits-1/dossier';
+  const TICKET_URL = '/projects/api/work/qits-2/dossier';
+  const epic = epicDossier('e1', 'qits-1');
+  const ticket = ticketDossier('t1', 'qits-2');
 
   let api: DossierApi;
   let http: HttpTestingController;
@@ -60,7 +67,7 @@ describe('DossierApi', () => {
 
   it('sends the version with every write', async () => {
     const answer = api.write(epic, page(), { body: 'rewritten', version: 3 });
-    const request = http.expectOne(`${URL}/p1`);
+    const request = http.expectOne(`${URL}/the-claim-loop`);
     request.flush(page({ body: 'rewritten', version: 4 }));
 
     expect(request.request.method).toBe('PUT');
@@ -71,7 +78,7 @@ describe('DossierApi', () => {
   it('answers a refused write with the current page rather than throwing it away', async () => {
     const answer = api.write(epic, page(), { body: 'mine', version: 0 });
     http
-      .expectOne(`${URL}/p1`)
+      .expectOne(`${URL}/the-claim-loop`)
       .flush(
         { message: 'written since you read it', current: page({ body: 'theirs', version: 1 }) },
         { status: 409, statusText: 'Conflict' },
@@ -86,20 +93,20 @@ describe('DossierApi', () => {
 
   it('lets every other failure through', async () => {
     const answer = api.write(epic, page(), { body: 'mine', version: 0 });
-    http.expectOne(`${URL}/p1`).flush({}, { status: 500, statusText: 'Server Error' });
+    http.expectOne(`${URL}/the-claim-loop`).flush({}, { status: 500, statusText: 'Server Error' });
 
     await expect(answer).rejects.toBeDefined();
   });
 
-  it('moves and removes a page by id', async () => {
+  it('moves and removes a page by its slug', async () => {
     const moved = api.move(epic, page(), 2);
-    const move = http.expectOne(`${URL}/p1/move`);
+    const move = http.expectOne(`${URL}/the-claim-loop/move`);
     move.flush(page({ position: 2 }));
     expect(move.request.body).toEqual({ position: 2 });
     expect((await moved).position).toBe(2);
 
     const removed = api.remove(epic, page());
-    const remove = http.expectOne(`${URL}/p1`);
+    const remove = http.expectOne(`${URL}/the-claim-loop`);
     remove.flush(null, { status: 204, statusText: 'No Content' });
     expect(remove.request.method).toBe('DELETE');
     await removed;
@@ -114,11 +121,7 @@ describe('DossierApi', () => {
     expect((await answer)[0].ticketId).toBe('t1');
   });
 
-  /**
-   * The one asymmetry in this client, and it is the service's: an epic's page is addressed by id,
-   * a ticket's by the slug the MCP door that writes it names it by. Handing the row itself to every
-   * method is what keeps that out of the panel.
-   */
+  /** `/work` addresses either owner's page by its slug; handing the row itself keeps that here. */
   it("addresses a ticket's page by its slug, and still sends the version", async () => {
     const answer = api.write(ticket, page(), { body: 'rewritten', version: 3 });
     const request = http.expectOne(`${TICKET_URL}/the-claim-loop`);
@@ -160,8 +163,8 @@ describe('DossierApi', () => {
   });
 
   it('inlines a figure and answers the exact markdown line', async () => {
-    const answer = api.inlineFigure('e1', 'a1', 'DESIGN');
-    const request = http.expectOne('/projects/api/epics/e1/dossier-assets');
+    const answer = api.inlineFigure('qits-1', 'a1', 'DESIGN');
+    const request = http.expectOne('/projects/api/work/qits-1/dossier-assets');
     request.flush({
       id: 'a1',
       kind: 'DESIGN',
@@ -172,5 +175,21 @@ describe('DossierApi', () => {
 
     expect(request.request.body).toEqual({ sourceId: 'a1', kind: 'DESIGN' });
     expect((await answer).markdown).toBe('![Checkout](/epics/e1/dossier-assets/a1/content)');
+  });
+
+  it('addresses an owner with no qualified id by its id', () => {
+    const answer = api.list(epicDossier('e1'));
+    http.expectOne('/projects/api/work/e1/dossier').flush({ pages: [] });
+    return answer;
+  });
+
+  it('resolves a stored figure URL to the work content route', () => {
+    expect(dossierAssetContentUrl('e1', 'a1')).toBe(
+      '/projects/api/work/e1/dossier-assets/a1/content',
+    );
+    expect(STORED_DOSSIER_ASSET.exec('/epics/e1/dossier-assets/a1/content')?.slice(1)).toEqual([
+      'e1',
+      'a1',
+    ]);
   });
 });

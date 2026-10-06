@@ -1,5 +1,6 @@
 import { Location } from '@angular/common';
 import { provideHttpClient } from '@angular/common/http';
+import { type HttpRequest } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { provideLocationMocks } from '@angular/common/testing';
 import { TestBed } from '@angular/core/testing';
@@ -7,7 +8,14 @@ import { By } from '@angular/platform-browser';
 import { Router, provideRouter } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
 import { EVENT_SOURCE_FACTORY, type EventSourceLike } from '../api/event-source';
+import type { TicketDto } from '../api/dto';
 import type { RefinementDto } from '../api/refinements-api';
+import {
+  workAnswer,
+  workOfEpic,
+  workOfTicket,
+  type WorkFixture,
+} from '../../testing/work-fixtures';
 import { routes } from '../app.routes';
 import { ready } from '../ui/loadable';
 import { LINGER_MS, RefiningPage } from './refining-page';
@@ -150,9 +158,8 @@ const workspace = (over: Partial<RefinementDto> = {}): RefinementDto => ({
 });
 
 const URL_BASE = '/p1/work/qits-5/refinement';
-const EPICS_URL = '/projects/api/projects/p1/epics';
-const TICKETS_URL = '/projects/api/projects/p1/tickets';
-const ARCHETYPES_URL = '/projects/api/entities/archetypes';
+const WORK_URL = '/projects/api/projects/p1/work';
+const ARCHETYPES_URL = '/projects/api/work/archetypes';
 const REFINEMENTS_URL = '/projects/api/projects/p1/refinements';
 
 /**
@@ -259,16 +266,29 @@ describe('RefiningPage', () => {
     tickets: readonly object[] = [TICKET],
   ): Promise<void> {
     await flushProjectList();
-    http.expectOne(EPICS_URL).flush({ entries: epics.map((epic) => ({ epic })) });
-    http.expectOne(TICKETS_URL).flush({ entries: tickets.map((ticket) => ({ ticket })) });
-    for (const request of http.match(ARCHETYPES_URL)) {
-      request.flush(REGISTRY);
+    await flushWork(epics, tickets);
+  }
+
+  /**
+   * The project's work as `/work` answers it: the listing, then each root read whole with its
+   * workspaces (and an epic's children) — and the registry, whenever it is asked for.
+   */
+  async function flushWork(
+    epics: readonly object[] = [EPIC, OTHER],
+    tickets: readonly object[] = [TICKET],
+  ): Promise<void> {
+    const fixture = { epics, tickets } as WorkFixture;
+    const isWork = (candidate: HttpRequest<unknown>) =>
+      candidate.method === 'GET' && workAnswer('p1', fixture, candidate.url) !== undefined;
+    for (let round = 0; round < 4; round++) {
+      for (const request of http.match(isWork)) {
+        request.flush(workAnswer('p1', fixture, request.request.url) as object);
+      }
+      for (const request of http.match(ARCHETYPES_URL)) {
+        request.flush(REGISTRY);
+      }
+      await settle();
     }
-    await settle();
-    for (const epic of epics as readonly { id: string }[]) {
-      http.expectOne(`/projects/api/epics/${epic.id}/features`).flush({ entries: [] });
-    }
-    await settle();
   }
 
   /**
@@ -387,22 +407,19 @@ describe('RefiningPage', () => {
       // resolved project alone, and neither waits on the other.
       const first = http.match(() => true);
       expect(first.map((request) => request.request.url).sort()).toEqual(
-        [EPICS_URL, TICKETS_URL, ARCHETYPES_URL, REFINEMENTS_URL].sort(),
+        [WORK_URL, ARCHETYPES_URL, REFINEMENTS_URL].sort(),
       );
       for (const request of first) {
         if (request.request.url === REFINEMENTS_URL) {
           request.flush({ refinements: [workspace()] });
         } else if (request.request.url === ARCHETYPES_URL) {
           request.flush(REGISTRY);
-        } else if (request.request.url === TICKETS_URL) {
-          request.flush({ entries: [] });
         } else {
-          request.flush({ entries: [{ epic: EPIC }] });
+          request.flush(workAnswer('p1', { epics: [EPIC] }, WORK_URL) as object);
         }
       }
       await settle();
-      http.expectOne('/projects/api/epics/e1/features').flush({ entries: [] });
-      await settle();
+      await flushWork([EPIC], []);
       // The listing landed before the subject, so the room is matched — and upgraded — once the
       // subject has resolved: the match is by the entity's id, which only the subject knows.
       http.expectOne('/projects/api/refinements/7').flush({ refinement: workspace() });
@@ -452,11 +469,11 @@ describe('RefiningPage', () => {
       buttonNamed('Mark refined').click();
       await settle();
 
-      http.expectNone('/projects/api/epics/e1/dispatch-agent');
-      http.expectNone('/projects/api/entities/transition');
-      const request = http.expectOne('/projects/api/epics/e1/transition');
+      http.expectNone('/projects/api/work/qits-5/dispatch');
+      http.expectNone('/projects/api/work/transition');
+      const request = http.expectOne('/projects/api/work/qits-5/status');
       expect(request.request.body).toEqual({ target: 'REFINED' });
-      request.flush({ epic: { ...EPIC, status: 'REFINED' }, successor: null });
+      request.flush(workOfEpic({ ...EPIC, status: 'REFINED' }));
       await settle();
 
       expect(navigate).toHaveBeenCalledWith(['/', 'p1', 'work', 'qits-5']);
@@ -478,9 +495,9 @@ describe('RefiningPage', () => {
 
       buttonNamed('Mark refined').click();
       await settle();
-      const request = http.expectOne('/projects/api/tickets/t1/transition');
+      const request = http.expectOne('/projects/api/work/qits-6/status');
       expect(request.request.body).toEqual({ target: 'REFINED' });
-      request.flush({ ticket: { ...TICKET, status: 'REFINED' } });
+      request.flush(workOfTicket({ ...TICKET, status: 'REFINED' } as Partial<TicketDto>));
       await settle();
 
       expect(navigate).toHaveBeenCalledWith(['/', 'p1', 'work', 'qits-6']);
@@ -501,9 +518,8 @@ describe('RefiningPage', () => {
       await harness.navigateByUrl(URL_BASE);
       await flushProjectList();
       http
-        .expectOne(EPICS_URL)
+        .expectOne(WORK_URL)
         .flush({ message: 'projects is down' }, { status: 503, statusText: 'Down' });
-      http.expectOne(TICKETS_URL).flush({ entries: [] });
       http.expectOne(ARCHETYPES_URL).flush(REGISTRY);
       http.expectOne(REFINEMENTS_URL).flush({ refinements: [] });
       await settle();
@@ -534,9 +550,9 @@ describe('RefiningPage', () => {
       // never called.
       const create = http.expectOne(
         (candidate) =>
-          candidate.method === 'POST' && candidate.url === '/projects/api/entities/e1/refinement',
+          candidate.method === 'POST' && candidate.url === '/projects/api/work/qits-5/refinement',
       );
-      expect(create.request.body).toEqual({});
+      expect(create.request.body).toBeNull();
       expect(http.match('/projects/api/refinements')).toEqual([]);
       create.flush({ refinement: workspace() });
       await settle();
@@ -558,7 +574,7 @@ describe('RefiningPage', () => {
       buttonNamed('Start refining').click();
       await settle();
       http
-        .expectOne('/projects/api/entities/e1/refinement')
+        .expectOne('/projects/api/work/qits-5/refinement')
         .flush({ message: 'projects is down' }, { status: 503, statusText: 'Down' });
       await settle();
 
@@ -626,11 +642,7 @@ describe('RefiningPage', () => {
 
       await harness.navigateByUrl('/p1/work/qits-9/refinement?tab=files');
       await settle();
-      http.expectOne(EPICS_URL).flush({ entries: [{ epic: EPIC }, { epic: OTHER }] });
-      http.expectOne(TICKETS_URL).flush({ entries: [] });
-      await settle();
-      http.expectOne('/projects/api/epics/e1/features').flush({ entries: [] });
-      http.expectOne('/projects/api/epics/e8/features').flush({ entries: [] });
+      await flushWork([EPIC, OTHER], []);
       http.expectOne(REFINEMENTS_URL).flush({ refinements: [] });
       await settle();
 
@@ -805,7 +817,7 @@ describe('RefiningPage', () => {
 
       // A field edit is a restatement on the multi-entity transition door; the epic PUT is retired.
       http.expectNone((candidate) => candidate.method === 'PUT');
-      const update = http.expectOne('/projects/api/entities/transition');
+      const update = http.expectOne('/projects/api/work/transition');
       expect(update.request.method).toBe('POST');
       const described =
         '![Sketch 1](/projects/api/refinements/7/prompt-attachments/image-1/content)\n\na third action on a **draft**';
@@ -821,14 +833,7 @@ describe('RefiningPage', () => {
       update.flush({});
       await settle();
       // The subject is re-read quietly, with the new description.
-      http.expectOne(EPICS_URL).flush({
-        entries: [{ epic: { ...EPIC, description: described } }, { epic: OTHER }],
-      });
-      http.expectOne(TICKETS_URL).flush({ entries: [] });
-      await settle();
-      http.expectOne('/projects/api/epics/e1/features').flush({ entries: [] });
-      http.expectOne('/projects/api/epics/e8/features').flush({ entries: [] });
-      await settle();
+      await flushWork([{ ...EPIC, description: described }, OTHER], []);
 
       expect(element().querySelector('app-epic-document img')?.getAttribute('src')).toBe(
         'data:image/png;base64,cG5n',

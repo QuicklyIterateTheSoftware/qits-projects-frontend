@@ -14,11 +14,12 @@ import { QITS_API_BASE } from './api-base';
  * <b>A ticket owns one too.</b> The refine phase reads the code, works out the root cause and
  * normally writes it into the ticket's `description`; where the situation is too tangled for prose —
  * an error scenario crossing four services, a sequence that wants a figure — it writes dossier pages
- * instead, over MCP. Same routes, same roles, same version precondition, same 409 shape, with the
- * owner in the path. There is deliberately **no ticket asset route**: a ticket's pages are prose and
- * inlined markdown, and the sketch/design pipeline that produces assets belongs to the refining
- * route an epic has and a ticket does not. {@link DossierApi.inlineFigure} therefore takes an epic
- * id and nothing else.
+ * instead, over MCP. Same routes — `/work/{q}/dossier` for either owner (epic qits-965) — same
+ * roles, same version precondition, same 409 shape. There is deliberately **no ticket asset
+ * route**: a ticket's pages are prose and inlined markdown, and the sketch/design pipeline that
+ * produces assets belongs to the refining route an epic has and a ticket does not
+ * (`/work/{q}/dossier-assets` is a 404 for any other archetype). {@link DossierApi.inlineFigure}
+ * therefore takes an epic and nothing else.
  *
  * **Every write carries the version it was composed against.** Nobody accepts a write here, so a
  * person editing in this tab while an agent writes from a prompt is the ordinary case: a stale
@@ -31,28 +32,39 @@ import { QITS_API_BASE } from './api-base';
 export type DossierOwnerKind = 'epic' | 'ticket';
 
 /**
- * The owner of a dossier: what kind of row it is, and which one.
+ * The owner of a dossier: what kind of row it is, which one, and how `/work` addresses it.
  *
- * A pair rather than two optional ids, because "which collection is in the path" and "which row" are
- * one fact. Every read and write here takes it, and {@link DossierApi} is the only place that turns
- * it into a URL — a caller that composed the path itself would be a second copy of the route.
+ * `id` is the row's id — the one the figure URLs stored in an epic's pages name, and so what the
+ * renderer matches a framed design against. `ref` is the path segment: the qualified id, or the id
+ * for a row that has none (the service resolves either). {@link DossierApi} is the only place that
+ * turns an owner into a URL — a caller that composed the path itself would be a second copy of the
+ * route.
  */
 export interface DossierOwner {
   readonly kind: DossierOwnerKind;
   readonly id: string;
+  readonly ref: string;
 }
 
-export const epicDossier = (epicId: string): DossierOwner => ({ kind: 'epic', id: epicId });
+export const epicDossier = (epicId: string, qualifiedId?: string | null): DossierOwner => ({
+  kind: 'epic',
+  id: epicId,
+  ref: qualifiedId || epicId,
+});
 
-export const ticketDossier = (ticketId: string): DossierOwner => ({ kind: 'ticket', id: ticketId });
+export const ticketDossier = (ticketId: string, qualifiedId?: string | null): DossierOwner => ({
+  kind: 'ticket',
+  id: ticketId,
+  ref: qualifiedId || ticketId,
+});
 
 /**
  * What a caller has to hold to address one page — and it is the page, not an id.
  *
- * **The two owners address a row by different segments.** An epic's page is addressed by its id, the
- * segment that route has taken since it was written; a ticket's is addressed by its **slug**, which
- * is what the MCP door that writes those pages names them by. Handing the row itself to every method
- * is what lets the one client serve both without a caller ever having to know which.
+ * `/work/{q}/dossier/{page}` addresses a page by its **slug** (the id is still accepted as a
+ * fallback), for an epic's page and a ticket's alike: the slug is minted from the title at create,
+ * never changes, and is what `?page=` carries. Handing the row itself to every method keeps a caller
+ * from having to know that.
  */
 export type DossierPageRef = Pick<DossierPageDto, 'id' | 'slug'>;
 
@@ -113,9 +125,21 @@ interface PagesResponse {
   readonly pages: readonly DossierPageDto[];
 }
 
-/** The content URL of an inlined figure — the one the renderer reads to decide img or iframe. */
-export function dossierAssetContentUrl(epicId: string, assetId: string, base = ''): string {
-  return `${base}/epics/${encodeURIComponent(epicId)}/dossier-assets/${encodeURIComponent(assetId)}/content`;
+/**
+ * The URL shape an inlined figure is stored under in a page's markdown — relative to qits-projects'
+ * API, and data rather than a route: it is in page bodies, and the service's reference count parses
+ * it, so it keeps the retired epic route's spelling.
+ */
+export const STORED_DOSSIER_ASSET =
+  /^\/epics\/([A-Za-z0-9._~-]+)\/dossier-assets\/([A-Za-z0-9._~-]+)\/content$/;
+
+/**
+ * The content URL of an inlined figure — `GET /work/{q}/dossier-assets/{assetId}/content`, which
+ * takes the epic's id as readily as its qualified id. What the renderer resolves a stored figure URL
+ * ({@link STORED_DOSSIER_ASSET}) to.
+ */
+export function dossierAssetContentUrl(epicRef: string, assetId: string, base = ''): string {
+  return `${base}/projects/api/work/${encodeURIComponent(epicRef)}/dossier-assets/${encodeURIComponent(assetId)}/content`;
 }
 
 @Injectable({ providedIn: 'root' })
@@ -165,35 +189,30 @@ export class DossierApi {
    * Nothing in the UI writes an asset URL by hand: a hand-written one eventually names a figure that
    * does not exist, or one belonging to another epic.
    *
-   * **Epics only, and it takes an epic id rather than an owner to say so in the signature.** There
-   * is no ticket asset route — an upload against a ticket-owned page is a 404 by simple absence —
-   * so the panel hides the affordance rather than this method refusing at runtime.
+   * **Epics only, and it takes an epic's reference rather than an owner to say so in the
+   * signature.** There is no ticket asset route — an upload against a ticket-owned page is a 404 by
+   * simple absence — so the panel hides the affordance rather than this method refusing at runtime.
    */
   async inlineFigure(
-    epicId: string,
+    epicRef: string,
     sourceId: string,
     kind: 'IMAGE' | 'DESIGN',
   ): Promise<InlinedFigure> {
     return await firstValueFrom(
       this.http.post<InlinedFigure>(
-        `${this.base}/projects/api/epics/${encodeURIComponent(epicId)}/dossier-assets`,
-        {
-          sourceId,
-          kind,
-        },
+        `${this.base}/projects/api/work/${encodeURIComponent(epicRef)}/dossier-assets`,
+        { sourceId, kind },
       ),
     );
   }
 
-  /** One page's row. See {@link DossierPageRef} for why the segment is not the same on both. */
+  /** One page's row, by its slug. See {@link DossierPageRef}. */
   private row(owner: DossierOwner, page: DossierPageRef): string {
-    const segment = owner.kind === 'epic' ? page.id : page.slug;
-    return `${this.url(owner)}/${encodeURIComponent(segment)}`;
+    return `${this.url(owner)}/${encodeURIComponent(page.slug)}`;
   }
 
   private url(owner: DossierOwner): string {
-    const collection = owner.kind === 'epic' ? 'epics' : 'tickets';
-    return `${this.base}/projects/api/${collection}/${encodeURIComponent(owner.id)}/dossier`;
+    return `${this.base}/projects/api/work/${encodeURIComponent(owner.ref)}/dossier`;
   }
 }
 

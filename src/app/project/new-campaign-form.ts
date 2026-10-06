@@ -9,7 +9,7 @@ import {
 } from '@angular/core';
 import { QitsButton } from '@qits/ui-components';
 import { CampaignsApi } from '../api/campaigns-api';
-import type { CampaignDto } from '../api/dto';
+import type { WorkEntityDto } from '../api/work';
 import { IDLE, LOADING, failed, ready, type Loadable } from '../ui/loadable';
 
 /**
@@ -137,7 +137,7 @@ export class NewCampaignForm {
   readonly projectId = input.required<string>();
 
   /** A campaign was opened — the answer, so the desk can go to its page. */
-  readonly created = output<CampaignDto>();
+  readonly created = output<WorkEntityDto>();
 
   protected readonly open = signal(false);
   protected readonly title = signal('');

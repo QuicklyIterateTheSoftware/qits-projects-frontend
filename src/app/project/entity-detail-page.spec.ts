@@ -19,6 +19,7 @@ import type {
   TicketDto,
 } from '../api/dto';
 import { EVENT_SOURCE_FACTORY } from '../api/event-source';
+import { workAnswer, workOfCampaign, workOfEpic, workOfTicket } from '../../testing/work-fixtures';
 
 const AT = '2026-09-07T09:00:00Z';
 
@@ -195,6 +196,16 @@ const EPIC: EpicDto = {
   workspaces: [],
 };
 
+/** The draft a supersede of {@link EPIC} spawns. */
+const SUCCESSOR: EpicDto = {
+  ...EPIC,
+  id: 'e2',
+  slug: 'one-desk-2',
+  number: 99,
+  qualifiedId: 'qits-99',
+  status: 'REPORTED',
+};
+
 const FEATURE: FeatureDto = {
   id: 'f1',
   epicId: 'e1',
@@ -317,6 +328,16 @@ const CAMPAIGN = {
   ],
 };
 
+/** The entity each qualified id in a `/work` path names. */
+const ID_OF: Readonly<Record<string, string>> = {
+  'qits-12': 'e1',
+  'qits-13': 'f1',
+  'qits-14': 'k1',
+  'qits-15': 'k2',
+  'qits-41': 't1',
+  'qits-430': 'c1',
+};
+
 function stateOf(over: Partial<EntityDispatchStateDto> = {}): EntityDispatchStateDto {
   return {
     entityId: 't1',
@@ -356,6 +377,7 @@ describe('EntityDetailPage', () => {
   let featurePatch: Partial<FeatureDto>;
   let taskDonePatch: Partial<TaskDto>;
   let campaignRowPatch: Partial<typeof CAMPAIGN_ROW>;
+  let superseded: boolean;
   let failures: Record<string, { status: number; body: object }>;
 
   beforeEach(async () => {
@@ -366,6 +388,7 @@ describe('EntityDetailPage', () => {
     featurePatch = {};
     taskDonePatch = {};
     campaignRowPatch = {};
+    superseded = false;
     failures = {};
     dispatchStates = {
       t1: stateOf(),
@@ -404,50 +427,76 @@ describe('EntityDetailPage', () => {
         entries: [{ project: { id: 'p1', name: 'Qits', slug: 'qits', description: null } }],
       };
     }
-    if (url === '/projects/api/projects/p1/epics')
-      return { entries: [{ epic: { ...EPIC, ...epicPatch } }] };
-    if (url === '/projects/api/projects/p1/tickets')
-      return { entries: [{ ticket: { ...TICKET, ...ticketPatch } }] };
-    if (url === '/projects/api/projects/p1/campaigns') {
-      return { campaigns: [{ ...CAMPAIGN_ROW, ...campaignRowPatch }] };
-    }
-    if (url === '/projects/api/campaigns/c1') return { campaign: CAMPAIGN };
-    if (url === '/projects/api/campaigns/c1/progress') {
-      return {
-        progress: {
-          campaign: {
-            id: 'c1',
-            qualifiedId: 'qits-430',
-            title: 'Rename qits-x',
-            status: 'REFINED',
-            start: null,
-          },
-          evaluator: { connected: true, lastSweepCompletedAt: null, stalled: false },
-          members: [],
+    const progress = {
+      progress: {
+        campaign: {
+          id: 'c1',
+          qualifiedId: 'qits-430',
+          title: 'Rename qits-x',
+          status: 'REFINED',
+          start: null,
         },
-      };
-    }
-    if (url === '/projects/api/campaigns/c1/transition') {
+        evaluator: { connected: true, lastSweepCompletedAt: null, stalled: false },
+        members: [],
+      },
+    };
+    if (url === '/projects/api/work/qits-430' && method === 'GET') {
       return {
-        campaign: { ...CAMPAIGN, status: (request.request.body as { target: string }).target },
+        ...workOfCampaign({ ...CAMPAIGN_ROW, ...campaignRowPatch }),
+        slug: CAMPAIGN.slug,
+        description: CAMPAIGN.description,
       };
     }
-    if (url === '/projects/api/epics/e1/features') {
-      return { entries: [{ feature: { ...FEATURE, ...featurePatch } }] };
+    if (url === '/projects/api/work/qits-430/members') return { members: CAMPAIGN.members };
+    if (url === '/projects/api/work/qits-430/progress') return progress;
+    const status = /^\/projects\/api\/work\/([^/]+)\/status$/.exec(url);
+    if (status && method === 'POST') {
+      const target = (request.request.body as { target: string }).target;
+      const id = ID_OF[status[1]];
+      if (id === 't1')
+        return { ...workOfTicket({ ...TICKET, status: target }), statusBefore: TICKET.status };
+      if (id === 'c1') return { ...workOfCampaign({ ...CAMPAIGN_ROW, status: target }) };
+      if (target === 'SUPERSEDED') {
+        superseded = true;
+        return {
+          ...workOfEpic({ ...EPIC, status: 'DROPPED', supersededByEpicId: SUCCESSOR.id }),
+          statusBefore: EPIC.status,
+        };
+      }
+      return { ...workOfEpic({ ...EPIC, status: target }), statusBefore: EPIC.status };
     }
-    if (url === '/projects/api/features/f1/tasks') {
-      return { entries: [{ task: { ...TASK_DONE, ...taskDonePatch } }, { task: TASK_OPEN }] };
-    }
-    if (url === '/projects/api/entities/archetypes') return registry;
+    const work = workAnswer(
+      'p1',
+      {
+        epics: [
+          {
+            epic: { ...EPIC, ...epicPatch },
+            features: [
+              {
+                feature: { ...FEATURE, ...featurePatch },
+                tasks: [{ ...TASK_DONE, ...taskDonePatch }, TASK_OPEN],
+              },
+            ],
+          },
+          ...(superseded ? [SUCCESSOR] : []),
+        ],
+        tickets: [{ ...TICKET, ...ticketPatch }],
+        campaigns: [{ ...CAMPAIGN_ROW, ...campaignRowPatch }],
+      },
+      url,
+      method,
+    );
+    if (work) return work;
+    if (url === '/projects/api/work/archetypes') return registry;
     if (url === '/projects/api/projects/p1/repositories') {
       return {
         entries: [{ repository: { id: 'r1', name: 'qits-projects-frontend' }, declared: true }],
         wrapper: null,
       };
     }
-    const dispatch = /^\/projects\/api\/entities\/([^/]+)\/dispatch$/.exec(url);
-    if (dispatch && method === 'GET') return { state: dispatchStates[dispatch[1]] };
-    if (dispatch && method === 'POST' && dispatch[1] === 'c1') {
+    const dispatch = /^\/projects\/api\/work\/([^/]+)\/dispatch$/.exec(url);
+    if (dispatch && method === 'GET') return { state: dispatchStates[ID_OF[dispatch[1]]] };
+    if (dispatch && method === 'POST' && ID_OF[dispatch[1]] === 'c1') {
       return {
         progress: {
           campaign: {
@@ -466,7 +515,7 @@ describe('EntityDetailPage', () => {
       const mode = (request.request.body as { mode: string }).mode;
       return {
         dispatch: {
-          entityId: dispatch[1],
+          entityId: ID_OF[dispatch[1]],
           archetype: 'TICKET',
           phase: 'refine',
           mode,
@@ -478,9 +527,9 @@ describe('EntityDetailPage', () => {
         },
       };
     }
-    const room = /^\/projects\/api\/entities\/([^/]+)\/refinement$/.exec(url);
-    if (room && method === 'GET') return { refinement: rooms[room[1]] ?? null };
-    if (room && method === 'POST') return { refinement: { id: 9, entityId: room[1] } };
+    const room = /^\/projects\/api\/work\/([^/]+)\/refinement$/.exec(url);
+    if (room && method === 'GET') return { refinement: rooms[ID_OF[room[1]]] ?? null };
+    if (room && method === 'POST') return { refinement: { id: 9, entityId: ID_OF[room[1]] } };
     if (/\/audit$/.test(url)) {
       return {
         entries: [
@@ -524,21 +573,18 @@ describe('EntityDetailPage', () => {
         ],
       };
     }
-    if (url === '/projects/api/tickets/t1/transition') {
-      return { ticket: { ...TICKET, status: (request.request.body as { target: string }).target } };
-    }
-    if (url === '/projects/api/epics/e1/transition') return { epic: EPIC, successor: null };
-    if (url === '/projects/api/entities/transition') return {};
-    if (method === 'PATCH' && /^\/projects\/api\/entities\/[^/]+$/.test(url)) return {};
-    const blocked = /^\/projects\/api\/entities\/([^/]+)\/blocked$/.exec(url);
+    if (url === '/projects/api/work/transition') return {};
+    if (method === 'PATCH' && /^\/projects\/api\/work\/[^/]+$/.test(url)) return {};
+    const blocked = /^\/projects\/api\/work\/([^/]+)\/blocked$/.exec(url);
     if (blocked && method === 'POST') {
       const body = request.request.body as { blocked: boolean };
-      const archetype = blocked[1] === 'e1' ? 'EPIC' : blocked[1] === 'c1' ? 'CAMPAIGN' : 'TICKET';
-      if (blocked[1] === 'e1') epicPatch = { blocked: body.blocked };
-      if (blocked[1] === 't1') ticketPatch = { blocked: body.blocked };
-      if (blocked[1] === 'c1') campaignRowPatch = { blocked: body.blocked };
+      const id = ID_OF[blocked[1]];
+      const archetype = id === 'e1' ? 'EPIC' : id === 'c1' ? 'CAMPAIGN' : 'TICKET';
+      if (id === 'e1') epicPatch = { blocked: body.blocked };
+      if (id === 't1') ticketPatch = { blocked: body.blocked };
+      if (id === 'c1') campaignRowPatch = { blocked: body.blocked };
       return {
-        block: { entityId: blocked[1], archetype, status: 'REFINED', blocked: body.blocked },
+        block: { entityId: id, archetype, status: 'REFINED', blocked: body.blocked },
       };
     }
     throw new Error(`unanswered ${method} ${url}`);
@@ -695,7 +741,7 @@ describe('EntityDetailPage', () => {
       );
       expect(element().querySelector('.parent a')?.textContent).toContain('qits-13');
       // The audit subtree is the epic's; a task's page picks out its own rows (none for k2).
-      expect(sent.some((request) => request.url === '/projects/api/epics/e1/audit')).toBe(true);
+      expect(sent.some((request) => request.url === '/projects/api/work/qits-12/audit')).toBe(true);
       expect(element().querySelectorAll('.audit-entry')).toHaveLength(0);
     });
 
@@ -722,7 +768,7 @@ describe('EntityDetailPage', () => {
       await serve();
       expect(writes()[0]).toEqual({
         method: 'POST',
-        url: '/projects/api/entities/t1/dispatch',
+        url: '/projects/api/work/qits-41/dispatch',
         body: { mode: 'FLOW' },
       });
       expect(element().querySelector('.dispatched a')?.getAttribute('href')).toContain(
@@ -734,7 +780,7 @@ describe('EntityDetailPage', () => {
       await serve();
       expect(writes()[0]).toEqual({
         method: 'POST',
-        url: '/projects/api/entities/t1/dispatch',
+        url: '/projects/api/work/qits-41/dispatch',
         body: { mode: 'PHASE' },
       });
       expect(text()).toContain('stopping after it');
@@ -816,7 +862,7 @@ describe('EntityDetailPage', () => {
       await serve();
 
       expect(writes()).toEqual([
-        { method: 'POST', url: '/projects/api/entities/t1/refinement', body: {} },
+        { method: 'POST', url: '/projects/api/work/qits-41/refinement', body: null },
       ]);
       expect(navigate).toHaveBeenCalledWith(['/', 'qits', 'work', 'qits-41', 'refinement']);
     });
@@ -885,7 +931,7 @@ describe('EntityDetailPage', () => {
 
       expect(writes()[0]).toEqual({
         method: 'POST',
-        url: '/projects/api/entities/e1/blocked',
+        url: '/projects/api/work/qits-12/blocked',
         body: { blocked: true, reason: 'Waiting on a design decision.' },
       });
       // The reload after the write is what draws the badge — the write itself answers only the flag.
@@ -906,7 +952,7 @@ describe('EntityDetailPage', () => {
 
       expect(writes()[0]).toEqual({
         method: 'POST',
-        url: '/projects/api/entities/c1/blocked',
+        url: '/projects/api/work/qits-430/blocked',
         body: { blocked: false, reason: '' },
       });
     });
@@ -920,7 +966,7 @@ describe('EntityDetailPage', () => {
       await serve();
 
       expect(writes()).toEqual([
-        { method: 'POST', url: '/projects/api/tickets/t1/transition', body: { target: 'REFINED' } },
+        { method: 'POST', url: '/projects/api/work/qits-41/status', body: { target: 'REFINED' } },
       ]);
     });
 
@@ -933,10 +979,34 @@ describe('EntityDetailPage', () => {
       expect(writes()).toEqual([
         {
           method: 'POST',
-          url: '/projects/api/epics/e1/transition',
+          url: '/projects/api/work/qits-12/status',
           body: { target: 'IMPLEMENTED' },
         },
       ]);
+    });
+
+    /**
+     * The supersede is the status door's `SUPERSEDED`: the epic lands DROPPED naming its successor,
+     * and the page goes there once the project is read again.
+     */
+    it('supersedes an epic on a second press, and goes to the successor its answer names', async () => {
+      await open('/qits/work/qits-12');
+      const navigate = vi.spyOn(TestBed.inject(Router), 'navigate').mockResolvedValue(true);
+
+      buttonNamed('Supersede').click();
+      await serve();
+      expect(writes()).toEqual([]);
+      buttonNamed('Confirm supersede?').click();
+      await serve();
+
+      expect(writes()).toEqual([
+        {
+          method: 'POST',
+          url: '/projects/api/work/qits-12/status',
+          body: { target: 'SUPERSEDED' },
+        },
+      ]);
+      expect(navigate).toHaveBeenCalledWith(['/', 'qits', 'work', 'qits-99']);
     });
 
     /** The moves are the registry's `transitions`, labelled by kind — none held by this client. */
@@ -1005,7 +1075,7 @@ describe('EntityDetailPage', () => {
       expect(writes()).toEqual([
         {
           method: 'POST',
-          url: '/projects/api/entities/transition',
+          url: '/projects/api/work/transition',
           body: {
             t1: {
               archetype: 'TICKET',
@@ -1191,10 +1261,10 @@ describe('EntityDetailPage', () => {
       const [patch, restated] = writes();
       expect(patch).toEqual({
         method: 'PATCH',
-        url: '/projects/api/entities/e1',
+        url: '/projects/api/work/qits-12',
         body: { acceptanceCriteria: ['First, edited.', 'Third'] },
       });
-      expect(restated.url).toBe('/projects/api/entities/transition');
+      expect(restated.url).toBe('/projects/api/work/transition');
       expect(
         (restated.body as Record<string, Record<string, unknown>>)['e1']['acceptanceCriteria'],
       ).toEqual(['First, edited.', 'Third']);
@@ -1214,7 +1284,7 @@ describe('EntityDetailPage', () => {
 
       expect(writes()[0]).toEqual({
         method: 'PATCH',
-        url: '/projects/api/entities/e1',
+        url: '/projects/api/work/qits-12',
         body: { acceptanceCriteria: null },
       });
       expect('acceptanceCriteria' in (writes()[1].body as Record<string, object>)['e1']).toBe(
@@ -1253,7 +1323,7 @@ describe('EntityDetailPage', () => {
 
     it('shows the service’s 400 as it worded it, and writes nothing more', async () => {
       registry = REGISTRY_887;
-      failures['PATCH /projects/api/entities/e1'] = {
+      failures['PATCH /projects/api/work/qits-12'] = {
         status: 400,
         body: { message: 'acceptanceCriteria[0]: fewer than 20 whitespace characters' },
       };
@@ -1294,7 +1364,7 @@ describe('EntityDetailPage', () => {
 
     it('hints a gated move’s gates beside it, and shows a gate’s 409 as worded', async () => {
       registry = REGISTRY_887;
-      failures['POST /projects/api/epics/e1/transition'] = {
+      failures['POST /projects/api/work/qits-12/status'] = {
         status: 409,
         body: {
           message: 'epic e1 cannot move to READY_FOR_DEV: ACCEPTANCE_CRITERIA: it has none',
@@ -1333,24 +1403,24 @@ describe('EntityDetailPage', () => {
         Array.from(body!.querySelectorAll('.member .qualified')).map((node) => node.textContent),
       ).toEqual(['qits-41', 'qits-12']);
       expect(body?.querySelector('.seeded')?.textContent).toBe('seeded');
-      expect(sent.map((request) => request.url)).toContain('/projects/api/campaigns/c1');
+      expect(sent.map((request) => request.url)).toContain('/projects/api/work/qits-430');
       // qits-420: the running view reads the progress, beside the members.
       expect(body?.querySelector('app-campaign-progress')).toBeTruthy();
-      expect(sent.map((request) => request.url)).toContain('/projects/api/campaigns/c1/progress');
+      expect(sent.map((request) => request.url)).toContain('/projects/api/work/qits-430/progress');
     });
 
     it('re-reads the progress after its own start press', async () => {
       await open('/qits/work/qits-430');
-      const before = sent.filter((request) => request.url.endsWith('/c1/progress')).length;
+      const before = sent.filter((request) => request.url.endsWith('/qits-430/progress')).length;
 
       buttonNamed('Start campaign').click();
       await serve();
       buttonNamed('Confirm start campaign?').click();
       await serve();
 
-      expect(sent.filter((request) => request.url.endsWith('/c1/progress')).length).toBeGreaterThan(
-        before,
-      );
+      expect(
+        sent.filter((request) => request.url.endsWith('/qits-430/progress')).length,
+      ).toBeGreaterThan(before);
     });
 
     it('offers Start, and not Run the next phase, Refine, Edit or Reshape', async () => {
@@ -1390,7 +1460,7 @@ describe('EntityDetailPage', () => {
       buttonNamed('Confirm start campaign?').click();
       await serve();
       expect(writes()).toEqual([
-        { method: 'POST', url: '/projects/api/entities/c1/dispatch', body: { mode: 'FLOW' } },
+        { method: 'POST', url: '/projects/api/work/qits-430/dispatch', body: { mode: 'FLOW' } },
       ]);
       expect(element().querySelector('.start-caption')).toBeNull();
       expect(element().querySelector('.dispatched')).toBeNull();
@@ -1454,7 +1524,7 @@ describe('EntityDetailPage', () => {
     });
 
     it('shows a non-admin’s 403 the way the dispatch press does', async () => {
-      failures['POST /projects/api/entities/c1/dispatch'] = {
+      failures['POST /projects/api/work/qits-430/dispatch'] = {
         status: 403,
         body: { message: 'only an admin starts a campaign' },
       };
@@ -1479,7 +1549,7 @@ describe('EntityDetailPage', () => {
       expect(writes()).toEqual([
         {
           method: 'POST',
-          url: '/projects/api/campaigns/c1/transition',
+          url: '/projects/api/work/qits-430/status',
           body: { target: 'IMPLEMENTED' },
         },
       ]);

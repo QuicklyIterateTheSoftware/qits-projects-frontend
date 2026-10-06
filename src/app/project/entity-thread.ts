@@ -242,7 +242,10 @@ export class EntityThread {
   private readonly api = inject(EntitiesApi);
   private readonly events = inject(ProjectEvents);
 
-  /** The entity whose thread this is — a ticket, an epic, a feature, a task or a campaign. */
+  /**
+   * The entity whose thread this is — a ticket, an epic, a feature, a task or a campaign — by its
+   * qualified id (or its id): what `/work` addresses it by.
+   */
   readonly entityId = input.required<string>();
 
   /** Which archetype {@link entityId} names, for the wording only: "epic", "campaign", … */
@@ -370,7 +373,7 @@ export class EntityThread {
     this.commentAction.set('save');
     this.commentFailure.set(null);
     try {
-      await this.api.updateComment(commentId, body);
+      await this.api.updateComment(entityId, commentId, body);
       this.stopEditingComment();
       await this.readComments();
     } catch (error) {
@@ -388,7 +391,7 @@ export class EntityThread {
     this.commentAction.set(`delete:${commentId}`);
     this.commentFailure.set(null);
     try {
-      await this.api.removeComment(commentId);
+      await this.api.removeComment(entityId, commentId);
       await this.readComments();
     } catch (error) {
       this.commentFailure.set(`Could not delete the comment — ${describeError(error)}.`);

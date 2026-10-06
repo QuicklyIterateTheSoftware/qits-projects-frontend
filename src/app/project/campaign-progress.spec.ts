@@ -106,7 +106,7 @@ describe('CampaignProgress', () => {
       fixture.detectChanges();
       await fixture.whenStable();
       await new Promise((resolve) => setTimeout(resolve, 0));
-      for (const request of http.match('/projects/api/campaigns/c1/progress')) {
+      for (const request of http.match('/projects/api/work/c1/progress')) {
         request.flush({ progress: current });
       }
     }
@@ -367,7 +367,7 @@ describe('CampaignProgress', () => {
 
       approveButton().click();
       fixture.detectChanges();
-      const post = http.expectOne('/projects/api/campaigns/c1/members/m-1/criteria/ok/approve');
+      const post = http.expectOne('/projects/api/work/c1/members/m-1/criteria/ok/approve');
       expect(post.request.method).toBe('POST');
       expect(post.request.body).toEqual({ note: 'ship it' });
       post.flush({ member: {} });
@@ -381,7 +381,7 @@ describe('CampaignProgress', () => {
       approveButton().click();
       fixture.detectChanges();
       http
-        .expectOne('/projects/api/campaigns/c1/members/m-1/criteria/ok/approve')
+        .expectOne('/projects/api/work/c1/members/m-1/criteria/ok/approve')
         .flush(
           { message: 'Criterion ok was already approved by dev at 2026-09-27T09:00:00Z.' },
           { status: 409, statusText: 'Conflict' },
@@ -400,7 +400,7 @@ describe('CampaignProgress', () => {
       approveButton().click();
       fixture.detectChanges();
       http
-        .expectOne('/projects/api/campaigns/c1/members/m-1/criteria/ok/approve')
+        .expectOne('/projects/api/work/c1/members/m-1/criteria/ok/approve')
         .flush({ message: 'forbidden' }, { status: 403, statusText: 'Forbidden' });
       await settle();
 

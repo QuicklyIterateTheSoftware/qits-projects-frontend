@@ -1,4 +1,4 @@
-import { HttpClient, HttpHeaders } from '@angular/common/http';
+import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import {
@@ -6,6 +6,7 @@ import {
   ticketEntity,
   type Archetype,
   type Entity,
+  type EpicEntity,
   type FeatureNode,
   type TicketEntity,
 } from '../project/entities-model';
@@ -26,15 +27,27 @@ import type {
   EntityDispatchAnswer,
   EntityDispatchStateDto,
   EntityDispatchStateResponse,
-  EntityStateDto,
   EntityStatus,
-  TicketEntriesResponse,
-  TicketResponse,
   TicketType,
+  WorkspaceReferenceDto,
 } from './dto';
+import {
+  epicOf,
+  featureOf,
+  taskOf,
+  ticketOf,
+  workRef,
+  type WorkEntityDto,
+  type WorkWorkspacesResponse,
+} from './work';
 
-/** The header every PATCH here sends — a comment's, an entity's: a merge patch, not a replacement. */
-const MERGE_PATCH_HEADERS = new HttpHeaders({ 'Content-Type': 'application/merge-patch+json' });
+/**
+ * Every PATCH here — an entity's, a comment's — is a JSON merge patch (RFC 7396), sent as plain
+ * `application/json`. The `/work` doors read either spelling as the same merge patch
+ * (`@Consumes({application/merge-patch+json, application/json})`), and the plain one is what the
+ * consumer pact can state: a golden interaction pins its request's `Content-Type` to
+ * `application/json`.
+ */
 
 /**
  * What a POST sends to open a ticket.
@@ -53,9 +66,8 @@ const MERGE_PATCH_HEADERS = new HttpHeaders({ 'Content-Type': 'application/merge
  * an identity it does not own — and a new ticket is `REPORTED` by definition, so offering to create
  * one further down the lifecycle would be offering to claim phases that never ran.
  *
- * <p><b>No `archetype` either, and that is the shape of this whole migration.</b> The route says
- * which archetype is being opened, because the route is still `projects/{id}/tickets` — the service
- * unified the storage and deliberately did not move the contract.
+ * <p><b>No `archetype` either</b>: {@link EntitiesApi.create} adds it, since `POST /work` opens every
+ * archetype from one body shape, and maps `type` onto the wire's `ticketType`.
  */
 export interface NewTicket {
   readonly title: string;
@@ -66,39 +78,23 @@ export interface NewTicket {
 }
 
 /**
- * **A project's entities**, of either archetype — and the writes that belong to the ticket one.
+ * **A project's entities**, of every root archetype, on the `/work` surface (epic qits-965) — and
+ * the writes that belong to one entity.
  *
- * <p>This is what `TicketsApi` became. The service merged epics and tickets into one entity with an
- * archetype and left every route, DTO field and JSON name byte-identical, so that the SPA was not
- * forced to move in the deployment that migrated the data. That decision is the whole reason this
- * class looks the way it does: **there is no unified list endpoint to call.** `GET …/epics` and
- * `GET …/tickets` are still the two reads, and the unification is done here, once, on the way in.
+ * <p><b>Everything about one entity is addressed by its qualified id</b> — `/work/{q}/…`, whichever
+ * archetype it is; a UUID still resolves, so a row with no qualified id is addressed by its id (see
+ * {@link workRef}). The callers pass that reference; this class never composes one from parts.
  *
- * <p><b>{@link list} is the one read surface, and the archetype is a filter on it.</b> That is what
- * lets both desks — and anything that comes after them — ask the same question of a project and get
- * one collection of one type back. It is also what keeps the cost honest: a filter that names an
- * archetype reads exactly that archetype's endpoint, so the tickets desk pays for one request the
- * way it always did and the epics desk pays for its fan-out and nobody pays for the other's. Asking
- * for both is two requests **in parallel**, not a request per row — the thing a "unified" read is
- * easiest to get catastrophically wrong.
+ * <p><b>{@link list} is the one read surface, and the archetype is a filter on it.</b> The service
+ * answers a project's whole tree in one read (`GET /projects/{project}/work`), so every desk asks the
+ * same question and filters the answer. That listing is a summary, though — no description, no
+ * acceptance criteria, no workspaces — and every reader here draws those, so each root is read whole
+ * (`GET /work/{q}`) and its workspaces asked (`GET /work/{q}/workspaces`), in parallel across the
+ * roots. An epic's features and their tasks come from `GET /work/{q}/children`, which carries their
+ * bodies: the reshape form restates them, and a restatement without a body would clear it.
  *
- * <p><b>The epic fan-out lives here rather than in the panel that used to own it.</b> An epic's
- * features and its tasks are part of the entity — a card cannot say how far along an epic is without
- * them — so assembling one is transport's job and not a screen's. It is delegated to
- * {@link ProjectsApi}, which already owns those three routes; duplicating them here would be a second
- * copy of an address.
- *
- * <p><b>Two path families for the ticket writes, and the split is the service's.</b> A list and a
- * create are addressed under their parent — `projects/{id}/tickets` — because that is the only place
- * the parent is known. Everything about one existing row is addressed by that row's own id at the top
- * level, `tickets/{id}`, because an id is already unique and repeating its parent in the path would
- * be a second copy of a fact the id carries. The epics use the same grammar, mirrored rather than
- * reinvented.
- *
- * <p><b>Comments are the one thread every archetype now shares</b> (qits-551): `entities/{id}/comments`
- * for the list and the create, whichever archetype `{id}` names, and `comments/{id}` for an edit or a
- * delete of one existing row — the same "addressed by its own id at the top level" shape as the
- * ticket writes above, generalised off the ticket.
+ * <p><b>Comments are the one thread every archetype shares</b> (qits-551): `/work/{q}/comments` for
+ * the list and the create, and `/work/{q}/comments/{commentId}` for an edit or a delete.
  *
  * <p><b>The deletes drop their bodies.</b> Both answer `{"success": true}`, which adds nothing a 200
  * has not already said. The callers re-read instead of splicing the row out: the server's list is the
@@ -112,165 +108,133 @@ export class EntitiesApi {
   private readonly campaigns = inject(CampaignsApi);
 
   /**
-   * Every entity in a project, of one archetype or of both.
+   * Every root of work in a project — epics, tickets and campaigns — or those of one archetype.
    *
    * <p>The filter is optional and omitting it means "everything", which is the honest default for a
    * collection: a caller that wants one desk's rows says so, and a caller that wants the project's
    * whole body of work does not have to name the archetypes that exist today.
    *
-   * <p>Both reads keep the server's order — createdAt ascending — and neither is re-sorted here. The
-   * grouping and the newest-first ordering belong to the desks: transport does not decide how a
-   * screen reads. A project with no rows of an archetype answers an empty list rather than a 404, so
-   * absence needs no translation.
+   * <p>The roots keep the server's order — createdAt ascending — and are not re-sorted here. The
+   * grouping and the newest-first ordering belong to the desks. A project with no rows answers an
+   * empty list rather than a 404, so absence needs no translation.
    *
-   * <p><b>Campaigns are roots of work too</b> (qits-419), read from `GET …/campaigns` and stamped
-   * `archetype: 'CAMPAIGN'` here. "Everything" is three reads in parallel, and a filter naming
-   * `CAMPAIGN` reads only that one. Without them the detail page could not resolve a campaign's
-   * number, since it looks the number up in this same collection.
+   * <p><b>Campaigns are roots of work too</b> (qits-419), stamped `archetype: 'CAMPAIGN'` with their
+   * started/active/member count read off each one's progress. Without them the detail page could not
+   * resolve a campaign's number, since it looks the number up in this same collection.
    */
   list(projectId: string, archetype: Archetype): Promise<readonly Entity[]>;
   list(projectId: string, archetype: 'CAMPAIGN'): Promise<readonly CampaignEntity[]>;
   list(projectId: string, archetype?: Archetype | 'CAMPAIGN'): Promise<readonly WorkItem[]>;
   async list(projectId: string, archetype?: Archetype | 'CAMPAIGN'): Promise<readonly WorkItem[]> {
-    if (archetype === 'EPIC') {
-      return this.epics(projectId);
-    }
-    if (archetype === 'TICKET') {
-      return this.tickets(projectId);
-    }
-    if (archetype === 'CAMPAIGN') {
-      return this.campaignItems(projectId);
-    }
-    const [epics, tickets, campaigns] = await Promise.all([
-      this.epics(projectId),
-      this.tickets(projectId),
-      this.campaignItems(projectId),
-    ]);
-    return [...epics, ...tickets, ...campaigns];
+    const rows = await this.projects.work(projectId);
+    const roots = rows.filter(
+      (row) => row.parent === null && (archetype === undefined || row.archetype === archetype),
+    );
+    const items = await Promise.all(roots.map((row) => this.root(row)));
+    return items.filter((item): item is WorkItem => item !== null);
   }
 
   /**
-   * The epics and the tickets, without the campaigns — two reads in parallel, exactly the pre-campaign
-   * "everything". For the readers a campaign can never be a subject of: the reshape form (the
-   * multi-entity transition refuses a campaign) and the refinement room (a campaign has none).
+   * The epics and the tickets, without the campaigns — the pre-campaign "everything". For the readers
+   * a campaign can never be a subject of: the reshape form (the multi-entity transition refuses a
+   * campaign) and the refinement room (a campaign has none).
    */
   async epicsAndTickets(projectId: string): Promise<readonly Entity[]> {
-    const [epics, tickets] = await Promise.all([this.epics(projectId), this.tickets(projectId)]);
-    return [...epics, ...tickets];
+    const rows = await this.projects.work(projectId);
+    const roots = rows.filter(
+      (row) => row.parent === null && (row.archetype === 'EPIC' || row.archetype === 'TICKET'),
+    );
+    const items = await Promise.all(roots.map((row) => this.root(row)));
+    return items.filter((item): item is Entity => item !== null && item.archetype !== 'CAMPAIGN');
   }
 
-  /** Open a ticket. It is `REPORTED` and stamped with the session's principal when it answers. */
+  /**
+   * Open a ticket — `POST /work` with `archetype: TICKET`. It is `REPORTED` and stamped with the
+   * session's principal when it answers.
+   */
   async create(projectId: string, ticket: NewTicket): Promise<TicketEntity> {
-    const response = await firstValueFrom(
-      this.http.post<TicketResponse>(this.ticketsPath(projectId), ticket),
-    );
-    return ticketEntity(response.ticket);
+    const { type, ...rest } = ticket;
+    const created = await this.projects.createWork({
+      archetype: 'TICKET',
+      project: projectId,
+      ...rest,
+      ticketType: type,
+    });
+    return ticketEntity(ticketOf(created));
+  }
+
+  /** One ticket by qualified id (or id), with its workspaces. */
+  async get(ref: string): Promise<TicketEntity> {
+    const [ticket, workspaces] = await Promise.all([
+      this.projects.workItem(ref),
+      this.workspaces(ref),
+    ]);
+    return ticketEntity(ticketOf(ticket, workspaces));
   }
 
   /**
-   * One ticket by **id**.
+   * Move an entity one step along the lifecycle, forwards or back — every archetype's lifecycle door,
+   * `POST /work/{q}/status` (see {@link ProjectsApi.setStatus}).
    *
-   * Not by slug, and there is no by-slug read on the service: the slug is the *address* grammar and
-   * the id is the API's, which is the same division {@link ../nav/project-param#ProjectParam} makes
-   * one segment up. The detail page resolves the one to the other through the project's collection.
-   */
-  async get(ticketId: string): Promise<TicketEntity> {
-    const response = await firstValueFrom(this.http.get<TicketResponse>(this.ticket(ticketId)));
-    return ticketEntity(response.ticket);
-  }
-
-  /**
-   * Move a ticket one step along the lifecycle, forwards or back.
-   *
-   * <p>A POST to a verb rather than a PUT of a field, mirroring the epic transition: this is a thing
-   * that *happens* to a ticket, and the service is free to do more than set a column when it does.
-   *
-   * <p><b>The service owns adjacency.</b> A target two steps away, or the status the ticket already
+   * <p><b>The service owns adjacency.</b> A target two steps away, or the status the entity already
    * holds, answers 409 with the sentence saying so — which is what a page that has been open while
-   * somebody else moved the ticket renders. The caller offers only the neighbours
-   * ({@link ../project/entities-model#ticketTransitions}), but offering correctly is not the same as
-   * being sure, and only the server is.
+   * somebody else moved it renders. The caller offers only the neighbours, but offering correctly is
+   * not the same as being sure, and only the server is.
    *
-   * <p><b>This is the lifecycle door, and a status move stays on it.</b> The multi-entity write
-   * ({@link transitionEntities}) restates a row's shape and runs no lifecycle at all — no adjacency,
-   * no phase advance after the move, no discarding of the refinement room a resolving move ends. A
-   * status step sent through it would be a column write that skipped everything a step means. Field
-   * edits and reshapes go through the map form; a step goes through here.
+   * <p><b>A status move stays on this door.</b> The multi-entity write ({@link transitionEntities})
+   * restates a row's shape and runs no lifecycle at all — no adjacency, no phase advance after the
+   * move, no discarding of the refinement room a resolving move ends.
    */
-  async transition(ticketId: string, target: EntityStatus): Promise<TicketEntity> {
-    const response = await firstValueFrom(
-      this.http.post<TicketResponse>(`${this.ticket(ticketId)}/transition`, { target }),
-    );
-    return ticketEntity(response.ticket);
+  transition(ref: string, target: EntityStatus): Promise<WorkEntityDto> {
+    return this.projects.setStatus(ref, target);
   }
 
   /**
-   * Say that an epic's, a ticket's or a campaign's phase cannot proceed, or that it can again.
+   * Say that an epic's, a ticket's or a campaign's phase cannot proceed, or that it can again —
+   * `POST /work/{q}/blocked`.
    *
-   * <p>A POST to its own door rather than a field on {@link update}, for {@link transition}'s reason:
-   * blocking is a thing that *happens* to an entity — it writes a comment saying why, and the service
-   * is free to do more than set a column — where the edit is a restatement of the entity's words.
-   * Sending it through the edit would also make every other box on that form part of a block.
-   *
-   * <p><b>The one entity door, not the ticket-scoped one</b> — `POST /entities/{id}/blocked` answers
-   * for every archetype that carries a lifecycle, where the retired `POST /tickets/{id}/blocked` only
-   * ever answered for a ticket. A feature or a task has none, and the service refuses one there with
-   * a 409, the same as a status with no phase running (VERIFIED, DONE, DROPPED).
+   * <p>A POST to its own door rather than a field on the edit: blocking is a thing that *happens* to
+   * an entity — it writes a comment saying why. A feature or a task has no lifecycle phase, and the
+   * service refuses one there with a 409, the same as a status with no phase running (VERIFIED, DONE,
+   * DROPPED).
    *
    * <p><b>The reason is required to block and a note to unblock, and the asymmetry is the point.</b>
-   * A blocked entity with no reason is a row that stops and does not say what it is waiting for,
-   * which is the one thing anybody reading it afterwards needs; coming *back* from that is
-   * self-explanatory — the thing it was waiting for arrived — so a note there is worth having and not
-   * worth demanding. The caller withholds the press until there is a reason
-   * ({@link ../project/entities-model#hasPhase} says where the press is offered at all), and the
-   * service refuses a blank one regardless: offering correctly is not the same as being sure.
+   * The caller withholds the press until there is a reason, and the service refuses a blank one
+   * regardless.
    *
-   * <p>The answer is the flag as the write left it, not the whole row: unlike {@link transition} the
-   * caller here already knows the rest of the row did not move, so there is nothing else to restate.
+   * <p>The answer is the flag as the write left it, not the whole row.
    */
-  async setBlocked(entityId: string, blocked: boolean, reason = ''): Promise<EntityBlockDto> {
+  async setBlocked(ref: string, blocked: boolean, reason = ''): Promise<EntityBlockDto> {
     const response = await firstValueFrom(
-      this.http.post<EntityBlockResponse>(`${this.entity(entityId)}/blocked`, { blocked, reason }),
+      this.http.post<EntityBlockResponse>(`${this.work(ref)}/blocked`, { blocked, reason }),
     );
     return response.block;
   }
 
   /**
-   * **Restate several entities at once**, and have the service take all of it or none of it.
+   * **Restate several entities at once**, and have the service take all of it or none of it —
+   * `POST /work/transition`.
    *
-   * <p><b>A map of id to that entity's whole target state, applied atomically.</b> The shape is the
-   * contract and it is the reason this exists beside {@link transition} rather than instead of it. A
-   * person splitting a feature out of an epic is promoting the feature *and* re-shaping the tasks
-   * under it, and those two writes are not independent: sent separately, one of the two orders is
-   * refused outright — a feature cannot hold a feature, so promoting the tasks first is illegal while
-   * their parent is still one — and the other order walks the plan through an arrangement nobody asked
-   * for and leaves it there if the second call fails. One request is the only expression of one
-   * intention.
+   * <p><b>A map of entity to that entity's whole target state, applied atomically.</b> A person
+   * splitting a feature out of an epic is promoting the feature *and* re-shaping the tasks under it,
+   * and those two writes are not independent: one request is the only expression of one intention.
+   * The keys, and every id in an entry, are qualified ids or UUIDs.
    *
-   * <p><b>PUT semantics per entry: a property the body does not carry is cleared.</b> There is no
-   * partial spelling and no paired `clear…` boolean the retired ticket PUT had, because the
-   * entry is not an edit — it is the row as it is to be. That is what makes the form's "what will be
-   * lost" warning load-bearing rather than decorative: demoting a ticket to a feature discards its
-   * status, its kind, its impetus and its assignee by *omission*, and the only place that can be
-   * noticed is before the press.
+   * <p><b>PUT semantics per entry: a property the body does not carry is cleared.</b> That is what
+   * makes the form's "what will be lost" warning load-bearing rather than decorative.
    *
-   * <p><b>A refusal is one 400 carrying every violation, joined with `"; "`.</b> Not the first
-   * violation and not one 400 per entry — the whole request failed, so the whole reason is answered,
-   * and a reader fixing one field at a time across four round trips is a reader who gives up. The
-   * panel splits that sentence and points the fragments at the fields they name.
+   * <p><b>A refusal is one 400 carrying every violation, joined with `"; "`.</b> The panel splits
+   * that sentence and points the fragments at the fields they name.
    *
-   * <p>The answer is the post-state of every row written, keyed the same way the request was. It is
-   * returned rather than dropped — unlike the deletes above — because the ids are the only thing
-   * linking a reshaped row back to the entry that asked for it, and the caller re-reads the project
-   * anyway.
+   * <p>The answer is the post-state of every row written, keyed exactly as the request was.
    */
   async transitionEntities(
     request: ReadonlyMap<string, EntityTransitionRequest>,
-  ): Promise<ReadonlyMap<string, EntityStateDto>> {
+  ): Promise<ReadonlyMap<string, WorkEntityDto>> {
     const body = Object.fromEntries(request);
     const response = await firstValueFrom(
-      this.http.post<Record<string, EntityStateDto>>(
-        `${this.base}/projects/api/entities/transition`,
+      this.http.post<Record<string, WorkEntityDto>>(
+        `${this.base}/projects/api/work/transition`,
         body,
       ),
     );
@@ -278,177 +242,157 @@ export class EntitiesApi {
   }
 
   /**
-   * **A field edit as a JSON merge patch** — `PATCH /entities/{id}` (qits-887 is its first reader
-   * here: the acceptance criteria). A property the body names is written, `null` clears it, and one
-   * it leaves out is left alone — the opposite of {@link transitionEntities}. A list is sent whole.
-   * A 400 names every refusal in one sentence; a 409 is a freeze. Answers the row as it now stands.
+   * **A field edit as a JSON merge patch** — `PATCH /work/{q}` (qits-887 is its first reader here:
+   * the acceptance criteria). A property the body names is written, `null` clears it, and one it
+   * leaves out is left alone — the opposite of {@link transitionEntities}. A list is sent whole. A
+   * 400 names every refusal in one sentence; a 409 is a freeze. Answers the row as it now stands.
    */
-  async patch(
-    entityId: string,
-    changes: Readonly<Record<string, unknown>>,
-  ): Promise<EntityStateDto> {
+  patch(ref: string, changes: Readonly<Record<string, unknown>>): Promise<WorkEntityDto> {
     return firstValueFrom(
-      this.http.patch<EntityStateDto>(this.entity(entityId), changes, {
-        headers: MERGE_PATCH_HEADERS,
-      }),
+      this.http.patch<WorkEntityDto>(this.work(ref), changes),
     );
   }
 
   /**
    * **Dispatch** (`FLOW`) or **Run the next phase** (`PHASE`) — the one dispatching door for every
-   * archetype with a lifecycle (qits-394).
+   * archetype with a lifecycle (qits-394), `POST /work/{q}/dispatch`.
    *
    * <p>It starts the phase the entity's status implies in a workspace on the project's wrapper, on
-   * `ticket/<slug>` or `epic/<slug>`, and answers where it went. The mode is the only difference
-   * between the two actions: FLOW lets every transition start the next phase, PHASE stops after one.
-   * A VERIFIED, DONE or DROPPED entity, a blocked ticket, a feature and a task are 409s — which is
-   * why a page asks {@link dispatchState} first and does not offer the press at all where it would be
-   * refused.
-   *
-   * <p>Find-or-create behind it, so a second press re-enters the workspace the first one made.
+   * `ticket/<slug>` or `epic/<slug>`, and answers where it went. A VERIFIED, DONE or DROPPED entity, a
+   * blocked one, a feature and a task are 409s — which is why a page asks {@link dispatchState}
+   * first and does not offer the press at all where it would be refused.
    *
    * <p><b>On a campaign the press is its start</b> (qits-417) and the answer is `{progress}` rather
    * than `{dispatch}`, so the envelope is returned whole and a caller narrows on the key —
    * `'progress' in answer`. See {@link EntityDispatchAnswer}.
    */
-  async dispatch(entityId: string, mode: DispatchMode): Promise<EntityDispatchAnswer> {
+  dispatch(ref: string, mode: DispatchMode): Promise<EntityDispatchAnswer> {
     return firstValueFrom(
-      this.http.post<EntityDispatchAnswer>(this.dispatchDoor(entityId), { mode }),
+      this.http.post<EntityDispatchAnswer>(`${this.work(ref)}/dispatch`, { mode }),
     );
   }
 
   /**
    * What a press would start, asked before anybody presses: `nextPhase`, `dispatchable`, the block
-   * and the stored mode. The status-to-phase rule is the service's alone and this is how it is read.
+   * and the stored mode — `GET /work/{q}/dispatch`.
    */
-  async dispatchState(entityId: string): Promise<EntityDispatchStateDto> {
+  async dispatchState(ref: string): Promise<EntityDispatchStateDto> {
     const response = await firstValueFrom(
-      this.http.get<EntityDispatchStateResponse>(this.dispatchDoor(entityId)),
+      this.http.get<EntityDispatchStateResponse>(`${this.work(ref)}/dispatch`),
     );
     return response.state;
   }
 
   /**
-   * The history of one audit subtree, newest first.
-   *
-   * <p>The key is the subtree's — an epic's id for the epic, its features and its tasks; a ticket's
-   * own id for a ticket and its comments — because the log's `epic_id` column is a subtree key and not
-   * a foreign key. It answers after the rows are gone, which is the point of an audit log.
+   * The history of an entity, newest first — `GET /work/{q}/audit`. A root (an epic, a ticket, a
+   * campaign) answers its whole subtree; a feature or a task its own rows. It answers after the rows
+   * are gone, which is the point of an audit log.
    */
-  async audit(subtreeId: string): Promise<readonly AuditEntryDto[]> {
+  async audit(ref: string): Promise<readonly AuditEntryDto[]> {
     const response = await firstValueFrom(
-      this.http.get<AuditEntriesResponse>(
-        `${this.base}/projects/api/epics/${encodeURIComponent(subtreeId)}/audit`,
-      ),
+      this.http.get<AuditEntriesResponse>(`${this.work(ref)}/audit`),
     );
     return response.entries ?? [];
   }
 
-  /** Remove a ticket and everything said on it. The `success` body is dropped — see the class note. */
-  async remove(ticketId: string): Promise<void> {
-    await firstValueFrom(this.http.delete<unknown>(this.ticket(ticketId)));
+  /** Remove an entity and everything said on it. See the class note on the deletes. */
+  remove(ref: string): Promise<void> {
+    return this.projects.deleteWork(ref);
   }
 
-  /**
-   * One entity's comments, oldest first, which is the order a conversation is read in.
-   *
-   * <p>`entityId` takes any archetype — a ticket, an epic, a feature, a task or a campaign
-   * (qits-551): the thread is no longer a ticket-only fixture.
-   */
-  async comments(entityId: string): Promise<readonly CommentDto[]> {
+  /** The workspaces a dispatch stood on an entity's branch, live and resolved alike. */
+  async workspaces(ref: string): Promise<readonly WorkspaceReferenceDto[]> {
     const response = await firstValueFrom(
-      this.http.get<CommentEntriesResponse>(this.commentsOf(entityId)),
+      this.http.get<WorkWorkspacesResponse>(`${this.work(ref)}/workspaces`),
+    );
+    return response.workspaces ?? [];
+  }
+
+  /** One entity's comments, oldest first, whichever archetype it is (qits-551). */
+  async comments(ref: string): Promise<readonly CommentDto[]> {
+    const response = await firstValueFrom(
+      this.http.get<CommentEntriesResponse>(`${this.work(ref)}/comments`),
     );
     return response.entries.map((entry) => entry.comment);
   }
 
   /** Say something on an entity's thread. The author is stamped from the session, so only the body is sent. */
-  async addComment(entityId: string, body: string): Promise<CommentDto> {
+  async addComment(ref: string, body: string): Promise<CommentDto> {
     const response = await firstValueFrom(
-      this.http.post<CommentResponse>(this.commentsOf(entityId), { body }),
+      this.http.post<CommentResponse>(`${this.work(ref)}/comments`, { body }),
     );
     return response.comment;
   }
 
   /**
-   * Rewrite one comment.
-   *
-   * Addressed at `comments/{id}` rather than under its entity, because the id is already unique —
-   * and the answer's `updatedAt` is what makes the "edited" hint appear beside it. Sent as a JSON
-   * merge patch (qits-551): the only property it carries is `body`, and the server never touches
-   * `author` from this door.
+   * Rewrite one comment of the entity's thread, as a JSON merge patch (qits-551): the only property
+   * it carries is `body`. The answer's `updatedAt` is what makes the "edited" hint appear beside it.
    */
-  async updateComment(commentId: string, body: string): Promise<CommentDto> {
+  async updateComment(ref: string, commentId: string, body: string): Promise<CommentDto> {
     const response = await firstValueFrom(
-      this.http.patch<CommentResponse>(
-        this.comment(commentId),
-        { body },
-        { headers: MERGE_PATCH_HEADERS },
-      ),
+      this.http.patch<CommentResponse>(this.comment(ref, commentId), { body }),
     );
     return response.comment;
   }
 
   /** Take one comment back. The `success` body is dropped, and the caller re-reads the thread. */
-  async removeComment(commentId: string): Promise<void> {
-    await firstValueFrom(this.http.delete<unknown>(this.comment(commentId)));
+  async removeComment(ref: string, commentId: string): Promise<void> {
+    await firstValueFrom(this.http.delete<unknown>(this.comment(ref, commentId)));
   }
 
-  /** The tickets of a project, as entities. One request, the envelope unwrapped here. */
-  private async tickets(projectId: string): Promise<readonly Entity[]> {
-    const response = await firstValueFrom(
-      this.http.get<TicketEntriesResponse>(this.ticketsPath(projectId)),
-    );
-    return response.entries.map((entry) => ticketEntity(entry.ticket));
+  /** One root of the listing as a desk item; null for an archetype no desk draws. */
+  private root(row: WorkEntityDto): Promise<WorkItem | null> {
+    switch (row.archetype) {
+      case 'EPIC':
+        return this.epic(row);
+      case 'TICKET':
+        return this.ticket(row);
+      case 'CAMPAIGN':
+        return this.campaigns.summary(row).then(campaignEntity);
+      default:
+        return Promise.resolve(null);
+    }
+  }
+
+  /** A ticket, read whole, with its workspaces. */
+  private async ticket(row: WorkEntityDto): Promise<TicketEntity> {
+    const ref = workRef(row);
+    const [ticket, workspaces] = await Promise.all([
+      this.projects.workItem(ref),
+      this.workspaces(ref),
+    ]);
+    return ticketEntity(ticketOf(ticket, workspaces));
   }
 
   /**
-   * The epics of a project, as entities, each with its features and their tasks.
-   *
-   * <p>The epics, then their features, then their tasks — each level in parallel across its parents,
-   * which is what keeps a project with twenty epics three round trips deep rather than sixty. It is
-   * a fan-out and it is the price of an archetype the service answers as three lists; the alternative
-   * is a card that claims an epic is smaller than it is.
+   * An epic, read whole, with its workspaces and its features and their tasks — each level in
+   * parallel across its parents, so a project with twenty epics stays three round trips deep.
    */
-  private async epics(projectId: string): Promise<readonly Entity[]> {
-    const epics = await this.projects.epics(projectId);
-    return Promise.all(epics.map(async (epic) => epicEntity(epic, await this.features(epic.id))));
+  private async epic(row: WorkEntityDto): Promise<EpicEntity> {
+    const ref = workRef(row);
+    const [epic, workspaces, features] = await Promise.all([
+      this.projects.workItem(ref),
+      this.workspaces(ref),
+      this.features(ref),
+    ]);
+    return epicEntity(epicOf(epic, workspaces), features);
   }
 
-  /** The campaigns of a project, as desk items. */
-  private async campaignItems(projectId: string): Promise<readonly CampaignEntity[]> {
-    const campaigns = await this.campaigns.list(projectId);
-    return campaigns.map(campaignEntity);
-  }
-
-  private async features(epicId: string): Promise<readonly FeatureNode[]> {
-    const features = await this.projects.features(epicId);
+  private async features(epicRef: string): Promise<readonly FeatureNode[]> {
+    const features = await this.projects.children(epicRef);
     return Promise.all(
-      features.map(async (feature) => ({ feature, tasks: await this.projects.tasks(feature.id) })),
+      features.map(async (feature) => ({
+        feature: featureOf(feature),
+        tasks: (await this.projects.children(workRef(feature))).map(taskOf),
+      })),
     );
   }
 
-  private entity(entityId: string): string {
-    return `${this.base}/projects/api/entities/${encodeURIComponent(entityId)}`;
+  private work(ref: string): string {
+    return `${this.base}/projects/api/work/${encodeURIComponent(ref)}`;
   }
 
-  private dispatchDoor(entityId: string): string {
-    return `${this.entity(entityId)}/dispatch`;
-  }
-
-  private ticketsPath(projectId: string): string {
-    return `${this.base}/projects/api/projects/${encodeURIComponent(projectId)}/tickets`;
-  }
-
-  private ticket(ticketId: string): string {
-    return `${this.base}/projects/api/tickets/${encodeURIComponent(ticketId)}`;
-  }
-
-  private commentsOf(entityId: string): string {
-    return `${this.base}/projects/api/entities/${encodeURIComponent(entityId)}/comments`;
-  }
-
-  private comment(commentId: string): string {
-    return `${this.base}/projects/api/comments/${encodeURIComponent(commentId)}`;
+  private comment(ref: string, commentId: string): string {
+    return `${this.work(ref)}/comments/${encodeURIComponent(commentId)}`;
   }
 }

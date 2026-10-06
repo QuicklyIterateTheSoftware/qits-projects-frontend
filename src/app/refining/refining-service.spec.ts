@@ -3,6 +3,7 @@ import { HttpTestingController, provideHttpClientTesting } from '@angular/common
 import { TestBed } from '@angular/core/testing';
 import type { EpicDto, TicketDto } from '../api/dto';
 import type { RefinementDto } from '../api/refinements-api';
+import { workAnswer } from '../../testing/work-fixtures';
 import { RefiningService } from './refining-service';
 
 const AT = '2026-08-08T09:00:00Z';
@@ -85,11 +86,11 @@ describe('RefiningService', () => {
 
   afterEach(() => http.verify());
 
-  it('opens a room through the entity door, with an empty body', async () => {
-    const opened = refining.open('t1');
-    const request = http.expectOne('/projects/api/entities/t1/refinement');
+  it('opens a room through the entity door, with no body', async () => {
+    const opened = refining.open('qits-4');
+    const request = http.expectOne('/projects/api/work/qits-4/refinement');
     expect(request.request.method).toBe('POST');
-    expect(request.request.body).toEqual({});
+    expect(request.request.body).toBeNull();
     request.flush({ refinement: REFINEMENT });
 
     expect((await opened).entityId).toBe('t1');
@@ -97,8 +98,8 @@ describe('RefiningService', () => {
   });
 
   it('finds a room with a GET on the same door, which never creates', async () => {
-    const found = refining.find('e1');
-    const request = http.expectOne('/projects/api/entities/e1/refinement');
+    const found = refining.find('qits-3');
+    const request = http.expectOne('/projects/api/work/qits-3/refinement');
     expect(request.request.method).toBe('GET');
     request.flush({ refinement: null });
 
@@ -107,10 +108,14 @@ describe('RefiningService', () => {
 
   it('resolves a number to its node across the project’s epics and tickets', async () => {
     const resolved = refining.resolve('p1', 4);
-    http.expectOne('/projects/api/projects/p1/epics').flush({ entries: [{ epic: EPIC }] });
-    http.expectOne('/projects/api/projects/p1/tickets').flush({ entries: [{ ticket: TICKET }] });
-    await settle();
-    http.expectOne('/projects/api/epics/e1/features').flush({ entries: [] });
+    for (let round = 0; round < 3; round += 1) {
+      await settle();
+      for (const request of http.match(() => true)) {
+        request.flush(
+          workAnswer('p1', { epics: [EPIC], tickets: [TICKET] }, request.request.url) as object,
+        );
+      }
+    }
 
     const { node, nodes } = await resolved;
     expect(node?.id).toBe('t1');
@@ -120,8 +125,7 @@ describe('RefiningService', () => {
 
   it('answers a null node for a number the project does not hold', async () => {
     const resolved = refining.resolve('p1', 99);
-    http.expectOne('/projects/api/projects/p1/epics').flush({ entries: [] });
-    http.expectOne('/projects/api/projects/p1/tickets').flush({ entries: [] });
+    http.expectOne('/projects/api/projects/p1/work').flush({ entities: [] });
 
     expect((await resolved).node).toBeNull();
   });

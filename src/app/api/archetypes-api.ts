@@ -100,7 +100,7 @@ export interface ArchetypeRegistry {
   readonly archetypes: readonly ArchetypeSpecDto[];
 }
 
-/** The envelope-free answer of `GET /projects/api/entities/archetypes`. */
+/** The envelope-free answer of `GET /projects/api/work/archetypes`. */
 type ArchetypeRegistryResponse = ArchetypeRegistry;
 
 /**
@@ -135,7 +135,7 @@ export class ArchetypesApi {
   registry(): Promise<ArchetypeRegistry> {
     if (!this.pending) {
       this.pending = firstValueFrom(
-        this.http.get<ArchetypeRegistryResponse>(`${this.base}/projects/api/entities/archetypes`),
+        this.http.get<ArchetypeRegistryResponse>(`${this.base}/projects/api/work/archetypes`),
       ).catch((error: unknown) => {
         this.pending = null;
         throw error;

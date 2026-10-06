@@ -1,6 +1,7 @@
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
+import { goldenMaster } from '../../testing/golden-masters';
 import { ProjectsApi } from './projects-api';
 
 /**
@@ -355,141 +356,74 @@ describe('ProjectsApi', () => {
     await expect(reconciled).resolves.toEqual({ domain: 'REGISTERED', domainDetail: null });
   });
 
-  /** Three levels, three entry keys — `epic`, `feature`, `task` — and each is unwrapped as its own. */
-  it('unwraps the epic entries', async () => {
-    const epics = api.epics('p1');
-    http.expectOne('/projects/api/projects/p1/epics').flush({
-      entries: [
-        {
-          epic: {
-            id: 'e1',
-            projectId: 'p1',
-            title: 'Epics on the project page',
-            slug: 'epics-overview',
-            description: 'show the plan where the reader arrives',
-            status: 'REFINED',
-            supersededByEpicId: null,
-            createdAt: '2026-08-08T09:00:00Z',
-            updatedAt: '2026-08-08T09:00:00Z',
-          },
-        },
-      ],
+  /**
+   * The `/work` surface (epic qits-965): one listing for every archetype, and each entity addressed
+   * by its qualified id. The answers are qits-projects' golden masters.
+   */
+  it("reads the project's whole tree from the one listing", async () => {
+    const work = api.work('p1');
+    http
+      .expectOne('/projects/api/projects/p1/work')
+      .flush(goldenMaster('an epic in detail', 'listProjectWork'));
+    const rows = await work;
+    expect(rows.map((row) => row.archetype)).toEqual(
+      expect.arrayContaining(['CAMPAIGN', 'EPIC', 'FEATURE', 'TASK', 'TICKET']),
+    );
+    expect(rows.find((row) => row.archetype === 'FEATURE')?.parent).toBe(
+      rows.find((row) => row.archetype === 'EPIC')?.id,
+    );
+  });
+
+  it('reads one entity whole by its qualified id', async () => {
+    const item = api.workItem('qits-2');
+    http.expectOne('/projects/api/work/qits-2').flush(goldenMaster('an epic in detail', 'getWork'));
+    await expect(item).resolves.toMatchObject({
+      archetype: 'EPIC',
+      acceptanceCriteria: ['It does what it says.'],
     });
-    await expect(epics).resolves.toMatchObject([
-      { id: 'e1', slug: 'epics-overview', status: 'REFINED' },
-    ]);
+  });
+
+  it('files a new entity with one body shape', async () => {
+    const created = api.createWork({ archetype: 'TICKET', project: 'p1', title: 'T' });
+    const request = http.expectOne('/projects/api/work');
+    expect(request.request.method).toBe('POST');
+    expect(request.request.body).toEqual({ archetype: 'TICKET', project: 'p1', title: 'T' });
+    request.flush(goldenMaster('a project with no work', 'createWork'), {
+      status: 201,
+      statusText: 'Created',
+    });
+    await expect(created).resolves.toMatchObject({ archetype: 'TICKET', status: 'REPORTED' });
+  });
+
+  it('deletes an entity by its qualified id and drops the success body', async () => {
+    const deleted = api.deleteWork('qits-1');
+    const request = http.expectOne('/projects/api/work/qits-1');
+    expect(request.request.method).toBe('DELETE');
+    request.flush(goldenMaster('a reported ticket', 'deleteWork'));
+    await expect(deleted).resolves.toBeUndefined();
   });
 
   /**
-   * A transition answers two rows, and the successor is the one a caller is tempted to drop.
-   * Superseding *creates* the draft that replaces the epic (landing the epic DROPPED), so keeping
-   * only `epic` would lose it. `SUPERSEDED` is the operation's name on this door, not a status.
+   * One lifecycle door for every archetype. `SUPERSEDED` is the supersede operation's name on it:
+   * the answer is the epic, `DROPPED`, naming its successor in `supersededBy`.
    */
-  it('posts the transition target and keeps both rows of the answer', async () => {
-    const moved = api.transitionEpic('e1', 'SUPERSEDED');
-    const request = http.expectOne('/projects/api/epics/e1/transition');
-
+  it('posts the lifecycle target to the status door and keeps the answer', async () => {
+    const moved = api.setStatus('qits-1', 'REFINED');
+    const request = http.expectOne('/projects/api/work/qits-1/status');
     expect(request.request.method).toBe('POST');
-    expect(request.request.body).toEqual({ target: 'SUPERSEDED' });
-
-    request.flush({
-      epic: {
-        id: 'e1',
-        projectId: 'p1',
-        title: 'Epics on the project page',
-        slug: 'epics-overview',
-        description: null,
-        status: 'DROPPED',
-        supersededByEpicId: 'e2',
-        createdAt: '2026-08-08T09:00:00Z',
-        updatedAt: '2026-08-08T11:00:00Z',
-      },
-      successor: {
-        id: 'e2',
-        projectId: 'p1',
-        title: 'Epics on the project page',
-        slug: 'epics-overview',
-        description: null,
-        status: 'REPORTED',
-        supersededByEpicId: null,
-        createdAt: '2026-08-08T11:00:00Z',
-        updatedAt: '2026-08-08T11:00:00Z',
-      },
-    });
-
-    await expect(moved).resolves.toMatchObject({
-      epic: { id: 'e1', status: 'DROPPED', supersededByEpicId: 'e2' },
-      successor: { id: 'e2', status: 'REPORTED' },
-    });
+    expect(request.request.body).toEqual({ target: 'REFINED' });
+    request.flush(goldenMaster('a reported epic', 'setWorkStatus'));
+    await expect(moved).resolves.toMatchObject({ status: 'REFINED', statusBefore: 'REPORTED' });
   });
 
-  /** Every move but superseding answers a null successor, and the null has to survive as one. */
-  it('keeps a missing successor as null', async () => {
-    const moved = api.transitionEpic('e1', 'IMPLEMENTED');
-    http.expectOne('/projects/api/epics/e1/transition').flush({
-      epic: {
-        id: 'e1',
-        projectId: 'p1',
-        title: 'Epics on the project page',
-        slug: 'epics-overview',
-        description: null,
-        status: 'REFINED',
-        supersededByEpicId: null,
-        createdAt: '2026-08-08T09:00:00Z',
-        updatedAt: '2026-08-08T11:00:00Z',
-      },
-      successor: null,
-    });
-
-    await expect(moved).resolves.toMatchObject({ successor: null });
-  });
-
-  it('unwraps the feature entries', async () => {
-    const features = api.features('e1');
-    http.expectOne('/projects/api/epics/e1/features').flush({
-      entries: [
-        {
-          feature: {
-            id: 'f1',
-            epicId: 'e1',
-            title: 'Read the epics',
-            slug: 'read-the-epics',
-            description: null,
-            dependsOnFeatureId: null,
-            implementedOn: '2026-08-08T10:00:00Z',
-            createdAt: '2026-08-08T09:00:00Z',
-            updatedAt: '2026-08-08T10:00:00Z',
-          },
-        },
-      ],
-    });
-    // `implementedOn` here, `implementedAt` on a task: the wire's inconsistency, kept.
-    await expect(features).resolves.toMatchObject([
-      { id: 'f1', implementedOn: '2026-08-08T10:00:00Z' },
-    ]);
-  });
-
-  it('unwraps the task entries', async () => {
-    const tasks = api.tasks('f1');
-    http.expectOne('/projects/api/features/f1/tasks').flush({
-      entries: [
-        {
-          task: {
-            id: 't1',
-            featureId: 'f1',
-            repositoryId: 'r1',
-            title: 'Add the endpoints',
-            slug: 'add-the-endpoints',
-            description: null,
-            dependsOnTaskId: null,
-            implementedAt: null,
-            createdAt: '2026-08-08T09:00:00Z',
-            updatedAt: '2026-08-08T09:00:00Z',
-          },
-        },
-      ],
-    });
-    await expect(tasks).resolves.toMatchObject([{ id: 't1', implementedAt: null }]);
+  it("reads a node's children, bodies included", async () => {
+    const children = api.children('qits-2');
+    http
+      .expectOne('/projects/api/work/qits-2/children')
+      .flush(goldenMaster('an epic in detail', 'listWorkChildren'));
+    const rows = await children;
+    expect(rows.map((row) => row.archetype)).toEqual(['FEATURE', 'FEATURE']);
+    expect(rows[0].description).toContain('CSV');
   });
 
   it('reads a repository’s sync status', async () => {

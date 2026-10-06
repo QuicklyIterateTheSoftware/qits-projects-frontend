@@ -349,7 +349,7 @@ export class DossierPanel {
       return Promise.resolve();
     }
     return this.act('figure', async (owner) => {
-      const figure: InlinedFigure = await this.api.inlineFigure(owner.id, sourceId, kind);
+      const figure: InlinedFigure = await this.api.inlineFigure(owner.ref, sourceId, kind);
       this.rememberKind(figure);
       this.insertAtCaret(figure.markdown);
     });

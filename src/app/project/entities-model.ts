@@ -34,11 +34,11 @@ import type {
  * what makes a card, a row and an action button able to take an `Entity` without asking which kind it
  * got.
  *
- * <p><b>There is no unified read on the wire, deliberately.</b> The service migrated the data to one
- * table and left the REST contract byte-identical, so `GET …/epics` and `GET …/tickets` are still the
- * two reads and still answer `EpicDto` and `TicketDto`. The archetype is therefore stamped **here**,
- * at the boundary, by {@link epicEntity} and {@link ticketEntity} — which is the only place in this
- * client that knows which endpoint a row came from, and the reason nothing downstream has to.
+ * <p><b>The wire's one merged shape is mapped onto the arms at the boundary.</b> The service answers
+ * every archetype through `/work` in one merged entity (epic qits-965); `api/work.ts` maps it onto
+ * `EpicDto` and `TicketDto`, and {@link epicEntity} and {@link ticketEntity} stamp the archetype —
+ * the only places in this client that know the wire's field names, and the reason nothing
+ * downstream has to.
  *
  * <p>No Angular in this file, for the reason both of its ancestors gave: every answer is derived from
  * the wire shapes alone, and each is the kind of rule that stays plausible while being wrong — a
@@ -754,14 +754,15 @@ export const IMPETUS_RULE =
  * The entity of one archetype a slug names, or null when this collection holds none.
  *
  * <p>Only the redirects from the old slug addresses use it (`/<project>/tickets/<slug>` and
- * `/<project>/epics/<slug>/refining`): the address is the qualified number now. The archetype is a
- * parameter because a slug is only unique within one of them.
+ * `/<project>/epics/<slug>/refining`), over the work listing's summary rows: the address is the
+ * qualified number now. The archetype is a parameter because a slug is only unique within one of
+ * them.
  */
-export function entityBySlug(
-  entities: readonly Entity[],
+export function entityBySlug<T extends { readonly archetype: string; readonly slug: string }>(
+  entities: readonly T[],
   archetype: Archetype,
   slug: string,
-): Entity | null {
+): T | null {
   return entities.find((entity) => entity.archetype === archetype && entity.slug === slug) ?? null;
 }
 

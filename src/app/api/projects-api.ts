@@ -6,22 +6,16 @@ import type {
   BackupSyncResponse,
   CreateRepositoryRequest,
   CreateRepositoryResponse,
-  EpicDto,
-  EpicEntriesResponse,
-  EpicTransitionResponse,
-  FeatureDto,
-  FeatureEntriesResponse,
   ProjectDto,
   ProjectEntriesResponse,
   ProjectReconcileResponse,
   RepositoryDto,
   RepositoryEntriesResponse,
   SyncStatusDto,
-  TaskDto,
-  TaskEntriesResponse,
   WrapperDto,
   WrapperReconcileResponse,
 } from './dto';
+import type { WorkChildrenResponse, WorkEntityDto, WorkListResponse } from './work';
 
 /**
  * One project's components, and the wrapper they are supposed to agree with, from one read.
@@ -146,64 +140,68 @@ export class ProjectsApi {
   }
 
   /**
-   * One project's epics.
+   * One project's work, every archetype, as the service's flat tree: each root oldest first, its
+   * descendants depth-first in position order — `GET /projects/{project}/work`.
    *
-   * The three levels of the plan are three reads, one per level, because that is what the service
-   * offers — there is no nested answer. The caller fans out and assembles the tree.
+   * <p>Unfiltered on purpose: one request answers what used to be a read per archetype plus a
+   * fan-out per epic, and the desks filter the answer by archetype themselves. The rows are the
+   * listing's summary — no `description`, no acceptance criteria; {@link workItem} has those.
    */
-  async epics(projectId: string): Promise<readonly EpicDto[]> {
+  async work(projectId: string): Promise<readonly WorkEntityDto[]> {
     const response = await firstValueFrom(
-      this.http.get<EpicEntriesResponse>(
-        `${this.base}/projects/api/projects/${encodeURIComponent(projectId)}/epics`,
+      this.http.get<WorkListResponse>(
+        `${this.base}/projects/api/projects/${encodeURIComponent(projectId)}/work`,
       ),
     );
-    return response.entries.map((entry) => entry.epic);
+    return response.entities ?? [];
+  }
+
+  /** One entity of any archetype, whole — `GET /work/{q}`. `ref` is a qualified id (or a UUID). */
+  workItem(ref: string): Promise<WorkEntityDto> {
+    return firstValueFrom(this.http.get<WorkEntityDto>(this.workPath(ref)));
   }
 
   /**
-   * Move one epic one step along the lifecycle, or supersede it — the epic's **lifecycle** door.
-   *
-   * <p>Kept, and deliberately not replaced by the multi-entity transition: this door runs the
-   * lifecycle (adjacency, the implemented stamping at IMPLEMENTED, the resolving move that discards
-   * a refinement room) and is followed by the phase advance, where `POST /entities/transition` is a
-   * restatement of a row's shape that runs none of it. `SUPERSEDED` is accepted here as the name of
-   * the supersede *operation*: it lands the epic `DROPPED` and answers the successor draft.
-   *
-   * The whole answer is kept, successor and all, rather than reduced to the epic — superseding
-   * spawns a draft, and a caller that dropped it would have no way to say what replaced what. An
-   * illegal move is a 409 whose `message` says why, which is a sentence for the reader rather than
-   * a state this client should have prevented.
-   *
-   * The server's answer is not spliced into the tree: a transition can change more than the one
-   * row, so the caller re-reads instead.
+   * File a new entity of any archetype — `POST /work`, 201. A root names its `project`, a node its
+   * `parent`; the rest of the body is the archetype's create schema. It starts `REPORTED`.
    */
-  transitionEpic(epicId: string, target: string): Promise<EpicTransitionResponse> {
+  createWork(body: Readonly<Record<string, unknown>>): Promise<WorkEntityDto> {
+    return firstValueFrom(this.http.post<WorkEntityDto>(`${this.base}/projects/api/work`, body));
+  }
+
+  /**
+   * Delete an entity and its subtree — `DELETE /work/{q}`. The `success` body adds nothing a 200
+   * has not said, so it is dropped; callers re-read.
+   */
+  async deleteWork(ref: string): Promise<void> {
+    await firstValueFrom(this.http.delete<unknown>(this.workPath(ref)));
+  }
+
+  /**
+   * Move one entity one step along its lifecycle — **the lifecycle door, for every archetype**:
+   * `POST /work/{q}/status`. It runs what a step means (adjacency, the quality gates, the
+   * implemented stamping, the phase advance after it), where the multi-entity transition is a
+   * restatement of a row's shape that runs none of it.
+   *
+   * <p>`SUPERSEDED` on an epic is the supersede *operation*: the epic lands `DROPPED`, and the
+   * answer's `supersededBy` names the successor draft it spawned. An illegal move is a 409 whose
+   * `message` says why.
+   *
+   * <p>The answer is not spliced into a tree: a move can change more than the one row (an epic's
+   * pieces follow it on some moves), so callers re-read.
+   */
+  setStatus(ref: string, target: string): Promise<WorkEntityDto> {
     return firstValueFrom(
-      this.http.post<EpicTransitionResponse>(
-        `${this.base}/projects/api/epics/${encodeURIComponent(epicId)}/transition`,
-        { target },
-      ),
+      this.http.post<WorkEntityDto>(`${this.workPath(ref)}/status`, { target }),
     );
   }
 
-  /** One epic's features. */
-  async features(epicId: string): Promise<readonly FeatureDto[]> {
+  /** An epic's features, or a feature's tasks, in order — `GET /work/{q}/children`, bodies included. */
+  async children(ref: string): Promise<readonly WorkEntityDto[]> {
     const response = await firstValueFrom(
-      this.http.get<FeatureEntriesResponse>(
-        `${this.base}/projects/api/epics/${encodeURIComponent(epicId)}/features`,
-      ),
+      this.http.get<WorkChildrenResponse>(`${this.workPath(ref)}/children`),
     );
-    return response.entries.map((entry) => entry.feature);
-  }
-
-  /** One feature's tasks. */
-  async tasks(featureId: string): Promise<readonly TaskDto[]> {
-    const response = await firstValueFrom(
-      this.http.get<TaskEntriesResponse>(
-        `${this.base}/projects/api/features/${encodeURIComponent(featureId)}/tasks`,
-      ),
-    );
-    return response.entries.map((entry) => entry.task);
+    return response.children ?? [];
   }
 
   /**
@@ -232,5 +230,9 @@ export class ProjectsApi {
         `${this.base}/projects/api/repositories/${encodeURIComponent(repositoryId)}/sync-status`,
       ),
     );
+  }
+
+  private workPath(ref: string): string {
+    return `${this.base}/projects/api/work/${encodeURIComponent(ref)}`;
   }
 }
