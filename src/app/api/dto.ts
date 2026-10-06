@@ -236,21 +236,27 @@ export interface WrapperDto {
 /**
  * Where an entity stands in its life — **one lifecycle for every archetype that has one** (qits-392).
  *
- * <p>An epic and a ticket hold the same six words over the same legal-target graph: `REPORTED`,
- * `REFINED`, `IMPLEMENTED`, `VERIFIED`, `DONE`, plus `DROPPED`. The status is what has been
- * *achieved*; the phase that runs while it holds is what happens next.
+ * <p>An epic and a ticket walk the same words over the same legal-target graph: `REPORTED` →
+ * `REFINED` → `READY_FOR_DEV` → `IMPLEMENTING` → `IMPLEMENTED` → `VERIFYING` → `VERIFIED` → `DONE`,
+ * plus `DROPPED`. The status is what has been *achieved*; the phase that runs while it holds is what
+ * happens next.
+ *
+ * <p><b>`READY_FOR_DEV` (qits-887) is the scheduling decision.</b> `REFINED` says the plan is viable
+ * and starts nothing; moving it on to `READY_FOR_DEV` is a person's approval, and it is
+ * `READY_FOR_DEV`, not `REFINED`, that starts implement. Which moves a status has is still the served
+ * registry's answer, never this comment's.
  *
  * <p><b>`IMPLEMENTING` and `VERIFYING` (qits-749) are the platform-set exceptions to that.</b> Each
- * sits between the pair of ordinary words it bridges — `IMPLEMENTING` between `REFINED` and
+ * sits between the pair of words it bridges — `IMPLEMENTING` between `READY_FOR_DEV` and
  * `IMPLEMENTED`, `VERIFYING` between `IMPLEMENTED` and `VERIFIED` — for an epic or a ticket, never
  * a campaign, and the service, not a person, writes them: the moment a dispatch is pressed, to
  * record that an implementation or a verification was started. Either can also be skipped over
- * entirely: the `SKIP` transition `kind` moves `REFINED` straight to `IMPLEMENTED` with no
+ * entirely: the `SKIP` transition `kind` moves `READY_FOR_DEV` straight to `IMPLEMENTED` with no
  * `IMPLEMENTING` in between, or `IMPLEMENTED` straight to `VERIFIED` with no `VERIFYING` in
  * between.
  *
- * <p><b>A plain string, and not a union of today's six.</b> The vocabulary is the service's: the
- * served archetype registry (`GET /entities/archetypes`, each archetype's `legalStatuses`) is where a
+ * <p><b>A plain string, and not a union of today's words.</b> The vocabulary is the service's: the
+ * served archetype registry (`GET /entities/archetypes`, each archetype's `lifecycle`) is where a
  * screen reads which words exist and in what order, so a word the service adds reaches the badges,
  * the desk's sections and the status moves without this file changing. A union here would be a
  * second copy of that list, and the copy that was not updated would be the one drawn — which is
@@ -716,7 +722,8 @@ export type DispatchMode = 'FLOW' | 'PHASE';
 /**
  * Which phase a status starts — the service's words, never computed here.
  *
- * <p>`REPORTED` starts refine, `REFINED` implement, `IMPLEMENTED` verify, and the rest start nothing.
+ * <p>`REPORTED` starts refine, `READY_FOR_DEV` implement, `IMPLEMENTED` verify, and the rest start
+ * nothing — `REFINED` included: it waits on a person to schedule it (qits-887).
  * That rule lives in exactly one place on the service (`PhasePrompts.phaseOf`) and the SPA learns its
  * answer from {@link EntityDispatchStateDto.nextPhase}; a switch here would be a second copy of it.
  */

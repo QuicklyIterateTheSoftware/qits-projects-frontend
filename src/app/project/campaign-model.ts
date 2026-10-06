@@ -307,7 +307,10 @@ export function editableMember(
   return member.claimedAt === null && membershipEditable(campaignStatus);
 }
 
-/** Add, move, remove and condition are taken while the campaign is REPORTED or REFINED. */
+/**
+ * Add, move, remove and condition are taken while the campaign is REPORTED or REFINED — the service's
+ * `CampaignService.EDITABLE`, which this follows; a change to one is made to both.
+ */
 export function membershipEditable(campaignStatus: EntityStatus | null): boolean {
   return campaignStatus === 'REPORTED' || campaignStatus === 'REFINED';
 }

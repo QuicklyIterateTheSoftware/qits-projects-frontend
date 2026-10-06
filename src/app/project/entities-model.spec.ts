@@ -452,6 +452,11 @@ describe('entities model', () => {
       expect(statusBadge('DROPPED').tone).toBe('neutral');
     });
 
+    /** qits-887: scheduled and not started — REFINED's purple family, under its own words. */
+    it('draws READY_FOR_DEV in REFINED’s tone, labelled ready for dev', () => {
+      expect(statusBadge('READY_FOR_DEV')).toEqual({ label: 'ready for dev', tone: 'highlight' });
+    });
+
     it('says so for a node with no status at all', () => {
       expect(statusBadge(null).label).toBe('no status');
     });

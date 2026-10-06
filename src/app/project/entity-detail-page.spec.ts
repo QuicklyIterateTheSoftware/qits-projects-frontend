@@ -714,6 +714,44 @@ describe('EntityDetailPage', () => {
       );
     });
 
+    /**
+     * qits-887: implement starts from READY_FOR_DEV, and REFINED starts nothing. The page maps no
+     * status to a phase itself — both answers are the dispatch state's, drawn as served.
+     */
+    it('enables Dispatch on a READY_FOR_DEV epic the state calls dispatchable', async () => {
+      epicPatch = { status: 'READY_FOR_DEV' };
+      dispatchStates['e1'] = stateOf({
+        entityId: 'e1',
+        archetype: 'EPIC',
+        status: 'READY_FOR_DEV',
+        nextPhase: 'implement',
+      });
+      await open('/qits/work/qits-12');
+
+      expect(button('.dispatch').disabled).toBe(false);
+      expect(button('.next-phase').disabled).toBe(false);
+      expect(element().querySelector('.flow-note')?.textContent).toContain(
+        'starts the implement phase',
+      );
+    });
+
+    it('says there is nothing to dispatch at refined once the state says so', async () => {
+      dispatchStates['e1'] = stateOf({
+        entityId: 'e1',
+        archetype: 'EPIC',
+        status: 'REFINED',
+        nextPhase: null,
+        dispatchable: false,
+      });
+      await open('/qits/work/qits-12');
+
+      expect(button('.dispatch').disabled).toBe(true);
+      expect(button('.next-phase').disabled).toBe(true);
+      expect(element().querySelector('.flow-note')?.textContent).toContain(
+        'Nothing to dispatch at refined',
+      );
+    });
+
     it('disables them for a blocked ticket and says why', async () => {
       dispatchStates['t1'] = stateOf({ blocked: true, dispatchable: false });
       await open('/qits/work/qits-41');

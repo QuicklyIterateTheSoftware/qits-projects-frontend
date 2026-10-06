@@ -61,6 +61,22 @@ describe('CampaignCriterionForm', () => {
     ]);
   });
 
+  /** qits-887: READY_FOR_DEV sits after REFINED — waiting until a member is scheduled. */
+  it('offers every status a member can reach, READY_FOR_DEV after REFINED', () => {
+    const statuses = Array.from(element().querySelectorAll('.status option')).map((option) =>
+      option.getAttribute('value'),
+    );
+    expect(statuses).toEqual([
+      'REFINED',
+      'READY_FOR_DEV',
+      'IMPLEMENTING',
+      'IMPLEMENTED',
+      'VERIFYING',
+      'VERIFIED',
+      'DONE',
+    ]);
+  });
+
   it('member reaches status: the previous member and VERIFIED by default', () => {
     const offered = Array.from(element().querySelectorAll('.target option')).map((option) =>
       option.getAttribute('value'),

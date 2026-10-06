@@ -31,9 +31,13 @@ const KINDS: readonly { readonly value: CriterionKind; readonly label: string }[
  * <p>`IMPLEMENTING` and `VERIFYING` (qits-749) are in the walk here too: this list is generic over
  * the entity status lifecycle, and a campaign's members are epics and tickets — the two archetypes
  * that hold them — never a campaign itself, which a criterion can never set these on.
+ *
+ * <p>`READY_FOR_DEV` (qits-887) follows `REFINED`: waiting on a member to reach it waits until a
+ * person has scheduled it.
  */
 const STATUSES: readonly EntityStatus[] = [
   'REFINED',
+  'READY_FOR_DEV',
   'IMPLEMENTING',
   'IMPLEMENTED',
   'VERIFYING',

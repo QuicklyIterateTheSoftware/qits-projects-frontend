@@ -344,7 +344,8 @@ export function epicProgress(entity: EpicEntity): EpicProgress {
  * label, so a sixth word the service adds tomorrow reads correctly before anybody touches this table.
  *
  * <p>`REPORTED` is grey — a standing request nobody has picked up; `REFINED` is `highlight` (purple);
- * `IMPLEMENTING` is `info` (blue), the same tone as the tree's own in-progress badge — both say work
+ * `READY_FOR_DEV` (qits-887) is `highlight` too, REFINED's family — a person has scheduled it, and
+ * nothing has started on it yet; `IMPLEMENTING` is `info` (blue), the same tone as the tree's own in-progress badge — both say work
  * is actively under way; `IMPLEMENTED` also reads `info`, since it is the state `IMPLEMENTING` leads
  * straight into rather than a different kind of thing; `VERIFYING` is `info` too, for the same reason
  * — it is work under way, this time the platform's own verify dispatch rather than an agent's;
@@ -355,6 +356,7 @@ export function epicProgress(entity: EpicEntity): EpicProgress {
 const STATUS_TONES: Readonly<Record<string, QitsBadgeTone>> = {
   REPORTED: 'neutral',
   REFINED: 'highlight',
+  READY_FOR_DEV: 'highlight',
   IMPLEMENTING: 'info',
   IMPLEMENTED: 'info',
   VERIFYING: 'info',
@@ -535,8 +537,9 @@ export interface LifecycleMove {
  * none either — a guessed move is a move the server may refuse, or worse, one it would have hidden.
  *
  * <p>The label and weight come from the kind: `FORWARD` is "Mark <word>" and primary, `BACK` is a
- * de-emphasised "Back to <word>", `DROP` is "Drop", `REOPEN` "Reopen", and `SKIP` — `REFINED` to
- * `IMPLEMENTED` directly with no `IMPLEMENTING` in between, or `IMPLEMENTED` to `VERIFIED` directly
+ * de-emphasised "Back to <word>", `DROP` is "Drop", `REOPEN` "Reopen", and `SKIP` — `READY_FOR_DEV`
+ * (`REFINED` on a service older than qits-887) to `IMPLEMENTED` directly with no `IMPLEMENTING` in
+ * between, or `IMPLEMENTED` to `VERIFIED` directly
  * with no `VERIFYING` in between — is "Skip to <word>". A kind this client has not met is drawn
  * plainly as "Move to <word>".
  */
