@@ -91,6 +91,12 @@ interface EntityFields {
    * way a ticket does, through the same door.
    */
   readonly blocked: boolean;
+  /**
+   * What has to be true for the work to be accepted (qits-887), in order — the wire's
+   * `acceptanceCriteria` with absent and null resolved to none at the boundary. Optional so a row
+   * built by hand (a fixture, a transition's answer) need not restate it.
+   */
+  readonly acceptanceCriteria?: readonly string[];
 }
 
 /**
@@ -148,6 +154,7 @@ export function epicEntity(epic: EpicDto, features: readonly FeatureNode[] = [])
     blocked: epic.blocked ?? false,
     status: epic.status,
     supersededByEpicId: epic.supersededByEpicId,
+    acceptanceCriteria: epic.acceptanceCriteria ?? [],
     features,
   };
 }
@@ -172,6 +179,7 @@ export function ticketEntity(ticket: TicketDto): TicketEntity {
     impetus: ticket.impetus,
     assignee: ticket.assignee,
     createdBy: ticket.createdBy,
+    acceptanceCriteria: ticket.acceptanceCriteria ?? [],
   };
 }
 
@@ -526,6 +534,8 @@ export interface LifecycleMove {
   readonly label: string;
   /** How loudly the button is drawn: the step forward is the one the hand should land on. */
   readonly variant: QitsButtonVariant;
+  /** The served gates this move must pass (qits-887), as names — empty for an ungated move. */
+  readonly gates: readonly string[];
 }
 
 /**
@@ -554,7 +564,108 @@ export function lifecycleMoves(
   const served = specOf(registry, archetype)?.transitions?.[status] ?? [];
   return served
     .filter((step) => step.to !== status)
-    .map((step) => ({ target: step.to, kind: step.kind, ...drawn(step.kind, step.to) }));
+    .map((step) => ({
+      target: step.to,
+      kind: step.kind,
+      gates: step.gates ?? [],
+      ...drawn(step.kind, step.to),
+    }));
+}
+
+/** The words each gate the service names today is hinted with (qits-887). */
+const GATE_HINTS: Readonly<Record<string, string>> = {
+  ACCEPTANCE_CRITERIA: 'needs acceptance criteria',
+  PERSON_APPROVAL: 'needs a person',
+};
+
+/**
+ * What a gated move says beside its button, before anybody presses it — `needs acceptance criteria`,
+ * `needs a person`. A hint and not a check: the service evaluates the gate and refuses with its own
+ * sentence. A gate name this client has not met is still said, as `needs <its name, lower-cased>`,
+ * so a gate the service adds tomorrow is never silent.
+ */
+export function gateHint(gate: string): string {
+  return GATE_HINTS[gate] ?? `needs ${statusLabel(gate)}`;
+}
+
+/** Every hint a move carries, joined — empty for an ungated move. */
+export function gateHints(move: Pick<LifecycleMove, 'gates'>): string {
+  return move.gates.map(gateHint).join(', ');
+}
+
+/**
+ * Whether the served registry lets `archetype` carry `property` — the registry's own
+ * `SCREAMING_SNAKE` name (`ACCEPTANCE_CRITERIA`, `ASSIGNEE`). The wire's `camelCase` spelling is
+ * accepted too, so a registry that names its slots the way the JSON does reads the same.
+ *
+ * <p>This is how a section that only some archetypes have is drawn: by the registry's `permitted`,
+ * never by the archetype's name — so a client released before the service permits a property draws
+ * nothing for it, and draws it the day the service does.
+ */
+export function permits(
+  registry: ArchetypeRegistry | null,
+  archetype: string,
+  property: string,
+): boolean {
+  const permitted = registry ? (specOf(registry, archetype)?.permitted ?? []) : [];
+  return permitted.includes(property) || permitted.includes(camelCase(property));
+}
+
+function camelCase(property: string): string {
+  const [head, ...rest] = property.toLowerCase().split('_');
+  return head + rest.map((word) => word.charAt(0).toUpperCase() + word.slice(1)).join('');
+}
+
+/** The registry's name for the acceptance-criteria slot (qits-887). */
+export const ACCEPTANCE_CRITERIA = 'ACCEPTANCE_CRITERIA';
+
+/** Fewer than this many whitespace characters in one item — the rule's hard length limit. */
+const CRITERION_WHITESPACE_LIMIT = 20;
+
+/**
+ * **What is wrong with one acceptance-criterion item**, as sentences — empty for a good one.
+ *
+ * <p>The service's rules, mirrored for the message only (qits-887): an item is non-blank, holds no
+ * line break (`\n` or `\r`), at most one `.`, and fewer than 20 whitespace characters — that last
+ * one is the hard length limit, so an item stays one short statement. The service stays the
+ * authority: a 400 it answers is shown as it worded it, whatever this said.
+ */
+export function criterionProblems(item: string): readonly string[] {
+  const problems: string[] = [];
+  if (item.trim().length === 0) {
+    problems.push('is blank');
+    return problems;
+  }
+  if (/[\n\r]/.test(item)) {
+    problems.push('has a line break');
+  }
+  if ((item.match(/\./g) ?? []).length > 1) {
+    problems.push('has more than one “.”');
+  }
+  if ((item.match(/\s/g) ?? []).length >= CRITERION_WHITESPACE_LIMIT) {
+    problems.push(`is too long — fewer than ${CRITERION_WHITESPACE_LIMIT} spaces`);
+  }
+  return problems;
+}
+
+/**
+ * Whether acceptance criteria may still be edited at `status` — before `READY_FOR_DEV` in the
+ * served walk. From `READY_FOR_DEV` on they are what a person scheduled, and the service refuses an
+ * edit (409) until the entity is unscheduled. A walk without `READY_FOR_DEV` (an older service)
+ * freezes nothing here; a status the walk does not know is not offered an edit.
+ */
+export function criteriaEditable(
+  registry: ArchetypeRegistry | null,
+  archetype: string,
+  status: EntityStatus | null,
+): boolean {
+  if (!registry || !status) {
+    return false;
+  }
+  const walk = lifecycleOf(registry, archetype);
+  const frozenFrom = walk.indexOf('READY_FOR_DEV');
+  const at = walk.indexOf(status);
+  return at >= 0 && (frozenFrom < 0 || at < frozenFrom);
 }
 
 /** Whether `status` is final for `archetype`: served, and with no move out of it. */

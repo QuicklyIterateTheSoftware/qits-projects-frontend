@@ -837,6 +837,40 @@ describe('entity-transition-model', () => {
   });
 
   /** A field edit on the multi-entity door, now that the per-archetype PUTs are retired. */
+  /** qits-887: a PUT-shaped write keeps a list it does not mean to clear. */
+  describe('acceptance criteria', () => {
+    const permitting: ArchetypeRegistry = {
+      ...REGISTRY,
+      properties: [...REGISTRY.properties, 'ACCEPTANCE_CRITERIA'],
+      archetypes: REGISTRY.archetypes.map((spec) =>
+        spec.archetype === 'EPIC' || spec.archetype === 'TICKET'
+          ? { ...spec, permitted: [...spec.permitted, 'ACCEPTANCE_CRITERIA'] }
+          : spec,
+      ),
+    };
+    const criteria = ['It reads **cancelled**.', 'It is red'];
+
+    it('carries the stored list on the subject, and leaves an empty one out', () => {
+      const [epic] = subjectsOf(permitting, [
+        epicEntity(epicDto({ acceptanceCriteria: criteria })),
+      ]);
+      const [ticket] = subjectsOf(permitting, [ticketEntity(ticketDto())]);
+      expect(epic.lists).toEqual({ ACCEPTANCE_CRITERIA: criteria });
+      expect(ticket.lists).toEqual({});
+    });
+
+    it('restates the list whole where the target permits it, and drops it where it does not', () => {
+      const [ticket] = subjectsOf(permitting, [
+        ticketEntity(ticketDto({ acceptanceCriteria: criteria })),
+      ]);
+      expect(restatement(permitting, ticket, { TITLE: 'Renamed' })['acceptanceCriteria']).toEqual(
+        criteria,
+      );
+      expect('acceptanceCriteria' in restatement(REGISTRY, ticket, {})).toBe(false);
+      expect(lostProperties(permitting, ticket, 'FEATURE')).toContain('ACCEPTANCE_CRITERIA');
+    });
+  });
+
   describe('restatement', () => {
     it('restates the whole row with the changed properties replaced', () => {
       const [ticket] = subjectsOf(REGISTRY, [ticketEntity(ticketDto())]);

@@ -134,6 +134,52 @@ const REGISTRY_WITH_FEATURE_LIFECYCLE = {
   ),
 };
 
+/**
+ * qits-887: the service once it permits `ACCEPTANCE_CRITERIA` on EPIC and TICKET, walks
+ * READY_FOR_DEV, and serves the gates of REFINED → READY_FOR_DEV. {@link REGISTRY} stays the
+ * *before* fixture, so the same page is pinned against both.
+ */
+const WALK_887 = [
+  'REPORTED',
+  'REFINED',
+  'READY_FOR_DEV',
+  'IMPLEMENTED',
+  'VERIFIED',
+  'DONE',
+  'DROPPED',
+];
+const REGISTRY_887 = {
+  ...REGISTRY,
+  properties: [...REGISTRY.properties, 'ACCEPTANCE_CRITERIA'],
+  archetypes: REGISTRY.archetypes.map((entry) =>
+    entry.archetype === 'EPIC' || entry.archetype === 'TICKET'
+      ? {
+          ...entry,
+          permitted: [...entry.permitted, 'ACCEPTANCE_CRITERIA'],
+          legalStatuses: [...WALK_887].sort(),
+          lifecycle: WALK_887,
+          transitions: {
+            ...TRANSITIONS,
+            REFINED: [
+              {
+                to: 'READY_FOR_DEV',
+                kind: 'FORWARD',
+                gates: ['ACCEPTANCE_CRITERIA', 'PERSON_APPROVAL'],
+              },
+              { to: 'REPORTED', kind: 'BACK' },
+              { to: 'DROPPED', kind: 'DROP' },
+            ],
+            READY_FOR_DEV: [
+              { to: 'IMPLEMENTED', kind: 'SKIP' },
+              { to: 'REFINED', kind: 'BACK' },
+              { to: 'DROPPED', kind: 'DROP' },
+            ],
+          },
+        }
+      : entry,
+  ),
+};
+
 const EPIC: EpicDto = {
   id: 'e1',
   projectId: 'p1',
@@ -483,6 +529,7 @@ describe('EntityDetailPage', () => {
     }
     if (url === '/projects/api/epics/e1/transition') return { epic: EPIC, successor: null };
     if (url === '/projects/api/entities/transition') return {};
+    if (method === 'PATCH' && /^\/projects\/api\/entities\/[^/]+$/.test(url)) return {};
     const blocked = /^\/projects\/api\/entities\/([^/]+)\/blocked$/.exec(url);
     if (blocked && method === 'POST') {
       const body = request.request.body as { blocked: boolean };
@@ -1009,6 +1056,201 @@ describe('EntityDetailPage', () => {
       expect(body['k2'].dependsOn).toBe('k1');
     });
   });
+  /**
+   * qits-887: the acceptance criteria — drawn and edited only where the registry permits them, saved
+   * whole through the merge patch, closed from READY_FOR_DEV on; and a gated move says so.
+   */
+  describe('acceptance criteria', () => {
+    function type(selector: string, value: string, index = 0): void {
+      const input = element().querySelectorAll<HTMLInputElement>(selector)[index];
+      expect(input, `no input at ${selector}[${index}]`).toBeTruthy();
+      input.value = value;
+      input.dispatchEvent(new Event('input'));
+      harness.detectChanges();
+    }
+
+    function criteriaBoxes(): string[] {
+      return Array.from(element().querySelectorAll<HTMLInputElement>('.edit-criterion')).map(
+        (input) => input.value,
+      );
+    }
+
+    it('draws nothing, and edits nothing, where the registry does not permit them', async () => {
+      epicPatch = { acceptanceCriteria: ['It reads one desk.'] };
+      await open('/qits/work/qits-12');
+
+      expect(element().querySelector('.criteria')).toBeNull();
+      buttonNamed('Edit').click();
+      harness.detectChanges();
+      expect(element().querySelector('.criteria-editor')).toBeNull();
+    });
+
+    it('draws each item as inline markdown where the registry permits them', async () => {
+      registry = REGISTRY_887;
+      epicPatch = { acceptanceCriteria: ['It reads **one** desk.', '1. stays a sentence'] };
+      await open('/qits/work/qits-12');
+
+      const items = Array.from(element().querySelectorAll('.criteria .criterion'));
+      expect(items.length).toBe(2);
+      expect(items[0].querySelector('strong')?.textContent).toBe('one');
+      expect(items[1].querySelector('ol, p')).toBeNull();
+      expect(items[1].textContent?.trim()).toBe('1. stays a sentence');
+    });
+
+    it('says when there are none yet', async () => {
+      registry = REGISTRY_887;
+      await open('/qits/work/qits-41');
+
+      expect(element().querySelector('.criteria .absent')?.textContent).toContain('None yet');
+    });
+
+    it('saves the edited list whole through the merge patch, and the restatement keeps it', async () => {
+      registry = REGISTRY_887;
+      epicPatch = { acceptanceCriteria: ['First.', 'Second'] };
+      await open('/qits/work/qits-12');
+
+      buttonNamed('Edit').click();
+      harness.detectChanges();
+      expect(criteriaBoxes()).toEqual(['First.', 'Second']);
+      type('.edit-criterion', 'First, edited.', 0);
+      button('.criterion-add').click();
+      harness.detectChanges();
+      type('.edit-criterion', 'Third', 2);
+      element().querySelectorAll<HTMLElement>('.criterion-up button')[2].click();
+      harness.detectChanges();
+      expect(criteriaBoxes()).toEqual(['First, edited.', 'Third', 'Second']);
+      element().querySelectorAll<HTMLElement>('.criterion-remove button')[2].click();
+      harness.detectChanges();
+      button('.save').click();
+      await serve();
+
+      const [patch, restated] = writes();
+      expect(patch).toEqual({
+        method: 'PATCH',
+        url: '/projects/api/entities/e1',
+        body: { acceptanceCriteria: ['First, edited.', 'Third'] },
+      });
+      expect(restated.url).toBe('/projects/api/entities/transition');
+      expect(
+        (restated.body as Record<string, Record<string, unknown>>)['e1']['acceptanceCriteria'],
+      ).toEqual(['First, edited.', 'Third']);
+    });
+
+    it('clears them with a null when every item is removed', async () => {
+      registry = REGISTRY_887;
+      epicPatch = { acceptanceCriteria: ['Only'] };
+      await open('/qits/work/qits-12');
+
+      buttonNamed('Edit').click();
+      harness.detectChanges();
+      button('.criterion-remove').click();
+      harness.detectChanges();
+      button('.save').click();
+      await serve();
+
+      expect(writes()[0]).toEqual({
+        method: 'PATCH',
+        url: '/projects/api/entities/e1',
+        body: { acceptanceCriteria: null },
+      });
+      expect('acceptanceCriteria' in (writes()[1].body as Record<string, object>)['e1']).toBe(
+        false,
+      );
+    });
+
+    it('sends no patch when the list is unchanged', async () => {
+      registry = REGISTRY_887;
+      epicPatch = { acceptanceCriteria: ['Only'] };
+      await open('/qits/work/qits-12');
+
+      buttonNamed('Edit').click();
+      harness.detectChanges();
+      button('.save').click();
+      await serve();
+
+      expect(writes().map((write) => write.method)).toEqual(['POST']);
+    });
+
+    it('says what is wrong with an item, and will not save it', async () => {
+      registry = REGISTRY_887;
+      await open('/qits/work/qits-12');
+
+      buttonNamed('Edit').click();
+      harness.detectChanges();
+      button('.criterion-add').click();
+      harness.detectChanges();
+      type('.edit-criterion', 'Two. Stops.');
+
+      expect(element().querySelector('.criterion-problem')?.textContent).toBe(
+        'This criterion has more than one “.”.',
+      );
+      expect(button('.save').disabled).toBe(true);
+    });
+
+    it('shows the service’s 400 as it worded it, and writes nothing more', async () => {
+      registry = REGISTRY_887;
+      failures['PATCH /projects/api/entities/e1'] = {
+        status: 400,
+        body: { message: 'acceptanceCriteria[0]: fewer than 20 whitespace characters' },
+      };
+      await open('/qits/work/qits-12');
+
+      buttonNamed('Edit').click();
+      harness.detectChanges();
+      button('.criterion-add').click();
+      harness.detectChanges();
+      type('.edit-criterion', 'Fine here');
+      button('.save').click();
+      await serve();
+
+      expect(element().querySelector('.failed')?.textContent?.trim()).toBe(
+        'acceptanceCriteria[0]: fewer than 20 whitespace characters',
+      );
+      expect(writes().map((write) => write.method)).toEqual(['PATCH']);
+    });
+
+    it('closes the editor from READY_FOR_DEV on, and patches nothing', async () => {
+      registry = REGISTRY_887;
+      epicPatch = { status: 'READY_FOR_DEV', acceptanceCriteria: ['Scheduled'] };
+      await open('/qits/work/qits-12');
+
+      buttonNamed('Edit').click();
+      harness.detectChanges();
+      const editor = element().querySelector<HTMLFieldSetElement>('.criteria-editor')!;
+      expect(editor.disabled).toBe(true);
+      expect(editor.querySelector('.frozen')?.textContent).toContain('Frozen at ready for dev');
+      button('.save').click();
+      await serve();
+
+      expect(writes().map((write) => write.method)).toEqual(['POST']);
+      expect(
+        (writes()[0].body as Record<string, Record<string, unknown>>)['e1']['acceptanceCriteria'],
+      ).toEqual(['Scheduled']);
+    });
+
+    it('hints a gated move’s gates beside it, and shows a gate’s 409 as worded', async () => {
+      registry = REGISTRY_887;
+      failures['POST /projects/api/epics/e1/transition'] = {
+        status: 409,
+        body: {
+          message: 'epic e1 cannot move to READY_FOR_DEV: ACCEPTANCE_CRITERIA: it has none',
+        },
+      };
+      await open('/qits/work/qits-12');
+
+      expect(element().querySelector('.gate-hint')?.textContent?.trim()).toBe(
+        'Mark ready for dev needs acceptance criteria, needs a person',
+      );
+      expect(element().querySelectorAll('.gate-hint').length).toBe(1);
+      buttonNamed('Mark ready for dev').click();
+      await serve();
+
+      expect(element().querySelector('.failed')?.textContent?.trim()).toBe(
+        'epic e1 cannot move to READY_FOR_DEV: ACCEPTANCE_CRITERIA: it has none',
+      );
+    });
+  });
+
   /**
    * qits-419: a campaign resolves at its number like every other node, draws its own body, moves
    * through its own door, and its one press — Start — is asked twice because it authorises every

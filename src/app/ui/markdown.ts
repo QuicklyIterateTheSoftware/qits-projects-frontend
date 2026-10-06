@@ -93,6 +93,16 @@ export function renderMarkdown(source: string, dossier?: DossierFigures): string
   return rendered.trim().replace(/>\n(?=<)/g, '>');
 }
 
+/**
+ * One line of Markdown rendered **inline** — emphasis, code, links — with no block wrapped around
+ * it, so an item that happens to start `1.` or `#` stays the sentence it is rather than becoming a
+ * list or a heading. Same renderer, so raw HTML and unsafe URLs stay inert exactly as above.
+ */
+export function renderInlineMarkdown(source: string): string {
+  if (!source.trim()) return '';
+  return markdown.parseInline(source, { async: false }).trim();
+}
+
 export function escapeHtml(text: string): string {
   return text
     .replace(/&/g, '&amp;')

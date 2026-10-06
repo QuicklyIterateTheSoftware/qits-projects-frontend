@@ -2,6 +2,8 @@ import type { ArchetypeRegistry } from '../api/archetypes-api';
 import type { EpicDto, FeatureDto, TaskDto, TicketDto, TicketType } from '../api/dto';
 import {
   BLOCKED_BADGE,
+  criteriaEditable,
+  criterionProblems,
   entityBySlug,
   epicBranch,
   epicEntity,
@@ -9,6 +11,8 @@ import {
   epicStatus,
   featureBranch,
   featureStatus,
+  gateHint,
+  gateHints,
   groupByStatus,
   isEdited,
   isEpic,
@@ -18,6 +22,7 @@ import {
   lifecycleOf,
   newestFirst,
   ofArchetype,
+  permits,
   refiningBranch,
   statusBadge,
   statusVocabulary,
@@ -422,6 +427,62 @@ describe('entities model', () => {
    * The badge is generic by construction: the label is the word, lower-cased, whatever the word is —
    * so a word the service adds tomorrow reads correctly before anybody touches this client.
    */
+  /** qits-887: the item rules, mirrored for the message — each at its boundary. */
+  describe('criterionProblems', () => {
+    it('passes a one-line item with one full stop', () => {
+      expect(criterionProblems('The badge reads **cancelled** on a cancelled run.')).toEqual([]);
+    });
+
+    it('refuses a blank item, and a line break of either kind', () => {
+      expect(criterionProblems('   ')).toEqual(['is blank']);
+      expect(criterionProblems('one\ntwo')).toEqual(['has a line break']);
+      expect(criterionProblems('one\rtwo')).toEqual(['has a line break']);
+    });
+
+    it('allows one full stop and refuses two', () => {
+      expect(criterionProblems('Done.')).toEqual([]);
+      expect(criterionProblems('Done. Really.')).toEqual(['has more than one “.”']);
+    });
+
+    it('allows 19 whitespace characters and refuses 20', () => {
+      const words = (count: number) => Array.from({ length: count }, () => 'w').join(' ');
+      expect(criterionProblems(words(20))).toEqual([]); // 19 spaces
+      expect(criterionProblems(words(21))).toEqual(['is too long — fewer than 20 spaces']); // 20 spaces
+    });
+  });
+
+  describe('permits and criteriaEditable', () => {
+    const withCriteria = {
+      ...REGISTRY,
+      archetypes: [
+        {
+          ...spec('EPIC', [...WORDS.slice(0, 2), 'READY_FOR_DEV', ...WORDS.slice(2)]),
+          permitted: ['ACCEPTANCE_CRITERIA'],
+        },
+        { ...spec('TICKET', WORDS), permitted: ['acceptanceCriteria'] },
+      ],
+    };
+
+    it('reads the permission off the registry, in either spelling, and never off the name', () => {
+      expect(permits(withCriteria, 'EPIC', 'ACCEPTANCE_CRITERIA')).toBe(true);
+      expect(permits(withCriteria, 'TICKET', 'ACCEPTANCE_CRITERIA')).toBe(true);
+      expect(permits(REGISTRY, 'EPIC', 'ACCEPTANCE_CRITERIA')).toBe(false);
+      expect(permits(null, 'EPIC', 'ACCEPTANCE_CRITERIA')).toBe(false);
+    });
+
+    it('opens the criteria before READY_FOR_DEV and freezes them from it on', () => {
+      expect(criteriaEditable(withCriteria, 'EPIC', 'REPORTED')).toBe(true);
+      expect(criteriaEditable(withCriteria, 'EPIC', 'REFINED')).toBe(true);
+      expect(criteriaEditable(withCriteria, 'EPIC', 'READY_FOR_DEV')).toBe(false);
+      expect(criteriaEditable(withCriteria, 'EPIC', 'IMPLEMENTED')).toBe(false);
+    });
+
+    it('freezes nothing on a walk without READY_FOR_DEV', () => {
+      expect(criteriaEditable(withCriteria, 'TICKET', 'IMPLEMENTED')).toBe(true);
+      expect(criteriaEditable(withCriteria, 'TICKET', null)).toBe(false);
+    });
+  });
+
   describe('statusBadge', () => {
     it('labels every served word with the word itself', () => {
       expect(WORDS.map((word) => statusBadge(word).label)).toEqual([
@@ -574,10 +635,48 @@ describe('entities model', () => {
   describe('lifecycleMoves', () => {
     it('offers a refined ticket the step forward as primary, the step back and the drop', () => {
       expect(lifecycleMoves(REGISTRY, 'TICKET', 'REFINED')).toEqual([
-        { target: 'IMPLEMENTED', kind: 'FORWARD', label: 'Mark implemented', variant: 'primary' },
-        { target: 'REPORTED', kind: 'BACK', label: 'Back to reported', variant: 'ghost' },
-        { target: 'DROPPED', kind: 'DROP', label: 'Drop', variant: 'ghost' },
+        {
+          target: 'IMPLEMENTED',
+          kind: 'FORWARD',
+          label: 'Mark implemented',
+          variant: 'primary',
+          gates: [],
+        },
+        {
+          target: 'REPORTED',
+          kind: 'BACK',
+          label: 'Back to reported',
+          variant: 'ghost',
+          gates: [],
+        },
+        { target: 'DROPPED', kind: 'DROP', label: 'Drop', variant: 'ghost', gates: [] },
       ]);
+    });
+
+    /** qits-887: a move's served gates ride along, and are hinted in plain words. */
+    it('carries a move’s served gates, and says each as a hint', () => {
+      const gated = {
+        ...REGISTRY,
+        archetypes: [
+          {
+            ...spec('EPIC', WORDS),
+            transitions: {
+              ...TRANSITIONS,
+              REFINED: [
+                {
+                  to: 'READY_FOR_DEV',
+                  kind: 'FORWARD',
+                  gates: ['ACCEPTANCE_CRITERIA', 'PERSON_APPROVAL'],
+                },
+              ],
+            },
+          },
+        ],
+      };
+      const [move] = lifecycleMoves(gated, 'EPIC', 'REFINED');
+      expect(move.gates).toEqual(['ACCEPTANCE_CRITERIA', 'PERSON_APPROVAL']);
+      expect(gateHints(move)).toBe('needs acceptance criteria, needs a person');
+      expect(gateHint('A_NEW_GATE')).toBe('needs a new gate');
     });
 
     it('offers a done entity nothing at all, and calls it final', () => {
@@ -618,10 +717,28 @@ describe('entities model', () => {
         ],
       };
       expect(lifecycleMoves(withSkip, 'TICKET', 'REFINED')).toEqual([
-        { target: 'IMPLEMENTED', kind: 'FORWARD', label: 'Mark implemented', variant: 'primary' },
-        { target: 'REPORTED', kind: 'BACK', label: 'Back to reported', variant: 'ghost' },
-        { target: 'DROPPED', kind: 'DROP', label: 'Drop', variant: 'ghost' },
-        { target: 'IMPLEMENTED', kind: 'SKIP', label: 'Skip to implemented', variant: 'ghost' },
+        {
+          target: 'IMPLEMENTED',
+          kind: 'FORWARD',
+          label: 'Mark implemented',
+          variant: 'primary',
+          gates: [],
+        },
+        {
+          target: 'REPORTED',
+          kind: 'BACK',
+          label: 'Back to reported',
+          variant: 'ghost',
+          gates: [],
+        },
+        { target: 'DROPPED', kind: 'DROP', label: 'Drop', variant: 'ghost', gates: [] },
+        {
+          target: 'IMPLEMENTED',
+          kind: 'SKIP',
+          label: 'Skip to implemented',
+          variant: 'ghost',
+          gates: [],
+        },
       ]);
     });
 
@@ -633,7 +750,7 @@ describe('entities model', () => {
         ],
       };
       expect(lifecycleMoves(odd, 'TICKET', 'A')).toEqual([
-        { target: 'B', kind: 'X', label: 'Move to b', variant: 'ghost' },
+        { target: 'B', kind: 'X', label: 'Move to b', variant: 'ghost', gates: [] },
       ]);
     });
 

@@ -43,13 +43,18 @@ import { MarkdownView } from '../ui/markdown-view';
 import { CampaignMembers, type CampaignCandidate } from './campaign-members';
 import { CampaignProgress } from './campaign-progress';
 import {
+  ACCEPTANCE_CRITERIA,
   BLOCKED_BADGE,
   IMPETUS_RULE,
+  criteriaEditable,
+  criterionProblems,
   featureStatus,
+  gateHints,
   isFinalStatus,
   lifecycleMoves,
   statusBadge,
   lifecycleOf,
+  permits,
   statusLabel,
   statusesOf,
   taskStatus,
@@ -74,7 +79,7 @@ import {
   type EntityNode,
 } from './entity-nodes';
 import { EntityTransitionPanel } from './entity-transition-panel';
-import { restatement, specOf, subjectsOf } from './entity-transition-model';
+import { restatement, specOf, subjectsOf, type TransitionSubject } from './entity-transition-model';
 import { EntityThread } from './entity-thread';
 import { WorkspaceLinks, workspaceAddress } from './workspace-links';
 
@@ -150,6 +155,14 @@ interface TreeRow {
  * **Field edits and reshapes** — title, description, impetus, type, assignee; promote, demote,
  * reparent — **go through `POST /entities/transition`**, a restatement of the whole row, which is
  * what replaced the retired `PUT /epics/{id}` and `PUT /tickets/{id}`.
+ *
+ * <p><b>Acceptance criteria</b> (qits-887) are drawn, and edited in the edit form, wherever the
+ * registry permits `ACCEPTANCE_CRITERIA` on the archetype — never by the archetype's name, so the
+ * section appears the day the service permits it. They are saved as one whole list through
+ * `PATCH /entities/{id}` (a merge patch; `null` clears), and the editor is closed from
+ * `READY_FOR_DEV` on, where the service freezes them. A move the registry serves with `gates` says
+ * so beside its button ("needs acceptance criteria", "needs a person"); the gate itself is the
+ * service's, and its 409 is shown as worded.
  *
  * <p><b>A campaign</b> (qits-419, qits-420) is a root with a lifecycle and a body of its own: how
  * it is running ({@link CampaignProgress}), and its members, their order and their conditions
@@ -355,6 +368,9 @@ interface TreeRow {
           >
             {{ step.label }}
           </qits-button>
+          @if (step.gates.length > 0) {
+            <span class="note gate-hint">{{ step.label }} {{ hints(step) }}</span>
+          }
         }
         @if (final()) {
           <span class="note final-note">{{ finalNote() }}</span>
@@ -466,6 +482,70 @@ interface TreeRow {
               />
             </label>
           }
+          @if (criteriaPermitted()) {
+            <fieldset class="criteria-editor" [disabled]="!criteriaOpen()">
+              <legend class="label">Acceptance criteria</legend>
+              @if (!criteriaOpen()) {
+                <p class="hint frozen">{{ criteriaFrozenNote() }}</p>
+              }
+              <ol class="criteria-drafts">
+                @for (item of draftCriteria(); track $index; let i = $index) {
+                  <li class="criterion-draft">
+                    <div class="criterion-row">
+                      <input
+                        type="text"
+                        class="text edit-criterion"
+                        autocomplete="off"
+                        [attr.aria-label]="'Criterion ' + (i + 1)"
+                        [value]="item"
+                        (input)="setCriterion(i, value($event))"
+                      />
+                      <qits-button
+                        class="criterion-up"
+                        variant="ghost"
+                        size="sm"
+                        [disabled]="!criteriaOpen() || i === 0"
+                        (pressed)="moveCriterion(i, -1)"
+                      >
+                        ↑
+                      </qits-button>
+                      <qits-button
+                        class="criterion-down"
+                        variant="ghost"
+                        size="sm"
+                        [disabled]="!criteriaOpen() || i === draftCriteria().length - 1"
+                        (pressed)="moveCriterion(i, 1)"
+                      >
+                        ↓
+                      </qits-button>
+                      <qits-button
+                        class="criterion-remove"
+                        variant="ghost"
+                        size="sm"
+                        [disabled]="!criteriaOpen()"
+                        (pressed)="removeCriterion(i)"
+                      >
+                        Remove
+                      </qits-button>
+                    </div>
+                    @if (criterionMessage(item); as message) {
+                      <p class="criterion-problem" role="alert">{{ message }}</p>
+                    }
+                  </li>
+                }
+              </ol>
+              <qits-button
+                class="criterion-add"
+                variant="secondary"
+                size="sm"
+                [disabled]="!criteriaOpen()"
+                (pressed)="addCriterion()"
+              >
+                Add a criterion
+              </qits-button>
+              <p class="hint criteria-rule">{{ criteriaRule }}</p>
+            </fieldset>
+          }
           <p class="hint">An empty box clears the field rather than leaving it as it was.</p>
           <div class="actions">
             <qits-button
@@ -561,6 +641,21 @@ interface TreeRow {
                 : 'No description yet.'
             }}
           </p>
+        }
+
+        @if (criteriaPermitted()) {
+          <section class="criteria" aria-label="Acceptance criteria">
+            <h2>Acceptance criteria</h2>
+            @if (criteria().length === 0) {
+              <p class="absent">None yet — it cannot be scheduled until it has some.</p>
+            } @else {
+              <ol class="criteria-list">
+                @for (item of criteria(); track $index) {
+                  <li class="criterion"><app-markdown [text]="item" [inline]="true" /></li>
+                }
+              </ol>
+            }
+          </section>
         }
 
         @if (n.archetype === 'EPIC') {
@@ -811,6 +906,37 @@ interface TreeRow {
       margin: 0.6rem 0;
       color: #b91c1c;
     }
+    .criteria-editor {
+      margin: 0 0 0.6rem;
+      padding: 0;
+      border: 0;
+      min-width: 0;
+    }
+    .criteria-drafts,
+    .criteria-list {
+      margin: 0 0 0.5rem;
+      padding-left: 1.25rem;
+    }
+    .criterion-draft {
+      margin: 0 0 0.35rem;
+    }
+    .criterion-row {
+      display: flex;
+      align-items: center;
+      gap: 0.25rem;
+    }
+    .criterion-problem {
+      margin: 0.15rem 0 0;
+      font-size: 0.8rem;
+      color: #b91c1c;
+    }
+    .criteria-rule {
+      margin: 0.4rem 0 0;
+    }
+    .criterion {
+      margin: 0 0 0.2rem;
+      color: #374151;
+    }
     .description {
       color: #374151;
     }
@@ -939,6 +1065,12 @@ export class EntityDetailPage {
   protected readonly draftType = signal<TicketType>('BUG');
   protected readonly draftDescription = signal('');
   protected readonly draftAssignee = signal('');
+  /** The acceptance criteria being edited, one box per item, in order (qits-887). */
+  protected readonly draftCriteria = signal<readonly string[]>([]);
+
+  /** The item rules, as the editor says them — the service's, mirrored for the message only. */
+  protected readonly criteriaRule =
+    'One line each: at most one “.”, fewer than 20 spaces. Empty boxes are left out.';
 
   protected readonly blocking = signal<'block' | 'unblock' | null>(null);
   protected readonly blockNote = signal('');
@@ -1039,6 +1171,39 @@ export class EntityDetailPage {
     const node = this.node();
     return node ? lifecycleMoves(this.loaded()?.registry ?? null, node.archetype, node.status) : [];
   });
+
+  /** Whether the registry lets this node's archetype carry acceptance criteria (qits-887). */
+  protected readonly criteriaPermitted = computed(() => {
+    const node = this.node();
+    return node
+      ? permits(this.loaded()?.registry ?? null, node.archetype, ACCEPTANCE_CRITERIA)
+      : false;
+  });
+
+  /** The node's acceptance criteria as stored, in order — none on a server that serves none. */
+  protected readonly criteria = computed<readonly string[]>(
+    () => this.node()?.entity?.acceptanceCriteria ?? [],
+  );
+
+  /** Whether they may still be edited — before READY_FOR_DEV, where the service freezes them. */
+  protected readonly criteriaOpen = computed(() => {
+    const node = this.node();
+    return node
+      ? criteriaEditable(this.loaded()?.registry ?? null, node.archetype, node.status)
+      : false;
+  });
+
+  protected readonly criteriaFrozenNote = computed(() => {
+    const status = this.node()?.status;
+    return `Frozen at ${status ? statusLabel(status) : 'this status'} — move it back to refined to change them.`;
+  });
+
+  /** The edited list as it would be sent: trimmed, empty boxes left out. */
+  private readonly criteriaToSend = computed(() =>
+    this.draftCriteria()
+      .map((item) => item.trim())
+      .filter((item) => item.length > 0),
+  );
 
   /** Whether the node holds a final status — served, with no move out of it (`DONE`). */
   protected readonly final = computed(() => {
@@ -1152,6 +1317,7 @@ export class EntityDetailPage {
     () =>
       this.draftTitle().trim().length > 0 &&
       (!this.ticket() || this.draftImpetus().trim().length > 0) &&
+      this.criteriaToSend().every((item) => criterionProblems(item).length === 0) &&
       this.action() === null,
   );
 
@@ -1539,6 +1705,7 @@ export class EntityDetailPage {
     this.draftImpetus.set(ticket?.impetus ?? '');
     this.draftType.set(ticket?.type ?? 'BUG');
     this.draftAssignee.set(ticket?.assignee ?? '');
+    this.draftCriteria.set([...this.criteria()]);
     this.actionFailure.set(null);
     this.blocking.set(null);
     this.editing.set(true);
@@ -1573,13 +1740,65 @@ export class EntityDetailPage {
     const position = node.parentId
       ? childrenOf(ground.nodes, node.parentId).findIndex((sibling) => sibling.id === node.id)
       : undefined;
+    const criteria = this.criteriaToSend();
+    const criteriaChanged =
+      this.criteriaPermitted() &&
+      this.criteriaOpen() &&
+      JSON.stringify(criteria) !== JSON.stringify(this.criteria());
+    // The restatement is PUT-shaped: it carries the list it should leave behind, so it never undoes
+    // the patch it follows.
+    const stated = criteriaChanged ? withCriteria(subject, criteria) : subject;
     await this.run('save', async () => {
+      if (criteriaChanged) {
+        // The whole list through the merge patch; an emptied list clears it.
+        await this.api.patch(node.id, {
+          acceptanceCriteria: criteria.length > 0 ? criteria : null,
+        });
+      }
       await this.api.transitionEntities(
-        new Map([[node.id, restatement(ground.registry, subject, changes, position)]]),
+        new Map([[node.id, restatement(ground.registry, stated, changes, position)]]),
       );
       this.editing.set(false);
       await this.load(true);
     });
+  }
+
+  protected setCriterion(index: number, item: string): void {
+    this.draftCriteria.update((items) => items.map((old, at) => (at === index ? item : old)));
+  }
+
+  protected addCriterion(): void {
+    this.draftCriteria.update((items) => [...items, '']);
+  }
+
+  protected removeCriterion(index: number): void {
+    this.draftCriteria.update((items) => items.filter((_, at) => at !== index));
+  }
+
+  /** Swap one item with its neighbour above (`-1`) or below (`1`). */
+  protected moveCriterion(index: number, by: -1 | 1): void {
+    const to = index + by;
+    this.draftCriteria.update((items) => {
+      if (to < 0 || to >= items.length) {
+        return items;
+      }
+      const next = [...items];
+      [next[index], next[to]] = [next[to], next[index]];
+      return next;
+    });
+  }
+
+  /** What is wrong with one box, as a sentence — nothing for a good one or an empty one. */
+  protected criterionMessage(item: string): string | null {
+    if (item.trim().length === 0) {
+      return null;
+    }
+    const problems = criterionProblems(item.trim());
+    return problems.length > 0 ? `This criterion ${problems.join(', ')}.` : null;
+  }
+
+  protected hints(step: LifecycleMove): string {
+    return gateHints(step);
   }
 
   protected startBlocking(mode: 'block' | 'unblock'): void {
@@ -1685,9 +1904,24 @@ export class EntityDetailPage {
   }
 }
 
-/** A refusal as a sentence: the service's own words on a 409, a described error otherwise. */
+/**
+ * A refusal as a sentence: the service's own words on a 409 (a freeze, a gate) or a 400 (a rule a
+ * field broke — an acceptance criterion's, say), a described error otherwise.
+ */
 function refusal(error: unknown): string {
   const body = error instanceof HttpErrorResponse ? error.error : null;
-  const stated = statusOf(error) === 409 ? serverMessage(body) : null;
+  const status = statusOf(error);
+  const stated = status === 409 || status === 400 ? serverMessage(body) : null;
   return stated ?? `That did not work — ${describeError(error)}.`;
+}
+
+/** The subject with its acceptance criteria replaced — an empty list carried as none. */
+function withCriteria(subject: TransitionSubject, criteria: readonly string[]): TransitionSubject {
+  const lists = { ...(subject.lists ?? {}) };
+  if (criteria.length > 0) {
+    lists[ACCEPTANCE_CRITERIA] = criteria;
+  } else {
+    delete lists[ACCEPTANCE_CRITERIA];
+  }
+  return { ...subject, lists };
 }

@@ -33,7 +33,7 @@ import type {
   TicketType,
 } from './dto';
 
-/** The header the comment PATCH sends: a JSON merge patch, not a whole replacement. */
+/** The header every PATCH here sends — a comment's, an entity's: a merge patch, not a replacement. */
 const MERGE_PATCH_HEADERS = new HttpHeaders({ 'Content-Type': 'application/merge-patch+json' });
 
 /**
@@ -278,6 +278,23 @@ export class EntitiesApi {
   }
 
   /**
+   * **A field edit as a JSON merge patch** — `PATCH /entities/{id}` (qits-887 is its first reader
+   * here: the acceptance criteria). A property the body names is written, `null` clears it, and one
+   * it leaves out is left alone — the opposite of {@link transitionEntities}. A list is sent whole.
+   * A 400 names every refusal in one sentence; a 409 is a freeze. Answers the row as it now stands.
+   */
+  async patch(
+    entityId: string,
+    changes: Readonly<Record<string, unknown>>,
+  ): Promise<EntityStateDto> {
+    return firstValueFrom(
+      this.http.patch<EntityStateDto>(this.entity(entityId), changes, {
+        headers: MERGE_PATCH_HEADERS,
+      }),
+    );
+  }
+
+  /**
    * **Dispatch** (`FLOW`) or **Run the next phase** (`PHASE`) — the one dispatching door for every
    * archetype with a lifecycle (qits-394).
    *
@@ -395,9 +412,7 @@ export class EntitiesApi {
    */
   private async epics(projectId: string): Promise<readonly Entity[]> {
     const epics = await this.projects.epics(projectId);
-    return Promise.all(
-      epics.map(async (epic) => epicEntity(epic, await this.features(epic.id))),
-    );
+    return Promise.all(epics.map(async (epic) => epicEntity(epic, await this.features(epic.id))));
   }
 
   /** The campaigns of a project, as desk items. */

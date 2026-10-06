@@ -316,6 +316,13 @@ export interface EpicDto {
    * *operation* lands the epic DROPPED and names its successor here); null on every other.
    */
   readonly supersededByEpicId: string | null;
+  /**
+   * What has to be true for the work to be accepted (qits-887) — a list of one-line Markdown items,
+   * in order. Optional because it arrived after epics were on the wire: absent (an older service) or
+   * null reads as none. Written as a whole list through `PATCH /entities/{id}`; see
+   * {@link ../project/entities-model#criterionProblems} for the item rules.
+   */
+  readonly acceptanceCriteria?: readonly string[] | null;
   readonly createdAt: string;
   readonly updatedAt: string;
   /** Every workspace cut for this epic — {@link TicketDto.workspaces}, rule for rule. */
@@ -460,6 +467,8 @@ export interface EntityStateDto {
   readonly repositoryId: string | null;
   readonly implementedAt: string | null;
   readonly dependsOn: string | null;
+  /** {@link EpicDto.acceptanceCriteria}; absent on a service older than qits-887. */
+  readonly acceptanceCriteria?: readonly string[] | null;
   readonly parent: string | null;
   readonly position: number | null;
   readonly createdAt: string;
@@ -607,6 +616,8 @@ export interface TicketDto {
   readonly assignee: string | null;
   /** Stamped from the session, never sent. Null for a row with no principal behind it. */
   readonly createdBy: string | null;
+  /** {@link EpicDto.acceptanceCriteria}, rule for rule. */
+  readonly acceptanceCriteria?: readonly string[] | null;
   /**
    * Why the ticket exists, in the reporter's own words — one sentence, almost always: "{some error}
    * occurs {in some context}", or "{an existing part} should be {something to introduce or

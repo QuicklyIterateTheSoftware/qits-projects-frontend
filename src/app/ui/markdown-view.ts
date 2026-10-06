@@ -1,5 +1,5 @@
 import { ChangeDetectionStrategy, Component, computed, input } from '@angular/core';
-import { renderMarkdown } from './markdown';
+import { renderInlineMarkdown, renderMarkdown } from './markdown';
 
 /**
  * A description, drawn as the markdown it is written in.
@@ -122,6 +122,10 @@ import { renderMarkdown } from './markdown';
 export class MarkdownView {
   /** The markdown source. Empty text draws nothing at all, rather than an empty paragraph. */
   readonly text = input.required<string>();
+  /** One line rendered inline, with no paragraph or block around it — see `renderInlineMarkdown`. */
+  readonly inline = input(false);
 
-  protected readonly html = computed(() => renderMarkdown(this.text()));
+  protected readonly html = computed(() =>
+    this.inline() ? renderInlineMarkdown(this.text()) : renderMarkdown(this.text()),
+  );
 }

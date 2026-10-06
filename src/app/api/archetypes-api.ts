@@ -71,6 +71,13 @@ export interface TransitionDto {
   readonly to: string;
   /** `FORWARD`, `BACK`, `DROP` or `REOPEN` today. It decides the button's label and weight. */
   readonly kind: string;
+  /**
+   * The quality gates this move must pass (qits-887) — `ACCEPTANCE_CRITERIA`, `PERSON_APPROVAL`, or a
+   * name this client has not met. A hint drawn beside the move, never a check made here: the service
+   * refuses a move whose gate fails, with a 409 that says why. Absent on a server older than the
+   * field, and absent or empty means no gate.
+   */
+  readonly gates?: readonly string[];
 }
 
 /**

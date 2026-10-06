@@ -61,6 +61,13 @@ export interface TransitionSubject {
   readonly projectId: string;
   /** Property name to the value it carries, with the empty ones left out entirely. */
   readonly values: Readonly<Record<string, string>>;
+  /**
+   * The list-valued properties it carries — `ACCEPTANCE_CRITERIA` (qits-887) — with the empty ones
+   * left out, the same rule as {@link values}. Kept apart from `values` because every rule over
+   * those is a rule over one string. Carried through a restatement as they are, so a PUT-shaped
+   * write never clears a list by leaving it out; absent means none.
+   */
+  readonly lists?: Readonly<Record<string, readonly string[]>>;
 }
 
 /**
@@ -295,7 +302,10 @@ export function lostProperties(
 
 /** Whether a subject holds anything at all under a property. Blank is nothing, as it is on the wire. */
 function carries(subject: TransitionSubject, property: string): boolean {
-  return (subject.values[property] ?? '').trim().length > 0;
+  return (
+    (subject.values[property] ?? '').trim().length > 0 ||
+    (subject.lists?.[property]?.length ?? 0) > 0
+  );
 }
 
 /**
@@ -466,6 +476,7 @@ export function subjectsOf(
           STATUS: entity.status,
           SUPERSEDED_BY: entity.supersededByEpicId,
         }),
+        lists: listsOf({ ACCEPTANCE_CRITERIA: entity.acceptanceCriteria }),
       });
       for (const node of entity.features) {
         const feature = node.feature;
@@ -526,10 +537,24 @@ export function subjectsOf(
           ASSIGNEE: entity.assignee,
           CREATED_BY: entity.createdBy,
         }),
+        lists: listsOf({ ACCEPTANCE_CRITERIA: entity.acceptanceCriteria }),
       });
     }
   }
   return subjects;
+}
+
+/** The lists that hold something, empty and absent ones dropped. See {@link TransitionSubject.lists}. */
+function listsOf(
+  candidate: Readonly<Record<string, readonly string[] | null | undefined>>,
+): Record<string, readonly string[]> {
+  const lists: Record<string, readonly string[]> = {};
+  for (const [property, list] of Object.entries(candidate)) {
+    if (list && list.length > 0) {
+      lists[property] = list;
+    }
+  }
+  return lists;
 }
 
 /** The properties that carry something, blanks and nulls dropped. See {@link subjectsOf}. */
@@ -558,6 +583,10 @@ function valuesOf(candidate: Readonly<Record<string, string | null>>): Record<st
  * edit has one. That is also why {@link lostProperties} has a warning to show: absence is destructive
  * here by design.
  *
+ * <p><b>A list-valued property is carried from the subject's {@link TransitionSubject.lists}</b> —
+ * an acceptance-criteria list (qits-887) is sent as it is stored, so a reshape or a field edit keeps
+ * it, and a target that does not permit it drops it like any other property.
+ *
  * <p>Only the target archetype's statable properties are sent. A value left over from what the subject
  * used to be — an impetus on a row becoming a feature — is dropped here as well as warned about, so
  * the request never states a property the target does not permit.
@@ -572,8 +601,11 @@ export function draftToRequest(
   };
   for (const property of statableProperties(registry, draft.archetype)) {
     const value = (draft.values[property] ?? '').trim();
+    const list = draft.subject.lists?.[property] ?? [];
     if (value.length > 0) {
       body[wireKey(property)] = value;
+    } else if (list.length > 0) {
+      body[wireKey(property)] = list;
     }
   }
   return body as EntityTransitionRequest;
