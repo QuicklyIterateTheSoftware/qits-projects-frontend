@@ -129,9 +129,11 @@ interface TreeRow {
  *
  * <ul>
  *   <li><b>Dispatch</b> (`FLOW`) and <b>Run the next phase</b> (`PHASE`) go to the one dispatching
- *       door, `POST /work/{q}/dispatch`. Whether they are enabled, and which phase they would
- *       start, is `GET /work/{q}/dispatch`'s answer — `dispatchable` and `nextPhase` — so this
- *       page never maps a status to a phase itself.</li>
+ *       door, `POST /work/{q}/dispatch`. Dispatch is enabled off `dispatchable` alone — since
+ *       qits-1075 that is true at an unblocked `REFINED` too, where a person's press schedules the
+ *       ticket (`REFINED` → `READY_FOR_DEV`, as that person) and starts implementing rather than
+ *       starting a phase. Run the next phase stays keyed on `nextPhase`, which is null at `REFINED`
+ *       even then, so this page never maps a status to a phase itself.</li>
  *   <li><b>Refine</b> opens the entity's refinement room through `POST /work/{q}/refinement`
  *       and goes there. It is enabled where the dispatch state's next phase is `refine` — refinement
  *       *is* that phase — and an existing room is always offered as "Open refinement", whatever the
@@ -326,7 +328,7 @@ interface TreeRow {
             <qits-button
               class="next-phase"
               variant="secondary"
-              [disabled]="!dispatchable() || action() !== null"
+              [disabled]="!phaseRunnable() || action() !== null"
               [busy]="action() === 'dispatch:PHASE'"
               (pressed)="dispatch('PHASE')"
             >
@@ -1236,7 +1238,20 @@ export class EntityDetailPage {
     return `${word.charAt(0).toUpperCase()}${word.slice(1)} — final. Follow-up work is a new ticket or epic.`;
   });
 
+  /** Dispatch (`FLOW`) is enabled wherever a press would run something — a schedule, as well as a phase. */
   protected readonly dispatchable = computed(() => this.state()?.dispatchable === true);
+
+  /**
+   * Run the next phase (`PHASE`) additionally requires a phase to run — the dispatch state's
+   * `nextPhase`, which the service answers off status alone and does not null out for a blocked
+   * entity. `dispatchable` alone is not enough here as it is for {@link dispatchable}'s own button:
+   * since qits-1075 the two read differently at an unblocked `REFINED`, where `dispatchable` is true
+   * (a `FLOW` press schedules the ticket) but `nextPhase` is still null (scheduling is not a phase),
+   * so Run the next phase stays off there while Dispatch turns on.
+   */
+  protected readonly phaseRunnable = computed(
+    () => this.state()?.dispatchable === true && this.state()?.nextPhase != null,
+  );
 
   /**
    * Refine is offered where refining is the phase that runs — the dispatch state's `nextPhase` — or
@@ -1251,6 +1266,12 @@ export class EntityDetailPage {
     this.state()?.nextPhase === 'recheck' ? 'Re-check members' : 'Start campaign',
   );
 
+  /**
+   * What the flow actions' row says. A `preApprovedBy` outranks everything else — it is the more
+   * specific story, and it reads whether or not the entity also sits at a dispatchable `REFINED`.
+   * Past that: which phase a press starts, or — unblocked `REFINED`'s own case, where `dispatchable`
+   * is true but `nextPhase` is not — that a press schedules and implements it.
+   */
   protected readonly flowNote = computed(() => {
     const state = this.state();
     if (!state) {
@@ -1266,8 +1287,14 @@ export class EntityDetailPage {
         ? `Nothing to start at ${statusLabel(state.status)} — a campaign starts from refined or ready for dev.`
         : 'Nothing to start.';
     }
+    if (state.preApprovedBy) {
+      return `Pre-approved by ${state.preApprovedBy}: the platform schedules it once refined.`;
+    }
     if (state.dispatchable && state.nextPhase) {
       return `A press starts the ${state.nextPhase} phase.`;
+    }
+    if (state.dispatchable) {
+      return 'A press schedules it and starts implementing.';
     }
     if (state.blocked) {
       return 'Blocked — unblock it before dispatching.';

@@ -1,4 +1,3 @@
-import { HttpErrorResponse } from '@angular/common/http';
 import { PactV4 } from '@pact-foundation/pact';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -171,7 +170,13 @@ describe('qits-projects-frontend → qits-projects-service pact: EntitiesApi', (
     );
   });
 
-  it.each(['a reported epic', 'a ready for dev ticket'])(
+  /**
+   * `a refined ticket` joined the successes here under qits-1075: a person's FLOW press at an
+   * unblocked REFINED is no longer the service's 409 — it schedules the ticket (REFINED →
+   * READY_FOR_DEV, as that person) and goes straight on into the implement phase, so the door
+   * answers the same `{dispatch}` shape as any other dispatching press.
+   */
+  it.each(['a reported epic', 'a ready for dev ticket', 'a refined ticket'])(
     'dispatch-work-item: presses the dispatching door of %s',
     (state) =>
       given(state, 'dispatchWork', 'dispatch-work-item', DISPATCH_WORK).executeTest(
@@ -184,17 +189,6 @@ describe('qits-projects-frontend → qits-projects-service pact: EntitiesApi', (
         },
       ),
   );
-
-  it('dispatch-work-item: a refused press is the service’s 409', () => {
-    const state = 'a refined ticket';
-    return given(state, 'dispatchWork', 'dispatch-work-item', []).executeTest(async (server) => {
-      const refused = await apiAt(server.url, EntitiesApi)
-        .dispatch(ref(state, 'dispatchWork'), sent(state, 'dispatchWork').mode)
-        .catch((error: unknown) => error);
-      expect(refused).toBeInstanceOf(HttpErrorResponse);
-      expect((refused as HttpErrorResponse).status).toBe(409);
-    });
-  });
 
   it('show-work-item: the history', () => {
     const state = 'a reported ticket';

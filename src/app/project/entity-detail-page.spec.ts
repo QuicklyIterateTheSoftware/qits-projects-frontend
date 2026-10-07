@@ -828,21 +828,44 @@ describe('EntityDetailPage', () => {
       );
     });
 
-    it('says there is nothing to dispatch at refined once the state says so', async () => {
+    /**
+     * qits-1075: a person's FLOW press at an unblocked REFINED is no longer refused — it schedules
+     * the ticket (REFINED → READY_FOR_DEV, as that person) and starts implementing, rather than
+     * starting a phase. So `dispatchable` turns true there while `nextPhase` stays null: Dispatch
+     * reads `dispatchable` alone and turns on, Run the next phase additionally wants a phase and
+     * stays off.
+     */
+    it('enables Dispatch but not Run the next phase on an unblocked refined entity', async () => {
+      dispatchStates['e1'] = stateOf({
+        entityId: 'e1',
+        archetype: 'EPIC',
+        status: 'REFINED',
+        nextPhase: null,
+        dispatchable: true,
+      });
+      await open('/qits/work/qits-12');
+
+      expect(button('.dispatch').disabled).toBe(false);
+      expect(button('.next-phase').disabled).toBe(true);
+      expect(element().querySelector('.flow-note')?.textContent).toContain(
+        'A press schedules it and starts implementing.',
+      );
+    });
+
+    it('says there is nothing to dispatch at a blocked refined entity', async () => {
       dispatchStates['e1'] = stateOf({
         entityId: 'e1',
         archetype: 'EPIC',
         status: 'REFINED',
         nextPhase: null,
         dispatchable: false,
+        blocked: true,
       });
       await open('/qits/work/qits-12');
 
       expect(button('.dispatch').disabled).toBe(true);
       expect(button('.next-phase').disabled).toBe(true);
-      expect(element().querySelector('.flow-note')?.textContent).toContain(
-        'Nothing to dispatch at refined',
-      );
+      expect(element().querySelector('.flow-note')?.textContent).toContain('Blocked');
     });
 
     it('disables them for a blocked ticket and says why', async () => {
@@ -850,7 +873,21 @@ describe('EntityDetailPage', () => {
       await open('/qits/work/qits-41');
 
       expect(button('.dispatch').disabled).toBe(true);
+      expect(button('.next-phase').disabled).toBe(true);
       expect(element().querySelector('.flow-note')?.textContent).toContain('Blocked');
+    });
+
+    /**
+     * qits-1075: `preApprovedBy` names the person whose FLOW press on REPORTED pre-approved
+     * scheduling — it is the more specific story and reads ahead of the generic dispatch/phase note.
+     */
+    it('shows who pre-approved it when the dispatch state names them', async () => {
+      dispatchStates['t1'] = stateOf({ preApprovedBy: 'pat' });
+      await open('/qits/work/qits-41');
+
+      expect(element().querySelector('.flow-note')?.textContent).toContain(
+        'Pre-approved by pat: the platform schedules it once refined.',
+      );
     });
 
     it('opens a refinement room through the entity door, then goes there', async () => {

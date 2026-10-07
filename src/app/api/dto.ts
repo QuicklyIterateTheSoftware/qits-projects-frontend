@@ -642,7 +642,11 @@ export type DispatchMode = 'FLOW' | 'PHASE';
  * Which phase a status starts — the service's words, never computed here.
  *
  * <p>`REPORTED` starts refine, `READY_FOR_DEV` implement, `IMPLEMENTED` verify, and the rest start
- * nothing — `REFINED` included: it waits on a person to schedule it (qits-887).
+ * no *phase* — `REFINED` included: `nextPhase` stays null there even though a person's `FLOW` press
+ * is no longer refused (qits-1075). That press schedules the ticket (`REFINED` → `READY_FOR_DEV`, as
+ * that person) and starts implementing in the same press; it is a schedule, not a phase, which is
+ * why `nextPhase` names none and {@link EntityDispatchStateDto.dispatchable} is what draws the
+ * button enabled.
  * That rule lives in exactly one place on the service (`PhasePrompts.phaseOf`) and the SPA learns its
  * answer from {@link EntityDispatchStateDto.nextPhase}; a switch here would be a second copy of it.
  */
@@ -699,13 +703,21 @@ export type EntityDispatchAnswer = EntityDispatchResponse | CampaignProgressResp
 /**
  * What a press *would* do, read before anybody presses — `GET /work/{q}/dispatch`.
  *
- * <p>This is what decides whether Dispatch and Run the next phase are offered and what they say:
- * `dispatchable` false (a VERIFIED, DONE or DROPPED entity, a blocked ticket, a feature or a task)
- * draws them disabled, and `nextPhase` names the phase a press starts. The refine action reads the
- * same answer — refinement is the REPORTED phase, which is `nextPhase === 'refine'` — so no screen
- * on this client maps a status word to a phase.
+ * <p>This is what decides whether Dispatch and Run the next phase are offered and what they say.
+ * `dispatchable` means **a `FLOW` press would run something** — false for a VERIFIED, DONE or
+ * DROPPED entity, a blocked ticket, a feature or a task, and, since qits-1075, true at an unblocked
+ * `REFINED` too: there a `FLOW` press does not start a phase, it schedules the ticket (`REFINED` →
+ * `READY_FOR_DEV`, as the pressing person) and starts implementing. Dispatch (`FLOW`) is enabled off
+ * `dispatchable` alone; Run the next phase (`PHASE`) stays keyed on `nextPhase`, which names the
+ * phase a press starts and is **null at `REFINED`** even once `dispatchable` is true — scheduling is
+ * not a phase. The refine action reads the same answer — refinement is the REPORTED phase, which is
+ * `nextPhase === 'refine'` — so no screen on this client maps a status word to a phase.
  *
  * <p>`mode` is the bit the last press stored, or null when nothing has pressed yet.
+ *
+ * <p>`preApprovedBy` names the person whose `FLOW` press on a `REPORTED` ticket pre-approved it: once
+ * it reaches `REFINED` the platform schedules it on their behalf with no further press needed. Null
+ * once nobody has pre-approved it, or once it has been scheduled and the field is cleared.
  */
 export interface EntityDispatchStateDto {
   readonly entityId: string;
@@ -715,6 +727,13 @@ export interface EntityDispatchStateDto {
   readonly blocked: boolean;
   readonly dispatchable: boolean;
   readonly mode: DispatchMode | null;
+  /**
+   * Who pre-approved this entity, or null. Added for qits-1075; `qits-projects-service`'s served DTO
+   * carries it as of the same change, so this is a plain field once that lands — not a client-side
+   * guess. Read defensively (`?? null`) wherever this is consumed until the service's answer is the
+   * one in front of you, in case an older service instance still omits it.
+   */
+  readonly preApprovedBy?: string | null;
 }
 
 /** The state, wrapped — the whole answer to `GET /projects/api/work/{q}/dispatch`. */
