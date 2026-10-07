@@ -13,9 +13,14 @@ import {
   provideQitsProjectList,
   provideQitsRepositoryList,
   provideQitsScope,
+  provideQitsStandardReportKinds,
   type QitsNavigation,
   type QitsRepositoriesSource,
+  type QitsReport,
+  type QitsReportSummary,
   type QitsRunReportsDto,
+  type QitsTestFailure,
+  type QitsTestResultsPayload,
 } from '@qits/ui-components';
 import { routes } from '../app.routes';
 import type {
@@ -107,7 +112,12 @@ const PLATFORM: QitsNavigation = {
       },
     ],
   },
-  applications: {},
+  // `QitsAppLinks.apiOrigin` — what the qits-755 code preview waits on to read qits-githost — reads
+  // only this map, never a slot entry's own `origin`, so qits-githost's needs stating here too, even
+  // though its slot entry above already names the same host for the Code link.
+  applications: {
+    'qits-githost': { origin: 'https://githost.dev.example.test' },
+  },
 };
 
 /**
@@ -217,11 +227,29 @@ function pipelineWith(
  * useValue: fake }`". `<qits-run-reports>` reads qits-ci's own origin, never this page's project
  * API, so there is no `HttpTestingController` request to flush for it — only this fake's call log
  * says whether the area read, and for which run.
+ *
+ * The second constructor argument is the one report `report()` hands back whichever summary it was
+ * asked for — a bare stub by default, so every existing caller that never opens a section need not
+ * pass one, and the qits-755 tests below their own `test-results` report, payload included.
  */
 class FakeReportsClient {
   readonly runReportsCalls: string[] = [];
 
-  constructor(private readonly run: QitsRunReportsDto) {}
+  constructor(
+    private readonly run: QitsRunReportsDto,
+    private readonly fullReport: QitsReport = {
+      id: 'rep-1',
+      kind: 'test-results',
+      kindVersion: 1,
+      stepIndex: 0,
+      highlights: [],
+      baselineRunId: null,
+      baselineVersion: null,
+      payloadBytes: 1,
+      submittedAt: '2026-09-04T16:00:00Z',
+      payload: {},
+    },
+  ) {}
 
   origin() {
     return of('');
@@ -233,7 +261,7 @@ class FakeReportsClient {
   }
 
   report() {
-    return of({ id: 'rep-1', kind: 'test-results', kindVersion: 1, payload: {} } as never);
+    return of(this.fullReport);
   }
 
   baseline() {
@@ -882,6 +910,182 @@ describe('ReleaseRequestDetailPage', () => {
       });
       await settle();
       expect(fake.runReportsCalls).toEqual(['run-9', 'run-9']);
+    });
+  });
+
+  /**
+   * The failure's test code (qits-755). `provideQitsStandardReportKinds()` — provided once in
+   * `app.config.ts` — is what wires `<qits-test-results-report>` into `<qits-run-reports>` and
+   * brings `provideQitsStandardFailureInsights()` with it, so opening a located failure inside the
+   * QA run's `test-results` section draws `<qits-failure-insights>` and, for a failure whose
+   * coordinates name a file and both ends of a line range, its code — read from qits-githost, once,
+   * only after the failure is opened.
+   *
+   * The repository is resolved through the chrome's own `QITS_REPOSITORIES` listing — the project
+   * in scope's, exactly as `withRepositories()` already sets it up for every other test here — so
+   * the failure's `coordinates.repository` below names the same project (`p1`, the `qits` slug
+   * `open()` navigates to) and the same repository (`qits-ci`, row id `repo-ci`) every other test in
+   * this file resolves through that listing.
+   */
+  describe('the located failure’s test code', () => {
+    const LOCATED_FILE = 'src/app/project/release-request-detail-page.ts';
+    const FILE_URL = `https://githost.dev.example.test${
+      '/githost/api/repositories'
+    }/${REPO}/file`;
+
+    function locatedFailure(): QitsTestFailure {
+      return {
+        coordinates: {
+          language: 'typescript',
+          tool: 'vitest',
+          repository: { projectId: 'p1', name: 'qits-ci' },
+          commitSha: FOLD,
+          file: LOCATED_FILE,
+          className: 'ReleaseRequestDetailPage',
+          testName: 'draws the located failure’s test code',
+          lineStart: 3,
+          lineEnd: 5,
+        },
+        shape: 'ASSERTION',
+        failureType: 'Error',
+        message: 'expected true to be false',
+        stackTrace: null,
+        durationMs: 12,
+      };
+    }
+
+    function testResultsReport(): QitsReport {
+      const payload: QitsTestResultsPayload = {
+        totals: { tests: 1, passed: 0, failed: 1, errored: 0, skipped: 0, durationMs: null },
+        suites: [],
+        failures: [locatedFailure()],
+        truncated: false,
+      };
+      return {
+        id: 'rep-1',
+        kind: 'test-results',
+        kindVersion: 1,
+        stepIndex: 0,
+        highlights: [],
+        baselineRunId: null,
+        baselineVersion: null,
+        payloadBytes: 1,
+        submittedAt: '2026-09-04T16:00:00Z',
+        payload,
+      };
+    }
+
+    /** A file of `count` lines, each saying its own number — the reference spec's own helper. */
+    function source(count: number): string {
+      return Array.from({ length: count }, (_, i) => `// line ${i + 1}`).join('\n') + '\n';
+    }
+
+    function fakeWithReport(): { fake: FakeReportsClient; report: QitsReport } {
+      const report = testResultsReport();
+      const summary: QitsReportSummary = {
+        id: report.id,
+        kind: report.kind,
+        kindVersion: report.kindVersion,
+        stepIndex: report.stepIndex,
+        highlights: report.highlights,
+        baselineRunId: report.baselineRunId,
+        baselineVersion: report.baselineVersion,
+        payloadBytes: report.payloadBytes,
+        submittedAt: report.submittedAt,
+      };
+      const fake = new FakeReportsClient(runReportsDto('run-9', { reports: [summary] }), report);
+      return { fake, report };
+    }
+
+    function openTestsSection(): void {
+      const toggle = [...page().querySelectorAll<HTMLButtonElement>('button.toggle')].find(
+        (button) => (button.textContent ?? '').includes('Tests'),
+      );
+      expect(toggle).toBeTruthy();
+      toggle!.click();
+    }
+
+    it('renders the QA run’s located failure in the Overview’s report area', async () => {
+      const { fake } = fakeWithReport();
+      withRepositories(provideQitsStandardReportKinds(), {
+        provide: QitsReportsClient,
+        useValue: fake,
+      });
+      await open();
+      await answer(request({ pipeline: pipelineWith('run-9') }));
+
+      openTestsSection();
+      await settle();
+      harness.fixture.detectChanges();
+
+      expect(page().querySelector('qits-test-results-report')).not.toBeNull();
+      expect(page().querySelector('button.message')?.textContent).toContain(
+        'expected true to be false',
+      );
+    });
+
+    it(
+      'reads nothing from qits-githost until the failure is opened, then reads its file once, ' +
+        'with the session',
+      async () => {
+        const { fake } = fakeWithReport();
+        withRepositories(provideQitsStandardReportKinds(), {
+          provide: QitsReportsClient,
+          useValue: fake,
+        });
+        await open();
+        await answer(request({ pipeline: pipelineWith('run-9') }));
+
+        openTestsSection();
+        await settle();
+        harness.fixture.detectChanges();
+
+        http.expectNone((entry) => entry.url.includes('/githost/api/repositories/'));
+
+        const message = page().querySelector<HTMLButtonElement>('button.message');
+        expect(message).toBeTruthy();
+        // No `await settle()` here: the read this click fires is left unflushed on purpose, and
+        // `settle()` waits for the application to go stable — which it never does while qits-ci's
+        // `QitsSourceFiles` holds a `PendingTasks` entry open for an unflushed request. The click's
+        // own effect runs synchronously inside `detectChanges()`, exactly as the library's own
+        // `code-preview-insight.spec.ts` relies on.
+        message!.click();
+        harness.fixture.detectChanges();
+
+        const read = http.expectOne((entry) => entry.url === FILE_URL);
+        expect(read.request.method).toBe('GET');
+        expect(read.request.withCredentials).toBe(true);
+        expect(read.request.params.get('rev')).toBe(FOLD);
+        expect(read.request.params.get('path')).toBe(LOCATED_FILE);
+      },
+    );
+
+    it('draws the excerpt starting at the failure’s first line, once the read answers', async () => {
+      const { fake } = fakeWithReport();
+      withRepositories(provideQitsStandardReportKinds(), {
+        provide: QitsReportsClient,
+        useValue: fake,
+      });
+      await open();
+      await answer(request({ pipeline: pipelineWith('run-9') }));
+
+      openTestsSection();
+      await settle();
+      harness.fixture.detectChanges();
+      // Left unflushed until after the read below, for the same reason as the previous test.
+      page().querySelector<HTMLButtonElement>('button.message')!.click();
+      harness.fixture.detectChanges();
+
+      http
+        .expectOne((entry) => entry.url === FILE_URL)
+        .flush({ path: LOCATED_FILE, binary: false, size: 100, content: source(10) });
+      await settle();
+      harness.fixture.detectChanges();
+
+      expect(page().querySelector('ol')?.getAttribute('start')).toBe('3');
+      expect(
+        [...page().querySelectorAll('.line .text')].map((line) => line.textContent),
+      ).toEqual(['// line 3', '// line 4', '// line 5']);
     });
   });
 

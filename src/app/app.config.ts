@@ -36,7 +36,9 @@ import { routes } from './app.routes';
 // `provideQitsStandardReportKinds` registers the two first report kinds' views — `test-results` and
 // `coverage` — with `<qits-run-reports>`, the generic report area the release request detail page
 // hosts for the QA run. Without it the area would still draw every highlight, but a section opened
-// on either kind would fall back to "no view for this report kind here".
+// on either kind would fall back to "no view for this report kind here". It also installs
+// `provideQitsStandardFailureInsights()` (qits-755), so opening a located failure in the
+// `test-results` section draws its test code, read from qits-githost.
 export const appConfig: ApplicationConfig = {
   providers: [
     provideBrowserGlobalErrorListeners(),
