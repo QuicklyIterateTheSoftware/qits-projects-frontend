@@ -1685,12 +1685,9 @@
                       {
                         "approval": null,
                         "evidence": null,
-                        "id": "00000000-0000-4000-8000-00000000000c",
-                        "kind": "ENTITY_STATUS",
-                        "predicate": {
-                          "entityId": "00000000-0000-4000-8000-000000000003",
-                          "status": "VERIFIED"
-                        },
+                        "id": "00000000-0000-4000-8000-000000000001",
+                        "kind": "APPROVAL",
+                        "predicate": {},
                         "satisfiedAt": null,
                         "seeded": false
                       }
@@ -1852,68 +1849,86 @@
                           "combine": "AND",
                           "matchers": [
                             {
-                              "match": "type",
-                              "max": 2,
-                              "min": 2
-                            }
-                          ]
-                        },
-                        "$.groups[*].criteria[*].id": {
-                          "combine": "AND",
-                          "matchers": [
-                            {
-                              "match": "regex",
-                              "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
-                            },
-                            {
-                              "match": "regex",
-                              "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
-                            }
-                          ]
-                        },
-                        "$.groups[*].criteria[*].kind": {
-                          "combine": "AND",
-                          "matchers": [
-                            {
-                              "match": "type"
-                            },
-                            {
-                              "match": "type"
-                            }
-                          ]
-                        },
-                        "$.groups[*].criteria[*].predicate.entityId": {
-                          "combine": "AND",
-                          "matchers": [
-                            {
-                              "match": "regex",
-                              "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
-                            },
-                            {
-                              "match": "regex",
-                              "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
-                            }
-                          ]
-                        },
-                        "$.groups[*].criteria[*].predicate.status": {
-                          "combine": "AND",
-                          "matchers": [
-                            {
-                              "match": "type"
-                            },
-                            {
-                              "match": "type"
-                            }
-                          ]
-                        },
-                        "$.groups[*].criteria[*].seeded": {
-                          "combine": "AND",
-                          "matchers": [
-                            {
-                              "match": "type"
-                            },
-                            {
-                              "match": "type"
+                              "match": "arrayContains",
+                              "variants": [
+                                {
+                                  "index": 0,
+                                  "rules": {
+                                    "$.id": {
+                                      "combine": "AND",
+                                      "matchers": [
+                                        {
+                                          "match": "regex",
+                                          "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                                        }
+                                      ]
+                                    },
+                                    "$.kind": {
+                                      "combine": "AND",
+                                      "matchers": [
+                                        {
+                                          "match": "type"
+                                        }
+                                      ]
+                                    },
+                                    "$.predicate.entityId": {
+                                      "combine": "AND",
+                                      "matchers": [
+                                        {
+                                          "match": "regex",
+                                          "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                                        }
+                                      ]
+                                    },
+                                    "$.predicate.status": {
+                                      "combine": "AND",
+                                      "matchers": [
+                                        {
+                                          "match": "type"
+                                        }
+                                      ]
+                                    },
+                                    "$.seeded": {
+                                      "combine": "AND",
+                                      "matchers": [
+                                        {
+                                          "match": "type"
+                                        }
+                                      ]
+                                    }
+                                  }
+                                },
+                                {
+                                  "index": 1,
+                                  "rules": {
+                                    "$.id": {
+                                      "combine": "AND",
+                                      "matchers": [
+                                        {
+                                          "match": "regex",
+                                          "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                                        }
+                                      ]
+                                    },
+                                    "$.kind": {
+                                      "combine": "AND",
+                                      "matchers": [
+                                        {
+                                          "match": "type"
+                                        }
+                                      ]
+                                    },
+                                    "$.seeded": {
+                                      "combine": "AND",
+                                      "matchers": [
+                                        {
+                                          "match": "type"
+                                        }
+                                      ]
+                                    }
+                                  }
+                                }
+                              ]
                             }
                           ]
                         },
@@ -5401,20 +5416,8 @@
                       "to": "READY_FOR_DEV"
                     },
                     {
-                      "gates": [
-                        "ACCEPTANCE_CRITERIA",
-                        "ACCEPTANCE_CRITERIA"
-                      ],
-                      "kind": "FORWARD",
-                      "to": "READY_FOR_DEV"
-                    },
-                    {
-                      "gates": [
-                        "ACCEPTANCE_CRITERIA",
-                        "ACCEPTANCE_CRITERIA"
-                      ],
-                      "kind": "FORWARD",
-                      "to": "READY_FOR_DEV"
+                      "kind": "BACK",
+                      "to": "REPORTED"
                     }
                   ],
                   "REPORTED": [
@@ -5426,11 +5429,8 @@
                       "to": "REFINED"
                     },
                     {
-                      "gates": [
-                        "ACCEPTANCE_CRITERIA"
-                      ],
-                      "kind": "FORWARD",
-                      "to": "REFINED"
+                      "kind": "DROP",
+                      "to": "DROPPED"
                     }
                   ],
                   "VERIFIED": [
@@ -5464,7 +5464,7 @@
                 }
               },
               {
-                "archetype": "EPIC",
+                "archetype": "TICKET",
                 "depth": 0,
                 "legalStatuses": [
                   "DONE",
@@ -5489,6 +5489,164 @@
                   "REPORTED"
                 ],
                 "mayBeRoot": true,
+                "permitted": [
+                  "TITLE",
+                  "TITLE",
+                  "TITLE",
+                  "TITLE",
+                  "TITLE",
+                  "TITLE",
+                  "TITLE",
+                  "TITLE",
+                  "TITLE"
+                ],
+                "required": [
+                  "TITLE",
+                  "TITLE",
+                  "TITLE"
+                ],
+                "requiredOnTransition": [
+                  "TITLE",
+                  "TITLE",
+                  "TITLE"
+                ],
+                "transitions": {
+                  "DONE": [],
+                  "DROPPED": [
+                    {
+                      "kind": "REOPEN",
+                      "to": "REPORTED"
+                    }
+                  ],
+                  "IMPLEMENTED": [
+                    {
+                      "kind": "FORWARD",
+                      "to": "VERIFYING"
+                    },
+                    {
+                      "kind": "FORWARD",
+                      "to": "VERIFYING"
+                    },
+                    {
+                      "kind": "FORWARD",
+                      "to": "VERIFYING"
+                    },
+                    {
+                      "kind": "FORWARD",
+                      "to": "VERIFYING"
+                    }
+                  ],
+                  "IMPLEMENTING": [
+                    {
+                      "kind": "FORWARD",
+                      "to": "IMPLEMENTED"
+                    },
+                    {
+                      "kind": "FORWARD",
+                      "to": "IMPLEMENTED"
+                    }
+                  ],
+                  "READY_FOR_DEV": [
+                    {
+                      "kind": "FORWARD",
+                      "to": "IMPLEMENTING"
+                    },
+                    {
+                      "kind": "FORWARD",
+                      "to": "IMPLEMENTING"
+                    },
+                    {
+                      "kind": "FORWARD",
+                      "to": "IMPLEMENTING"
+                    },
+                    {
+                      "kind": "FORWARD",
+                      "to": "IMPLEMENTING"
+                    }
+                  ],
+                  "REFINED": [
+                    {
+                      "gates": [
+                        "ACCEPTANCE_CRITERIA",
+                        "ACCEPTANCE_CRITERIA"
+                      ],
+                      "kind": "FORWARD",
+                      "to": "READY_FOR_DEV"
+                    },
+                    {
+                      "kind": "BACK",
+                      "to": "REPORTED"
+                    }
+                  ],
+                  "REPORTED": [
+                    {
+                      "gates": [
+                        "ACCEPTANCE_CRITERIA"
+                      ],
+                      "kind": "FORWARD",
+                      "to": "REFINED"
+                    },
+                    {
+                      "kind": "DROP",
+                      "to": "DROPPED"
+                    }
+                  ],
+                  "VERIFIED": [
+                    {
+                      "kind": "FORWARD",
+                      "to": "DONE"
+                    },
+                    {
+                      "kind": "FORWARD",
+                      "to": "DONE"
+                    },
+                    {
+                      "kind": "FORWARD",
+                      "to": "DONE"
+                    }
+                  ],
+                  "VERIFYING": [
+                    {
+                      "kind": "FORWARD",
+                      "to": "VERIFIED"
+                    },
+                    {
+                      "kind": "FORWARD",
+                      "to": "VERIFIED"
+                    },
+                    {
+                      "kind": "FORWARD",
+                      "to": "VERIFIED"
+                    }
+                  ]
+                }
+              },
+              {
+                "archetype": "FEATURE",
+                "depth": 1,
+                "legalStatuses": [
+                  "DONE",
+                  "DONE",
+                  "DONE",
+                  "DONE",
+                  "DONE",
+                  "DONE",
+                  "DONE",
+                  "DONE",
+                  "DONE"
+                ],
+                "lifecycle": [
+                  "REPORTED",
+                  "REPORTED",
+                  "REPORTED",
+                  "REPORTED",
+                  "REPORTED",
+                  "REPORTED",
+                  "REPORTED",
+                  "REPORTED",
+                  "REPORTED"
+                ],
+                "mayBeRoot": false,
                 "permitted": [
                   "TITLE",
                   "TITLE",
@@ -5562,41 +5720,22 @@
                   "REFINED": [
                     {
                       "gates": [
-                        "ACCEPTANCE_CRITERIA",
-                        "ACCEPTANCE_CRITERIA"
+                        "PERSON_APPROVAL"
                       ],
                       "kind": "FORWARD",
                       "to": "READY_FOR_DEV"
                     },
                     {
-                      "gates": [
-                        "ACCEPTANCE_CRITERIA",
-                        "ACCEPTANCE_CRITERIA"
-                      ],
-                      "kind": "FORWARD",
-                      "to": "READY_FOR_DEV"
-                    },
-                    {
-                      "gates": [
-                        "ACCEPTANCE_CRITERIA",
-                        "ACCEPTANCE_CRITERIA"
-                      ],
-                      "kind": "FORWARD",
-                      "to": "READY_FOR_DEV"
+                      "kind": "BACK",
+                      "to": "REPORTED"
                     }
                   ],
                   "REPORTED": [
                     {
-                      "gates": [
-                        "ACCEPTANCE_CRITERIA"
-                      ],
                       "kind": "FORWARD",
                       "to": "REFINED"
                     },
                     {
-                      "gates": [
-                        "ACCEPTANCE_CRITERIA"
-                      ],
                       "kind": "FORWARD",
                       "to": "REFINED"
                     }
@@ -5632,8 +5771,8 @@
                 }
               },
               {
-                "archetype": "EPIC",
-                "depth": 0,
+                "archetype": "TASK",
+                "depth": 2,
                 "legalStatuses": [
                   "DONE",
                   "DONE",
@@ -5656,8 +5795,9 @@
                   "REPORTED",
                   "REPORTED"
                 ],
-                "mayBeRoot": true,
+                "mayBeRoot": false,
                 "permitted": [
+                  "TITLE",
                   "TITLE",
                   "TITLE",
                   "TITLE",
@@ -5667,9 +5807,11 @@
                   "TITLE"
                 ],
                 "required": [
+                  "TITLE",
                   "TITLE"
                 ],
                 "requiredOnTransition": [
+                  "TITLE",
                   "TITLE",
                   "TITLE"
                 ],
@@ -5730,41 +5872,22 @@
                   "REFINED": [
                     {
                       "gates": [
-                        "ACCEPTANCE_CRITERIA",
-                        "ACCEPTANCE_CRITERIA"
+                        "PERSON_APPROVAL"
                       ],
                       "kind": "FORWARD",
                       "to": "READY_FOR_DEV"
                     },
                     {
-                      "gates": [
-                        "ACCEPTANCE_CRITERIA",
-                        "ACCEPTANCE_CRITERIA"
-                      ],
-                      "kind": "FORWARD",
-                      "to": "READY_FOR_DEV"
-                    },
-                    {
-                      "gates": [
-                        "ACCEPTANCE_CRITERIA",
-                        "ACCEPTANCE_CRITERIA"
-                      ],
-                      "kind": "FORWARD",
-                      "to": "READY_FOR_DEV"
+                      "kind": "BACK",
+                      "to": "REPORTED"
                     }
                   ],
                   "REPORTED": [
                     {
-                      "gates": [
-                        "ACCEPTANCE_CRITERIA"
-                      ],
                       "kind": "FORWARD",
                       "to": "REFINED"
                     },
                     {
-                      "gates": [
-                        "ACCEPTANCE_CRITERIA"
-                      ],
                       "kind": "FORWARD",
                       "to": "REFINED"
                     }
@@ -5800,11 +5923,9 @@
                 }
               },
               {
-                "archetype": "EPIC",
-                "depth": 0,
+                "archetype": "CAMPAIGN",
+                "depth": -1,
                 "legalStatuses": [
-                  "DONE",
-                  "DONE",
                   "DONE",
                   "DONE",
                   "DONE",
@@ -5820,15 +5941,10 @@
                   "REPORTED",
                   "REPORTED",
                   "REPORTED",
-                  "REPORTED",
-                  "REPORTED",
                   "REPORTED"
                 ],
                 "mayBeRoot": true,
                 "permitted": [
-                  "TITLE",
-                  "TITLE",
-                  "TITLE",
                   "TITLE",
                   "TITLE",
                   "TITLE",
@@ -5852,255 +5968,51 @@
                   "IMPLEMENTED": [
                     {
                       "kind": "FORWARD",
-                      "to": "VERIFYING"
+                      "to": "VERIFIED"
                     },
                     {
                       "kind": "FORWARD",
-                      "to": "VERIFYING"
+                      "to": "VERIFIED"
                     },
                     {
                       "kind": "FORWARD",
-                      "to": "VERIFYING"
-                    },
-                    {
-                      "kind": "FORWARD",
-                      "to": "VERIFYING"
-                    }
-                  ],
-                  "IMPLEMENTING": [
-                    {
-                      "kind": "FORWARD",
-                      "to": "IMPLEMENTED"
-                    },
-                    {
-                      "kind": "FORWARD",
-                      "to": "IMPLEMENTED"
+                      "to": "VERIFIED"
                     }
                   ],
                   "READY_FOR_DEV": [
                     {
                       "kind": "FORWARD",
-                      "to": "IMPLEMENTING"
+                      "to": "IMPLEMENTED"
                     },
                     {
                       "kind": "FORWARD",
-                      "to": "IMPLEMENTING"
+                      "to": "IMPLEMENTED"
                     },
                     {
                       "kind": "FORWARD",
-                      "to": "IMPLEMENTING"
-                    },
-                    {
-                      "kind": "FORWARD",
-                      "to": "IMPLEMENTING"
+                      "to": "IMPLEMENTED"
                     }
                   ],
                   "REFINED": [
                     {
                       "gates": [
-                        "ACCEPTANCE_CRITERIA",
-                        "ACCEPTANCE_CRITERIA"
+                        "MEMBERS_SCHEDULED",
+                        "MEMBERS_SCHEDULED"
                       ],
                       "kind": "FORWARD",
                       "to": "READY_FOR_DEV"
                     },
                     {
-                      "gates": [
-                        "ACCEPTANCE_CRITERIA",
-                        "ACCEPTANCE_CRITERIA"
-                      ],
-                      "kind": "FORWARD",
-                      "to": "READY_FOR_DEV"
-                    },
-                    {
-                      "gates": [
-                        "ACCEPTANCE_CRITERIA",
-                        "ACCEPTANCE_CRITERIA"
-                      ],
-                      "kind": "FORWARD",
-                      "to": "READY_FOR_DEV"
-                    }
-                  ],
-                  "REPORTED": [
-                    {
-                      "gates": [
-                        "ACCEPTANCE_CRITERIA"
-                      ],
-                      "kind": "FORWARD",
-                      "to": "REFINED"
-                    },
-                    {
-                      "gates": [
-                        "ACCEPTANCE_CRITERIA"
-                      ],
-                      "kind": "FORWARD",
-                      "to": "REFINED"
-                    }
-                  ],
-                  "VERIFIED": [
-                    {
-                      "kind": "FORWARD",
-                      "to": "DONE"
-                    },
-                    {
-                      "kind": "FORWARD",
-                      "to": "DONE"
-                    },
-                    {
-                      "kind": "FORWARD",
-                      "to": "DONE"
-                    }
-                  ],
-                  "VERIFYING": [
-                    {
-                      "kind": "FORWARD",
-                      "to": "VERIFIED"
-                    },
-                    {
-                      "kind": "FORWARD",
-                      "to": "VERIFIED"
-                    },
-                    {
-                      "kind": "FORWARD",
-                      "to": "VERIFIED"
-                    }
-                  ]
-                }
-              },
-              {
-                "archetype": "EPIC",
-                "depth": 0,
-                "legalStatuses": [
-                  "DONE",
-                  "DONE",
-                  "DONE",
-                  "DONE",
-                  "DONE",
-                  "DONE",
-                  "DONE",
-                  "DONE",
-                  "DONE"
-                ],
-                "lifecycle": [
-                  "REPORTED",
-                  "REPORTED",
-                  "REPORTED",
-                  "REPORTED",
-                  "REPORTED",
-                  "REPORTED",
-                  "REPORTED",
-                  "REPORTED",
-                  "REPORTED"
-                ],
-                "mayBeRoot": true,
-                "permitted": [
-                  "TITLE",
-                  "TITLE",
-                  "TITLE",
-                  "TITLE",
-                  "TITLE",
-                  "TITLE",
-                  "TITLE"
-                ],
-                "required": [
-                  "TITLE"
-                ],
-                "requiredOnTransition": [
-                  "TITLE",
-                  "TITLE"
-                ],
-                "transitions": {
-                  "DONE": [],
-                  "DROPPED": [
-                    {
-                      "kind": "REOPEN",
+                      "kind": "BACK",
                       "to": "REPORTED"
                     }
                   ],
-                  "IMPLEMENTED": [
-                    {
-                      "kind": "FORWARD",
-                      "to": "VERIFYING"
-                    },
-                    {
-                      "kind": "FORWARD",
-                      "to": "VERIFYING"
-                    },
-                    {
-                      "kind": "FORWARD",
-                      "to": "VERIFYING"
-                    },
-                    {
-                      "kind": "FORWARD",
-                      "to": "VERIFYING"
-                    }
-                  ],
-                  "IMPLEMENTING": [
-                    {
-                      "kind": "FORWARD",
-                      "to": "IMPLEMENTED"
-                    },
-                    {
-                      "kind": "FORWARD",
-                      "to": "IMPLEMENTED"
-                    }
-                  ],
-                  "READY_FOR_DEV": [
-                    {
-                      "kind": "FORWARD",
-                      "to": "IMPLEMENTING"
-                    },
-                    {
-                      "kind": "FORWARD",
-                      "to": "IMPLEMENTING"
-                    },
-                    {
-                      "kind": "FORWARD",
-                      "to": "IMPLEMENTING"
-                    },
-                    {
-                      "kind": "FORWARD",
-                      "to": "IMPLEMENTING"
-                    }
-                  ],
-                  "REFINED": [
-                    {
-                      "gates": [
-                        "ACCEPTANCE_CRITERIA",
-                        "ACCEPTANCE_CRITERIA"
-                      ],
-                      "kind": "FORWARD",
-                      "to": "READY_FOR_DEV"
-                    },
-                    {
-                      "gates": [
-                        "ACCEPTANCE_CRITERIA",
-                        "ACCEPTANCE_CRITERIA"
-                      ],
-                      "kind": "FORWARD",
-                      "to": "READY_FOR_DEV"
-                    },
-                    {
-                      "gates": [
-                        "ACCEPTANCE_CRITERIA",
-                        "ACCEPTANCE_CRITERIA"
-                      ],
-                      "kind": "FORWARD",
-                      "to": "READY_FOR_DEV"
-                    }
-                  ],
                   "REPORTED": [
                     {
-                      "gates": [
-                        "ACCEPTANCE_CRITERIA"
-                      ],
                       "kind": "FORWARD",
                       "to": "REFINED"
                     },
                     {
-                      "gates": [
-                        "ACCEPTANCE_CRITERIA"
-                      ],
                       "kind": "FORWARD",
                       "to": "REFINED"
                     }
@@ -6117,20 +6029,6 @@
                     {
                       "kind": "FORWARD",
                       "to": "DONE"
-                    }
-                  ],
-                  "VERIFYING": [
-                    {
-                      "kind": "FORWARD",
-                      "to": "VERIFIED"
-                    },
-                    {
-                      "kind": "FORWARD",
-                      "to": "VERIFIED"
-                    },
-                    {
-                      "kind": "FORWARD",
-                      "to": "VERIFIED"
                     }
                   ]
                 }
@@ -6171,1909 +6069,2575 @@
               "combine": "AND",
               "matchers": [
                 {
-                  "match": "type",
-                  "max": 5,
-                  "min": 5
-                }
-              ]
-            },
-            "$.archetypes[*].archetype": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.archetypes[*].depth": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "number"
-                },
-                {
-                  "match": "number"
-                },
-                {
-                  "match": "number"
-                },
-                {
-                  "match": "number"
-                },
-                {
-                  "match": "number"
-                }
-              ]
-            },
-            "$.archetypes[*].legalStatuses": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type",
-                  "max": 9,
-                  "min": 9
-                },
-                {
-                  "match": "type",
-                  "max": 9,
-                  "min": 9
-                },
-                {
-                  "match": "type",
-                  "max": 9,
-                  "min": 9
-                },
-                {
-                  "match": "type",
-                  "max": 9,
-                  "min": 9
-                },
-                {
-                  "match": "type",
-                  "max": 9,
-                  "min": 9
-                }
-              ]
-            },
-            "$.archetypes[*].legalStatuses[*]": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.archetypes[*].lifecycle": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type",
-                  "max": 9,
-                  "min": 9
-                },
-                {
-                  "match": "type",
-                  "max": 9,
-                  "min": 9
-                },
-                {
-                  "match": "type",
-                  "max": 9,
-                  "min": 9
-                },
-                {
-                  "match": "type",
-                  "max": 9,
-                  "min": 9
-                },
-                {
-                  "match": "type",
-                  "max": 9,
-                  "min": 9
-                }
-              ]
-            },
-            "$.archetypes[*].lifecycle[*]": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.archetypes[*].mayBeRoot": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.archetypes[*].permitted": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type",
-                  "max": 7,
-                  "min": 7
-                },
-                {
-                  "match": "type",
-                  "max": 7,
-                  "min": 7
-                },
-                {
-                  "match": "type",
-                  "max": 7,
-                  "min": 7
-                },
-                {
-                  "match": "type",
-                  "max": 7,
-                  "min": 7
-                },
-                {
-                  "match": "type",
-                  "max": 7,
-                  "min": 7
-                }
-              ]
-            },
-            "$.archetypes[*].permitted[*]": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.archetypes[*].required": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type",
-                  "max": 1,
-                  "min": 1
-                },
-                {
-                  "match": "type",
-                  "max": 1,
-                  "min": 1
-                },
-                {
-                  "match": "type",
-                  "max": 1,
-                  "min": 1
-                },
-                {
-                  "match": "type",
-                  "max": 1,
-                  "min": 1
-                },
-                {
-                  "match": "type",
-                  "max": 1,
-                  "min": 1
-                }
-              ]
-            },
-            "$.archetypes[*].requiredOnTransition": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type",
-                  "max": 2,
-                  "min": 2
-                },
-                {
-                  "match": "type",
-                  "max": 2,
-                  "min": 2
-                },
-                {
-                  "match": "type",
-                  "max": 2,
-                  "min": 2
-                },
-                {
-                  "match": "type",
-                  "max": 2,
-                  "min": 2
-                },
-                {
-                  "match": "type",
-                  "max": 2,
-                  "min": 2
-                }
-              ]
-            },
-            "$.archetypes[*].requiredOnTransition[*]": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.archetypes[*].required[*]": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.archetypes[*].transitions.DROPPED": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type",
-                  "max": 1,
-                  "min": 1
-                },
-                {
-                  "match": "type",
-                  "max": 1,
-                  "min": 1
-                },
-                {
-                  "match": "type",
-                  "max": 1,
-                  "min": 1
-                },
-                {
-                  "match": "type",
-                  "max": 1,
-                  "min": 1
-                },
-                {
-                  "match": "type",
-                  "max": 1,
-                  "min": 1
-                }
-              ]
-            },
-            "$.archetypes[*].transitions.DROPPED[*].kind": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.archetypes[*].transitions.DROPPED[*].to": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.archetypes[*].transitions.IMPLEMENTED": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type",
-                  "max": 4,
-                  "min": 4
-                },
-                {
-                  "match": "type",
-                  "max": 4,
-                  "min": 4
-                },
-                {
-                  "match": "type",
-                  "max": 4,
-                  "min": 4
-                },
-                {
-                  "match": "type",
-                  "max": 4,
-                  "min": 4
-                },
-                {
-                  "match": "type",
-                  "max": 4,
-                  "min": 4
-                }
-              ]
-            },
-            "$.archetypes[*].transitions.IMPLEMENTED[*].kind": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.archetypes[*].transitions.IMPLEMENTED[*].to": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.archetypes[*].transitions.IMPLEMENTING": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type",
-                  "max": 2,
-                  "min": 2
-                },
-                {
-                  "match": "type",
-                  "max": 2,
-                  "min": 2
-                },
-                {
-                  "match": "type",
-                  "max": 2,
-                  "min": 2
-                },
-                {
-                  "match": "type",
-                  "max": 2,
-                  "min": 2
-                },
-                {
-                  "match": "type",
-                  "max": 2,
-                  "min": 2
-                }
-              ]
-            },
-            "$.archetypes[*].transitions.IMPLEMENTING[*].kind": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.archetypes[*].transitions.IMPLEMENTING[*].to": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.archetypes[*].transitions.READY_FOR_DEV": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type",
-                  "max": 4,
-                  "min": 4
-                },
-                {
-                  "match": "type",
-                  "max": 4,
-                  "min": 4
-                },
-                {
-                  "match": "type",
-                  "max": 4,
-                  "min": 4
-                },
-                {
-                  "match": "type",
-                  "max": 4,
-                  "min": 4
-                },
-                {
-                  "match": "type",
-                  "max": 4,
-                  "min": 4
-                }
-              ]
-            },
-            "$.archetypes[*].transitions.READY_FOR_DEV[*].kind": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.archetypes[*].transitions.READY_FOR_DEV[*].to": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.archetypes[*].transitions.REFINED": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type",
-                  "max": 3,
-                  "min": 3
-                },
-                {
-                  "match": "type",
-                  "max": 3,
-                  "min": 3
-                },
-                {
-                  "match": "type",
-                  "max": 3,
-                  "min": 3
-                },
-                {
-                  "match": "type",
-                  "max": 3,
-                  "min": 3
-                },
-                {
-                  "match": "type",
-                  "max": 3,
-                  "min": 3
-                }
-              ]
-            },
-            "$.archetypes[*].transitions.REFINED[*].gates": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type",
-                  "max": 2,
-                  "min": 2
-                },
-                {
-                  "match": "type",
-                  "max": 2,
-                  "min": 2
-                },
-                {
-                  "match": "type",
-                  "max": 2,
-                  "min": 2
-                },
-                {
-                  "match": "type",
-                  "max": 2,
-                  "min": 2
-                },
-                {
-                  "match": "type",
-                  "max": 2,
-                  "min": 2
-                },
-                {
-                  "match": "type",
-                  "max": 2,
-                  "min": 2
-                },
-                {
-                  "match": "type",
-                  "max": 2,
-                  "min": 2
-                },
-                {
-                  "match": "type",
-                  "max": 2,
-                  "min": 2
-                },
-                {
-                  "match": "type",
-                  "max": 2,
-                  "min": 2
-                },
-                {
-                  "match": "type",
-                  "max": 2,
-                  "min": 2
-                },
-                {
-                  "match": "type",
-                  "max": 2,
-                  "min": 2
-                },
-                {
-                  "match": "type",
-                  "max": 2,
-                  "min": 2
-                },
-                {
-                  "match": "type",
-                  "max": 2,
-                  "min": 2
-                },
-                {
-                  "match": "type",
-                  "max": 2,
-                  "min": 2
-                },
-                {
-                  "match": "type",
-                  "max": 2,
-                  "min": 2
-                }
-              ]
-            },
-            "$.archetypes[*].transitions.REFINED[*].gates[*]": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.archetypes[*].transitions.REFINED[*].kind": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.archetypes[*].transitions.REFINED[*].to": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.archetypes[*].transitions.REPORTED": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type",
-                  "max": 2,
-                  "min": 2
-                },
-                {
-                  "match": "type",
-                  "max": 2,
-                  "min": 2
-                },
-                {
-                  "match": "type",
-                  "max": 2,
-                  "min": 2
-                },
-                {
-                  "match": "type",
-                  "max": 2,
-                  "min": 2
-                },
-                {
-                  "match": "type",
-                  "max": 2,
-                  "min": 2
-                }
-              ]
-            },
-            "$.archetypes[*].transitions.REPORTED[*].gates": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type",
-                  "max": 1,
-                  "min": 1
-                },
-                {
-                  "match": "type",
-                  "max": 1,
-                  "min": 1
-                },
-                {
-                  "match": "type",
-                  "max": 1,
-                  "min": 1
-                },
-                {
-                  "match": "type",
-                  "max": 1,
-                  "min": 1
-                },
-                {
-                  "match": "type",
-                  "max": 1,
-                  "min": 1
-                },
-                {
-                  "match": "type",
-                  "max": 1,
-                  "min": 1
-                },
-                {
-                  "match": "type",
-                  "max": 1,
-                  "min": 1
-                },
-                {
-                  "match": "type",
-                  "max": 1,
-                  "min": 1
-                },
-                {
-                  "match": "type",
-                  "max": 1,
-                  "min": 1
-                },
-                {
-                  "match": "type",
-                  "max": 1,
-                  "min": 1
-                }
-              ]
-            },
-            "$.archetypes[*].transitions.REPORTED[*].gates[*]": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.archetypes[*].transitions.REPORTED[*].kind": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.archetypes[*].transitions.REPORTED[*].to": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.archetypes[*].transitions.VERIFIED": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type",
-                  "max": 3,
-                  "min": 3
-                },
-                {
-                  "match": "type",
-                  "max": 3,
-                  "min": 3
-                },
-                {
-                  "match": "type",
-                  "max": 3,
-                  "min": 3
-                },
-                {
-                  "match": "type",
-                  "max": 3,
-                  "min": 3
-                },
-                {
-                  "match": "type",
-                  "max": 3,
-                  "min": 3
-                }
-              ]
-            },
-            "$.archetypes[*].transitions.VERIFIED[*].kind": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.archetypes[*].transitions.VERIFIED[*].to": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.archetypes[*].transitions.VERIFYING": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type",
-                  "max": 3,
-                  "min": 3
-                },
-                {
-                  "match": "type",
-                  "max": 3,
-                  "min": 3
-                },
-                {
-                  "match": "type",
-                  "max": 3,
-                  "min": 3
-                },
-                {
-                  "match": "type",
-                  "max": 3,
-                  "min": 3
-                },
-                {
-                  "match": "type",
-                  "max": 3,
-                  "min": 3
-                }
-              ]
-            },
-            "$.archetypes[*].transitions.VERIFYING[*].kind": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.archetypes[*].transitions.VERIFYING[*].to": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
-                },
-                {
-                  "match": "type"
+                  "match": "arrayContains",
+                  "variants": [
+                    {
+                      "index": 0,
+                      "rules": {
+                        "$.archetype": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.depth": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "number"
+                            }
+                          ]
+                        },
+                        "$.legalStatuses": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type",
+                              "max": 9,
+                              "min": 9
+                            }
+                          ]
+                        },
+                        "$.legalStatuses[*]": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.lifecycle": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type",
+                              "max": 9,
+                              "min": 9
+                            }
+                          ]
+                        },
+                        "$.lifecycle[*]": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.mayBeRoot": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.permitted": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type",
+                              "max": 7,
+                              "min": 7
+                            }
+                          ]
+                        },
+                        "$.permitted[*]": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.required": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type",
+                              "max": 1,
+                              "min": 1
+                            }
+                          ]
+                        },
+                        "$.requiredOnTransition": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type",
+                              "max": 2,
+                              "min": 2
+                            }
+                          ]
+                        },
+                        "$.requiredOnTransition[*]": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.required[*]": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.transitions.DROPPED": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type",
+                              "max": 1,
+                              "min": 1
+                            }
+                          ]
+                        },
+                        "$.transitions.DROPPED[*].kind": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.transitions.DROPPED[*].to": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.transitions.IMPLEMENTED": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type",
+                              "max": 4,
+                              "min": 4
+                            }
+                          ]
+                        },
+                        "$.transitions.IMPLEMENTED[*].kind": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.transitions.IMPLEMENTED[*].to": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.transitions.IMPLEMENTING": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type",
+                              "max": 2,
+                              "min": 2
+                            }
+                          ]
+                        },
+                        "$.transitions.IMPLEMENTING[*].kind": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.transitions.IMPLEMENTING[*].to": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.transitions.READY_FOR_DEV": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type",
+                              "max": 4,
+                              "min": 4
+                            }
+                          ]
+                        },
+                        "$.transitions.READY_FOR_DEV[*].kind": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.transitions.READY_FOR_DEV[*].to": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.transitions.REFINED": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "arrayContains",
+                              "variants": [
+                                {
+                                  "index": 0,
+                                  "rules": {
+                                    "$.gates": {
+                                      "combine": "AND",
+                                      "matchers": [
+                                        {
+                                          "match": "type",
+                                          "max": 2,
+                                          "min": 2
+                                        }
+                                      ]
+                                    },
+                                    "$.gates[*]": {
+                                      "combine": "AND",
+                                      "matchers": [
+                                        {
+                                          "match": "type"
+                                        },
+                                        {
+                                          "match": "type"
+                                        }
+                                      ]
+                                    },
+                                    "$.kind": {
+                                      "combine": "AND",
+                                      "matchers": [
+                                        {
+                                          "match": "type"
+                                        }
+                                      ]
+                                    },
+                                    "$.to": {
+                                      "combine": "AND",
+                                      "matchers": [
+                                        {
+                                          "match": "type"
+                                        }
+                                      ]
+                                    }
+                                  }
+                                },
+                                {
+                                  "index": 1,
+                                  "rules": {
+                                    "$.kind": {
+                                      "combine": "AND",
+                                      "matchers": [
+                                        {
+                                          "match": "type"
+                                        }
+                                      ]
+                                    },
+                                    "$.to": {
+                                      "combine": "AND",
+                                      "matchers": [
+                                        {
+                                          "match": "type"
+                                        }
+                                      ]
+                                    }
+                                  }
+                                }
+                              ]
+                            }
+                          ]
+                        },
+                        "$.transitions.REPORTED": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "arrayContains",
+                              "variants": [
+                                {
+                                  "index": 0,
+                                  "rules": {
+                                    "$.gates": {
+                                      "combine": "AND",
+                                      "matchers": [
+                                        {
+                                          "match": "type",
+                                          "max": 1,
+                                          "min": 1
+                                        }
+                                      ]
+                                    },
+                                    "$.gates[*]": {
+                                      "combine": "AND",
+                                      "matchers": [
+                                        {
+                                          "match": "type"
+                                        }
+                                      ]
+                                    },
+                                    "$.kind": {
+                                      "combine": "AND",
+                                      "matchers": [
+                                        {
+                                          "match": "type"
+                                        }
+                                      ]
+                                    },
+                                    "$.to": {
+                                      "combine": "AND",
+                                      "matchers": [
+                                        {
+                                          "match": "type"
+                                        }
+                                      ]
+                                    }
+                                  }
+                                },
+                                {
+                                  "index": 1,
+                                  "rules": {
+                                    "$.kind": {
+                                      "combine": "AND",
+                                      "matchers": [
+                                        {
+                                          "match": "type"
+                                        }
+                                      ]
+                                    },
+                                    "$.to": {
+                                      "combine": "AND",
+                                      "matchers": [
+                                        {
+                                          "match": "type"
+                                        }
+                                      ]
+                                    }
+                                  }
+                                }
+                              ]
+                            }
+                          ]
+                        },
+                        "$.transitions.VERIFIED": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type",
+                              "max": 3,
+                              "min": 3
+                            }
+                          ]
+                        },
+                        "$.transitions.VERIFIED[*].kind": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.transitions.VERIFIED[*].to": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.transitions.VERIFYING": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type",
+                              "max": 3,
+                              "min": 3
+                            }
+                          ]
+                        },
+                        "$.transitions.VERIFYING[*].kind": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.transitions.VERIFYING[*].to": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        }
+                      }
+                    },
+                    {
+                      "index": 1,
+                      "rules": {
+                        "$.archetype": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.depth": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "number"
+                            }
+                          ]
+                        },
+                        "$.legalStatuses": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type",
+                              "max": 9,
+                              "min": 9
+                            }
+                          ]
+                        },
+                        "$.legalStatuses[*]": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.lifecycle": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type",
+                              "max": 9,
+                              "min": 9
+                            }
+                          ]
+                        },
+                        "$.lifecycle[*]": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.mayBeRoot": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.permitted": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type",
+                              "max": 9,
+                              "min": 9
+                            }
+                          ]
+                        },
+                        "$.permitted[*]": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.required": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type",
+                              "max": 3,
+                              "min": 3
+                            }
+                          ]
+                        },
+                        "$.requiredOnTransition": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type",
+                              "max": 3,
+                              "min": 3
+                            }
+                          ]
+                        },
+                        "$.requiredOnTransition[*]": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.required[*]": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.transitions.DROPPED": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type",
+                              "max": 1,
+                              "min": 1
+                            }
+                          ]
+                        },
+                        "$.transitions.DROPPED[*].kind": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.transitions.DROPPED[*].to": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.transitions.IMPLEMENTED": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type",
+                              "max": 4,
+                              "min": 4
+                            }
+                          ]
+                        },
+                        "$.transitions.IMPLEMENTED[*].kind": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.transitions.IMPLEMENTED[*].to": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.transitions.IMPLEMENTING": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type",
+                              "max": 2,
+                              "min": 2
+                            }
+                          ]
+                        },
+                        "$.transitions.IMPLEMENTING[*].kind": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.transitions.IMPLEMENTING[*].to": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.transitions.READY_FOR_DEV": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type",
+                              "max": 4,
+                              "min": 4
+                            }
+                          ]
+                        },
+                        "$.transitions.READY_FOR_DEV[*].kind": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.transitions.READY_FOR_DEV[*].to": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.transitions.REFINED": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "arrayContains",
+                              "variants": [
+                                {
+                                  "index": 0,
+                                  "rules": {
+                                    "$.gates": {
+                                      "combine": "AND",
+                                      "matchers": [
+                                        {
+                                          "match": "type",
+                                          "max": 2,
+                                          "min": 2
+                                        }
+                                      ]
+                                    },
+                                    "$.gates[*]": {
+                                      "combine": "AND",
+                                      "matchers": [
+                                        {
+                                          "match": "type"
+                                        },
+                                        {
+                                          "match": "type"
+                                        }
+                                      ]
+                                    },
+                                    "$.kind": {
+                                      "combine": "AND",
+                                      "matchers": [
+                                        {
+                                          "match": "type"
+                                        }
+                                      ]
+                                    },
+                                    "$.to": {
+                                      "combine": "AND",
+                                      "matchers": [
+                                        {
+                                          "match": "type"
+                                        }
+                                      ]
+                                    }
+                                  }
+                                },
+                                {
+                                  "index": 1,
+                                  "rules": {
+                                    "$.kind": {
+                                      "combine": "AND",
+                                      "matchers": [
+                                        {
+                                          "match": "type"
+                                        }
+                                      ]
+                                    },
+                                    "$.to": {
+                                      "combine": "AND",
+                                      "matchers": [
+                                        {
+                                          "match": "type"
+                                        }
+                                      ]
+                                    }
+                                  }
+                                }
+                              ]
+                            }
+                          ]
+                        },
+                        "$.transitions.REPORTED": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "arrayContains",
+                              "variants": [
+                                {
+                                  "index": 0,
+                                  "rules": {
+                                    "$.gates": {
+                                      "combine": "AND",
+                                      "matchers": [
+                                        {
+                                          "match": "type",
+                                          "max": 1,
+                                          "min": 1
+                                        }
+                                      ]
+                                    },
+                                    "$.gates[*]": {
+                                      "combine": "AND",
+                                      "matchers": [
+                                        {
+                                          "match": "type"
+                                        }
+                                      ]
+                                    },
+                                    "$.kind": {
+                                      "combine": "AND",
+                                      "matchers": [
+                                        {
+                                          "match": "type"
+                                        }
+                                      ]
+                                    },
+                                    "$.to": {
+                                      "combine": "AND",
+                                      "matchers": [
+                                        {
+                                          "match": "type"
+                                        }
+                                      ]
+                                    }
+                                  }
+                                },
+                                {
+                                  "index": 1,
+                                  "rules": {
+                                    "$.kind": {
+                                      "combine": "AND",
+                                      "matchers": [
+                                        {
+                                          "match": "type"
+                                        }
+                                      ]
+                                    },
+                                    "$.to": {
+                                      "combine": "AND",
+                                      "matchers": [
+                                        {
+                                          "match": "type"
+                                        }
+                                      ]
+                                    }
+                                  }
+                                }
+                              ]
+                            }
+                          ]
+                        },
+                        "$.transitions.VERIFIED": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type",
+                              "max": 3,
+                              "min": 3
+                            }
+                          ]
+                        },
+                        "$.transitions.VERIFIED[*].kind": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.transitions.VERIFIED[*].to": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.transitions.VERIFYING": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type",
+                              "max": 3,
+                              "min": 3
+                            }
+                          ]
+                        },
+                        "$.transitions.VERIFYING[*].kind": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.transitions.VERIFYING[*].to": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        }
+                      }
+                    },
+                    {
+                      "index": 2,
+                      "rules": {
+                        "$.archetype": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.depth": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "number"
+                            }
+                          ]
+                        },
+                        "$.legalStatuses": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type",
+                              "max": 9,
+                              "min": 9
+                            }
+                          ]
+                        },
+                        "$.legalStatuses[*]": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.lifecycle": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type",
+                              "max": 9,
+                              "min": 9
+                            }
+                          ]
+                        },
+                        "$.lifecycle[*]": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.mayBeRoot": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.permitted": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type",
+                              "max": 7,
+                              "min": 7
+                            }
+                          ]
+                        },
+                        "$.permitted[*]": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.required": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type",
+                              "max": 1,
+                              "min": 1
+                            }
+                          ]
+                        },
+                        "$.requiredOnTransition": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type",
+                              "max": 2,
+                              "min": 2
+                            }
+                          ]
+                        },
+                        "$.requiredOnTransition[*]": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.required[*]": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.transitions.DROPPED": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type",
+                              "max": 1,
+                              "min": 1
+                            }
+                          ]
+                        },
+                        "$.transitions.DROPPED[*].kind": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.transitions.DROPPED[*].to": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.transitions.IMPLEMENTED": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type",
+                              "max": 4,
+                              "min": 4
+                            }
+                          ]
+                        },
+                        "$.transitions.IMPLEMENTED[*].kind": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.transitions.IMPLEMENTED[*].to": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.transitions.IMPLEMENTING": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type",
+                              "max": 2,
+                              "min": 2
+                            }
+                          ]
+                        },
+                        "$.transitions.IMPLEMENTING[*].kind": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.transitions.IMPLEMENTING[*].to": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.transitions.READY_FOR_DEV": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type",
+                              "max": 4,
+                              "min": 4
+                            }
+                          ]
+                        },
+                        "$.transitions.READY_FOR_DEV[*].kind": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.transitions.READY_FOR_DEV[*].to": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.transitions.REFINED": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "arrayContains",
+                              "variants": [
+                                {
+                                  "index": 0,
+                                  "rules": {
+                                    "$.gates": {
+                                      "combine": "AND",
+                                      "matchers": [
+                                        {
+                                          "match": "type",
+                                          "max": 1,
+                                          "min": 1
+                                        }
+                                      ]
+                                    },
+                                    "$.gates[*]": {
+                                      "combine": "AND",
+                                      "matchers": [
+                                        {
+                                          "match": "type"
+                                        }
+                                      ]
+                                    },
+                                    "$.kind": {
+                                      "combine": "AND",
+                                      "matchers": [
+                                        {
+                                          "match": "type"
+                                        }
+                                      ]
+                                    },
+                                    "$.to": {
+                                      "combine": "AND",
+                                      "matchers": [
+                                        {
+                                          "match": "type"
+                                        }
+                                      ]
+                                    }
+                                  }
+                                },
+                                {
+                                  "index": 1,
+                                  "rules": {
+                                    "$.kind": {
+                                      "combine": "AND",
+                                      "matchers": [
+                                        {
+                                          "match": "type"
+                                        }
+                                      ]
+                                    },
+                                    "$.to": {
+                                      "combine": "AND",
+                                      "matchers": [
+                                        {
+                                          "match": "type"
+                                        }
+                                      ]
+                                    }
+                                  }
+                                }
+                              ]
+                            }
+                          ]
+                        },
+                        "$.transitions.REPORTED": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type",
+                              "max": 2,
+                              "min": 2
+                            }
+                          ]
+                        },
+                        "$.transitions.REPORTED[*].kind": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.transitions.REPORTED[*].to": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.transitions.VERIFIED": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type",
+                              "max": 3,
+                              "min": 3
+                            }
+                          ]
+                        },
+                        "$.transitions.VERIFIED[*].kind": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.transitions.VERIFIED[*].to": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.transitions.VERIFYING": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type",
+                              "max": 3,
+                              "min": 3
+                            }
+                          ]
+                        },
+                        "$.transitions.VERIFYING[*].kind": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.transitions.VERIFYING[*].to": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        }
+                      }
+                    },
+                    {
+                      "index": 3,
+                      "rules": {
+                        "$.archetype": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.depth": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "number"
+                            }
+                          ]
+                        },
+                        "$.legalStatuses": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type",
+                              "max": 9,
+                              "min": 9
+                            }
+                          ]
+                        },
+                        "$.legalStatuses[*]": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.lifecycle": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type",
+                              "max": 9,
+                              "min": 9
+                            }
+                          ]
+                        },
+                        "$.lifecycle[*]": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.mayBeRoot": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.permitted": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type",
+                              "max": 8,
+                              "min": 8
+                            }
+                          ]
+                        },
+                        "$.permitted[*]": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.required": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type",
+                              "max": 2,
+                              "min": 2
+                            }
+                          ]
+                        },
+                        "$.requiredOnTransition": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type",
+                              "max": 3,
+                              "min": 3
+                            }
+                          ]
+                        },
+                        "$.requiredOnTransition[*]": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.required[*]": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.transitions.DROPPED": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type",
+                              "max": 1,
+                              "min": 1
+                            }
+                          ]
+                        },
+                        "$.transitions.DROPPED[*].kind": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.transitions.DROPPED[*].to": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.transitions.IMPLEMENTED": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type",
+                              "max": 4,
+                              "min": 4
+                            }
+                          ]
+                        },
+                        "$.transitions.IMPLEMENTED[*].kind": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.transitions.IMPLEMENTED[*].to": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.transitions.IMPLEMENTING": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type",
+                              "max": 2,
+                              "min": 2
+                            }
+                          ]
+                        },
+                        "$.transitions.IMPLEMENTING[*].kind": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.transitions.IMPLEMENTING[*].to": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.transitions.READY_FOR_DEV": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type",
+                              "max": 4,
+                              "min": 4
+                            }
+                          ]
+                        },
+                        "$.transitions.READY_FOR_DEV[*].kind": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.transitions.READY_FOR_DEV[*].to": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.transitions.REFINED": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "arrayContains",
+                              "variants": [
+                                {
+                                  "index": 0,
+                                  "rules": {
+                                    "$.gates": {
+                                      "combine": "AND",
+                                      "matchers": [
+                                        {
+                                          "match": "type",
+                                          "max": 1,
+                                          "min": 1
+                                        }
+                                      ]
+                                    },
+                                    "$.gates[*]": {
+                                      "combine": "AND",
+                                      "matchers": [
+                                        {
+                                          "match": "type"
+                                        }
+                                      ]
+                                    },
+                                    "$.kind": {
+                                      "combine": "AND",
+                                      "matchers": [
+                                        {
+                                          "match": "type"
+                                        }
+                                      ]
+                                    },
+                                    "$.to": {
+                                      "combine": "AND",
+                                      "matchers": [
+                                        {
+                                          "match": "type"
+                                        }
+                                      ]
+                                    }
+                                  }
+                                },
+                                {
+                                  "index": 1,
+                                  "rules": {
+                                    "$.kind": {
+                                      "combine": "AND",
+                                      "matchers": [
+                                        {
+                                          "match": "type"
+                                        }
+                                      ]
+                                    },
+                                    "$.to": {
+                                      "combine": "AND",
+                                      "matchers": [
+                                        {
+                                          "match": "type"
+                                        }
+                                      ]
+                                    }
+                                  }
+                                }
+                              ]
+                            }
+                          ]
+                        },
+                        "$.transitions.REPORTED": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type",
+                              "max": 2,
+                              "min": 2
+                            }
+                          ]
+                        },
+                        "$.transitions.REPORTED[*].kind": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.transitions.REPORTED[*].to": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.transitions.VERIFIED": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type",
+                              "max": 3,
+                              "min": 3
+                            }
+                          ]
+                        },
+                        "$.transitions.VERIFIED[*].kind": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.transitions.VERIFIED[*].to": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.transitions.VERIFYING": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type",
+                              "max": 3,
+                              "min": 3
+                            }
+                          ]
+                        },
+                        "$.transitions.VERIFYING[*].kind": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.transitions.VERIFYING[*].to": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        }
+                      }
+                    },
+                    {
+                      "index": 4,
+                      "rules": {
+                        "$.archetype": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.depth": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "number"
+                            }
+                          ]
+                        },
+                        "$.legalStatuses": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type",
+                              "max": 7,
+                              "min": 7
+                            }
+                          ]
+                        },
+                        "$.legalStatuses[*]": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.lifecycle": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type",
+                              "max": 7,
+                              "min": 7
+                            }
+                          ]
+                        },
+                        "$.lifecycle[*]": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.mayBeRoot": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.permitted": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type",
+                              "max": 4,
+                              "min": 4
+                            }
+                          ]
+                        },
+                        "$.permitted[*]": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.required": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type",
+                              "max": 1,
+                              "min": 1
+                            }
+                          ]
+                        },
+                        "$.requiredOnTransition": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type",
+                              "max": 2,
+                              "min": 2
+                            }
+                          ]
+                        },
+                        "$.requiredOnTransition[*]": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.required[*]": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.transitions.DROPPED": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type",
+                              "max": 1,
+                              "min": 1
+                            }
+                          ]
+                        },
+                        "$.transitions.DROPPED[*].kind": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.transitions.DROPPED[*].to": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.transitions.IMPLEMENTED": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type",
+                              "max": 3,
+                              "min": 3
+                            }
+                          ]
+                        },
+                        "$.transitions.IMPLEMENTED[*].kind": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.transitions.IMPLEMENTED[*].to": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.transitions.READY_FOR_DEV": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type",
+                              "max": 3,
+                              "min": 3
+                            }
+                          ]
+                        },
+                        "$.transitions.READY_FOR_DEV[*].kind": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.transitions.READY_FOR_DEV[*].to": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.transitions.REFINED": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "arrayContains",
+                              "variants": [
+                                {
+                                  "index": 0,
+                                  "rules": {
+                                    "$.gates": {
+                                      "combine": "AND",
+                                      "matchers": [
+                                        {
+                                          "match": "type",
+                                          "max": 2,
+                                          "min": 2
+                                        }
+                                      ]
+                                    },
+                                    "$.gates[*]": {
+                                      "combine": "AND",
+                                      "matchers": [
+                                        {
+                                          "match": "type"
+                                        },
+                                        {
+                                          "match": "type"
+                                        }
+                                      ]
+                                    },
+                                    "$.kind": {
+                                      "combine": "AND",
+                                      "matchers": [
+                                        {
+                                          "match": "type"
+                                        }
+                                      ]
+                                    },
+                                    "$.to": {
+                                      "combine": "AND",
+                                      "matchers": [
+                                        {
+                                          "match": "type"
+                                        }
+                                      ]
+                                    }
+                                  }
+                                },
+                                {
+                                  "index": 1,
+                                  "rules": {
+                                    "$.kind": {
+                                      "combine": "AND",
+                                      "matchers": [
+                                        {
+                                          "match": "type"
+                                        }
+                                      ]
+                                    },
+                                    "$.to": {
+                                      "combine": "AND",
+                                      "matchers": [
+                                        {
+                                          "match": "type"
+                                        }
+                                      ]
+                                    }
+                                  }
+                                }
+                              ]
+                            }
+                          ]
+                        },
+                        "$.transitions.REPORTED": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type",
+                              "max": 2,
+                              "min": 2
+                            }
+                          ]
+                        },
+                        "$.transitions.REPORTED[*].kind": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.transitions.REPORTED[*].to": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.transitions.VERIFIED": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type",
+                              "max": 3,
+                              "min": 3
+                            }
+                          ]
+                        },
+                        "$.transitions.VERIFIED[*].kind": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.transitions.VERIFIED[*].to": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  ]
                 }
               ]
             },
@@ -10735,12 +11299,9 @@
                       {
                         "approval": null,
                         "evidence": null,
-                        "id": "00000000-0000-4000-8000-00000000001d",
-                        "kind": "ENTITY_STATUS",
-                        "predicate": {
-                          "entityId": "00000000-0000-4000-8000-000000000006",
-                          "status": "VERIFIED"
-                        },
+                        "id": "00000000-0000-4000-8000-00000000001e",
+                        "kind": "APPROVAL",
+                        "predicate": {},
                         "satisfiedAt": null,
                         "seeded": false
                       }
@@ -11065,68 +11626,86 @@
                           "combine": "AND",
                           "matchers": [
                             {
-                              "match": "type",
-                              "max": 2,
-                              "min": 2
-                            }
-                          ]
-                        },
-                        "$.groups[*].criteria[*].id": {
-                          "combine": "AND",
-                          "matchers": [
-                            {
-                              "match": "regex",
-                              "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
-                            },
-                            {
-                              "match": "regex",
-                              "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
-                            }
-                          ]
-                        },
-                        "$.groups[*].criteria[*].kind": {
-                          "combine": "AND",
-                          "matchers": [
-                            {
-                              "match": "type"
-                            },
-                            {
-                              "match": "type"
-                            }
-                          ]
-                        },
-                        "$.groups[*].criteria[*].predicate.entityId": {
-                          "combine": "AND",
-                          "matchers": [
-                            {
-                              "match": "regex",
-                              "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
-                            },
-                            {
-                              "match": "regex",
-                              "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
-                            }
-                          ]
-                        },
-                        "$.groups[*].criteria[*].predicate.status": {
-                          "combine": "AND",
-                          "matchers": [
-                            {
-                              "match": "type"
-                            },
-                            {
-                              "match": "type"
-                            }
-                          ]
-                        },
-                        "$.groups[*].criteria[*].seeded": {
-                          "combine": "AND",
-                          "matchers": [
-                            {
-                              "match": "type"
-                            },
-                            {
-                              "match": "type"
+                              "match": "arrayContains",
+                              "variants": [
+                                {
+                                  "index": 0,
+                                  "rules": {
+                                    "$.id": {
+                                      "combine": "AND",
+                                      "matchers": [
+                                        {
+                                          "match": "regex",
+                                          "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                                        }
+                                      ]
+                                    },
+                                    "$.kind": {
+                                      "combine": "AND",
+                                      "matchers": [
+                                        {
+                                          "match": "type"
+                                        }
+                                      ]
+                                    },
+                                    "$.predicate.entityId": {
+                                      "combine": "AND",
+                                      "matchers": [
+                                        {
+                                          "match": "regex",
+                                          "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                                        }
+                                      ]
+                                    },
+                                    "$.predicate.status": {
+                                      "combine": "AND",
+                                      "matchers": [
+                                        {
+                                          "match": "type"
+                                        }
+                                      ]
+                                    },
+                                    "$.seeded": {
+                                      "combine": "AND",
+                                      "matchers": [
+                                        {
+                                          "match": "type"
+                                        }
+                                      ]
+                                    }
+                                  }
+                                },
+                                {
+                                  "index": 1,
+                                  "rules": {
+                                    "$.id": {
+                                      "combine": "AND",
+                                      "matchers": [
+                                        {
+                                          "match": "regex",
+                                          "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                                        }
+                                      ]
+                                    },
+                                    "$.kind": {
+                                      "combine": "AND",
+                                      "matchers": [
+                                        {
+                                          "match": "type"
+                                        }
+                                      ]
+                                    },
+                                    "$.seeded": {
+                                      "combine": "AND",
+                                      "matchers": [
+                                        {
+                                          "match": "type"
+                                        }
+                                      ]
+                                    }
+                                  }
+                                }
+                              ]
                             }
                           ]
                         },
@@ -11350,12 +11929,9 @@
                       {
                         "approval": null,
                         "evidence": null,
-                        "id": "00000000-0000-4000-8000-00000000000e",
-                        "kind": "ENTITY_STATUS",
-                        "predicate": {
-                          "entityId": "00000000-0000-4000-8000-000000000003",
-                          "status": "VERIFIED"
-                        },
+                        "id": "00000000-0000-4000-8000-000000000001",
+                        "kind": "APPROVAL",
+                        "predicate": {},
                         "satisfiedAt": null,
                         "seeded": false
                       }
@@ -11680,68 +12256,86 @@
                           "combine": "AND",
                           "matchers": [
                             {
-                              "match": "type",
-                              "max": 2,
-                              "min": 2
-                            }
-                          ]
-                        },
-                        "$.groups[*].criteria[*].id": {
-                          "combine": "AND",
-                          "matchers": [
-                            {
-                              "match": "regex",
-                              "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
-                            },
-                            {
-                              "match": "regex",
-                              "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
-                            }
-                          ]
-                        },
-                        "$.groups[*].criteria[*].kind": {
-                          "combine": "AND",
-                          "matchers": [
-                            {
-                              "match": "type"
-                            },
-                            {
-                              "match": "type"
-                            }
-                          ]
-                        },
-                        "$.groups[*].criteria[*].predicate.entityId": {
-                          "combine": "AND",
-                          "matchers": [
-                            {
-                              "match": "regex",
-                              "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
-                            },
-                            {
-                              "match": "regex",
-                              "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
-                            }
-                          ]
-                        },
-                        "$.groups[*].criteria[*].predicate.status": {
-                          "combine": "AND",
-                          "matchers": [
-                            {
-                              "match": "type"
-                            },
-                            {
-                              "match": "type"
-                            }
-                          ]
-                        },
-                        "$.groups[*].criteria[*].seeded": {
-                          "combine": "AND",
-                          "matchers": [
-                            {
-                              "match": "type"
-                            },
-                            {
-                              "match": "type"
+                              "match": "arrayContains",
+                              "variants": [
+                                {
+                                  "index": 0,
+                                  "rules": {
+                                    "$.id": {
+                                      "combine": "AND",
+                                      "matchers": [
+                                        {
+                                          "match": "regex",
+                                          "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                                        }
+                                      ]
+                                    },
+                                    "$.kind": {
+                                      "combine": "AND",
+                                      "matchers": [
+                                        {
+                                          "match": "type"
+                                        }
+                                      ]
+                                    },
+                                    "$.predicate.entityId": {
+                                      "combine": "AND",
+                                      "matchers": [
+                                        {
+                                          "match": "regex",
+                                          "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                                        }
+                                      ]
+                                    },
+                                    "$.predicate.status": {
+                                      "combine": "AND",
+                                      "matchers": [
+                                        {
+                                          "match": "type"
+                                        }
+                                      ]
+                                    },
+                                    "$.seeded": {
+                                      "combine": "AND",
+                                      "matchers": [
+                                        {
+                                          "match": "type"
+                                        }
+                                      ]
+                                    }
+                                  }
+                                },
+                                {
+                                  "index": 1,
+                                  "rules": {
+                                    "$.id": {
+                                      "combine": "AND",
+                                      "matchers": [
+                                        {
+                                          "match": "regex",
+                                          "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                                        }
+                                      ]
+                                    },
+                                    "$.kind": {
+                                      "combine": "AND",
+                                      "matchers": [
+                                        {
+                                          "match": "type"
+                                        }
+                                      ]
+                                    },
+                                    "$.seeded": {
+                                      "combine": "AND",
+                                      "matchers": [
+                                        {
+                                          "match": "type"
+                                        }
+                                      ]
+                                    }
+                                  }
+                                }
+                              ]
                             }
                           ]
                         },
