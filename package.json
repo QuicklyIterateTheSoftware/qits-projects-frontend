@@ -39,7 +39,7 @@
     "@eslint/js": "^10.0.1",
     "@pact-foundation/pact": "17.1.4",
     "@qits/angular": "2026.1007.45944",
-    "@qits/projects-golden-masters": "2026.1007.35430",
+    "@qits/projects-golden-masters": "2026.1007.71708",
     "@types/node": "^20.19.43",
     "angular-eslint": "^22.5.0",
     "eslint": "^10.8.0",
