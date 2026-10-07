@@ -1099,69 +1099,6 @@
       "pending": false,
       "providerStates": [
         {
-          "name": "a refined ticket",
-          "params": {
-            "projectId": "00000000-0000-4000-8000-000000000001",
-            "qualifiedId": "contract-00000001-1",
-            "ticketId": "00000000-0000-4000-8000-000000000002"
-          }
-        }
-      ],
-      "request": {
-        "body": {
-          "content": {
-            "mode": "FLOW"
-          },
-          "contentType": "application/json",
-          "encoded": false
-        },
-        "generators": {
-          "path": {
-            "expression": "/projects/api/work/${qualifiedId}/dispatch",
-            "type": "ProviderState"
-          }
-        },
-        "headers": {
-          "Content-Type": [
-            "application/json"
-          ]
-        },
-        "matchingRules": {
-          "path": {
-            "combine": "AND",
-            "matchers": [
-              {
-                "match": "type"
-              }
-            ]
-          }
-        },
-        "method": "POST",
-        "path": "/projects/api/work/contract-00000001-1/dispatch"
-      },
-      "response": {
-        "status": 409
-      },
-      "type": "Synchronous/HTTP"
-    },
-    {
-      "comments": {
-        "references": {
-          "qits-call": {
-            "app": "qits-projects-service",
-            "operationId": "dispatchWork"
-          },
-          "qits-trigger": {
-            "app": "qits-projects-frontend",
-            "interaction": "dispatch-work-item",
-            "kind": "ui"
-          }
-        }
-      },
-      "description": "dispatch-work-item: dispatchWork",
-      "pending": false,
-      "providerStates": [
-        {
           "name": "a reported epic",
           "params": {
             "epicId": "00000000-0000-4000-8000-000000000001",

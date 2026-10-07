@@ -171,12 +171,12 @@ describe('qits-projects-frontend → qits-projects-service pact: EntitiesApi', (
   });
 
   /**
-   * `a refined ticket` joined the successes here under qits-1075: a person's FLOW press at an
-   * unblocked REFINED is no longer the service's 409 — it schedules the ticket (REFINED →
-   * READY_FOR_DEV, as that person) and goes straight on into the implement phase, so the door
-   * answers the same `{dispatch}` shape as any other dispatching press.
+   * `a refined ticket` is out of this pact for one release (qits-1075): a person's FLOW press at an
+   * unblocked REFINED stops being the service's 409 and becomes a dispatch, and the consumer and the
+   * provider each verify against the other's pinned contract. Dropping the 409 here first lets the
+   * service ship the 200; the interaction comes back as a success once its golden master does.
    */
-  it.each(['a reported epic', 'a ready for dev ticket', 'a refined ticket'])(
+  it.each(['a reported epic', 'a ready for dev ticket'])(
     'dispatch-work-item: presses the dispatching door of %s',
     (state) =>
       given(state, 'dispatchWork', 'dispatch-work-item', DISPATCH_WORK).executeTest(
