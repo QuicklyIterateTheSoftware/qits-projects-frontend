@@ -3,6 +3,7 @@ import { Injectable, inject } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { QITS_API_BASE } from './api-base';
 import type {
+  AutomationRunResponse,
   CommitBuildStatusDto,
   CommitFileDiffDto,
   ListCommitBuildsResponse,
@@ -357,6 +358,62 @@ export class ReleaseRequestsApi {
       this.http.post<ReleaseRequestResponse>(
         `${this.requestBase(repoId, requestId)}/pipeline/${encodeURIComponent(phase)}/rerun`,
         {},
+      ),
+    );
+    return response.request;
+  }
+
+  /**
+   * Run one release-request automation again, now, on this request's current fold — the forwarded
+   * door `POST …/automations/{kind}/runs` (qits-978), which is what the gates panel's Re-run button
+   * presses.
+   *
+   * <p><b>202, and an id rather than the request.</b> Unlike {@link rerun}'s phase, this one does not
+   * settle inline: the run has only just been dispatched, and the automation's own row on the
+   * request updates on the next poll, the way every other automation outcome does. Answering with
+   * the whole request here would be a promise this door does not keep.
+   *
+   * <p><b>409 is not a failure to report as one</b> — the kind already has a run in flight for this
+   * request, which the panel draws as "one is already running" rather than retrying or alarming.
+   * 404 is a kind or a repository nothing here recognises.
+   */
+  async rerunAutomation(
+    repoId: string,
+    requestId: string,
+    kind: string,
+  ): Promise<AutomationRunResponse> {
+    return firstValueFrom(
+      this.http.post<AutomationRunResponse>(
+        `${this.requestBase(repoId, requestId)}/automations/${encodeURIComponent(kind)}/runs`,
+        {},
+      ),
+    );
+  }
+
+  /**
+   * Waive the automations gate for one fold — `POST …/automations/waivers` (qits-978), `qits:admin`
+   * only, and durable: the escape for when qits-maintenance itself is broken and its own fix would
+   * otherwise hold behind it.
+   *
+   * <p><b>`foldSha` is required for {@link approve}'s own reason.</b> A waiver is a statement about
+   * content, not about the request in the abstract, so the caller sends the fold it RENDERED and a
+   * push that lands first is answered 409 naming the fold the request is on now — drawn exactly as a
+   * moved-fold refusal on {@link approve} is.
+   *
+   * <p>The whole request comes back, with the automation rows and the `AUTOMATIONS` gate already
+   * re-derived, for {@link approve}'s own reason: asking again would be a second round trip for bytes
+   * the answer already carries.
+   */
+  async waiveAutomations(
+    repoId: string,
+    requestId: string,
+    foldSha: string,
+    reason: string,
+  ): Promise<ReleaseRequestDto> {
+    const response = await firstValueFrom(
+      this.http.post<ReleaseRequestResponse>(
+        `${this.requestBase(repoId, requestId)}/automations/waivers`,
+        { foldSha, reason },
       ),
     );
     return response.request;

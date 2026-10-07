@@ -2,12 +2,15 @@ import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideQitsNavigationTree, type QitsNavigation } from '@qits/ui-components';
-import type { CommitBuildStatusDto, ReleaseRequestDto } from '../api/dto';
+import type { CommitBuildStatusDto, ReleaseAutomationDto, ReleaseRequestDto } from '../api/dto';
+import { VIEWER_ADMIN } from '../ui/viewer';
 import { ReleaseGatesPanel } from './release-gates-panel';
 
 const REQUEST = '/projects/api/repositories/repo-ci/release-requests/r1';
 const APPROVE = `${REQUEST}/approve`;
 const DECLINE = `${REQUEST}/decline`;
+const AUTOMATION_RERUN = `${REQUEST}/automations/screenshot-baselines/runs`;
+const AUTOMATION_WAIVE = `${REQUEST}/automations/waivers`;
 const FOLD = '20c377ee71fabe6f32429d1506989efecec7798b';
 
 /**
@@ -74,6 +77,20 @@ function build(overrides: Partial<CommitBuildStatusDto> = {}): CommitBuildStatus
   };
 }
 
+function automation(overrides: Partial<ReleaseAutomationDto> = {}): ReleaseAutomationDto {
+  return {
+    kind: 'screenshot-baselines',
+    label: 'Screenshot baselines',
+    state: 'RUNNING',
+    foldSha: FOLD,
+    runId: 'run-42',
+    branch: 'maintenance/automations/screenshot-baselines/r1',
+    detail: null,
+    updatedAt: '2026-09-01T13:40:00Z',
+    ...overrides,
+  };
+}
+
 /**
  * What is holding a release request, and the one place a person answers it.
  *
@@ -108,6 +125,20 @@ describe('ReleaseGatesPanel', () => {
     TestBed.resetTestingModule();
     TestBed.configureTestingModule({
       providers: [provideHttpClient(), provideHttpClientTesting(), provideQitsNavigationTree(tree)],
+    });
+    http = TestBed.inject(HttpTestingController);
+  }
+
+  /** A viewer {@link VIEWER_ADMIN} says is not an admin — the one case Waive must stay hidden on. */
+  function configureAsNonAdmin(): void {
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({
+      providers: [
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        provideQitsNavigationTree(PLATFORM),
+        { provide: VIEWER_ADMIN, useValue: false },
+      ],
     });
     http = TestBed.inject(HttpTestingController);
   }
@@ -502,6 +533,139 @@ describe('ReleaseGatesPanel', () => {
       await mount(gated(), [build()]);
 
       expect(element().querySelector('.reason')).toBeNull();
+    });
+  });
+
+  /**
+   * The AUTOMATIONS gate (qits-978): one row per release-request automation, Re-run on the states a
+   * fresh run means something for, and Waive for whoever may press it.
+   */
+  describe('the automations gate', () => {
+    /** `undefined` is an answer from a service build older than the field: draw today's page. */
+    it('draws nothing where the service reports no automations at all', async () => {
+      await mount(request(), [build()]);
+
+      expect(element().querySelector('.gate.automations')).toBeNull();
+      expect(text()).not.toContain('Waive for this fold');
+    });
+
+    /** An empty array is a repository nothing applies to, which releases at once. */
+    it('gives a passed line for an empty list', async () => {
+      await mount(request({ automations: [] }), []);
+
+      const gate = element().querySelector('.gate.automations');
+      expect(gate?.textContent).toContain('✓ Automations');
+      expect(gate?.textContent).toContain('nothing applies to this repository');
+    });
+
+    it('draws a running row, labelled, with a link to its run in CI', async () => {
+      await mount(request({ automations: [automation({ state: 'RUNNING' })] }), []);
+
+      const row = element().querySelector('.automation-row');
+      expect(row?.textContent).toContain('Screenshot baselines');
+      expect(row?.textContent).toContain('running');
+      expect(row?.querySelector('a.run')?.getAttribute('href')).toBe(
+        'https://ci.dev.example.test/runs/run-42',
+      );
+    });
+
+    /** No run means nothing this platform can address — the run link is dropped, never drawn dead. */
+    it('drops the run link where the row carries no run id', async () => {
+      await mount(request({ automations: [automation({ state: 'REQUESTED', runId: null })] }), []);
+
+      expect(element().querySelector('.automation-row a.run')).toBeNull();
+    });
+
+    /** A FAILED row offers Re-run, and pressing it calls the kind's own forwarded door. */
+    it('shows Re-run on a failed row, and posts to the automation’s own door', async () => {
+      await mount(
+        request({
+          automations: [automation({ state: 'FAILED', detail: 'exit 137', runId: 'run-9' })],
+        }),
+        [],
+      );
+
+      expect(element().querySelector('.automation-row')?.textContent).toContain('failed: exit 137');
+
+      await press('Re-run');
+      const posted = http.expectOne(AUTOMATION_RERUN);
+      expect(posted.request.method).toBe('POST');
+      posted.flush({ id: 'bump-1' });
+      await settle();
+    });
+
+    /** A 409 means one is already running for this (request, kind); drawn calmly, never retried. */
+    it('draws a 409 on re-run as "one is already running"', async () => {
+      await mount(request({ automations: [automation({ state: 'FAILED' })] }), []);
+
+      await press('Re-run');
+      http
+        .expectOne(AUTOMATION_RERUN)
+        .flush({ message: 'already running' }, { status: 409, statusText: 'Conflict' });
+      await settle();
+
+      expect(text()).toContain('one is already running');
+    });
+
+    /** Re-run is not offered while the automation is already live. */
+    it('offers no Re-run on a running row', async () => {
+      await mount(request({ automations: [automation({ state: 'RUNNING' })] }), []);
+
+      expect(buttons().some((entry) => (entry.textContent ?? '').includes('Re-run'))).toBe(false);
+    });
+
+    /** The one verb a non-admin browser session must never be offered. */
+    it('hides Waive for a non-admin', async () => {
+      configureAsNonAdmin();
+      await mount(request({ automations: [automation({ state: 'RUNNING' })] }), []);
+
+      expect(text()).not.toContain('Waive for this fold');
+    });
+
+    /** The confirm takes a reason, and the call sends the fold this panel was RENDERED with. */
+    it('sends the rendered fold and the typed reason when an admin waives', async () => {
+      await mount(request({ automations: [automation({ state: 'RUNNING' })] }), []);
+
+      await press('Waive for this fold');
+      const field = element().querySelector('.waive-reason') as HTMLInputElement;
+      field.value = 'qits-maintenance is down; this fix cannot wait behind it';
+      field.dispatchEvent(new Event('input'));
+      await settle();
+
+      await press('Confirm waive');
+      const posted = http.expectOne(AUTOMATION_WAIVE);
+      expect(posted.request.method).toBe('POST');
+      expect(posted.request.body).toEqual({
+        foldSha: FOLD,
+        reason: 'qits-maintenance is down; this fix cannot wait behind it',
+      });
+      posted.flush({ request: request({ automations: [automation({ state: 'WAIVED' })] }) });
+      await settle();
+    });
+
+    /** A 409 for a moved fold is drawn calmly, exactly as the approval panel's own 409 is. */
+    it('draws the moved-fold sentence on a 409', async () => {
+      await mount(request({ automations: [automation({ state: 'RUNNING' })] }), []);
+
+      await press('Waive for this fold');
+      const field = element().querySelector('.waive-reason') as HTMLInputElement;
+      field.value = 'a reason';
+      field.dispatchEvent(new Event('input'));
+      await settle();
+      await press('Confirm waive');
+
+      http.expectOne(AUTOMATION_WAIVE).flush(
+        {
+          message:
+            'Release request r1 is on aaaa1111bbbb2222cccc3333dddd4444eeee5555 now, ' +
+            `not ${FOLD}.`,
+        },
+        { status: 409, statusText: 'Conflict' },
+      );
+      await settle();
+
+      expect(text()).toContain('The fold changed while this was being read');
+      expect(text()).toContain('aaaa111');
     });
   });
 

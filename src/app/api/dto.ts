@@ -31,13 +31,7 @@ import type { QitsCategory } from '@qits/ui-components';
  * apart: see {@link RepositoryDto.component}.
  */
 export type PlaceableArchetype =
-  | 'SERVICE'
-  | 'DAEMON'
-  | 'LIBRARY'
-  | 'APP'
-  | 'FRONTEND'
-  | 'CLI'
-  | 'IMAGE';
+  'SERVICE' | 'DAEMON' | 'LIBRARY' | 'APP' | 'FRONTEND' | 'CLI' | 'IMAGE';
 
 /** Every archetype the service can answer with, placeable or not. */
 export type RepositoryArchetype = PlaceableArchetype | 'PROJECT' | 'SERVICE_TEMPLATE' | 'FORK';
@@ -1117,6 +1111,20 @@ export interface ReleaseRequestDto {
    */
   readonly gates?: readonly ReleaseGateDto[];
   /**
+   * **Every release-request automation that applies to this repository, with where each stands for
+   * the CURRENT fold** — estate pins, screenshot baselines, and whatever kind qits-maintenance adds
+   * next (qits-978). `gates` may carry its own `AUTOMATIONS` entry for the flat pass/fail read; this
+   * is the detail behind it, one row per kind.
+   *
+   * <p><b>Optional and nullable, and both spellings mean one thing: draw today's page, unchanged.</b>
+   * `undefined` is an answer from a service build older than the field — the ordinary case while
+   * this SPA ships ahead of the service it talks to — and `null` is a build that has the field and
+   * had nothing to report for this request. Neither is an automation kind this repository applies
+   * to; an **empty array** is that, and it is a different, later answer: the repository was asked
+   * and nothing applies, which reads as a passed line rather than as nothing to show.
+   */
+  readonly automations?: readonly ReleaseAutomationDto[] | null;
+  /**
    * **The one release pipeline, as phases with the gates between them** — the same facts
    * {@link gates} carries, arranged as the sequence they actually happen in.
    *
@@ -1198,6 +1206,59 @@ export interface ReleaseGateDto {
    * build older than the field.
    */
   readonly detail?: string | null;
+}
+
+/**
+ * One release-request automation — a regeneration that runs on every fold and has to be fresh for
+ * `mergedSha` before the request may release: estate pins, screenshot baselines, and whatever kind
+ * qits-maintenance adds next (qits-978's own abstraction, `ReleaseRequestAutomation`).
+ *
+ * <p><b>`kind` and `state` are plain strings, the same honesty every open vocabulary on this file is
+ * typed with.</b> Adding a kind is meant to cost this page nothing, and a repository's own gate
+ * configuration is the one thing here that genuinely grows — so a kind or a state this build has
+ * never heard of is drawn as itself rather than failing to type or guessed into a verdict.
+ *
+ * <p><b>The states, as the service documents them today</b> — and the vocabulary may grow, exactly
+ * as {@link ReleaseGateDto.state} may:
+ * <ul>
+ *   <li>`FRESH` — already good for `mergedSha`, whether because nothing needed regenerating, a run
+ *       landed and moved nothing (`NOTHING_TO_DO`), or it was carried forward from a previous fold
+ *       whose outcome this fold's own changes could not have invalidated.</li>
+ *   <li>`REQUESTED` — waiting for a run slot.</li>
+ *   <li>`RUNNING` — a run is in flight now.</li>
+ *   <li>`COMMITTED` — a green run moved a branch, which re-folds the request; this fold is never the
+ *       one that ships.</li>
+ *   <li>`FAILED` — the run was red, or its commit was refused. {@link detail} says more.</li>
+ *   <li>`UNKNOWN` — applicability or the plan could not be decided, or the dispatch itself could not
+ *       be made. The sweep retries it, the same way an `UNKNOWN` {@link ReleaseGateDto} does.</li>
+ *   <li>`SUPERSEDED` — the request's fold moved on before this outcome arrived; discarded, though a
+ *       push it made may still have re-folded the request.</li>
+ *   <li>`WAIVED` — a person waived the gate for this exact fold (`foldSha` below matches it).</li>
+ * </ul>
+ *
+ * <p>`runId` and `branch` are null wherever the state has no run or no commit to point at yet —
+ * `REQUESTED` has neither, and the plan answering `FRESH` outright never ran at all. `detail` is the
+ * service's own sentence, mirroring {@link ReleaseGateDto.detail}: null where the state says enough
+ * by itself. `foldSha` is the fold this row's outcome is actually about, which is what a waiver is
+ * checked against — it need not be `mergedSha` on a row the request has not re-settled yet.
+ */
+export interface ReleaseAutomationDto {
+  readonly kind: string;
+  readonly label: string;
+  readonly state: string;
+  readonly foldSha: string;
+  readonly runId: string | null;
+  readonly branch: string | null;
+  readonly detail: string | null;
+  readonly updatedAt: string;
+}
+
+/**
+ * What the manual re-run door answers — `POST …/automations/{kind}/runs`. A 202, because the run
+ * has only just been dispatched and there is nothing settled yet to report beyond its id.
+ */
+export interface AutomationRunResponse {
+  readonly id: string;
 }
 
 /**

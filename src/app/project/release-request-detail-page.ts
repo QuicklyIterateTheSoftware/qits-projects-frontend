@@ -7,16 +7,24 @@ import {
   inject,
   signal,
   untracked,
+  viewChild,
 } from '@angular/core';
 import { NgTemplateOutlet } from '@angular/common';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, RouterLink, convertToParamMap } from '@angular/router';
-import { QITS_REPOSITORIES, QITS_SCOPE, QitsAppLinks, QitsBadge } from '@qits/ui-components';
+import {
+  QITS_REPOSITORIES,
+  QITS_SCOPE,
+  QitsAppLinks,
+  QitsBadge,
+  QitsRunReports,
+} from '@qits/ui-components';
 import type { QitsScope } from '@qits/ui-components';
 import type {
   CommitBuildStatusDto,
   ReleaseArtifactDto,
   ReleaseArtifactsResponse,
+  ReleasePhaseDto,
   ReleaseRequestCommitsResponse,
   ReleaseRequestDto,
 } from '../api/dto';
@@ -47,6 +55,29 @@ import { ReleaseSources } from './release-sources';
 interface DrawnArtifact {
   readonly artifact: ReleaseArtifactDto;
   readonly links: readonly (ReleaseArtifactLink & { readonly href?: string })[];
+}
+
+/**
+ * The QA phase states that mean its run has stopped moving — never `PENDING` or `RUNNING` — which is
+ * when the run's reports, if it has any, are actually complete. Mirrors {@link
+ * ReleasePipelinePanel}'s own `phaseTone`: `CANCELLED` and `UNKNOWN` are terminal in the same sense
+ * `FAILED` is — nothing further is coming — even though neither is a verdict.
+ */
+const QA_TERMINAL_STATES: ReadonlySet<ReleasePhaseDto['state']> = new Set([
+  'SUCCESS',
+  'FAILED',
+  'CANCELLED',
+  'UNKNOWN',
+]);
+
+function isQaPhaseTerminal(state: ReleasePhaseDto['state'] | null): boolean {
+  return state !== null && QA_TERMINAL_STATES.has(state);
+}
+
+/** What the QA-terminal effect last saw: the run it was about, and whether it had stopped moving. */
+interface QaReloadState {
+  readonly runId: string | null;
+  readonly terminal: boolean;
 }
 
 /**
@@ -127,6 +158,7 @@ interface DrawnArtifact {
     NgTemplateOutlet,
     NotFound,
     QitsBadge,
+    QitsRunReports,
     ReleaseConflict,
     ReleasePipelinePanel,
     ReleaseRequestChanges,
@@ -271,6 +303,22 @@ interface DrawnArtifact {
           @if (!wrapper()) {
             <ng-container [ngTemplateOutlet]="gatesSection" />
           }
+
+          <!--
+            The QA run's reports, keyed on the pipeline's own QA phase — never the DEPLOY phase,
+            whose runId names a deployment request in a different service entirely. qaRunId is a
+            computed signal of a primitive id, not of the phase object, which is what keeps the
+            6-second poll from handing the area a "changed" input every tick: the area itself reads
+            again only when the id it was bound to actually changes.
+          -->
+          <section class="panel reports">
+            <h2>Reports</h2>
+            @if (qaRunId(); as runId) {
+              <qits-run-reports [runId]="runId" />
+            } @else {
+              <app-empty message="No QA run yet" />
+            }
+          </section>
 
           <app-release-conflict [request]="request" />
 
@@ -733,6 +781,34 @@ export class ReleaseRequestDetailPage {
     return state.kind === 'ready' ? state.value : null;
   });
 
+  /**
+   * The pipeline's QA phase, by NAME rather than by position. `ReleasePhaseDto.runId` names a
+   * qits-ci run for `QA` and `PUBLISH` but a deployment request for `DEPLOY` — a fact the DTO itself
+   * documents — so a phase found any other way risks handing `<qits-run-reports>` an id from the
+   * wrong service entirely.
+   */
+  protected readonly qaPhase = computed<ReleasePhaseDto | null>(
+    () => this.row()?.pipeline?.phases.find((phase) => phase.phase === 'QA') ?? null,
+  );
+
+  /**
+   * The QA run's id, held as a signal of its own rather than read off {@link qaPhase} in the
+   * template.
+   *
+   * <p>The six-second poll replaces the whole request, so every object reached off {@link row} —
+   * {@link qaPhase} included — gets a new reference on every tick whether or not anything in it
+   * actually changed. A `computed` that answered with the phase object would therefore hand
+   * `<qits-run-reports>` a "new" `runId` input every tick by reference alone. Shedding that down to
+   * the bare string is what a `computed` can do that nothing upstream can: two ticks that answer the
+   * same QA run id produce the *same* primitive, so this signal does not change and the bound input
+   * does not either — which is what the area's own "reads when `runId` changes, and only then" rule
+   * needs to actually hold here.
+   */
+  protected readonly qaRunId = computed<string | null>(() => this.qaPhase()?.runId ?? null);
+
+  /** The mounted report area, so the QA phase turning terminal can tell it to read again. */
+  private readonly reportsArea = viewChild(QitsRunReports);
+
   /** Still moving, so the timer is armed. Said out loud, because it costs requests. */
   protected readonly watching = computed(() => {
     const request = this.row();
@@ -849,6 +925,13 @@ export class ReleaseRequestDetailPage {
   /** Whether the artifacts have been asked for, so a settled request asks exactly once. */
   private loadedArtifacts = false;
 
+  /**
+   * Undefined until the first QA phase is seen at all, which is deliberate — a QA run that is
+   * already terminal on the page's very first answer must not trigger a second read on top of the
+   * one `<qits-run-reports>` makes for itself the moment `runId` is first bound.
+   */
+  private qaReloadTracking: QaReloadState | undefined;
+
   protected foldTitle(request: ReleaseRequestDto): string {
     const sha = request.mergedSha;
     return sha
@@ -898,6 +981,7 @@ export class ReleaseRequestDetailPage {
         this.commits.set(LOADING);
         this.gates.set(LOADING);
         this.artifacts.set(LOADING);
+        this.qaReloadTracking = undefined;
         if (!repoId || !requestId) {
           this.request.set(LOADING);
           return;
@@ -905,7 +989,41 @@ export class ReleaseRequestDetailPage {
         void this.load(repoId, requestId, false);
       });
     });
+
+    /**
+     * Tell the mounted report area to read again the one time the QA run it is showing actually
+     * finishes — never per poll tick, and never merely because the page's first answer already
+     * found it terminal (the area's own bind-time read covers that case).
+     *
+     * <p>Runs on every change to {@link qaPhase}, which is every poll tick regardless of whether the
+     * phase changed: the request is replaced whole every six seconds, so the phase object found in
+     * it is a new reference each time even when nothing about it differs. The guard inside
+     * {@link trackQaTerminal} is what turns that into "once", not this effect.
+     */
+    effect(() => {
+      const phase = this.qaPhase();
+      const runId = phase?.runId ?? null;
+      const state = phase?.state ?? null;
+      untracked(() => this.trackQaTerminal(runId, state));
+    });
+
     inject(DestroyRef).onDestroy(() => this.cancelTimer());
+  }
+
+  /**
+   * Call {@link QitsRunReports.reload} exactly once per QA run, the moment that run's `state` is
+   * first seen terminal — and never for a run whose very first sighting already was terminal, which
+   * `<qits-run-reports>` has already read once for itself by binding `runId`.
+   */
+  private trackQaTerminal(runId: string | null, state: ReleasePhaseDto['state'] | null): void {
+    const previous = this.qaReloadTracking;
+    const sameRun = !!previous && previous.runId === runId;
+    const wasTerminal = sameRun && previous.terminal;
+    const terminal = isQaPhaseTerminal(state);
+    this.qaReloadTracking = { runId, terminal };
+    if (sameRun && !wasTerminal && terminal) {
+      this.reportsArea()?.reload();
+    }
   }
 
   protected reload(): void {
