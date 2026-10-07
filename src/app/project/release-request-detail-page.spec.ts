@@ -7,6 +7,7 @@ import { provideRouter } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
 import { of } from 'rxjs';
 import {
+  QITS_MERMAID_LOADER,
   QITS_REPOSITORIES,
   QitsReportsClient,
   provideQitsNavigationTree,
@@ -14,6 +15,8 @@ import {
   provideQitsRepositoryList,
   provideQitsScope,
   provideQitsStandardReportKinds,
+  type QitsEntityChangesPayload,
+  type QitsMermaid,
   type QitsNavigation,
   type QitsRepositoriesSource,
   type QitsReport,
@@ -910,6 +913,100 @@ describe('ReleaseRequestDetailPage', () => {
       });
       await settle();
       expect(fake.runReportsCalls).toEqual(['run-9', 'run-9']);
+    });
+  });
+
+  /**
+   * The `entity-changes` kind (qits-760). `provideQitsStandardReportKinds()` registers
+   * `<qits-entity-changes-report>` for it, exactly as it already does `test-results` and
+   * `coverage` above — so taking the library version that adds the registration is the whole of
+   * this repository's work, and this is the spec that proves the registration reached this page
+   * with no change of its own. `QITS_MERMAID_LOADER` is stubbed so the diagram the CHANGED unit
+   * draws never reaches a real `import('mermaid')` inside the test environment.
+   */
+  describe('the entity-changes report', () => {
+    const STUB_MERMAID: QitsMermaid = {
+      initialize: () => undefined,
+      render: async () => ({ svg: '<svg></svg>' }),
+    } as unknown as QitsMermaid;
+
+    function entityChangesPayload(): QitsEntityChangesPayload {
+      return {
+        baseline: { version: '2026.1003.52637', tagSha: '9f1c2b3d4e5f60718293a4b5c6d7e8f901234567', hadDiagram: true },
+        units: [
+          {
+            file: 'docs/database/ci.md',
+            unit: 'ci',
+            status: 'CHANGED',
+            tables: [
+              {
+                name: 'ci_report',
+                status: 'CHANGED',
+                origin: 'ci',
+                columns: { added: [], removed: [], changed: [{ name: 'kind', before: 'string, not null, 64', after: 'string, not null, 128' }] },
+              },
+            ],
+            relations: { added: [], removed: [] },
+            before: 'erDiagram\n  ci_report {\n    uuid id PK\n    string kind "not null, length 64"\n  }\n',
+            after: 'erDiagram\n  ci_report {\n    uuid id PK\n    string kind "not null, length 128"\n  }\n',
+          },
+        ],
+        truncated: false,
+      };
+    }
+
+    function entityChangesReport(): QitsReport {
+      return {
+        id: 'rep-2',
+        kind: 'entity-changes',
+        kindVersion: 1,
+        stepIndex: 0,
+        highlights: [],
+        baselineRunId: null,
+        baselineVersion: '2026.1003.52637',
+        payloadBytes: 1,
+        submittedAt: '2026-09-04T16:00:00Z',
+        payload: entityChangesPayload(),
+      };
+    }
+
+    function fakeWithEntityChanges(): FakeReportsClient {
+      const report = entityChangesReport();
+      const summary: QitsReportSummary = {
+        id: report.id,
+        kind: report.kind,
+        kindVersion: report.kindVersion,
+        stepIndex: report.stepIndex,
+        highlights: report.highlights,
+        baselineRunId: report.baselineRunId,
+        baselineVersion: report.baselineVersion,
+        payloadBytes: report.payloadBytes,
+        submittedAt: report.submittedAt,
+      };
+      return new FakeReportsClient(runReportsDto('run-9', { reports: [summary] }), report);
+    }
+
+    it('renders the Entities section for a CHANGED unit, and offers no "no view" fallback', async () => {
+      const fake = fakeWithEntityChanges();
+      withRepositories(
+        provideQitsStandardReportKinds(),
+        { provide: QitsReportsClient, useValue: fake },
+        { provide: QITS_MERMAID_LOADER, useValue: () => Promise.resolve(STUB_MERMAID) },
+      );
+      await open();
+      await answer(request({ pipeline: pipelineWith('run-9') }));
+
+      const toggle = [...page().querySelectorAll<HTMLButtonElement>('button.toggle')].find(
+        (button) => (button.textContent ?? '').includes('Entities'),
+      );
+      expect(toggle).toBeTruthy();
+      toggle!.click();
+      await settle();
+      harness.fixture.detectChanges();
+
+      expect(page().querySelector('qits-entity-changes-report')).not.toBeNull();
+      expect(page().textContent).toContain('ci');
+      expect(page().textContent).not.toContain('No view for this report kind here');
     });
   });
 
