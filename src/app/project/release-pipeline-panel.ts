@@ -19,6 +19,7 @@ import type {
 import { ReleaseRequestsApi } from '../api/release-requests-api';
 import { NONE, formatInstant, formatRelativeTime, shortSha } from '../ui/format';
 import { describeError, serverMessage, statusOf } from '../ui/loadable';
+import { ReleaseAutomations } from './release-automations';
 import { ReleaseGatesPanel } from './release-gates-panel';
 import { approvalOutstanding, awaitingApproval, hasReleased } from './release-requests-model';
 
@@ -46,6 +47,8 @@ interface DrawnGate {
   readonly detail: string | null;
   /** Whether the two decision buttons hang under this line. True on at most one gate. */
   readonly asks: boolean;
+  /** Whether the automation rows hang under this line — the `QA_PUBLISH` · `AUTOMATIONS` gate. */
+  readonly automations: boolean;
 }
 
 /** One phase row and the gates drawn under it. See {@link ReleasePipelinePanel} for the rules. */
@@ -94,7 +97,23 @@ const GATE_NAMES: Readonly<Record<string, string>> = {
   APPROVAL: 'Approval',
   PUBLISH: 'Publish',
   DEPLOYMENT: 'Deployment',
+  AUTOMATIONS: 'Automations',
 };
+
+/** The automation states that mean a run is still to come or in flight, not an answer. */
+const AUTOMATION_UNDERWAY_STATES: ReadonlySet<string> = new Set([
+  'PENDING',
+  'REQUESTED',
+  'RUNNING',
+]);
+
+/** `A`, `A and B`, `A, B and C` — labels as a sentence names them. */
+function listed(labels: readonly string[]): string {
+  if (labels.length <= 1) {
+    return labels[0] ?? '';
+  }
+  return `${labels.slice(0, -1).join(', ')} and ${labels[labels.length - 1]}`;
+}
 
 /**
  * **The one release pipeline of a request**: three phases in the order they happen, with each gate
@@ -187,7 +206,7 @@ const GATE_NAMES: Readonly<Record<string, string>> = {
 @Component({
   selector: 'app-release-pipeline-panel',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [QitsButton, ReleaseGatesPanel],
+  imports: [QitsButton, ReleaseAutomations, ReleaseGatesPanel],
   template: `
     @if (pipeline()) {
       <section class="panel pipeline">
@@ -236,6 +255,14 @@ const GATE_NAMES: Readonly<Record<string, string>> = {
                 <p class="detail">{{ gate.detail }}</p>
               }
             </div>
+
+            @if (gate.automations) {
+              <app-release-automations
+                class="automations"
+                [request]="request()"
+                (decided)="decided.emit($event)"
+              />
+            }
 
             @if (gate.asks) {
               <div class="ask">
@@ -400,6 +427,9 @@ const GATE_NAMES: Readonly<Record<string, string>> = {
       margin: 0.15rem 0 0 1.4rem;
       color: #374151;
       overflow-wrap: anywhere;
+    }
+    .automations {
+      margin: 0.2rem 0 0 1.4rem;
     }
     .terminal {
       display: flex;
@@ -665,6 +695,10 @@ export class ReleasePipelinePanel {
     const tone = this.gateTone(gate.state);
     const name = this.gateName(gate.kind);
     const asks = gate.kind === 'APPROVAL' && gate.between === 'QA_PUBLISH' && this.askable();
+    const automations =
+      gate.kind === 'AUTOMATIONS' &&
+      gate.between === 'QA_PUBLISH' &&
+      (this.request().automations?.length ?? 0) > 0;
     return {
       key: `${gate.between}:${gate.kind}`,
       name: this.markedName(name, tone),
@@ -672,6 +706,7 @@ export class ReleasePipelinePanel {
       sentence: this.gateSentence(gate, tone),
       detail: gate.detail?.trim() || null,
       asks,
+      automations,
     };
   }
 
@@ -745,6 +780,13 @@ export class ReleasePipelinePanel {
               'participating branch re-folds the request and asks again.';
       case 'APPROVAL':
         return '— waiting for a person';
+      case 'AUTOMATIONS': {
+        const sentence = this.automationsSentence(tone);
+        if (sentence) {
+          return sentence;
+        }
+        break;
+      }
       case 'PUBLISH':
         return waiting
           ? this.released()
@@ -763,13 +805,40 @@ export class ReleasePipelinePanel {
             ? '— live, and main carries this release'
             : '— the deployment of this release did not go live, and this request stays open ' +
               'until it does.';
-      default:
-        return waiting
-          ? '— waiting on this gate; nothing has refused the release'
-          : tone === 'passed'
-            ? '— answered, and it passed'
-            : '— this gate refused the release';
     }
+    return waiting
+      ? '— waiting on this gate; nothing has refused the release'
+      : tone === 'passed'
+        ? '— answered, and it passed'
+        : '— this gate refused the release';
+  }
+
+  /**
+   * What the AUTOMATIONS gate says, naming the automations it is about rather than "this gate" —
+   * the failed ones by label when it has failed, the ones still underway while it waits. Null where
+   * the request carries no row that says either, and the gate falls back to the general sentence.
+   */
+  private automationsSentence(tone: DrawnGate['tone']): string | null {
+    const rows = this.request().automations ?? [];
+    if (tone === 'failed') {
+      const failed = rows.filter((row) => row.state === 'FAILED').map((row) => row.label);
+      return failed.length > 0
+        ? `— ${listed(failed)} failed. The run says why; Re-run asks again once it is fixed.`
+        : null;
+    }
+    if (tone === 'waiting') {
+      const underway = rows
+        .filter((row) => AUTOMATION_UNDERWAY_STATES.has(row.state))
+        .map((row) => row.label);
+      if (underway.length === 0) {
+        return null;
+      }
+      return (
+        `— ${listed(underway)} ${underway.length === 1 ? 'is' : 'are'} still running; ` +
+        'nothing has refused the release'
+      );
+    }
+    return null;
   }
 
   /**

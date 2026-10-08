@@ -1270,6 +1270,25 @@ export interface ReleaseAutomationDto {
   readonly branch: string | null;
   readonly detail: string | null;
   readonly updatedAt: string;
+  /**
+   * Why a `FAILED` row failed, read from the run itself — which step, in which image, with what exit
+   * code, and the tail of what it printed. Additive: absent on every answer from a service build
+   * older than the field, and null on any row that has nothing to say, so a failed row without it is
+   * drawn exactly as it was before.
+   */
+  readonly failure?: ReleaseAutomationFailureDto | null;
+}
+
+/**
+ * The failed step of an automation's run (qits-1116). `stepIndex` is the step's position in the
+ * run, `image` the full image reference it ran in, `exitCode` null where the step never reported
+ * one (it was killed, or never started), and `excerpt` the tail of its log, null where none was kept.
+ */
+export interface ReleaseAutomationFailureDto {
+  readonly stepIndex: number;
+  readonly image: string;
+  readonly exitCode: number | null;
+  readonly excerpt: string | null;
 }
 
 /**

@@ -3,13 +3,11 @@ import { HttpTestingController, provideHttpClientTesting } from '@angular/common
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideQitsNavigationTree, type QitsNavigation } from '@qits/ui-components';
 import type { CommitBuildStatusDto, ReleaseAutomationDto, ReleaseRequestDto } from '../api/dto';
-import { VIEWER_ADMIN } from '../ui/viewer';
 import { ReleaseGatesPanel } from './release-gates-panel';
 
 const REQUEST = '/projects/api/repositories/repo-ci/release-requests/r1';
 const APPROVE = `${REQUEST}/approve`;
 const DECLINE = `${REQUEST}/decline`;
-const AUTOMATION_RERUN = `${REQUEST}/automations/screenshot-baselines/runs`;
 const AUTOMATION_WAIVE = `${REQUEST}/automations/waivers`;
 const FOLD = '20c377ee71fabe6f32429d1506989efecec7798b';
 
@@ -125,20 +123,6 @@ describe('ReleaseGatesPanel', () => {
     TestBed.resetTestingModule();
     TestBed.configureTestingModule({
       providers: [provideHttpClient(), provideHttpClientTesting(), provideQitsNavigationTree(tree)],
-    });
-    http = TestBed.inject(HttpTestingController);
-  }
-
-  /** A viewer {@link VIEWER_ADMIN} says is not an admin — the one case Waive must stay hidden on. */
-  function configureAsNonAdmin(): void {
-    TestBed.resetTestingModule();
-    TestBed.configureTestingModule({
-      providers: [
-        provideHttpClient(),
-        provideHttpClientTesting(),
-        provideQitsNavigationTree(PLATFORM),
-        { provide: VIEWER_ADMIN, useValue: false },
-      ],
     });
     http = TestBed.inject(HttpTestingController);
   }
@@ -537,8 +521,8 @@ describe('ReleaseGatesPanel', () => {
   });
 
   /**
-   * The AUTOMATIONS gate (qits-978): one row per release-request automation, Re-run on the states a
-   * fresh run means something for, and Waive for whoever may press it.
+   * The AUTOMATIONS gate (qits-978). Its rows, Re-run and Waive are `ReleaseAutomations`' own and are
+   * pinned in its spec; what is pinned here is that this panel still draws them, under its own mark.
    */
   describe('the automations gate', () => {
     /** `undefined` is an answer from a service build older than the field: draw today's page. */
@@ -569,83 +553,12 @@ describe('ReleaseGatesPanel', () => {
       );
     });
 
-    /** No run means nothing this platform can address — the run link is dropped, never drawn dead. */
-    it('drops the run link where the row carries no run id', async () => {
-      await mount(request({ automations: [automation({ state: 'REQUESTED', runId: null })] }), []);
-
-      expect(element().querySelector('.automation-row a.run')).toBeNull();
-    });
-
-    /** A FAILED row offers Re-run, and pressing it calls the kind's own forwarded door. */
-    it('shows Re-run on a failed row, and posts to the automation’s own door', async () => {
-      await mount(
-        request({
-          automations: [automation({ state: 'FAILED', detail: 'exit 137', runId: 'run-9' })],
-        }),
-        [],
-      );
-
-      expect(element().querySelector('.automation-row')?.textContent).toContain('failed: exit 137');
-
-      await press('Re-run');
-      const posted = http.expectOne(AUTOMATION_RERUN);
-      expect(posted.request.method).toBe('POST');
-      posted.flush({ id: 'bump-1' });
-      await settle();
-    });
-
-    /** A 409 means one is already running for this (request, kind); drawn calmly, never retried. */
-    it('draws a 409 on re-run as "one is already running"', async () => {
+    /** The rows are the shared component's; the gates panel still hands a waiver's answer back. */
+    it('hands the answered request back after a waiver', async () => {
       await mount(request({ automations: [automation({ state: 'FAILED' })] }), []);
 
-      await press('Re-run');
-      http
-        .expectOne(AUTOMATION_RERUN)
-        .flush({ message: 'already running' }, { status: 409, statusText: 'Conflict' });
-      await settle();
-
-      expect(text()).toContain('one is already running');
-    });
-
-    /** Re-run is not offered while the automation is already live. */
-    it('offers no Re-run on a running row', async () => {
-      await mount(request({ automations: [automation({ state: 'RUNNING' })] }), []);
-
-      expect(buttons().some((entry) => (entry.textContent ?? '').includes('Re-run'))).toBe(false);
-    });
-
-    /** The one verb a non-admin browser session must never be offered. */
-    it('hides Waive for a non-admin', async () => {
-      configureAsNonAdmin();
-      await mount(request({ automations: [automation({ state: 'RUNNING' })] }), []);
-
-      expect(text()).not.toContain('Waive for this fold');
-    });
-
-    /** The confirm takes a reason, and the call sends the fold this panel was RENDERED with. */
-    it('sends the rendered fold and the typed reason when an admin waives', async () => {
-      await mount(request({ automations: [automation({ state: 'RUNNING' })] }), []);
-
-      await press('Waive for this fold');
-      const field = element().querySelector('.waive-reason') as HTMLInputElement;
-      field.value = 'qits-maintenance is down; this fix cannot wait behind it';
-      field.dispatchEvent(new Event('input'));
-      await settle();
-
-      await press('Confirm waive');
-      const posted = http.expectOne(AUTOMATION_WAIVE);
-      expect(posted.request.method).toBe('POST');
-      expect(posted.request.body).toEqual({
-        foldSha: FOLD,
-        reason: 'qits-maintenance is down; this fix cannot wait behind it',
-      });
-      posted.flush({ request: request({ automations: [automation({ state: 'WAIVED' })] }) });
-      await settle();
-    });
-
-    /** A 409 for a moved fold is drawn calmly, exactly as the approval panel's own 409 is. */
-    it('draws the moved-fold sentence on a 409', async () => {
-      await mount(request({ automations: [automation({ state: 'RUNNING' })] }), []);
+      expect(element().querySelector('.gate.automations')?.textContent).toContain('✗ Automations');
+      expect(element().querySelector('app-release-automations')).not.toBeNull();
 
       await press('Waive for this fold');
       const field = element().querySelector('.waive-reason') as HTMLInputElement;
@@ -654,18 +567,11 @@ describe('ReleaseGatesPanel', () => {
       await settle();
       await press('Confirm waive');
 
-      http.expectOne(AUTOMATION_WAIVE).flush(
-        {
-          message:
-            'Release request r1 is on aaaa1111bbbb2222cccc3333dddd4444eeee5555 now, ' +
-            `not ${FOLD}.`,
-        },
-        { status: 409, statusText: 'Conflict' },
-      );
+      const waived = request({ automations: [automation({ state: 'WAIVED' })] });
+      http.expectOne(AUTOMATION_WAIVE).flush({ request: waived });
       await settle();
 
-      expect(text()).toContain('The fold changed while this was being read');
-      expect(text()).toContain('aaaa111');
+      expect(answered).toEqual([waived]);
     });
   });
 

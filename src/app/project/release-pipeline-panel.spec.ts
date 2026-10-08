@@ -4,6 +4,7 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideQitsNavigationTree, type QitsNavigation } from '@qits/ui-components';
 import type {
   CommitBuildStatusDto,
+  ReleaseAutomationDto,
   ReleasePhaseDto,
   ReleasePipelineDto,
   ReleasePipelineGateDto,
@@ -15,6 +16,7 @@ const REQUEST = '/projects/api/repositories/repo-ci/release-requests/r1';
 const APPROVE = `${REQUEST}/approve`;
 const RERUN = (phase: string) => `${REQUEST}/pipeline/${phase}/rerun`;
 const FOLD = '20c377ee71fabe6f32429d1506989efecec7798b';
+const AUTOMATION_RERUN = `${REQUEST}/automations/entity-diagram/runs`;
 
 /**
  * The chrome, answered from a literal — with **qits-ci served on a host of its own**, which is the
@@ -84,6 +86,38 @@ function gate(
 /** A request carrying a pipeline — the shape everything but the legacy test is about. */
 function piped(pipeline: ReleasePipelineDto, overrides: Partial<ReleaseRequestDto> = {}) {
   return request({ pipeline, ...overrides });
+}
+
+function automation(overrides: Partial<ReleaseAutomationDto> = {}): ReleaseAutomationDto {
+  return {
+    kind: 'entity-diagram',
+    label: 'Entity diagram',
+    state: 'FAILED',
+    foldSha: FOLD,
+    runId: 'run-77',
+    branch: null,
+    detail: null,
+    updatedAt: '2026-09-01T13:40:00Z',
+    ...overrides,
+  };
+}
+
+/** A pipeline held at QA by the AUTOMATIONS gate, carrying the given automation rows. */
+function heldOnAutomations(
+  automations: readonly ReleaseAutomationDto[],
+  state = 'FAILED',
+): ReleaseRequestDto {
+  return piped(
+    {
+      phases: [phase('QA', 'SUCCESS', { runId: 'run-9' })],
+      gates: [
+        gate('QA_PUBLISH', 'CI', 'PASSED'),
+        gate('QA_PUBLISH', 'AUTOMATIONS', state),
+        gate('PUBLISH_DEPLOY', 'PUBLISH', 'PENDING'),
+      ],
+    },
+    { automations },
+  );
 }
 
 function build(overrides: Partial<CommitBuildStatusDto> = {}): CommitBuildStatusDto {
@@ -536,7 +570,8 @@ describe('ReleasePipelinePanel', () => {
       http.expectOne(APPROVE).flush(
         {
           message:
-            'Release request r1 is on aaaa1111bbbb2222cccc3333dddd4444eeee5555 now, ' + `not ${FOLD}.`,
+            'Release request r1 is on aaaa1111bbbb2222cccc3333dddd4444eeee5555 now, ' +
+            `not ${FOLD}.`,
         },
         { status: 409, statusText: 'Conflict' },
       );
@@ -583,6 +618,97 @@ describe('ReleasePipelinePanel', () => {
       await mount(gated(), [build()]);
 
       expect(element().querySelector('.gate.is-waiting .detail')).toBeNull();
+    });
+  });
+
+  /**
+   * The AUTOMATIONS gate (qits-1116). Every current service answers with a pipeline, so this is the
+   * only place a reader can learn which automation is holding the release and why — the rows are the
+   * same component the gates panel draws, hung under the `QA_PUBLISH` gate.
+   */
+  describe('the automations gate', () => {
+    it('names the gate "Automations" and names the failed automation in its sentence', async () => {
+      await mount(heldOnAutomations([automation()]));
+
+      const gateLine = [...element().querySelectorAll('.gate')].find((line) =>
+        (line.textContent ?? '').includes('Automations'),
+      );
+      expect(gateLine?.querySelector('.gate-name')?.textContent?.trim()).toBe('✗ Automations');
+      expect(gateLine?.textContent).toContain('Entity diagram failed');
+      expect(text()).not.toContain('AUTOMATIONS');
+      expect(text()).not.toContain('this gate refused the release');
+    });
+
+    it('draws the failed row with its step, its excerpt, its run link and a Re-run', async () => {
+      await mount(
+        heldOnAutomations([
+          automation({
+            failure: {
+              stepIndex: 1,
+              image: 'registry.dev.internal:5000/qits/build-images/maven-base:latest',
+              exitCode: 1,
+              excerpt: '[ERROR] the entity diagram is stale\n[ERROR] BUILD FAILURE',
+            },
+          }),
+        ]),
+      );
+
+      const row = element().querySelector('app-release-automations .automation-row');
+      expect(row?.querySelector('.label')?.textContent).toContain('Entity diagram');
+      expect(row?.querySelector('.failure-step')?.textContent?.trim()).toBe(
+        'step 1 · maven-base:latest · exit 1',
+      );
+      expect(row?.querySelector('pre.excerpt')?.textContent).toBe(
+        '[ERROR] the entity diagram is stale\n[ERROR] BUILD FAILURE',
+      );
+      expect(row?.querySelector('a.run')?.getAttribute('href')).toBe(
+        'https://ci.dev.example.test/runs/run-77',
+      );
+
+      await press('Re-run');
+      const posted = http.expectOne(AUTOMATION_RERUN);
+      expect(posted.request.method).toBe('POST');
+      expect(posted.request.body).toEqual({});
+      posted.flush({ id: 'bump-1' });
+      await settle();
+    });
+
+    /** A service older than the failure field: still the link and the Re-run, just no excerpt. */
+    it('draws a failed row without a failure with its link and Re-run, and no excerpt', async () => {
+      await mount(heldOnAutomations([automation({ detail: 'the run was red' })]));
+
+      const row = element().querySelector('app-release-automations .automation-row');
+      expect(row?.textContent).toContain('Entity diagram');
+      expect(row?.textContent).toContain('failed: the run was red');
+      expect(row?.querySelector('a.run')?.getAttribute('href')).toBe(
+        'https://ci.dev.example.test/runs/run-77',
+      );
+      expect(row?.querySelector('.failure-step')).toBeNull();
+      expect(row?.querySelector('pre.excerpt')).toBeNull();
+      expect(button('Re-run')).toBeTruthy();
+    });
+
+    it('says which automations are still running while the gate waits', async () => {
+      await mount(
+        heldOnAutomations(
+          [
+            automation({ state: 'RUNNING' }),
+            automation({ kind: 'pins', label: 'Estate pins', state: 'REQUESTED' }),
+          ],
+          'PENDING',
+        ),
+      );
+
+      expect(text()).toContain('Entity diagram and Estate pins are still running');
+    });
+
+    /** Nothing to hang: no rows, no component — and the gate keeps its general sentence. */
+    it('draws no rows where the request carries no automations', async () => {
+      await mount(heldOnAutomations([]));
+
+      expect(element().querySelector('app-release-automations')).toBeNull();
+      expect(text()).toContain('✗ Automations');
+      expect(text()).toContain('this gate refused the release');
     });
   });
 
