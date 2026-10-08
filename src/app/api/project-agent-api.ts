@@ -4,8 +4,22 @@ import { Injectable, inject, signal, type Signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { QITS_API_BASE } from './api-base';
 
-/** Where a project's one agent container is. `ABSENT` means it has never been created. */
-export type ContainerRuntimeStatus = 'RUNNING' | 'STOPPED' | 'PROVISIONING' | 'FAILED' | 'ABSENT';
+/**
+ * Where a project's one agent container is. `ABSENT` means it has never been created.
+ *
+ * `QUEUED` and `UNAVAILABLE` are the front desk's (qits-767): a desk waiting for a front-desk runner
+ * to take it, and a desk whose runner has been offline past its reconnect grace. A server before the
+ * front-desk release never answers either, so both are simply never seen against it.
+ */
+export type ContainerRuntimeStatus =
+  'RUNNING' | 'STOPPED' | 'PROVISIONING' | 'FAILED' | 'ABSENT' | 'QUEUED' | 'UNAVAILABLE';
+
+/**
+ * A project's front-desk lifecycle, read from its `project.yml` `front_desk.lifecycle`. `ALWAYS_ON`
+ * desks are kept up permanently and their `project.work` session is started by the daemon itself;
+ * absent means `ON_DEMAND`.
+ */
+export type FrontDeskLifecycle = 'ALWAYS_ON' | 'ON_DEMAND';
 
 /**
  * What the host knows about a project's agent container.
@@ -20,6 +34,16 @@ export interface AgentContainerDto {
   readonly runtimeStatus: ContainerRuntimeStatus;
   readonly daemonConnected: boolean;
   readonly daemonVersion: string | null;
+  /**
+   * The front-desk runner the desk is placed on, and its name. Optional, like every field below:
+   * a server before the front-desk release sends none of them, and the panel reads as it always did.
+   */
+  readonly runnerId?: string | null;
+  readonly runnerName?: string | null;
+  /** Absent means `ON_DEMAND`. */
+  readonly lifecycle?: FrontDeskLifecycle | null;
+  /** When a `QUEUED` desk started waiting for a runner. */
+  readonly queuedAt?: string | null;
 }
 
 /** The envelope all three lifecycle routes answer with. */
@@ -126,6 +150,14 @@ export class ProjectAgentApi {
       this.http.post<AgentContainerResponse>(`${this.hostBase(projectId)}/stop`, {}),
     );
     return answer.container;
+  }
+
+  /**
+   * Remove the desk outright: its container and volume on the runner's node, and its token. Unlike
+   * {@link stop}, nothing survives — the next {@link ensure} provisions afresh.
+   */
+  async remove(projectId: string): Promise<void> {
+    await firstValueFrom(this.http.delete<void>(this.hostBase(projectId)));
   }
 
   // ---- the proxy --------------------------------------------------------------------------

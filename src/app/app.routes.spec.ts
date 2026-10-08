@@ -11,6 +11,7 @@ import { AgentMcpCatalogPage } from './agent-config/agent-mcp-catalog-page';
 import { AgentSurfacePage } from './agent-config/agent-surface-page';
 import { AgentSurfaceSkillsPage } from './agent-config/agent-surface-skills-page';
 import { AgentSurfacesPage } from './agent-config/agent-surfaces-page';
+import { RunnersPage } from './runners/runners-page';
 import { OWN_PROJECT_SEGMENTS, routes } from './app.routes';
 import { EVENT_SOURCE_FACTORY, type EventSourceFactory } from './api/event-source';
 import { CreateRepositoryPage } from './create/create-repository-page';
@@ -299,6 +300,10 @@ describe('routes', () => {
     expect(await at('/agent-configuration/surfaces/epic.chat')).toBe(AgentSurfacePage);
     // Reserved, reachable and empty: fixing where per-surface skills will live is the whole scope.
     expect(await at('/agent-configuration/surfaces/epic.chat/skills')).toBe(AgentSurfaceSkillsPage);
+  });
+
+  it('serves the front-desk runners above the projects, being estate-wide', async () => {
+    expect(await at('/runners')).toBe(RunnersPage);
   });
 
   it('answers anything deeper with the 404 it is', async () => {

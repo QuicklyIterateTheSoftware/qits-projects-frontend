@@ -7,6 +7,7 @@ import type { AgentContainerDto } from '../../api/project-agent-api';
 import { ProjectEvents } from '../../api/project-events';
 import { WEB_SOCKET_FACTORY, WEB_SOCKET_OPEN, type WebSocketLike } from '../../api/web-socket';
 import { RefinementPanel } from './refinement-panel';
+import { DESK_POLL_INTERVAL_MS } from './refinement-session';
 
 /** The PTY the browser would open, driven by hand — nothing else reaches these edges. */
 class FakeSocket implements WebSocketLike {
@@ -529,6 +530,121 @@ describe('RefinementPanel', () => {
 
     expect(sockets).toHaveLength(1);
     expect(sockets[0].url).toContain('/terminal/commands/login-1');
+  });
+
+  // ---- the front desk (qits-767) ------------------------------------------------------------
+
+  describe('front-desk states', () => {
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    async function tick(): Promise<void> {
+      await vi.advanceTimersByTimeAsync(DESK_POLL_INTERVAL_MS);
+      await settle();
+    }
+
+    it('waits for a runner while QUEUED, polling, then resolves once the desk is running', async () => {
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+      await mount();
+      await press('Start');
+
+      await flush('/projects/api/projects/p1/agent-container/ensure', {
+        container: container({
+          runtimeStatus: 'QUEUED',
+          daemonConnected: false,
+          queuedAt: '2026-10-08T09:00:00Z',
+        }),
+      });
+      expect(text()).toContain('Waiting for a front-desk runner (since 8 Oct 2026 09:00:00Z)');
+      expect(text()).toContain('Queued');
+      // Nothing is asked of a daemon that is not there yet.
+      http.verify();
+
+      await tick();
+      await flush('/projects/api/projects/p1/agent-container', {
+        container: container({ runtimeStatus: 'PROVISIONING', daemonConnected: false }),
+      });
+      expect(text()).toContain('being provisioned');
+
+      await tick();
+      await flush('/projects/api/projects/p1/agent-container', {
+        container: container({ runnerName: 'platform-host' }),
+      });
+      await flush('/projects/container/p1/commands', {
+        entries: [{ command: running('already') }],
+      });
+      await flushHarness();
+      expect(sockets).toHaveLength(1);
+      expect(text()).toContain('on platform-host');
+    });
+
+    it('says the runner is offline while UNAVAILABLE, and never launches', async () => {
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+      await mount();
+      await press('Start');
+
+      const offline = container({
+        runtimeStatus: 'UNAVAILABLE',
+        daemonConnected: false,
+        runnerName: 'platform-host',
+      });
+      await flush('/projects/api/projects/p1/agent-container/ensure', { container: offline });
+      expect(text()).toContain('Front-desk runner platform-host is offline');
+      expect(text()).toContain('Runner offline');
+
+      await tick();
+      await flush('/projects/api/projects/p1/agent-container', { container: offline });
+      // Still only the status read: no daemon call, no launch.
+      http.verify();
+      expect(sockets).toHaveLength(0);
+      fixture.destroy();
+    });
+
+    it('attaches an ALWAYS_ON desk on open, without an ensure, and hides Stop', async () => {
+      await mount();
+      await press('Front desk agent');
+
+      await flush('/projects/api/projects/p1/agent-container', {
+        container: container({ lifecycle: 'ALWAYS_ON', runnerName: 'platform-host' }),
+      });
+      await flush('/projects/api/projects/p1/agent-container', {
+        container: container({ lifecycle: 'ALWAYS_ON', runnerName: 'platform-host' }),
+      });
+      // The daemon started the session itself; it may not have pinned a lineage yet.
+      await flush('/projects/container/p1/commands', {
+        entries: [{ command: running('desk', { agentSessions: [] }) }],
+      });
+      await flushHarness();
+
+      expect(sockets).toHaveLength(1);
+      expect(sockets[0].url).toContain('/terminal/commands/desk');
+      expect(text()).toContain('always on');
+      expect(text()).toContain('End session');
+      expect(button('Stop container')).toBeUndefined();
+      http.verify();
+    });
+
+    it('never launches a second session beside an ALWAYS_ON desk’s own', async () => {
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+      await mount();
+      await press('Front desk agent');
+
+      const desk = container({ lifecycle: 'ALWAYS_ON' });
+      await flush('/projects/api/projects/p1/agent-container', { container: desk });
+      await flush('/projects/api/projects/p1/agent-container', { container: desk });
+      await flush('/projects/container/p1/commands', { entries: [] });
+      await flushHarness();
+
+      expect(text()).toContain('Its daemon starts it by itself');
+      http.verify();
+
+      await tick();
+      await flush('/projects/container/p1/commands', {
+        entries: [{ command: running('desk') }],
+      });
+      expect(sockets).toHaveLength(1);
+    });
   });
 
   /** The common set-up: open, ensure, launch, attach, and an open PTY. */

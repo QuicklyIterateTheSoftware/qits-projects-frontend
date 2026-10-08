@@ -13,7 +13,8 @@ import { QitsBadge, QitsButton, type QitsBadgeTone } from '@qits/ui-components';
 import type { AgentSurface } from '../../api/agent-daemon-api';
 import type { AgentContainerDto } from '../../api/project-agent-api';
 import { ProjectEvents } from '../../api/project-events';
-import { RefinementSession } from './refinement-session';
+import { RefinementSession, isAlwaysOn } from './refinement-session';
+import { formatInstant } from '../../ui/format';
 import { TerminalView } from './terminal-view';
 
 /** Which destructive control is waiting for its second press. */
@@ -106,6 +107,10 @@ const WORDS: Readonly<Record<AgentSurface, DeskWords>> = {
 
         <qits-badge [label]="chip().label" [tone]="chip().tone" />
 
+        @if (runnerName(); as runner) {
+          <span class="runner">on {{ runner }}</span>
+        }
+
         @if (!expanded()) {
           <qits-button variant="secondary" size="sm" [busy]="session.busy()" (pressed)="start()">
             Start
@@ -139,6 +144,10 @@ const WORDS: Readonly<Record<AgentSurface, DeskWords>> = {
 
           @case ('resolving') {
             <p class="prose">{{ words().starting }}</p>
+          }
+
+          @case ('waiting') {
+            <p class="prose waiting">{{ waitingMessage() }}</p>
           }
 
           @case ('unavailable') {
@@ -208,14 +217,26 @@ const WORDS: Readonly<Record<AgentSurface, DeskWords>> = {
                 </qits-button>
               }
               @if (session.link() === 'disconnected') {
-                <qits-button
-                  variant="secondary"
-                  size="sm"
-                  [busy]="session.busy()"
-                  (pressed)="startFresh()"
-                >
-                  New session
-                </qits-button>
+                @if (alwaysOn()) {
+                  <!-- The daemon relaunches an ALWAYS_ON desk's session itself: find it again. -->
+                  <qits-button
+                    variant="secondary"
+                    size="sm"
+                    [busy]="session.busy()"
+                    (pressed)="start()"
+                  >
+                    Reattach
+                  </qits-button>
+                } @else {
+                  <qits-button
+                    variant="secondary"
+                    size="sm"
+                    [busy]="session.busy()"
+                    (pressed)="startFresh()"
+                  >
+                    New session
+                  </qits-button>
+                }
               }
               <qits-button variant="ghost" size="sm" (pressed)="collapse()">Detach</qits-button>
               <qits-button
@@ -226,14 +247,17 @@ const WORDS: Readonly<Record<AgentSurface, DeskWords>> = {
               >
                 {{ pending() === 'terminate' ? 'Confirm end session?' : 'End session' }}
               </qits-button>
-              <qits-button
-                variant="ghost"
-                size="sm"
-                [busy]="session.busy()"
-                (pressed)="press('stop')"
-              >
-                {{ pending() === 'stop' ? 'Confirm stop container?' : 'Stop container' }}
-              </qits-button>
+              @if (!alwaysOn()) {
+                <!-- An ALWAYS_ON desk is kept up by the platform; stopping it here would be undone. -->
+                <qits-button
+                  variant="ghost"
+                  size="sm"
+                  [busy]="session.busy()"
+                  (pressed)="press('stop')"
+                >
+                  {{ pending() === 'stop' ? 'Confirm stop container?' : 'Stop container' }}
+                </qits-button>
+              }
             </div>
           }
         }
@@ -273,6 +297,10 @@ const WORDS: Readonly<Record<AgentSurface, DeskWords>> = {
     }
     .caret {
       color: #6b7280;
+    }
+    .runner {
+      color: #6b7280;
+      font-size: 0.8rem;
     }
     .status {
       margin: 0.6rem 0 0;
@@ -350,6 +378,35 @@ export class RefinementPanel {
     return branch.kind === 'unavailable' ? branch.message : '';
   });
 
+  /** Whether the desk is kept up by the platform (`front_desk.lifecycle: ALWAYS_ON`). */
+  protected readonly alwaysOn = computed(() => isAlwaysOn(this.session.container()));
+
+  /** The front-desk runner the desk is on, when the server says (qits-767). */
+  protected readonly runnerName = computed(() => this.session.container()?.runnerName ?? null);
+
+  /** What a waiting desk is waiting for, in one sentence. */
+  protected readonly waitingMessage = computed(() => {
+    const branch = this.session.branch();
+    if (branch.kind !== 'waiting') {
+      return '';
+    }
+    const container = this.session.container();
+    switch (branch.reason) {
+      case 'queued':
+        return container?.queuedAt
+          ? `Waiting for a front-desk runner (since ${formatInstant(container.queuedAt)}).`
+          : 'Waiting for a front-desk runner.';
+      case 'offline':
+        return container?.runnerName
+          ? `Front-desk runner ${container.runnerName} is offline. The desk comes back with it.`
+          : 'Front-desk runner is offline. The desk comes back with it.';
+      case 'session':
+        return 'The front desk session is not running right now. Its daemon starts it by itself.';
+      default:
+        return 'The front desk is being provisioned.';
+    }
+  });
+
   /** The one word in the collapsed row. It answers "is there an agent here" and nothing more. */
   protected readonly chip = computed<{ label: string; tone: QitsBadgeTone }>(() => {
     const container = this.session.container();
@@ -364,7 +421,10 @@ export class RefinementPanel {
     const container = this.session.container();
     const parts: string[] = [];
     parts.push(container ? containerWords(container) : 'Container status not read yet');
-    if (container && container.runtimeStatus !== 'ABSENT') {
+    if (container?.lifecycle === 'ALWAYS_ON') {
+      parts.push('always on');
+    }
+    if (container && container.runtimeStatus !== 'ABSENT' && container.runtimeStatus !== 'QUEUED') {
       parts.push(container.daemonConnected ? 'daemon connected' : 'daemon not connected');
     }
     const harness = this.session.agentType();
@@ -414,7 +474,18 @@ export class RefinementPanel {
       return;
     }
     this.expanded.set(true);
-    void this.session.refreshContainer();
+    void this.openDesk();
+  }
+
+  /**
+   * Read the desk's status, and attach straight away when it is ALWAYS_ON: that desk is up anyway
+   * and its session was started by the daemon, so there is nothing for a press to spend.
+   */
+  private async openDesk(): Promise<void> {
+    await this.session.refreshContainer();
+    if (this.expanded() && this.alwaysOn() && this.branch().kind === 'dormant') {
+      await this.session.start();
+    }
   }
 
   protected collapse(): void {
@@ -506,6 +577,10 @@ function chipFor(container: AgentContainerDto): { label: string; tone: QitsBadge
       return { label: 'Stopped', tone: 'neutral' };
     case 'FAILED':
       return { label: 'Failed', tone: 'danger' };
+    case 'QUEUED':
+      return { label: 'Queued', tone: 'info' };
+    case 'UNAVAILABLE':
+      return { label: 'Runner offline', tone: 'warning' };
     default:
       return { label: 'Not started', tone: 'neutral' };
   }
@@ -521,6 +596,10 @@ function containerWords(container: AgentContainerDto): string {
       return 'Container stopped';
     case 'FAILED':
       return 'Container failed';
+    case 'QUEUED':
+      return 'Waiting for a front-desk runner';
+    case 'UNAVAILABLE':
+      return 'Front-desk runner offline';
     default:
       return 'No container yet';
   }

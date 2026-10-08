@@ -1,0 +1,481 @@
+<header class="head">
+  <h1>Front-desk runners</h1>
+  <p class="lede">
+    The nodes a project's front desk can be placed on, each installed with one pasted line —
+    estate-wide, not one project's.
+  </p>
+</header>
+
+@if (panel(); as install) {
+  <section class="panel" role="alert" aria-label="Install line">
+    <h2>Install line — {{ install.runnerName }}</h2>
+    <p>Paste this into a terminal on the node, which needs docker. Nothing else is needed.</p>
+    <p class="once">
+      This is the only time it is shown: the token inside it is single-use, and reloading this page
+      loses it for good. Rotate token in the runner's menu makes a new one.
+    </p>
+    <pre class="script install-line">{{ install.installLine }}</pre>
+    <div class="panel-actions">
+      <qits-button variant="primary" size="sm" (pressed)="copy('install', install.installLine)">
+        {{ copied() === 'install' ? 'Copied' : 'Copy install line' }}
+      </qits-button>
+    </div>
+    <p class="token-label">Registration token</p>
+    <pre class="script token">{{ install.registrationToken }}</pre>
+    <div class="panel-actions">
+      <qits-button
+        variant="secondary"
+        size="sm"
+        (pressed)="copy('token', install.registrationToken)"
+      >
+        {{ copied() === 'token' ? 'Copied' : 'Copy token' }}
+      </qits-button>
+      <qits-button variant="ghost" size="sm" (pressed)="closePanel()">Close</qits-button>
+    </div>
+  </section>
+}
+
+@if (admin()) {
+  <section class="create">
+    <h2>Register a runner</h2>
+    <!-- novalidate: this page reports a bad field itself, rather than the browser cancelling the submit. -->
+    <form novalidate (submit)="$event.preventDefault(); createRunner()">
+      <label class="field">
+        <span>Name</span>
+        <input
+          type="text"
+          name="name"
+          [value]="newName()"
+          (input)="newName.set($any($event.target).value)"
+          placeholder="build-box-1"
+        />
+        @if (nameProblem()) {
+          <span class="field-error" role="alert">{{ nameProblem() }}</span>
+        }
+      </label>
+      <label class="field">
+        <span>Description (optional)</span>
+        <input
+          type="text"
+          name="description"
+          [value]="newDescription()"
+          (input)="newDescription.set($any($event.target).value)"
+        />
+      </label>
+      <label class="field field-narrow">
+        <span>Slots</span>
+        <input
+          type="number"
+          name="slots"
+          [min]="minSlots"
+          [value]="newSlots()"
+          (input)="newSlots.set($any($event.target).valueAsNumber)"
+        />
+        @if (slotsProblem()) {
+          <span class="field-error" role="alert">{{ slotsProblem() }}</span>
+        }
+      </label>
+      <qits-button variant="primary" size="sm" type="submit" [busy]="creating()">
+        Register
+      </qits-button>
+    </form>
+    @if (createError()) {
+      <p class="note note-error" role="alert">{{ createError() }}</p>
+    }
+  </section>
+}
+
+<section class="list">
+  <app-async
+    [state]="runners()"
+    loadingLabel="Loading runners"
+    errorLabel="Could not load runners"
+    (retry)="load()"
+  />
+
+  @if (runners(); as state) {
+    @if (state.kind === 'ready') {
+      @if (state.value.length === 0) {
+        <app-empty message="No runners are registered yet." />
+      }
+      <ul class="runners">
+        @for (runner of state.value; track runner.id) {
+          <li class="runner" [attr.data-runner]="runner.name">
+            <div class="row">
+              <span class="name">{{ runner.name }}</span>
+              <qits-badge
+                class="connectivity"
+                [label]="connectivity(runner).label"
+                [tone]="connectivity(runner).tone"
+              />
+              @if (runner.connected) {
+                <span class="fact seen">since {{ ago(runner.connectedSince) }}</span>
+              } @else {
+                <span class="fact seen">last seen {{ ago(runner.lastSeenAt) }}</span>
+              }
+              <span class="fact version">
+                @if (runner.version) {
+                  v{{ runner.version }}
+                } @else {
+                  version {{ none }}
+                }
+              </span>
+              @if (updating(runner)) {
+                <qits-badge
+                  class="updating"
+                  label="updating"
+                  tone="info"
+                  [attr.title]="'Rolling over to v' + runner.pinnedVersion"
+                />
+              } @else if (runner.pinnedVersion && runner.version === runner.pinnedVersion) {
+                <span class="fact pinned">at the pin</span>
+              }
+              <span class="fact slots">
+                {{ runner.desks?.length ?? 0 }}/{{ runner.slots }} slots
+              </span>
+              @if (runner.quarantined) {
+                <qits-badge class="quarantined" label="quarantined" tone="warning" />
+                <span class="fact quarantine-reason">
+                  {{ quarantineReason(runner) }}, since {{ ago(runner.quarantinedAt) }}
+                </span>
+              }
+              @if (healthCheck(runner); as check) {
+                <qits-badge [label]="check.label" [tone]="check.tone" />
+                <span class="fact">{{ ago(healthCheckAt(runner)) }}</span>
+              }
+              <span class="spring"></span>
+              @if (admin()) {
+                <button
+                  type="button"
+                  class="menu-toggle"
+                  [attr.aria-expanded]="isRowOpen(runner.id)"
+                  (click)="toggleRow(runner.id)"
+                >
+                  Actions
+                </button>
+              }
+            </div>
+
+            @if (runner.description) {
+              <p class="description">{{ runner.description }}</p>
+            }
+
+            <section class="desks" aria-label="Desks">
+              <span class="desks-title">Desks</span>
+              @if (runner.desks?.length) {
+                @for (desk of runner.desks; track desk.projectId) {
+                  <span class="desk">
+                    @if (desk.slug) {
+                      <a [routerLink]="['/', desk.slug]">{{ desk.slug }}</a>
+                    } @else {
+                      {{ desk.projectId }}
+                    }
+                    @if (desk.state) {
+                      <span class="fact desk-state">{{ desk.state }}</span>
+                    }
+                  </span>
+                }
+              } @else {
+                <span class="fact">none</span>
+              }
+            </section>
+
+            <section class="login" aria-label="Agent login">
+              <span class="login-title">Agent login on this node</span>
+              <qits-badge
+                class="presence-claude"
+                [label]="presence(runner.loginState).label"
+                [tone]="presence(runner.loginState).tone"
+              />
+              @if (admin()) {
+                <qits-button
+                  class="recheck"
+                  variant="ghost"
+                  size="sm"
+                  [busy]="busy() === 'login:' + runner.id"
+                  (pressed)="recheckLogin(runner)"
+                >
+                  Re-check
+                </qits-button>
+              }
+              @if (runner.loginCommand; as loginCommand) {
+                <p class="login-hint">
+                  Log in once on the node; every desk on this runner shares it. The platform never
+                  sees the secret.
+                </p>
+                <div class="command">
+                  <code class="login-command">{{ loginCommand }}</code>
+                  <qits-button
+                    variant="ghost"
+                    size="sm"
+                    (pressed)="copy('login:' + runner.id, loginCommand)"
+                  >
+                    {{ copied() === 'login:' + runner.id ? 'Copied' : 'Copy' }}
+                  </qits-button>
+                </div>
+              } @else {
+                <p class="login-hint">
+                  The login command appears once the runner has reported its node volume.
+                </p>
+              }
+              @if (loginError().get(runner.id); as message) {
+                <p class="note note-error" role="alert">{{ message }}</p>
+              }
+            </section>
+
+            <section class="health" aria-label="Health check">
+              <div class="health-row">
+                <span class="health-title">Last health check</span>
+                @if (healthCheck(runner); as check) {
+                  <qits-badge [label]="check.label" [tone]="check.tone" />
+                  <span class="fact checked">{{ ago(healthCheckAt(runner)) }}</span>
+                } @else {
+                  <span class="fact">not checked yet</span>
+                }
+                @if (admin()) {
+                  <qits-button
+                    class="run-healthcheck"
+                    variant="ghost"
+                    size="sm"
+                    [disabled]="isHealthchecking(runner)"
+                    [busy]="isHealthchecking(runner)"
+                    (pressed)="runHealthCheck(runner)"
+                  >
+                    Run health check
+                  </qits-button>
+                }
+                <qits-button
+                  class="node-details-toggle"
+                  variant="ghost"
+                  size="sm"
+                  [attr.aria-expanded]="isNodeDetailsOpen(runner)"
+                  (pressed)="toggleNodeDetails(runner)"
+                >
+                  {{ isNodeDetailsOpen(runner) ? 'Hide node details' : 'Node details' }}
+                </qits-button>
+              </div>
+
+              @if (checks(runner); as checkList) {
+                @if (checkList.length > 0) {
+                  <ul class="checks">
+                    @for (check of checkList; track check.name) {
+                      <li class="check" [class.check-failed]="check.tone === 'danger'">
+                        <span class="check-name">{{ check.name }}</span>
+                        <qits-badge [label]="check.label" [tone]="check.tone" />
+                        <span class="fact check-detail">{{ check.detail }}</span>
+                      </li>
+                    }
+                  </ul>
+                }
+              }
+
+              @if (healthcheckError()) {
+                <p class="note note-error" role="alert">{{ healthcheckError() }}</p>
+              }
+
+              @if (isNodeDetailsOpen(runner)) {
+                <div class="node-details">
+                  <app-async
+                    [state]="nodeDetailsState(runner)"
+                    loadingLabel="Loading node details"
+                    errorLabel="Could not load node details"
+                    (retry)="retryNodeDetails(runner)"
+                  />
+                  @if (nodeDetailsState(runner); as detailState) {
+                    @if (detailState.kind === 'ready') {
+                      @if (nodeDetailsDisplay(detailState.value); as display) {
+                        @if (display.inventory; as inventory) {
+                          @if (inventory.runnerContainer; as runnerContainer) {
+                            <p class="runner-container">
+                              Runner container: {{ runnerContainer.name }} ({{
+                                runnerContainer.id
+                              }})
+                              @if (runnerContainer.version) {
+                                v{{ runnerContainer.version }}
+                              }
+                              — started {{ ago(runnerContainer.startedAt) }}
+                            </p>
+                          }
+                          <h3>Containers</h3>
+                          @if (inventory.containers.length === 0) {
+                            <p class="fact">No containers on this node.</p>
+                          } @else {
+                            <table class="inventory-table containers">
+                              <thead>
+                                <tr>
+                                  <th>Name</th>
+                                  <th>State</th>
+                                  <th>Started</th>
+                                  <th>Finished</th>
+                                  <th>Exit</th>
+                                  <th>Image</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                @for (container of inventory.containers; track container.id) {
+                                  <tr>
+                                    <td>{{ container.name }}</td>
+                                    <td>{{ container.state }}</td>
+                                    <td>{{ ago(container.startedAt) }}</td>
+                                    <td>
+                                      {{ container.finishedAt ? ago(container.finishedAt) : none }}
+                                    </td>
+                                    <td>{{ container.exitCode ?? none }}</td>
+                                    <td>{{ container.image }}</td>
+                                  </tr>
+                                }
+                              </tbody>
+                            </table>
+                          }
+                          <h3>Volumes</h3>
+                          @if (inventory.volumes.length === 0) {
+                            <p class="fact">No volumes on this node.</p>
+                          } @else {
+                            <table class="inventory-table volumes">
+                              <thead>
+                                <tr>
+                                  <th>Name</th>
+                                  <th>Created</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                @for (volume of inventory.volumes; track volume.name) {
+                                  <tr>
+                                    <td>{{ volume.name }}</td>
+                                    <td>{{ ago(volume.createdAt) }}</td>
+                                  </tr>
+                                }
+                              </tbody>
+                            </table>
+                          }
+                        }
+                        @for (other of display.otherChecks; track other.name) {
+                          <div class="other-check">
+                            <span class="check-name">{{ other.name }}</span>
+                            <qits-badge [label]="other.check.label" [tone]="other.check.tone" />
+                            @if (other.entries.length > 0) {
+                              <dl class="entries">
+                                @for (entry of other.entries; track entry[0]) {
+                                  <div class="entry">
+                                    <dt>{{ entry[0] }}</dt>
+                                    <dd>{{ entry[1] }}</dd>
+                                  </div>
+                                }
+                              </dl>
+                            }
+                          </div>
+                        }
+                      }
+                    }
+                  }
+                </div>
+              }
+            </section>
+
+            @if (admin() && isRowOpen(runner.id)) {
+              <div class="menu">
+                @if (editing(); as draft) {
+                  <div class="edit">
+                    <label class="field field-narrow">
+                      <span>Slots</span>
+                      <input
+                        type="number"
+                        name="edit-slots"
+                        [min]="minSlots"
+                        [value]="draft.slots"
+                        (input)="setEditSlots($any($event.target).valueAsNumber)"
+                      />
+                      <span class="field-hint">0 = take no new desks.</span>
+                    </label>
+                    <label class="field">
+                      <span>Description</span>
+                      <input
+                        type="text"
+                        name="edit-description"
+                        [value]="draft.description"
+                        (input)="setEditDescription($any($event.target).value)"
+                      />
+                    </label>
+                    <div class="menu-actions">
+                      <qits-button
+                        variant="primary"
+                        size="sm"
+                        [busy]="busy() === 'save'"
+                        (pressed)="saveEdit(runner)"
+                      >
+                        Save
+                      </qits-button>
+                      <qits-button variant="ghost" size="sm" (pressed)="cancelEdit()">
+                        Cancel
+                      </qits-button>
+                    </div>
+                  </div>
+                } @else {
+                  <div class="menu-actions">
+                    <qits-button variant="secondary" size="sm" (pressed)="startEdit(runner)">
+                      Edit slots/description
+                    </qits-button>
+                    <qits-button
+                      variant="secondary"
+                      size="sm"
+                      [busy]="busy() === 'rotate'"
+                      (pressed)="rotateToken(runner)"
+                    >
+                      Rotate token
+                    </qits-button>
+                    @if (runner.quarantined) {
+                      <qits-button
+                        variant="secondary"
+                        size="sm"
+                        [busy]="busy() === 'greenlight'"
+                        (pressed)="greenlight(runner)"
+                      >
+                        Greenlight
+                      </qits-button>
+                    }
+                    @if (confirmingDelete()) {
+                      <span class="menu-note">Delete this runner?</span>
+                      <qits-button
+                        variant="primary"
+                        size="sm"
+                        [busy]="busy() === 'delete'"
+                        (pressed)="confirmDelete(runner)"
+                      >
+                        Yes, delete it
+                      </qits-button>
+                      <qits-button variant="ghost" size="sm" (pressed)="dismissDelete()">
+                        Keep it
+                      </qits-button>
+                    } @else {
+                      <qits-button variant="secondary" size="sm" (pressed)="askDelete()">
+                        Delete
+                      </qits-button>
+                    }
+                  </div>
+                }
+                @if (owners(); as blocking) {
+                  <div class="note note-error owners" role="alert">
+                    <p>
+                      This runner still holds a project's front desk (RUNNER_OWNS_DESKS). A desk is
+                      sticky to its runner, so remove these first:
+                    </p>
+                    @if (blocking.length > 0) {
+                      <ul>
+                        @for (desk of blocking; track desk.projectId) {
+                          <li>{{ deskLabel(desk) }}</li>
+                        }
+                      </ul>
+                    }
+                  </div>
+                }
+                @if (rowError()) {
+                  <p class="note note-error" role="alert">{{ rowError() }}</p>
+                }
+              </div>
+            }
+          </li>
+        }
+      </ul>
+    }
+  }
+</section>

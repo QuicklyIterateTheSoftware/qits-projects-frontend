@@ -20,6 +20,7 @@ import { RepositoryPage } from './project/repository-page';
 import { RepositoryReleaseRequestsPage } from './project/repository-release-requests-page';
 import { WorkPage } from './project/work-page';
 import { RefiningPage } from './refining/refining-page';
+import { RunnersPage } from './runners/runners-page';
 
 /**
  * Whether the second segment of `/<project>/<group>/<repository>` names a group.
@@ -83,6 +84,10 @@ function toDesk(archetype: string): RedirectFunction {
  * `agent-configuration` would be shadowed, because Angular matches in order and the literal is above
  * `:project`. It is not in {@link OWN_PROJECT_SEGMENTS}, which is about words *below* a project and
  * derives itself from the table, so the group guard is untouched.
+ *
+ * <p><b>`runners` is the second</b>, beside it and for the same reason (qits-767): the front-desk
+ * runners are the estate's nodes a project's desk is placed on, not any one project's. The same
+ * shadowing cost applies to a project slugged `runners`.
  *
  * <p>Its children spell the shape of the store: `surfaces/:surface` is one surface's whole
  * configuration, `surfaces/:surface/skills` is the reserved and empty place per-surface skills will
@@ -227,6 +232,7 @@ export const routes: Routes = [
         path: 'agent-configuration/surfaces/:surface/skills',
         component: AgentSurfaceSkillsPage,
       },
+      { path: 'runners', component: RunnersPage },
       { path: ':project', component: ProjectPage },
       { path: ':project/project-setup', component: ProjectSetupPage },
       { path: ':project/work', component: WorkPage },

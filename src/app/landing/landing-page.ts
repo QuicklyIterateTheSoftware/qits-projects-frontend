@@ -64,6 +64,10 @@ import { LOADING, failed, ready, type Loadable } from '../ui/loadable';
       <a routerLink="/agent-configuration">Agent configuration</a>
       <span class="note">What every coding-agent session on this platform runs as.</span>
     </p>
+    <p class="platform">
+      <a routerLink="/runners">Front-desk runners</a>
+      <span class="note">The nodes every project's front desk runs on.</span>
+    </p>
   `,
   styles: `
     :host {

@@ -42,7 +42,39 @@ export type SessionBranch =
   /** History exists and nothing is running, so nothing happens without another press. */
   | { readonly kind: 'idle'; readonly lastSessionId: string | null }
   /** The container is not there to be asked. */
-  | { readonly kind: 'unavailable'; readonly message: string };
+  | { readonly kind: 'unavailable'; readonly message: string }
+  /**
+   * The desk is on its way and this is polling until it lands (qits-767): `queued` waits for a
+   * front-desk runner to take it, `provisioning` for the runner to bring it up, `offline` for its
+   * runner to come back — and launches nothing meanwhile — and `session` is an `ALWAYS_ON` desk
+   * whose daemon has not (re)started its own `project.work` session yet.
+   */
+  | { readonly kind: 'waiting'; readonly reason: WaitReason };
+
+/** Why a {@link SessionBranch} is `waiting`. */
+export type WaitReason = 'queued' | 'provisioning' | 'offline' | 'session';
+
+/** How often a waiting desk is re-read. */
+export const DESK_POLL_INTERVAL_MS = 3_000;
+
+/** The container statuses that are on their way somewhere, and the wait each one means. */
+function waitReasonOf(container: AgentContainerDto): WaitReason | null {
+  switch (container.runtimeStatus) {
+    case 'QUEUED':
+      return 'queued';
+    case 'PROVISIONING':
+      return 'provisioning';
+    case 'UNAVAILABLE':
+      return 'offline';
+    default:
+      return null;
+  }
+}
+
+/** Whether a desk is kept up by the platform, with its session started by the daemon itself. */
+export function isAlwaysOn(container: AgentContainerDto | null): boolean {
+  return container?.lifecycle === 'ALWAYS_ON';
+}
 
 /** How many times a completed sign-in may replay the launch before the loop is called off. */
 const REPLAY_LIMIT = 2;
@@ -205,6 +237,9 @@ export class RefinementSession {
   private readonly socketRef = signal<TerminalSocket | null>(null);
   private socketFor: string | null = null;
 
+  /** The pending re-read of a waiting desk, if one is scheduled. */
+  private pollTimer: ReturnType<typeof setTimeout> | null = null;
+
   /** The launch a sign-in terminal interrupted, held until it closes. */
   private held: LaunchAgentRequest | null = null;
   private replays = 0;
@@ -313,7 +348,15 @@ export class RefinementSession {
     this.problemText.set(null);
     this.state.set({ kind: 'resolving' });
     try {
-      this.containerState.set(await this.host.ensure(projectId));
+      // An ALWAYS_ON desk is kept up by the platform: there is nothing to ensure, so it is read.
+      const container = isAlwaysOn(this.containerState())
+        ? await this.host.container(projectId)
+        : await this.host.ensure(projectId);
+      if (this.project() !== projectId) {
+        this.inFlight.set(false);
+        return;
+      }
+      this.containerState.set(container);
     } catch (error) {
       this.state.set({
         kind: 'unavailable',
@@ -323,7 +366,7 @@ export class RefinementSession {
       return;
     }
     this.inFlight.set(false);
-    await this.resolve();
+    await this.resolveOrWait();
   }
 
   /** Start a brand-new session. The Start press when history already exists, and nothing else. */
@@ -349,6 +392,7 @@ export class RefinementSession {
    * it is why neither asks a question first.
    */
   detach(): void {
+    this.cancelPoll();
     this.socketRef()?.close();
     this.socketRef.set(null);
     this.socketFor = null;
@@ -428,6 +472,77 @@ export class RefinementSession {
 
   // ---- the machinery -----------------------------------------------------------------------
 
+  /**
+   * Resolve the session if the desk is up, or wait for it while it is on its way.
+   *
+   * QUEUED and PROVISIONING are a desk that will be up soon; UNAVAILABLE is one whose runner is
+   * offline — polled the same way, and never launched into until the runner is back.
+   */
+  private async resolveOrWait(): Promise<void> {
+    const container = this.containerState();
+    const reason = container ? waitReasonOf(container) : null;
+    if (reason) {
+      this.waitFor(reason);
+      return;
+    }
+    await this.resolve();
+  }
+
+  private waitFor(reason: WaitReason): void {
+    this.state.set({ kind: 'waiting', reason });
+    this.cancelPoll();
+    this.pollTimer = setTimeout(() => {
+      this.pollTimer = null;
+      void this.poll();
+    }, DESK_POLL_INTERVAL_MS);
+  }
+
+  private cancelPoll(): void {
+    if (this.pollTimer !== null) {
+      clearTimeout(this.pollTimer);
+      this.pollTimer = null;
+    }
+  }
+
+  /** One re-read of a waiting desk. A failed read is one missed poll, not a verdict. */
+  private async poll(): Promise<void> {
+    const projectId = this.project();
+    const branch = this.state();
+    if (!projectId || branch.kind !== 'waiting') {
+      return;
+    }
+    if (branch.reason === 'session') {
+      await this.resolve();
+      return;
+    }
+    let container: AgentContainerDto;
+    try {
+      container = await this.host.container(projectId);
+    } catch {
+      if (this.project() === projectId && this.state().kind === 'waiting') {
+        this.waitFor(branch.reason);
+      }
+      return;
+    }
+    if (this.project() !== projectId || this.state().kind !== 'waiting') {
+      return;
+    }
+    this.containerState.set(container);
+    const reason = waitReasonOf(container);
+    if (reason) {
+      this.waitFor(reason);
+      return;
+    }
+    if (container.runtimeStatus === 'RUNNING') {
+      await this.resolve();
+      return;
+    }
+    this.state.set({
+      kind: 'unavailable',
+      message: 'The front desk did not come up. Start it again to retry.',
+    });
+  }
+
   /** The four branches, in order. See the class note; the order is the contract. */
   private async resolve(): Promise<void> {
     const projectId = this.project();
@@ -456,11 +571,14 @@ export class RefinementSession {
     // A lineage is what tells an agent run apart from any other interactive command the container
     // declares. A run this panel launched is attached directly by {@link launch} and never comes
     // back through here, which is why the "no lineage yet" case needs no second rule.
+    // An ALWAYS_ON desk's session was started by its daemon, which may not have pinned a lineage
+    // yet; at that surface the running terminal is the session either way.
+    const alwaysOn = isAlwaysOn(this.containerState());
     const run = mine.find(
       (command) =>
         command.kind === 'TERMINAL' &&
         command.status === 'RUNNING' &&
-        command.agentSessions.length > 0,
+        (command.agentSessions.length > 0 || (alwaysOn && !isSignInTerminal(command))),
     );
     if (run) {
       this.attach(run.id, 'attached');
@@ -472,6 +590,12 @@ export class RefinementSession {
     if (signIn) {
       this.held ??= this.fresh();
       this.attach(signIn.id, 'signin');
+      return;
+    }
+    if (alwaysOn) {
+      // The daemon starts (and relaunches) this desk's session itself; launching one from here
+      // would be a second conversation beside it.
+      this.waitFor('session');
       return;
     }
     if (!(await this.hasHistory(projectId, mine))) {
