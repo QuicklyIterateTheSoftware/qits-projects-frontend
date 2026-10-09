@@ -9770,7 +9770,10 @@
                   "dispatchedAt": null,
                   "entity": {
                     "archetype": "TICKET",
+                    "blockReason": "Waiting for finance to confirm the expected totals of the affected invoices.",
+                    "blockSource": "EXPLICIT",
                     "blocked": true,
+                    "blockedBy": "qits-agent",
                     "id": "00000000-0000-4000-8000-000000000001",
                     "qualifiedId": "contract-00000001-10",
                     "status": "IMPLEMENTING",
@@ -9802,6 +9805,52 @@
                   "state": "WAITING",
                   "waitsFor": [
                     "00000000-0000-4000-8000-000000000006"
+                  ]
+                },
+                {
+                  "dispatch": {
+                    "agentLaunch": null,
+                    "branch": null,
+                    "workspaceId": null
+                  },
+                  "dispatchError": null,
+                  "dispatchRefusal": null,
+                  "dispatchRefusedAt": null,
+                  "dispatchedAt": null,
+                  "entity": {
+                    "archetype": "TICKET",
+                    "blocked": false,
+                    "id": "00000000-0000-4000-8000-000000000003",
+                    "qualifiedId": "contract-00000001-13",
+                    "status": "DONE",
+                    "title": "Credit notes show the wrong sign"
+                  },
+                  "groups": [
+                    {
+                      "criteria": [
+                        {
+                          "approval": null,
+                          "evidence": null,
+                          "id": "00000000-0000-4000-8000-00000000001a",
+                          "kind": "ENTITY_STATUS",
+                          "reason": null,
+                          "satisfiable": true,
+                          "satisfied": false,
+                          "satisfiedAt": null,
+                          "seeded": true,
+                          "wouldBeSatisfiedBy": "contract-00000001-10 (Invoice totals are off by one cent) reaches VERIFIED"
+                        }
+                      ],
+                      "id": "00000000-0000-4000-8000-000000000019",
+                      "satisfied": false
+                    }
+                  ],
+                  "joinedRunning": false,
+                  "membershipId": "00000000-0000-4000-8000-000000000018",
+                  "position": 3,
+                  "state": "DONE",
+                  "waitsFor": [
+                    "00000000-0000-4000-8000-000000000001"
                   ]
                 },
                 {
@@ -10028,7 +10077,31 @@
                             }
                           ]
                         },
+                        "$.entity.blockReason": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.entity.blockSource": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
                         "$.entity.blocked": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.entity.blockedBy": {
                           "combine": "AND",
                           "matchers": [
                             {
@@ -10211,6 +10284,198 @@
                     },
                     {
                       "index": 2,
+                      "rules": {
+                        "$.entity.archetype": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.entity.blocked": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.entity.id": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "regex",
+                              "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                            }
+                          ]
+                        },
+                        "$.entity.qualifiedId": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.entity.status": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.entity.title": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.groups": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type",
+                              "max": 1,
+                              "min": 1
+                            }
+                          ]
+                        },
+                        "$.groups[*].criteria": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type",
+                              "max": 1,
+                              "min": 1
+                            }
+                          ]
+                        },
+                        "$.groups[*].criteria[*].id": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "regex",
+                              "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                            }
+                          ]
+                        },
+                        "$.groups[*].criteria[*].kind": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.groups[*].criteria[*].satisfiable": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.groups[*].criteria[*].satisfied": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.groups[*].criteria[*].seeded": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.groups[*].criteria[*].wouldBeSatisfiedBy": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.groups[*].id": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "regex",
+                              "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                            }
+                          ]
+                        },
+                        "$.groups[*].satisfied": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.joinedRunning": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.membershipId": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "regex",
+                              "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                            }
+                          ]
+                        },
+                        "$.position": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "number"
+                            }
+                          ]
+                        },
+                        "$.state": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.waitsFor": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type",
+                              "max": 1,
+                              "min": 1
+                            }
+                          ]
+                        },
+                        "$.waitsFor[*]": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "regex",
+                              "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                            }
+                          ]
+                        }
+                      }
+                    },
+                    {
+                      "index": 3,
                       "rules": {
                         "$.entity.archetype": {
                           "combine": "AND",
@@ -11170,7 +11435,10 @@
                 "dispatchedAt": null,
                 "entity": {
                   "archetype": "TICKET",
+                  "blockReason": "Waiting for finance to confirm the expected totals of the affected invoices.",
+                  "blockSource": "EXPLICIT",
                   "blocked": true,
+                  "blockedBy": "qits-agent",
                   "id": "00000000-0000-4000-8000-000000000001",
                   "qualifiedId": "contract-00000001-10",
                   "status": "IMPLEMENTING",
@@ -11198,6 +11466,48 @@
                 "joinedRunning": false,
                 "membershipId": "00000000-0000-4000-8000-000000000015",
                 "position": 2
+              },
+              {
+                "claimedAt": null,
+                "dispatch": {
+                  "agentLaunch": null,
+                  "branch": null,
+                  "workspaceId": null
+                },
+                "dispatchError": null,
+                "dispatchRefusal": null,
+                "dispatchRefusedAt": null,
+                "dispatchedAt": null,
+                "entity": {
+                  "archetype": "TICKET",
+                  "blocked": false,
+                  "id": "00000000-0000-4000-8000-000000000003",
+                  "qualifiedId": "contract-00000001-13",
+                  "status": "DONE",
+                  "title": "Credit notes show the wrong sign"
+                },
+                "groups": [
+                  {
+                    "criteria": [
+                      {
+                        "approval": null,
+                        "evidence": null,
+                        "id": "00000000-0000-4000-8000-00000000001a",
+                        "kind": "ENTITY_STATUS",
+                        "predicate": {
+                          "entityId": "00000000-0000-4000-8000-000000000001",
+                          "status": "VERIFIED"
+                        },
+                        "satisfiedAt": null,
+                        "seeded": true
+                      }
+                    ],
+                    "id": "00000000-0000-4000-8000-000000000019"
+                  }
+                ],
+                "joinedRunning": false,
+                "membershipId": "00000000-0000-4000-8000-000000000018",
+                "position": 3
               },
               {
                 "claimedAt": null,
@@ -11358,7 +11668,31 @@
                             }
                           ]
                         },
+                        "$.entity.blockReason": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.entity.blockSource": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
                         "$.entity.blocked": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.entity.blockedBy": {
                           "combine": "AND",
                           "matchers": [
                             {
@@ -11499,6 +11833,156 @@
                     },
                     {
                       "index": 2,
+                      "rules": {
+                        "$.entity.archetype": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.entity.blocked": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.entity.id": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "regex",
+                              "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                            }
+                          ]
+                        },
+                        "$.entity.qualifiedId": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.entity.status": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.entity.title": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.groups": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type",
+                              "max": 1,
+                              "min": 1
+                            }
+                          ]
+                        },
+                        "$.groups[*].criteria": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type",
+                              "max": 1,
+                              "min": 1
+                            }
+                          ]
+                        },
+                        "$.groups[*].criteria[*].id": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "regex",
+                              "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                            }
+                          ]
+                        },
+                        "$.groups[*].criteria[*].kind": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.groups[*].criteria[*].predicate.entityId": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "regex",
+                              "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                            }
+                          ]
+                        },
+                        "$.groups[*].criteria[*].predicate.status": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.groups[*].criteria[*].seeded": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.groups[*].id": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "regex",
+                              "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                            }
+                          ]
+                        },
+                        "$.joinedRunning": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.membershipId": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "regex",
+                              "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                            }
+                          ]
+                        },
+                        "$.position": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "number"
+                            }
+                          ]
+                        }
+                      }
+                    },
+                    {
+                      "index": 3,
                       "rules": {
                         "$.entity.archetype": {
                           "combine": "AND",
