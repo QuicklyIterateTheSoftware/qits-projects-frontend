@@ -31,8 +31,8 @@ import { ProjectAgentApi } from './project-agent-api';
 /** Whether a command is still going, and how it stopped if not. */
 export type CommandStatus = 'RUNNING' | 'EXITED' | 'TERMINATED' | 'INTERRUPTED';
 
-/** `TERMINAL` is an interactive PTY; `CHAT` is a coding agent over pipes; `SERVICE` is a long run. */
-export type CommandKind = 'TERMINAL' | 'CHAT' | 'SERVICE';
+/** `TERMINAL` is an interactive PTY; `CHAT` is a coding agent over pipes. */
+export type CommandKind = 'TERMINAL' | 'CHAT';
 
 /** Which harness ran, or is to run. */
 export type AgentType = 'CLAUDE' | 'KIMI';

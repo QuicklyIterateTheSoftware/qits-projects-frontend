@@ -15,8 +15,6 @@ import { EVENT_SOURCE_FACTORY, type EventSourceLike } from './event-source';
  * `epics` and `agent-activity`. Two channels, two services, two topic sets; a page can hold both.
  */
 export const WORKSPACE_TOPICS = [
-  'services',
-  'service-events',
   'telemetry',
   'commands',
   'bootstrap',
