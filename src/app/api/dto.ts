@@ -259,6 +259,20 @@ export interface WrapperDto {
 export type EntityStatus = string;
 
 /**
+ * Where an entity's **effective** block comes from (qits-895) — `blocked` stopped being a person's
+ * flag alone and became that flag **OR** the platform's own derived fact, that the agent working the
+ * entity ended its turn with nothing in flight and nobody has picked it up since.
+ *
+ * <p>`EXPLICIT` is the flag alone, `AGENT_WAITING` is the derivation alone, `BOTH` is both at once.
+ * It rides beside {@link TicketDto.blocked} only when that is true, and **a derived block never
+ * refuses a dispatch** — `AGENT_WAITING` changes what a blocked badge says, never what a press does.
+ *
+ * <p>Absent on a service that has not grown the derivation yet, which every reader here resolves to
+ * `EXPLICIT` — the one meaning `blocked` always had before this field existed.
+ */
+export type BlockSource = 'EXPLICIT' | 'AGENT_WAITING' | 'BOTH';
+
+/**
  * An epic: the backbone of a change to the platform.
  *
  * <p>The client's record, no longer a wire shape of its own: `epicOf` in `work.ts` assembles it from
@@ -306,9 +320,16 @@ export interface EpicDto {
   /**
    * Whether the phase behind the current status cannot proceed — {@link TicketDto.blocked}, rule
    * for rule: orthogonal to status, cleared by any transition, and optional because it arrived after
-   * epics were already on the wire — absent means false.
+   * epics were already on the wire — absent means false. The *effective* block since qits-895, same
+   * as a ticket's.
    */
   readonly blocked?: boolean;
+  /** {@link TicketDto.blockSource}, rule for rule. */
+  readonly blockSource?: BlockSource;
+  /** {@link TicketDto.blockReason}, rule for rule. */
+  readonly blockReason?: string | null;
+  /** {@link TicketDto.blockedBy}, rule for rule. */
+  readonly blockedBy?: string | null;
   /**
    * The draft that replaced this one — set on a `DROPPED` epic that was superseded (the supersede
    * *operation* lands the epic DROPPED and names its successor here); null on every other.
@@ -535,8 +556,30 @@ export interface TicketDto {
    *
    * <p>Optional for {@link WorkspaceReferenceDto.status}'s reason: it arrived after the ticket did,
    * and absent means false.
+   *
+   * <p><b>The effective block, since qits-895</b> — true when a person set it explicitly, or when
+   * the agent working it ended its turn with nothing in flight and nobody has picked it up since.
+   * {@link blockSource}, {@link blockReason} and {@link blockedBy} say which and carry the rest; all
+   * three ride only when this is true. See {@link BlockSource}: a derived block never refuses a
+   * dispatch, it only changes what the badge says.
    */
   readonly blocked?: boolean;
+  /**
+   * Where the effective block above comes from. Present only when {@link blocked} is true; absent
+   * on an older service that answers no derivation yet, which reads as `EXPLICIT`.
+   */
+  readonly blockSource?: BlockSource;
+  /**
+   * Why it is blocked: the explicit reason a person gave, or — for a pure `AGENT_WAITING` block —
+   * the fixed sentence the service composes, "The agent ended its turn with nothing in flight and is
+   * waiting for a person." Present only when {@link blocked} is true.
+   */
+  readonly blockReason?: string | null;
+  /**
+   * Who set the explicit block. Absent for a pure `AGENT_WAITING` block — nobody set it — and
+   * present only when {@link blocked} is true.
+   */
+  readonly blockedBy?: string | null;
   /** Free text — whoever is looking at it. Null when nobody has said. */
   readonly assignee: string | null;
   /** Stamped from the session, never sent. Null for a row with no principal behind it. */
@@ -612,6 +655,12 @@ export interface EntityBlockDto {
   readonly archetype: string;
   readonly status: EntityStatus;
   readonly blocked: boolean;
+  /** {@link TicketDto.blockSource}, rule for rule — present only when {@link blocked} is true. */
+  readonly blockSource?: BlockSource;
+  /** {@link TicketDto.blockReason}, rule for rule. */
+  readonly blockReason?: string | null;
+  /** {@link TicketDto.blockedBy}, rule for rule. */
+  readonly blockedBy?: string | null;
 }
 
 /** The block flag, wrapped — the whole answer to the entity block door. */
@@ -718,6 +767,10 @@ export type EntityDispatchAnswer = EntityDispatchResponse | CampaignProgressResp
  * <p>`preApprovedBy` names the person whose `FLOW` press on a `REPORTED` ticket pre-approved it: once
  * it reaches `REFINED` the platform schedules it on their behalf with no further press needed. Null
  * once nobody has pre-approved it, or once it has been scheduled and the field is cleared.
+ *
+ * <p>`blocked` is the *effective* block (qits-895) — {@link TicketDto.blocked}, rule for rule — but
+ * `dispatchable` stays keyed on the **explicit** block alone: a derived (`AGENT_WAITING`) block never
+ * refuses a dispatch. `blockSource`, `blockReason` and `blockedBy` say which kind `blocked` is.
  */
 export interface EntityDispatchStateDto {
   readonly entityId: string;
@@ -725,6 +778,12 @@ export interface EntityDispatchStateDto {
   readonly status: EntityStatus | null;
   readonly nextPhase: DispatchPhase | null;
   readonly blocked: boolean;
+  /** {@link TicketDto.blockSource}, rule for rule — present only when {@link blocked} is true. */
+  readonly blockSource?: BlockSource;
+  /** {@link TicketDto.blockReason}, rule for rule. */
+  readonly blockReason?: string | null;
+  /** {@link TicketDto.blockedBy}, rule for rule. */
+  readonly blockedBy?: string | null;
   readonly dispatchable: boolean;
   readonly mode: DispatchMode | null;
   /**
@@ -1683,6 +1742,12 @@ export interface CampaignSummaryDto {
   readonly status: EntityStatus;
   /** Whether the phase behind the current status cannot proceed — {@link TicketDto.blocked}, rule for rule. */
   readonly blocked?: boolean;
+  /** {@link TicketDto.blockSource}, rule for rule — present only when {@link blocked} is true. */
+  readonly blockSource?: BlockSource;
+  /** {@link TicketDto.blockReason}, rule for rule. */
+  readonly blockReason?: string | null;
+  /** {@link TicketDto.blockedBy}, rule for rule. */
+  readonly blockedBy?: string | null;
   /** Whether it has ever been started. */
   readonly started: boolean;
   /** Whether its start is live now — leaving REFINED and READY_FOR_DEV both pauses it. */
@@ -1707,6 +1772,12 @@ export interface CampaignMemberEntityDto {
   readonly title: string;
   readonly status: EntityStatus | null;
   readonly blocked: boolean;
+  /** {@link TicketDto.blockSource}, rule for rule — present only when {@link blocked} is true. */
+  readonly blockSource?: BlockSource;
+  /** {@link TicketDto.blockReason}, rule for rule. */
+  readonly blockReason?: string | null;
+  /** {@link TicketDto.blockedBy}, rule for rule. */
+  readonly blockedBy?: string | null;
 }
 
 /** Where the campaign's dispatch of a member landed; every field null until it has. */
@@ -1809,6 +1880,12 @@ export interface CampaignDto {
   readonly status: EntityStatus;
   /** Whether the phase behind the current status cannot proceed — {@link TicketDto.blocked}, rule for rule. */
   readonly blocked?: boolean;
+  /** {@link TicketDto.blockSource}, rule for rule — present only when {@link blocked} is true. */
+  readonly blockSource?: BlockSource;
+  /** {@link TicketDto.blockReason}, rule for rule. */
+  readonly blockReason?: string | null;
+  /** {@link TicketDto.blockedBy}, rule for rule. */
+  readonly blockedBy?: string | null;
   readonly start: CampaignStartDto | null;
   readonly members: readonly CampaignMemberDto[];
 }
@@ -1847,6 +1924,12 @@ export interface CampaignProgressCampaignDto {
   readonly status: EntityStatus;
   /** Whether the phase behind the current status cannot proceed — {@link TicketDto.blocked}, rule for rule. */
   readonly blocked?: boolean;
+  /** {@link TicketDto.blockSource}, rule for rule — present only when {@link blocked} is true. */
+  readonly blockSource?: BlockSource;
+  /** {@link TicketDto.blockReason}, rule for rule. */
+  readonly blockReason?: string | null;
+  /** {@link TicketDto.blockedBy}, rule for rule. */
+  readonly blockedBy?: string | null;
   readonly start: CampaignStartDto | null;
 }
 

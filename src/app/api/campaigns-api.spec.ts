@@ -138,6 +138,29 @@ describe('CampaignsApi', () => {
     });
   });
 
+  /** qits-895: the effective block's source and reason ride through the entity read untouched. */
+  it('carries the block source and reason through from the entity read', async () => {
+    const sentence = 'The agent ended its turn with nothing in flight and is waiting for a person.';
+    const read = api.get('qits-4');
+    http.expectOne('/projects/api/work/qits-4').flush({
+      ...workOfCampaign({
+        ...CAMPAIGN,
+        members: 1,
+        blocked: true,
+        blockSource: 'AGENT_WAITING',
+        blockReason: sentence,
+      }),
+      description: 'in order',
+    });
+    http.expectOne('/projects/api/work/qits-4/members').flush({ members: [MEMBER] });
+    http.expectOne('/projects/api/work/qits-4/progress').flush({ progress: PROGRESS });
+    expect(await read).toMatchObject({
+      blocked: true,
+      blockSource: 'AGENT_WAITING',
+      blockReason: sentence,
+    });
+  });
+
   it('moves its status through the one lifecycle door', async () => {
     const moved = api.transition('qits-4', 'REFINED');
     const request = http.expectOne('/projects/api/work/qits-4/status');

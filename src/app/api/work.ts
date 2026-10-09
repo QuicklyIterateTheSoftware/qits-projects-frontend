@@ -1,4 +1,5 @@
 import type {
+  BlockSource,
   CampaignMemberDto,
   CampaignProgressDto,
   CampaignSummaryDto,
@@ -56,8 +57,17 @@ export interface WorkEntityDto {
   readonly createdAt: string;
   readonly updatedAt: string;
   readonly changedBy?: string | null;
-  /** On the lifecycle archetypes (epic, ticket, campaign); absent on a feature and a task. */
+  /**
+   * On the lifecycle archetypes (epic, ticket, campaign); absent on a feature and a task. The
+   * *effective* block since qits-895 — {@link ../api/dto#TicketDto.blocked}, rule for rule.
+   */
   readonly blocked?: boolean;
+  /** {@link ../api/dto#TicketDto.blockSource}, rule for rule — present only when blocked is true. */
+  readonly blockSource?: BlockSource;
+  /** {@link ../api/dto#TicketDto.blockReason}, rule for rule. */
+  readonly blockReason?: string | null;
+  /** {@link ../api/dto#TicketDto.blockedBy}, rule for rule. */
+  readonly blockedBy?: string | null;
   /** Absent on the listing's summary rows; see the type's note. */
   readonly acceptanceCriteria?: readonly string[] | null;
 }
@@ -123,6 +133,9 @@ export function epicOf(
     qualifiedId: work.qualifiedId,
     status: work.status ?? 'REPORTED',
     blocked: work.blocked ?? false,
+    blockSource: work.blockSource,
+    blockReason: work.blockReason,
+    blockedBy: work.blockedBy,
     supersededByEpicId: work.supersededBy,
     acceptanceCriteria: work.acceptanceCriteria ?? [],
     assignee: work.assignee,
@@ -147,6 +160,9 @@ export function ticketOf(
     type: work.ticketType ?? 'BUG',
     status: work.status ?? 'REPORTED',
     blocked: work.blocked ?? false,
+    blockSource: work.blockSource,
+    blockReason: work.blockReason,
+    blockedBy: work.blockedBy,
     assignee: work.assignee,
     createdBy: work.createdBy,
     acceptanceCriteria: work.acceptanceCriteria ?? [],
@@ -217,6 +233,9 @@ export function campaignSummaryOf(
     title: work.title,
     status: work.status ?? 'REPORTED',
     blocked: work.blocked ?? false,
+    blockSource: work.blockSource,
+    blockReason: work.blockReason,
+    blockedBy: work.blockedBy,
     started: start !== null,
     active: start?.active ?? false,
     members: progress?.members.length ?? 0,

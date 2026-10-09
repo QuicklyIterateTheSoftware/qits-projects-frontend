@@ -3,7 +3,7 @@ import { RouterLink } from '@angular/router';
 import { QitsBadge, QitsCard } from '@qits/ui-components';
 import { NONE, relativeSince } from '../ui/format';
 import { MarkdownView } from '../ui/markdown-view';
-import { BLOCKED_BADGE, epicProgress, statusBadge, ticketTypeBadge } from './entities-model';
+import { blockedBadges, epicProgress, statusBadge, ticketTypeBadge } from './entities-model';
 import { campaignLine, type WorkItem } from './campaign-model';
 import { archetypeLabel, entityRoute } from './entity-nodes';
 
@@ -43,9 +43,12 @@ import { archetypeLabel, entityRoute } from './entity-nodes';
           }
           <qits-badge class="status" [label]="badge().label" [tone]="badge().tone" />
           <!-- Beside the status and never instead of it: blocked is a different fact. Every
-               archetype on the desk carries the flag now, not only a ticket. -->
-          @if (entity().blocked) {
-            <qits-badge class="blocked" [label]="blocked.label" [tone]="blocked.tone" />
+               archetype on the desk carries the flag now, not only a ticket. One or two badges
+               (qits-895): an explicit block and an agent-derived one are independent facts. -->
+          @for (badge of blocked(); track badge.label) {
+            <span [title]="badge.title"
+              ><qits-badge class="blocked" [label]="badge.label" [tone]="badge.tone"
+            /></span>
           }
         </span>
       </div>
@@ -131,7 +134,7 @@ export class EntityCard {
   readonly projectSlug = input<string>('');
 
   protected readonly none = NONE;
-  protected readonly blocked = BLOCKED_BADGE;
+  protected readonly blocked = computed(() => blockedBadges(this.entity()));
 
   protected readonly ticket = computed(() => {
     const entity = this.entity();

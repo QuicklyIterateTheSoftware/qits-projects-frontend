@@ -1,6 +1,7 @@
 import type { QitsBadgeTone, QitsButtonVariant } from '@qits/ui-components';
 import type { ArchetypeRegistry, ArchetypeSpecDto } from '../api/archetypes-api';
 import type {
+  BlockSource,
   CommentDto,
   EntityStatus,
   EpicDto,
@@ -92,6 +93,21 @@ interface EntityFields {
    */
   readonly blocked: boolean;
   /**
+   * Where the effective block above comes from — see {@link ../api/dto#BlockSource}. Present only
+   * when {@link blocked} is true; absent both when it is false and, on an older service that has not
+   * grown the derivation yet, when the wire named no source for a true `blocked` — {@link blockedBadges}
+   * and {@link isExplicitBlock} both read that absence as `EXPLICIT`, the one meaning `blocked`
+   * always had before this field existed.
+   */
+  readonly blockSource?: BlockSource;
+  /**
+   * Why it is blocked: a person's own words, or the fixed sentence the service composes for a pure
+   * `AGENT_WAITING` block. Present only when {@link blocked} is true.
+   */
+  readonly blockReason?: string | null;
+  /** Who set the explicit block. Absent for a pure `AGENT_WAITING` block, where nobody set one. */
+  readonly blockedBy?: string | null;
+  /**
    * What has to be true for the work to be accepted (qits-887), in order — the wire's
    * `acceptanceCriteria` with absent and null resolved to none at the boundary. Optional so a row
    * built by hand (a fixture, a transition's answer) need not restate it.
@@ -157,6 +173,9 @@ export function epicEntity(epic: EpicDto, features: readonly FeatureNode[] = [])
     updatedAt: epic.updatedAt,
     workspaces: epic.workspaces,
     blocked: epic.blocked ?? false,
+    blockSource: epic.blockSource,
+    blockReason: epic.blockReason,
+    blockedBy: epic.blockedBy,
     status: epic.status,
     supersededByEpicId: epic.supersededByEpicId,
     assignee: epic.assignee ?? null,
@@ -182,6 +201,9 @@ export function ticketEntity(ticket: TicketDto): TicketEntity {
     status: ticket.status,
     type: ticket.type,
     blocked: ticket.blocked ?? false,
+    blockSource: ticket.blockSource,
+    blockReason: ticket.blockReason,
+    blockedBy: ticket.blockedBy,
     impetus: ticket.impetus,
     assignee: ticket.assignee,
     createdBy: ticket.createdBy,
@@ -254,10 +276,17 @@ export function refiningBranch(epicSlug: string): string {
   return `refining/${epicSlug}`;
 }
 
-/** What a line's badge says, and how loudly. One shape for both archetypes and every level below. */
+/**
+ * What a line's badge says, and how loudly. One shape for both archetypes and every level below.
+ *
+ * <p>`title` is the hover text a template wraps the badge in (`<span [title]="badge.title">`,
+ * {@link ./component-card#BackupBadge}'s pattern) — optional and empty on every badge that has
+ * nothing more to say than its label.
+ */
 export interface StatusBadge {
   readonly label: string;
   readonly tone: QitsBadgeTone;
+  readonly title?: string;
 }
 
 const IMPLEMENTED: StatusBadge = { label: 'implemented', tone: 'success' };
@@ -396,11 +425,91 @@ export function statusLabel(status: EntityStatus): string {
 }
 
 /**
- * The badge a blocked ticket carries **beside** its status, never instead of it: blocked says the
- * phase cannot proceed, which is a different fact from how far the ticket has got. `danger` because
- * red is otherwise unused among entity statuses — it names only this fact, nothing else.
+ * The badge an explicitly blocked entity carries **beside** its status, never instead of it:
+ * blocked says the phase cannot proceed, which is a different fact from how far the work has got.
+ * `danger` because red is otherwise unused among entity statuses — it names only this fact, nothing
+ * else. {@link blockedBadges} is what a template actually draws; this is its EXPLICIT/BOTH badge.
  */
 export const BLOCKED_BADGE: StatusBadge = { label: 'blocked', tone: 'danger' };
+
+/**
+ * The badge a purely `AGENT_WAITING` block carries instead of {@link BLOCKED_BADGE} (qits-895) —
+ * nobody set a flag, so "blocked" would overstate what happened: the agent ended its turn with
+ * nothing in flight, and it is a person's turn next. `warning`, not `danger` — it is a wait, not a
+ * failure.
+ */
+export const AGENT_WAITING_BADGE: StatusBadge = { label: 'waiting for you', tone: 'warning' };
+
+/**
+ * Whether an effective block is a person's own flag, rather than purely the platform's
+ * `AGENT_WAITING` derivation (qits-895) — what the dispatch hint and {@link blockedReasonLine} key
+ * on. `BOTH` counts as explicit here: the explicit fact is the actionable one, the one a press on
+ * Unblock actually clears. Absent `blockSource` on a true `blocked` (an older service) reads as
+ * `EXPLICIT` — the one meaning the flag always had before this field existed.
+ */
+export function isExplicitBlock(entity: { readonly blockSource?: BlockSource }): boolean {
+  return entity.blockSource !== 'AGENT_WAITING';
+}
+
+/** "Blocked by `<who>`: `<reason>`" — the explicit block's one sentence, whichever half is missing. */
+function explicitBlockTitle(entity: {
+  readonly blockedBy?: string | null;
+  readonly blockReason?: string | null;
+}): string {
+  if (entity.blockedBy && entity.blockReason) {
+    return `Blocked by ${entity.blockedBy}: ${entity.blockReason}`;
+  }
+  if (entity.blockedBy) {
+    return `Blocked by ${entity.blockedBy}`;
+  }
+  return entity.blockReason ?? '';
+}
+
+/**
+ * The blocked badge(s) for an entity, or none when it is not blocked (qits-895). A pure
+ * `AGENT_WAITING` block draws only {@link AGENT_WAITING_BADGE}; `EXPLICIT` draws only
+ * {@link BLOCKED_BADGE}, its tooltip the explicit reason; `BOTH` draws both, since the two facts are
+ * independent and neither implies the other.
+ */
+export function blockedBadges(entity: {
+  readonly blocked: boolean;
+  readonly blockSource?: BlockSource;
+  readonly blockReason?: string | null;
+  readonly blockedBy?: string | null;
+}): readonly StatusBadge[] {
+  if (!entity.blocked) {
+    return [];
+  }
+  const badges: StatusBadge[] = [];
+  if (isExplicitBlock(entity)) {
+    badges.push({ ...BLOCKED_BADGE, title: explicitBlockTitle(entity) });
+  }
+  if (entity.blockSource === 'AGENT_WAITING' || entity.blockSource === 'BOTH') {
+    badges.push({ ...AGENT_WAITING_BADGE, title: entity.blockReason ?? '' });
+  }
+  return badges;
+}
+
+/**
+ * The sentence the Block/Unblock section says about why an entity is blocked right now: "The agent
+ * is waiting for you." for a pure `AGENT_WAITING` block, else {@link explicitBlockTitle}'s "Blocked
+ * by `<who>`: `<reason>`" — `BOTH` included, the explicit fact being the one a press on Unblock
+ * clears. Empty for an entity that is not blocked.
+ */
+export function blockedReasonLine(entity: {
+  readonly blocked: boolean;
+  readonly blockSource?: BlockSource;
+  readonly blockReason?: string | null;
+  readonly blockedBy?: string | null;
+}): string {
+  if (!entity.blocked) {
+    return '';
+  }
+  if (entity.blockSource === 'AGENT_WAITING') {
+    return 'The agent is waiting for you.';
+  }
+  return explicitBlockTitle(entity);
+}
 
 /**
  * Every lifecycle word the service serves, in the order the work walks them — the union of each

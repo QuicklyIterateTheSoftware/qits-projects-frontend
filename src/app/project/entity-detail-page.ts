@@ -44,12 +44,14 @@ import { CampaignMembers, type CampaignCandidate } from './campaign-members';
 import { CampaignProgress } from './campaign-progress';
 import {
   ACCEPTANCE_CRITERIA,
-  BLOCKED_BADGE,
   IMPETUS_RULE,
+  blockedBadges,
+  blockedReasonLine,
   criteriaEditable,
   criterionProblems,
   featureStatus,
   gateHints,
+  isExplicitBlock,
   isFinalStatus,
   lifecycleMoves,
   statusBadge,
@@ -235,8 +237,10 @@ interface TreeRow {
           } @else {
             <qits-badge class="marker" [label]="marker().label" [tone]="marker().tone" />
           }
-          @if (blockedEntity()) {
-            <qits-badge class="blocked" [label]="blocked.label" [tone]="blocked.tone" />
+          @for (badge of blockBadges(); track badge.label) {
+            <span [title]="badge.title"
+              ><qits-badge class="blocked" [label]="badge.label" [tone]="badge.tone"
+            /></span>
           }
         </span>
       </div>
@@ -403,6 +407,9 @@ interface TreeRow {
           >
             {{ blockedEntity() ? 'Unblock' : 'Block' }}
           </qits-button>
+          @if (blockedNote(); as note) {
+            <span class="note block-note">{{ note }}</span>
+          }
         }
         @if (n.archetype !== 'CAMPAIGN') {
           <qits-button
@@ -578,6 +585,9 @@ interface TreeRow {
 
       @if (blocking(); as mode) {
         <section class="form" [attr.aria-label]="mode === 'block' ? 'Block' : 'Unblock'">
+          @if (mode === 'unblock' && blockedNote(); as current) {
+            <p class="note block-current">{{ current }}</p>
+          }
           <label class="field">
             <span class="label" id="block-note-label">{{
               mode === 'block' ? 'Why is it blocked?' : 'Anything to note?'
@@ -1044,7 +1054,6 @@ export class EntityDetailPage {
 
   protected readonly none = NONE;
   protected readonly impetusRule = IMPETUS_RULE;
-  protected readonly blocked = BLOCKED_BADGE;
 
   protected readonly ground = signal<Loadable<Ground>>(LOADING);
   protected readonly state = signal<EntityDispatchStateDto | null>(null);
@@ -1109,11 +1118,30 @@ export class EntityDetailPage {
   /**
    * Whether this node is blocked — read off whichever root holds the flag, an epic or a ticket
    * through {@link EntityNode.entity}, a campaign through {@link EntityNode.campaign}. False for a
-   * feature or a task, which carry neither.
+   * feature or a task, which carry neither. The *effective* block since qits-895 — an explicit flag
+   * or the agent waiting, either one.
    */
   protected readonly blockedEntity = computed(
     () => this.node()?.entity?.blocked ?? this.node()?.campaign?.blocked ?? false,
   );
+
+  /** Whichever root carries the block fields — an epic's or a ticket's entity, or a campaign's. */
+  private readonly blockedRoot = computed(() => this.node()?.entity ?? this.node()?.campaign ?? null);
+
+  /** The badge(s) beside the title — none, one or both of blocked and waiting for you (qits-895). */
+  protected readonly blockBadges = computed(() => {
+    const root = this.blockedRoot();
+    return root ? blockedBadges(root) : [];
+  });
+
+  /**
+   * What the Block/Unblock section says about why, right now: "The agent is waiting for you." for a
+   * pure `AGENT_WAITING` block, else "Blocked by `<who>`: `<reason>`". Empty while not blocked.
+   */
+  protected readonly blockedNote = computed(() => {
+    const root = this.blockedRoot();
+    return root ? blockedReasonLine(root) : '';
+  });
 
   protected readonly archetype = computed(() => archetypeLabel(this.node()?.archetype ?? ''));
   protected readonly badge = computed(() => statusBadge(this.node()?.status ?? null));
@@ -1271,6 +1299,13 @@ export class EntityDetailPage {
    * specific story, and it reads whether or not the entity also sits at a dispatchable `REFINED`.
    * Past that: which phase a press starts, or — unblocked `REFINED`'s own case, where `dispatchable`
    * is true but `nextPhase` is not — that a press schedules and implements it.
+   *
+   * <p>The "Blocked" hint reads {@link isExplicitBlock}: a derived (`AGENT_WAITING`) block never
+   * refuses a dispatch (qits-895), so `state.blocked` alone is not enough here — were it purely
+   * `AGENT_WAITING`, `dispatchable` would already be true and an earlier branch would have returned.
+   * The guard matters for the case where something else *also* keeps `dispatchable` false (an
+   * unreachable status, say): there the hint should still name the explicit block, never the derived
+   * one, since unblocking it is the one press that does anything.
    */
   protected readonly flowNote = computed(() => {
     const state = this.state();
@@ -1296,7 +1331,7 @@ export class EntityDetailPage {
     if (state.dispatchable) {
       return 'A press schedules it and starts implementing.';
     }
-    if (state.blocked) {
+    if (state.blocked && isExplicitBlock(state)) {
       return 'Blocked — unblock it before dispatching.';
     }
     return state.status
@@ -1342,6 +1377,12 @@ export class EntityDetailPage {
    * whichever root the node holds — and only where a phase runs behind the status, the dispatch
    * state's `nextPhase`. A feature or a task holds neither {@link EntityNode.entity} nor
    * {@link EntityNode.campaign}, so it never qualifies.
+   *
+   * <p>This is the gate on the button existing at all, both words. Which word it says is
+   * {@link blockedEntity}'s alone: Unblock shows whenever this is true and the node's effective
+   * block is true too — a pure `AGENT_WAITING` block included, since unblocking there still clears
+   * the explicit half if one is ever added, and the service tolerates an unblock that was already
+   * the case.
    */
   protected readonly blockable = computed(() => {
     const node = this.node();

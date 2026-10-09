@@ -249,4 +249,27 @@ describe('campaign-model', () => {
     expect(campaignEntity(row).blocked).toBe(false);
     expect(campaignEntity({ ...row, blocked: true }).blocked).toBe(true);
   });
+
+  /** qits-895: the effective block's source, reason and who-set-it ride through untouched. */
+  it('carries the block source, reason and who blocked it through', () => {
+    const row = {
+      id: 'c1',
+      number: 4,
+      qualifiedId: 'qits-4',
+      projectId: 'p1',
+      title: 'Rename qits-x',
+      status: 'REFINED',
+      started: true,
+      active: false,
+      members: 1,
+      blocked: true,
+      blockSource: 'EXPLICIT' as const,
+      blockReason: 'Waiting on a design decision.',
+      blockedBy: 'kim',
+    };
+    const entity = campaignEntity(row);
+    expect(entity.blockSource).toBe('EXPLICIT');
+    expect(entity.blockReason).toBe('Waiting on a design decision.');
+    expect(entity.blockedBy).toBe('kim');
+  });
 });

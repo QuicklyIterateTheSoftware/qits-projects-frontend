@@ -82,6 +82,9 @@ export class CampaignsApi {
       description: campaign.description ?? null,
       status: campaign.status ?? 'REPORTED',
       blocked: campaign.blocked ?? false,
+      blockSource: campaign.blockSource,
+      blockReason: campaign.blockReason,
+      blockedBy: campaign.blockedBy,
       start: progress.campaign.start,
       members,
     };

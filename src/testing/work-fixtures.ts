@@ -56,6 +56,9 @@ export function workOfEpic(epic: Partial<EpicDto>): WorkEntityDto {
     archetype: 'EPIC',
     status: epic.status ?? null,
     blocked: epic.blocked ?? false,
+    blockSource: epic.blockSource,
+    blockReason: epic.blockReason,
+    blockedBy: epic.blockedBy,
     assignee: epic.assignee ?? null,
     supersededBy: epic.supersededByEpicId ?? null,
     acceptanceCriteria: epic.acceptanceCriteria ?? null,
@@ -70,6 +73,9 @@ export function workOfTicket(ticket: Partial<TicketDto>): WorkEntityDto {
     archetype: 'TICKET',
     status: ticket.status ?? null,
     blocked: ticket.blocked ?? false,
+    blockSource: ticket.blockSource,
+    blockReason: ticket.blockReason,
+    blockedBy: ticket.blockedBy,
     ticketType: ticket.type ?? null,
     impetus: ticket.impetus ?? null,
     assignee: ticket.assignee ?? null,
@@ -117,6 +123,9 @@ export function workOfCampaign(campaign: Partial<CampaignSummaryDto>): WorkEntit
     archetype: 'CAMPAIGN',
     status: campaign.status ?? null,
     blocked: campaign.blocked ?? false,
+    blockSource: campaign.blockSource,
+    blockReason: campaign.blockReason,
+    blockedBy: campaign.blockedBy,
   };
 }
 
@@ -130,6 +139,9 @@ export function progressOfSummary(campaign: Partial<CampaignSummaryDto>): Campai
       title: campaign.title ?? '',
       status: campaign.status ?? 'REPORTED',
       blocked: campaign.blocked ?? false,
+      blockSource: campaign.blockSource,
+      blockReason: campaign.blockReason,
+      blockedBy: campaign.blockedBy,
       start: started
         ? {
             firstStartedAt: null,

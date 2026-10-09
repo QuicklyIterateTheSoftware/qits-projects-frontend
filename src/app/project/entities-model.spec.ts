@@ -1,7 +1,10 @@
 import type { ArchetypeRegistry } from '../api/archetypes-api';
-import type { EpicDto, FeatureDto, TaskDto, TicketDto, TicketType } from '../api/dto';
+import type { BlockSource, EpicDto, FeatureDto, TaskDto, TicketDto, TicketType } from '../api/dto';
 import {
+  AGENT_WAITING_BADGE,
   BLOCKED_BADGE,
+  blockedBadges,
+  blockedReasonLine,
   criteriaEditable,
   criterionProblems,
   entityBySlug,
@@ -16,6 +19,7 @@ import {
   groupByStatus,
   isEdited,
   isEpic,
+  isExplicitBlock,
   isFinalStatus,
   isTicket,
   lifecycleMoves,
@@ -234,6 +238,25 @@ describe('entities model', () => {
       expect(epic([], { blocked: true }).blocked).toBe(true);
       expect(ticket().blocked).toBe(false);
       expect(ticket({ blocked: true }).blocked).toBe(true);
+    });
+
+    /** qits-895: the effective block's source, reason and who-set-it ride through, on both archetypes. */
+    it('carries the block source, reason and who blocked it through, on both archetypes', () => {
+      const over = {
+        blocked: true,
+        blockSource: 'EXPLICIT' as const,
+        blockReason: 'Waiting on a design decision.',
+        blockedBy: 'kim',
+      };
+      const blockedEpic = epic([], over);
+      expect(blockedEpic.blockSource).toBe('EXPLICIT');
+      expect(blockedEpic.blockReason).toBe('Waiting on a design decision.');
+      expect(blockedEpic.blockedBy).toBe('kim');
+
+      const blockedTicket = ticket(over);
+      expect(blockedTicket.blockSource).toBe('EXPLICIT');
+      expect(blockedTicket.blockReason).toBe('Waiting on a design decision.');
+      expect(blockedTicket.blockedBy).toBe('kim');
     });
 
     it('tells the two apart with guards that narrow', () => {
@@ -538,6 +561,68 @@ describe('entities model', () => {
         label: 'whatever',
         tone: 'neutral',
       });
+    });
+  });
+
+  /**
+   * qits-895: `blocked` became the *effective* block — an explicit flag OR the agent waiting — and
+   * `blockSource` says which. `blockedBadges` and `blockedReasonLine` are the two places that read
+   * it, and `isExplicitBlock` is the one-question gate the dispatch hint keys on.
+   */
+  describe('a blocked entity’s badge and reason', () => {
+    function blocked(
+      source?: BlockSource,
+      reason: string | null = null,
+      by: string | null = null,
+    ) {
+      return { blocked: true, blockSource: source, blockReason: reason, blockedBy: by };
+    }
+
+    it('draws no badge and no reason for an entity that is not blocked', () => {
+      expect(blockedBadges({ blocked: false })).toEqual([]);
+      expect(blockedReasonLine({ blocked: false })).toBe('');
+    });
+
+    it('treats an absent blockSource as EXPLICIT — the meaning blocked always had', () => {
+      expect(isExplicitBlock({})).toBe(true);
+      expect(blockedBadges(blocked())).toEqual([{ ...BLOCKED_BADGE, title: '' }]);
+      expect(blockedReasonLine(blocked(undefined, 'Waiting on a design decision.', 'kim'))).toBe(
+        'Blocked by kim: Waiting on a design decision.',
+      );
+    });
+
+    it('draws only the blocked badge for an explicit block, titled with who and why', () => {
+      const row = blocked('EXPLICIT', 'Waiting on a design decision.', 'kim');
+      expect(isExplicitBlock(row)).toBe(true);
+      expect(blockedBadges(row)).toEqual([
+        { ...BLOCKED_BADGE, title: 'Blocked by kim: Waiting on a design decision.' },
+      ]);
+      expect(blockedReasonLine(row)).toBe('Blocked by kim: Waiting on a design decision.');
+    });
+
+    it('draws only "waiting for you" for a pure AGENT_WAITING block, never refusing a dispatch', () => {
+      const sentence = 'The agent ended its turn with nothing in flight and is waiting for a person.';
+      const row = blocked('AGENT_WAITING', sentence);
+      expect(isExplicitBlock(row)).toBe(false);
+      expect(blockedBadges(row)).toEqual([{ ...AGENT_WAITING_BADGE, title: sentence }]);
+      expect(blockedReasonLine(row)).toBe('The agent is waiting for you.');
+    });
+
+    it('draws both badges for BOTH, and reads the explicit half as the one Unblock clears', () => {
+      const row = blocked('BOTH', 'Waiting on a design decision.', 'kim');
+      expect(isExplicitBlock(row)).toBe(true);
+      expect(blockedBadges(row)).toEqual([
+        { ...BLOCKED_BADGE, title: 'Blocked by kim: Waiting on a design decision.' },
+        { ...AGENT_WAITING_BADGE, title: 'Waiting on a design decision.' },
+      ]);
+      expect(blockedReasonLine(row)).toBe('Blocked by kim: Waiting on a design decision.');
+    });
+
+    it('titles the explicit badge with whichever half of who/why it has', () => {
+      expect(blockedBadges(blocked('EXPLICIT', null, 'kim'))[0].title).toBe('Blocked by kim');
+      expect(blockedBadges(blocked('EXPLICIT', 'Waiting on design.', null))[0].title).toBe(
+        'Waiting on design.',
+      );
     });
   });
 

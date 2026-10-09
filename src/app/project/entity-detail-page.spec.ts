@@ -878,6 +878,21 @@ describe('EntityDetailPage', () => {
     });
 
     /**
+     * qits-895: the hint names the explicit block, never the derived one — a pure `AGENT_WAITING`
+     * block never refuses a dispatch, so it should not read as a reason not to press one either.
+     */
+    it('does not say "Blocked" for a ticket whose block is purely the agent waiting', async () => {
+      dispatchStates['t1'] = stateOf({
+        blocked: true,
+        blockSource: 'AGENT_WAITING',
+        dispatchable: false,
+      });
+      await open('/qits/work/qits-41');
+
+      expect(element().querySelector('.flow-note')?.textContent).not.toContain('Blocked');
+    });
+
+    /**
      * qits-1075: `preApprovedBy` names the person whose FLOW press on REPORTED pre-approved
      * scheduling — it is the more specific story and reads ahead of the generic dispatch/phase note.
      */
@@ -992,6 +1007,43 @@ describe('EntityDetailPage', () => {
         url: '/projects/api/work/qits-430/blocked',
         body: { blocked: false, reason: '' },
       });
+    });
+
+    /**
+     * qits-895: a pure `AGENT_WAITING` block reads as "waiting for you", never "blocked" — nobody
+     * set a flag — but Unblock is still offered, since the effective block is still true.
+     */
+    it('shows "waiting for you" instead of "blocked" for a pure AGENT_WAITING block', async () => {
+      const sentence =
+        'The agent ended its turn with nothing in flight and is waiting for a person.';
+      epicPatch = { blocked: true, blockSource: 'AGENT_WAITING', blockReason: sentence };
+      await open('/qits/work/qits-12');
+
+      const badge = element().querySelector('.badges .blocked')!;
+      expect(badge.textContent?.trim()).toBe('waiting for you');
+      expect(buttonNamed('Unblock')).toBeTruthy();
+      expect(element().querySelector('.block-note')?.textContent?.trim()).toBe(
+        'The agent is waiting for you.',
+      );
+    });
+
+    it('names who blocked it and why for an explicit block, on the badge title and the note', async () => {
+      epicPatch = {
+        blocked: true,
+        blockSource: 'EXPLICIT',
+        blockReason: 'Waiting on a design decision.',
+        blockedBy: 'kim',
+      };
+      await open('/qits/work/qits-12');
+
+      const badge = element().querySelector('.badges .blocked')!;
+      expect(badge.textContent?.trim()).toBe('blocked');
+      expect(badge.parentElement?.getAttribute('title')).toBe(
+        'Blocked by kim: Waiting on a design decision.',
+      );
+      expect(element().querySelector('.block-note')?.textContent?.trim()).toBe(
+        'Blocked by kim: Waiting on a design decision.',
+      );
     });
   });
 

@@ -1,5 +1,6 @@
 import type { QitsBadgeTone } from '@qits/ui-components';
 import type {
+  BlockSource,
   CampaignMemberDto,
   CampaignMemberState,
   CampaignSummaryDto,
@@ -49,6 +50,12 @@ export interface CampaignEntity {
    * rule for rule: {@link campaignEntity} resolves the wire's optional absence to false once.
    */
   readonly blocked: boolean;
+  /** {@link ../api/dto#TicketDto.blockSource}, rule for rule — present only when blocked is true. */
+  readonly blockSource?: BlockSource;
+  /** {@link ../api/dto#TicketDto.blockReason}, rule for rule. */
+  readonly blockReason?: string | null;
+  /** {@link ../api/dto#TicketDto.blockedBy}, rule for rule. */
+  readonly blockedBy?: string | null;
   /** Empty: the listing has none, and the desk's newest-first sort reads an empty one as oldest. */
   readonly createdAt: string;
   readonly updatedAt: string;
@@ -76,6 +83,9 @@ export function campaignEntity(summary: CampaignSummaryDto): CampaignEntity {
     qualifiedId: summary.qualifiedId,
     status: summary.status,
     blocked: summary.blocked ?? false,
+    blockSource: summary.blockSource,
+    blockReason: summary.blockReason,
+    blockedBy: summary.blockedBy,
     createdAt: '',
     updatedAt: '',
     workspaces: [],
