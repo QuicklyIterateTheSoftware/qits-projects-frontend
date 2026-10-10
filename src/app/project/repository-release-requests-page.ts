@@ -30,6 +30,7 @@ import {
   releaseStateBadge,
   unattendedBadge,
   UNATTENDED_TITLE,
+  requestRef,
 } from './release-requests-model';
 import { ReleaseSources } from './release-sources';
 
@@ -144,7 +145,7 @@ import { ReleaseSources } from './release-sources';
                       <qits-badge [label]="alone.label" [tone]="alone.tone" />
                     </span>
                   }
-                  <a class="summary" [routerLink]="['./', request.id]">{{ request.summary }}</a>
+                  <a class="summary" [routerLink]="['./', ref(request)]">{{ request.summary }}</a>
                   <span
                     class="when"
                     [title]="
@@ -161,6 +162,7 @@ import { ReleaseSources } from './release-sources';
                 <app-release-sources [request]="request" />
 
                 <div class="facts">
+                  <span class="ref request-id">{{ ref(request) }}</span>
                   <span class="fact">
                     merged
                     <span class="ref" [title]="foldTitle(request)">{{ mergedSha(request) }}</span>
@@ -370,6 +372,9 @@ export class RepositoryReleaseRequestsPage {
   });
 
   protected readonly none = NONE;
+
+  /** The request's logical id, which the row names it by and its link carries. */
+  protected readonly ref = requestRef;
   protected readonly stateBadge = releaseStateBadge;
   protected readonly priorityBadge = releasePriorityBadge;
 

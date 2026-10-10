@@ -1104,6 +1104,12 @@ export interface MergeConflictDto {
  */
 export interface ReleaseRequestDto {
   readonly id: string;
+  /**
+   * The request's logical id, `<repository>-rr-<n>`: unique within its repository, frozen at
+   * creation. This is the id people read and the one links carry; every door accepts it or the uuid.
+   * Optional so an answer from an older service build falls back to `id`.
+   */
+  readonly qualifiedId?: string;
   readonly repoId: string;
   /**
    * The repository's public name, or null where it has none. A list scoped to one repository has no
@@ -1232,6 +1238,8 @@ export interface ReleaseRequestDto {
    * one reader that draws it.
    */
   readonly supersededBy?: string | null;
+  /** The logical id of {@link supersededBy}; preferred for the link and absent on older builds. */
+  readonly supersededByQualifiedId?: string | null;
   readonly version: string | null;
   readonly releasedSha: string | null;
   readonly mergedToMainAt: string | null;

@@ -435,6 +435,17 @@ describe('RepositoryReleaseRequestsPage', () => {
       expect(link?.getAttribute('href')).toBe('/qits/services/qits-ci/release-requests/r7');
     });
 
+    it('names and links a request by its logical id where the service sends one', async () => {
+      withRepositories();
+      await open();
+      await answer([request({ id: 'r7', qualifiedId: 'qits-ci-rr-3' })]);
+
+      expect(page().querySelector('.request-id')?.textContent?.trim()).toBe('qits-ci-rr-3');
+      expect(page().querySelector('a.summary')?.getAttribute('href')).toBe(
+        '/qits/services/qits-ci/release-requests/qits-ci-rr-3',
+      );
+    });
+
     /** The tail the route's default carries: a release stays on the page after it finalizes. */
     it('draws a landed release beside the open work', async () => {
       withRepositories();

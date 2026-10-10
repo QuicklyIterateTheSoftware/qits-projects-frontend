@@ -13,7 +13,7 @@ import type { ReleaseRequestDto } from '../api/dto';
 import { ReleaseRequestsApi } from '../api/release-requests-api';
 import { Async } from '../ui/async';
 import { LOADING, failed, ready, type Loadable } from '../ui/loadable';
-import { hasReleased } from './release-requests-model';
+import { hasReleased, requestRef } from './release-requests-model';
 
 /**
  * The middle segment for a repository the chrome's list cannot place.
@@ -203,7 +203,7 @@ export class ReleaseRequestByReleaseResolver {
    */
   private addressOf(request: ReleaseRequestDto): string[] | null {
     if (this.repoId() && this.repoId() === this.source?.wrapperRepositoryId()) {
-      return ['/', this.project(), 'release-requests', request.id];
+      return ['/', this.project(), 'release-requests', requestRef(request)];
     }
     const row = this.row();
     const name = request.repoName ?? row?.name;
@@ -211,6 +211,6 @@ export class ReleaseRequestByReleaseResolver {
       return null;
     }
     const group = row?.component ?? row?.category ?? UNPLACED_GROUP;
-    return ['/', this.project(), group, name, 'release-requests', request.id];
+    return ['/', this.project(), group, name, 'release-requests', requestRef(request)];
   }
 }

@@ -48,6 +48,8 @@ import {
   releaseStateBadge,
   unattendedBadge,
   UNATTENDED_TITLE,
+  requestRef,
+  supersedingRef,
 } from './release-requests-model';
 import { ReleaseSources } from './release-sources';
 
@@ -201,6 +203,7 @@ interface QaReloadState {
             </span>
           }
           <h1>{{ request.summary }}</h1>
+          <code class="ref request-id">{{ ref(request) }}</code>
           @if (watching()) {
             <span class="watching" role="status">Watching for changes…</span>
           }
@@ -524,6 +527,10 @@ interface QaReloadState {
     .ref {
       font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
       overflow-wrap: anywhere;
+    }
+    .request-id {
+      font-size: 0.85rem;
+      color: #6b7280;
     }
     .detail {
       margin: 0.35rem 0 0;
@@ -966,8 +973,11 @@ export class ReleaseRequestDetailPage {
    * an empty id.
    */
   protected supersedingId(request: ReleaseRequestDto): string | null {
-    return request.supersededBy?.trim() || null;
+    return supersedingRef(request);
   }
+
+  /** The logical id the header names the request by. */
+  protected readonly ref = requestRef;
 
   constructor() {
     effect(() => {

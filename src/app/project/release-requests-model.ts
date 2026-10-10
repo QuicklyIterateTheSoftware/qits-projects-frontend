@@ -29,6 +29,22 @@ import { NONE, shortSha } from '../ui/format';
 export const RELEASE_REQUESTS_POLL_MS = 6000;
 
 /**
+ * How a request is named and linked: its logical id, `<repository>-rr-<n>`, or the uuid where an
+ * older service build sends none. The door accepts either, so old uuid links keep working.
+ */
+export function requestRef(request: ReleaseRequestDto): string {
+  return request.qualifiedId?.trim() || request.id;
+}
+
+/**
+ * The request that superseded this one, by its logical id where the service sends it, else by
+ * uuid; null where nothing did (or an older build does not say).
+ */
+export function supersedingRef(request: ReleaseRequestDto): string | null {
+  return request.supersededByQualifiedId?.trim() || request.supersededBy?.trim() || null;
+}
+
+/**
  * The badge one word draws as: the word a person reads, and the tone that colours it.
  *
  * <p>Named for the state because that is what it was invented for, and shared with the priority

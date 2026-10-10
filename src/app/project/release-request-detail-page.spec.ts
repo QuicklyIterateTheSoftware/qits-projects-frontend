@@ -630,6 +630,24 @@ describe('ReleaseRequestDetailPage', () => {
       expect(page().querySelector('.withdraw')).toBeNull();
     });
 
+    it('links the successor by its logical id, and names this request by its own', async () => {
+      withRepositories();
+      await open();
+      await answer(
+        request({
+          state: 'OBSOLETE',
+          qualifiedId: 'qits-ci-rr-4',
+          supersededBy: 'r9',
+          supersededByQualifiedId: 'qits-ci-rr-5',
+        }),
+      );
+
+      expect(page().querySelector('.request-id')?.textContent?.trim()).toBe('qits-ci-rr-4');
+      expect(page().querySelector('.successor')?.getAttribute('href')).toBe(
+        '/qits/services/qits-ci/release-requests/qits-ci-rr-5',
+      );
+    });
+
     /**
      * A service build older than the field names no successor, and the sentence stands without the
      * link rather than pointing at an address built from an empty id.
@@ -932,7 +950,11 @@ describe('ReleaseRequestDetailPage', () => {
 
     function entityChangesPayload(): QitsEntityChangesPayload {
       return {
-        baseline: { version: '2026.1003.52637', tagSha: '9f1c2b3d4e5f60718293a4b5c6d7e8f901234567', hadDiagram: true },
+        baseline: {
+          version: '2026.1003.52637',
+          tagSha: '9f1c2b3d4e5f60718293a4b5c6d7e8f901234567',
+          hadDiagram: true,
+        },
         units: [
           {
             file: 'docs/database/ci.md',
@@ -943,12 +965,24 @@ describe('ReleaseRequestDetailPage', () => {
                 name: 'ci_report',
                 status: 'CHANGED',
                 origin: 'ci',
-                columns: { added: [], removed: [], changed: [{ name: 'kind', before: 'string, not null, 64', after: 'string, not null, 128' }] },
+                columns: {
+                  added: [],
+                  removed: [],
+                  changed: [
+                    {
+                      name: 'kind',
+                      before: 'string, not null, 64',
+                      after: 'string, not null, 128',
+                    },
+                  ],
+                },
               },
             ],
             relations: { added: [], removed: [] },
-            before: 'erDiagram\n  ci_report {\n    uuid id PK\n    string kind "not null, length 64"\n  }\n',
-            after: 'erDiagram\n  ci_report {\n    uuid id PK\n    string kind "not null, length 128"\n  }\n',
+            before:
+              'erDiagram\n  ci_report {\n    uuid id PK\n    string kind "not null, length 64"\n  }\n',
+            after:
+              'erDiagram\n  ci_report {\n    uuid id PK\n    string kind "not null, length 128"\n  }\n',
           },
         ],
         truncated: false,
@@ -1026,9 +1060,7 @@ describe('ReleaseRequestDetailPage', () => {
    */
   describe('the located failure’s test code', () => {
     const LOCATED_FILE = 'src/app/project/release-request-detail-page.ts';
-    const FILE_URL = `https://githost.dev.example.test${
-      '/githost/api/repositories'
-    }/${REPO}/file`;
+    const FILE_URL = `https://githost.dev.example.test${'/githost/api/repositories'}/${REPO}/file`;
 
     function locatedFailure(): QitsTestFailure {
       return {
@@ -1180,9 +1212,11 @@ describe('ReleaseRequestDetailPage', () => {
       harness.fixture.detectChanges();
 
       expect(page().querySelector('ol')?.getAttribute('start')).toBe('3');
-      expect(
-        [...page().querySelectorAll('.line .text')].map((line) => line.textContent),
-      ).toEqual(['// line 3', '// line 4', '// line 5']);
+      expect([...page().querySelectorAll('.line .text')].map((line) => line.textContent)).toEqual([
+        '// line 3',
+        '// line 4',
+        '// line 5',
+      ]);
     });
   });
 

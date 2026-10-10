@@ -247,6 +247,27 @@ describe('ProjectReleaseRequestsPage', () => {
       expect(link?.getAttribute('href')).toBe('/qits/qits-ci/qits-ci-service/release-requests/r1');
     });
 
+    it('names and links a row by its logical id where the service sends one', async () => {
+      configure(
+        provideQitsRepositoryList([
+          { id: 'repo-ci', name: 'qits-ci-service', component: 'qits-ci', category: 'services' },
+        ]),
+      );
+      await open();
+      await answer([
+        request({
+          repoId: 'repo-ci',
+          repoName: 'qits-ci-service',
+          qualifiedId: 'qits-ci-service-rr-2',
+        }),
+      ]);
+
+      expect(page().querySelector('.request-id')?.textContent?.trim()).toBe('qits-ci-service-rr-2');
+      expect(page().querySelector('a.repo')?.getAttribute('href')).toBe(
+        '/qits/qits-ci/qits-ci-service/release-requests/qits-ci-service-rr-2',
+      );
+    });
+
     /**
      * The badge is the request's **effective** priority — the highest of its branches — and this is
      * the page it is most for: a project-wide worklist is read to answer "which of these is the one

@@ -28,6 +28,7 @@ import {
   releaseStateBadge,
   unattendedBadge,
   UNATTENDED_TITLE,
+  requestRef,
 } from './release-requests-model';
 import { ReleaseSources } from './release-sources';
 
@@ -156,6 +157,7 @@ import { ReleaseSources } from './release-sources';
               <app-release-sources [request]="request" />
 
               <div class="facts">
+                <span class="ref request-id">{{ ref(request) }}</span>
                 <span class="fact">
                   merged
                   <span class="ref" [title]="foldTitle(request)">{{ mergedSha(request) }}</span>
@@ -349,6 +351,9 @@ export class ProjectReleaseRequestsPage {
   private readonly repositories = inject(QITS_REPOSITORIES, { optional: true });
 
   protected readonly none = NONE;
+
+  /** The request's logical id, which the row names it by and its link carries. */
+  protected readonly ref = requestRef;
   protected readonly stateBadge = releaseStateBadge;
   protected readonly priorityBadge = releasePriorityBadge;
 
@@ -453,7 +458,7 @@ export class ProjectReleaseRequestsPage {
     const row = this.repositories?.repositories()?.find((entry) => entry.id === request.repoId);
     const label = request.repoName ?? row?.name ?? request.repoId;
     if (request.repoId && request.repoId === this.repositories?.wrapperRepositoryId()) {
-      return { label, route: ['/', this.projectSlug(), 'release-requests', request.id] };
+      return { label, route: ['/', this.projectSlug(), 'release-requests', requestRef(request)] };
     }
     const group = row?.component ?? row?.category;
     if (!row || !group) {
@@ -463,7 +468,7 @@ export class ProjectReleaseRequestsPage {
       label,
       // The request's OWN page, not its repository's list: the row already names the request, so
       // landing on a list the reader would then have to find it in again is a click nobody wants.
-      route: ['/', this.projectSlug(), group, row.name, 'release-requests', request.id],
+      route: ['/', this.projectSlug(), group, row.name, 'release-requests', requestRef(request)],
     };
   }
 
