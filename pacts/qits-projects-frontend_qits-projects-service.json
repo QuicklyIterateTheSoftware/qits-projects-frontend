@@ -998,7 +998,7 @@
           "content": {
             "dispatch": {
               "agentLaunch": "SCHEDULED",
-              "branch": "ticket/database-runs-out-of-connection-slots-during-deploys",
+              "branch": "ticket/contract-00000001-1",
               "mode": "FLOW",
               "phase": "implement",
               "repositoryId": "00000000-0000-4000-8000-000000000003",
@@ -1144,7 +1144,7 @@
           "content": {
             "dispatch": {
               "agentLaunch": "SCHEDULED",
-              "branch": "epic/work-item-actions",
+              "branch": "epic/contract-00000001-1",
               "mode": "PHASE",
               "phase": "refine",
               "repositoryId": "00000000-0000-4000-8000-000000000003",
