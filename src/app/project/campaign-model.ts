@@ -11,6 +11,7 @@ import type {
   CriterionGroupDto,
   CriterionSpec,
   EntityStatus,
+  WorkOutcome,
   WorkspaceReferenceDto,
 } from '../api/dto';
 import { formatInstant } from '../ui/format';
@@ -65,6 +66,10 @@ export interface CampaignEntity {
   readonly active: boolean;
   /** How many members it gathers. */
   readonly members: number;
+  /** Why it was dropped (qits-248) — {@link ../api/dto#WorkOutcome}; null or absent otherwise. */
+  readonly outcome?: WorkOutcome | null;
+  /** The item that closed it (qits-248), by id; null or absent otherwise. */
+  readonly supersededBy?: string | null;
 }
 
 /** Any root of work the desk lists: an epic, a ticket or a campaign. */
@@ -92,6 +97,8 @@ export function campaignEntity(summary: CampaignSummaryDto): CampaignEntity {
     started: summary.started,
     active: summary.active,
     members: summary.members,
+    outcome: summary.outcome ?? null,
+    supersededBy: summary.supersededBy ?? null,
   };
 }
 

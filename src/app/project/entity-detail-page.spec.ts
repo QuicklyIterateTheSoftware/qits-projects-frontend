@@ -1219,6 +1219,130 @@ describe('EntityDetailPage', () => {
    * qits-887: the assignee is drawn and edited wherever the registry permits `ASSIGNEE` — an epic
    * too, once the service says so — never by archetype.
    */
+  describe('the drop and its outcome (qits-248)', () => {
+    function pickOutcome(outcome: string): void {
+      const radio = element().querySelector<HTMLInputElement>(`[data-outcome="${outcome}"] input`);
+      expect(radio, `no outcome ${outcome}`).toBeTruthy();
+      radio!.checked = true;
+      radio!.dispatchEvent(new Event('change'));
+      harness.detectChanges();
+    }
+
+    function typeReference(value: string): void {
+      const input = element().querySelector<HTMLInputElement>('.drop-reference');
+      expect(input, 'no reference box').toBeTruthy();
+      input!.value = value;
+      input!.dispatchEvent(new Event('input'));
+      harness.detectChanges();
+    }
+
+    it('asks why before it drops, and sends the outcome with the item it names', async () => {
+      await open('/qits/work/qits-41');
+
+      buttonNamed('Drop').click();
+      await serve();
+      expect(writes()).toEqual([]);
+      expect(element().querySelector('app-drop-form')).not.toBeNull();
+
+      pickOutcome('DUPLICATE');
+      typeReference('qits-12');
+      button('.send-drop').click();
+      await serve();
+
+      expect(writes()).toEqual([
+        {
+          method: 'POST',
+          url: '/projects/api/work/qits-41/status',
+          body: { target: 'DROPPED', outcome: 'DUPLICATE', supersededBy: 'qits-12' },
+        },
+      ]);
+      expect(element().querySelector('app-drop-form')).toBeNull();
+    });
+
+    it('sends an outcome that names no item without a reference', async () => {
+      await open('/qits/work/qits-41');
+
+      buttonNamed('Drop').click();
+      await serve();
+      pickOutcome('WONT_DO');
+      button('.send-drop').click();
+      await serve();
+
+      expect(writes()).toEqual([
+        {
+          method: 'POST',
+          url: '/projects/api/work/qits-41/status',
+          body: { target: 'DROPPED', outcome: 'WONT_DO' },
+        },
+      ]);
+    });
+
+    it('shows the service’s own sentence when it refuses the drop, and keeps the form', async () => {
+      failures['POST /projects/api/work/qits-41/status'] = {
+        status: 400,
+        body: { message: 'supersededBy qits-999 names no entity of this project' },
+      };
+      await open('/qits/work/qits-41');
+
+      buttonNamed('Drop').click();
+      await serve();
+      pickOutcome('RESOLVED_ELSEWHERE');
+      typeReference('qits-999');
+      button('.send-drop').click();
+      await serve();
+
+      expect(element().querySelector('.failed[role="alert"]')?.textContent).toContain(
+        'supersededBy qits-999 names no entity of this project',
+      );
+      expect(element().querySelector('app-drop-form')).not.toBeNull();
+    });
+
+    it('draws a dropped ticket’s outcome beside its status, and links what closed it', async () => {
+      ticketPatch = { status: 'DROPPED', outcome: 'DUPLICATE', supersededBy: 'e1' };
+      await open('/qits/work/qits-41');
+
+      expect(element().querySelector('.status')?.textContent).toContain('dropped');
+      expect(element().querySelector('.outcome')?.textContent).toContain('duplicate');
+      expect(text()).toContain('Duplicate of');
+      const link = element().querySelector<HTMLAnchorElement>('.successor a');
+      expect(link?.getAttribute('href')).toBe('/qits/work/qits-12');
+    });
+
+    it('draws no outcome for a drop that recorded none', async () => {
+      ticketPatch = { status: 'DROPPED' };
+      await open('/qits/work/qits-41');
+
+      expect(element().querySelector('.outcome')).toBeNull();
+      expect(element().querySelector('.successor')).toBeNull();
+    });
+
+    /**
+     * The test server answers the listing whole whatever the query says — exactly what the service
+     * before qits-248 does with `?supersededBy=` — so only the page's own filter keeps the list right.
+     */
+    it('lists what names this item as supersededBy, and nothing else of the project', async () => {
+      ticketPatch = { status: 'DROPPED', outcome: 'RESOLVED_ELSEWHERE', supersededBy: 'e1' };
+      await open('/qits/work/qits-12');
+
+      const closes = Array.from(element().querySelectorAll('.closes .closed'));
+      expect(closes.map((row) => row.querySelector('a')?.textContent?.trim())).toEqual([
+        'qits-41 The cancelled badge is the wrong colour',
+      ]);
+      expect(closes[0].querySelector('.closed-as')?.textContent).toContain('resolved elsewhere');
+      expect(
+        sent.some(
+          (request) => request.method === 'GET' && request.url === '/projects/api/projects/p1/work',
+        ),
+      ).toBe(true);
+    });
+
+    it('lists nothing when no item names this one', async () => {
+      await open('/qits/work/qits-12');
+
+      expect(element().querySelector('.closes')).toBeNull();
+    });
+  });
+
   describe('the assignee', () => {
     const permittingEpic = () => ({
       ...REGISTRY,

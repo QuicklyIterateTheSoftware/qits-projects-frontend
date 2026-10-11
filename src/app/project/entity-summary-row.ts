@@ -3,7 +3,7 @@ import { RouterLink } from '@angular/router';
 import { QitsBadge } from '@qits/ui-components';
 import { relativeSince } from '../ui/format';
 import type { WorkItem } from './campaign-model';
-import { statusBadge } from './entities-model';
+import { closedByLabel, outcomeBadge, statusBadge } from './entities-model';
 import { archetypeLabel, entityAddress, entityRoute } from './entity-nodes';
 
 /**
@@ -11,8 +11,10 @@ import { archetypeLabel, entityAddress, entityRoute } from './entity-nodes';
  * its title, its archetype and status, and how long ago it was opened. Both the number and the title
  * link to the entity's page, `/<project>/work/<qualified id>`.
  *
- * <p>A superseded epic says so and links to its successor's page when the desk holds it — the
- * successor's number is resolved by the desk, which is the only one holding every entity.
+ * <p>A dropped entity says why beside its status (qits-248) — `duplicate`, `obsolete`, … — and a
+ * row with no recorded outcome says nothing more. An entity another one closed (any archetype, where
+ * it was a superseded epic alone) links to that one's page when the desk holds it — "duplicate of",
+ * "resolved by", "superseded by" — resolved by the desk, which is the only one holding every entity.
  */
 @Component({
   selector: 'app-entity-summary-row',
@@ -23,8 +25,13 @@ import { archetypeLabel, entityAddress, entityRoute } from './entity-nodes';
     <a class="title" [routerLink]="route()">{{ entity().title }}</a>
     <qits-badge [label]="archetype()" tone="neutral" />
     <qits-badge [label]="badge().label" [tone]="badge().tone" />
+    @if (outcome(); as why) {
+      <qits-badge class="outcome" [label]="why.label" [tone]="why.tone" />
+    }
     @if (successor(); as next) {
-      <a class="successor" [routerLink]="successorRoute()">superseded by {{ next.title }}</a>
+      <a class="successor" [routerLink]="successorRoute()"
+        >{{ successorLabel() }} {{ next.title }}</a
+      >
     }
     @if (age(); as opened) {
       <span class="age">{{ opened }}</span>
@@ -67,10 +74,14 @@ export class EntitySummaryRow {
   /** The project's slug, which every address is spelled with. */
   readonly projectSlug = input<string>('');
 
-  /** The epic that superseded this one, when the desk holds it; null draws nothing. */
+  /** The item that closed this one, when the desk holds it; null draws nothing. */
   readonly successor = input<WorkItem | null>(null);
 
   protected readonly badge = computed(() => statusBadge(this.entity().status));
+  protected readonly outcome = computed(() => outcomeBadge(this.entity()));
+  protected readonly successorLabel = computed(() =>
+    closedByLabel(this.entity().outcome).toLowerCase(),
+  );
   protected readonly archetype = computed(() => archetypeLabel(this.entity().archetype));
   protected readonly address = computed(() => entityAddress(this.entity()));
   protected readonly route = computed(() => entityRoute(this.projectSlug(), this.entity()));

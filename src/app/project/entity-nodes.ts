@@ -1,4 +1,4 @@
-import type { EntityStatus, FeatureDto, TaskDto } from '../api/dto';
+import type { EntityStatus, FeatureDto, TaskDto, WorkOutcome } from '../api/dto';
 import type { CampaignEntity, WorkItem } from './campaign-model';
 import type { Entity, EpicEntity, TicketEntity } from './entities-model';
 
@@ -44,6 +44,10 @@ export interface EntityNode {
   readonly dependsOn: string | null;
   readonly createdAt: string;
   readonly updatedAt: string;
+  /** Why a `DROPPED` node was dropped (qits-248); null or absent otherwise, and on an older service. */
+  readonly outcome?: WorkOutcome | null;
+  /** The item that closed this node, by id — any archetype (qits-248); null or absent otherwise. */
+  readonly supersededBy?: string | null;
   /** The root entity when this node is one (epic, ticket); null for a feature or a task. */
   readonly entity: Entity | null;
   /** The epic this node belongs to — itself for an epic, null for a ticket. */
@@ -94,6 +98,8 @@ export function flattenEntities(entities: readonly WorkItem[]): readonly EntityN
         dependsOn: feature.dependsOnFeatureId,
         createdAt: feature.createdAt,
         updatedAt: feature.updatedAt,
+        outcome: feature.outcome ?? null,
+        supersededBy: feature.supersededBy ?? null,
         entity: null,
         epic: entity,
         feature,
@@ -117,6 +123,8 @@ export function flattenEntities(entities: readonly WorkItem[]): readonly EntityN
           dependsOn: task.dependsOnTaskId,
           createdAt: task.createdAt,
           updatedAt: task.updatedAt,
+          outcome: task.outcome ?? null,
+          supersededBy: task.supersededBy ?? null,
           entity: null,
           epic: entity,
           feature,
@@ -146,6 +154,9 @@ function rootNode(entity: Entity, epic: EpicEntity | null): EntityNode {
     dependsOn: null,
     createdAt: entity.createdAt,
     updatedAt: entity.updatedAt,
+    outcome: entity.outcome ?? null,
+    supersededBy:
+      entity.supersededBy ?? (entity.archetype === 'EPIC' ? entity.supersededByEpicId : null),
     entity,
     epic,
     feature: null,
@@ -171,6 +182,8 @@ function campaignNode(campaign: CampaignEntity): EntityNode {
     dependsOn: null,
     createdAt: campaign.createdAt,
     updatedAt: campaign.updatedAt,
+    outcome: campaign.outcome ?? null,
+    supersededBy: campaign.supersededBy ?? null,
     entity: null,
     epic: null,
     feature: null,

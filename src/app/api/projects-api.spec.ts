@@ -2,7 +2,8 @@ import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
 import { goldenMaster } from '../../testing/golden-masters';
-import { ProjectsApi } from './projects-api';
+import { ProjectsApi, closedBy } from './projects-api';
+import type { WorkEntityDto } from './work';
 
 /**
  * qits-projects wraps every list in `entries`, and every entry in the name of the thing it holds.
@@ -416,6 +417,56 @@ describe('ProjectsApi', () => {
     await expect(moved).resolves.toMatchObject({ status: 'REFINED', statusBefore: 'REPORTED' });
   });
 
+  /** qits-248: a drop says why, and the field goes only where it was given. */
+  it('sends a drop with its outcome and the item it names', async () => {
+    const moved = api.setStatus('qits-377', 'DROPPED', {
+      outcome: 'DUPLICATE',
+      supersededBy: 'qits-378',
+    });
+    const request = http.expectOne('/projects/api/work/qits-377/status');
+    expect(request.request.body).toEqual({
+      target: 'DROPPED',
+      outcome: 'DUPLICATE',
+      supersededBy: 'qits-378',
+    });
+    request.flush(goldenMaster('a reported ticket', 'setWorkStatus'));
+    await moved;
+  });
+
+  it('sends a drop that names no item without a supersededBy', async () => {
+    const moved = api.setStatus('qits-377', 'DROPPED', { outcome: 'OBSOLETE' });
+    const request = http.expectOne('/projects/api/work/qits-377/status');
+    expect(request.request.body).toEqual({ target: 'DROPPED', outcome: 'OBSOLETE' });
+    request.flush(goldenMaster('a reported ticket', 'setWorkStatus'));
+    await moved;
+  });
+
+  /**
+   * The reverse link asks the listing with `?supersededBy=` — and keeps only the rows naming the
+   * item, because the service before qits-248 ignores the parameter and answers the whole project.
+   */
+  it('reads what names an item as supersededBy, filtered here as well as by the query', async () => {
+    const closed = api.supersededBy('p1', 'qits-378', 'id-378');
+    const request = http.expectOne(
+      (req) => req.url === '/projects/api/projects/p1/work' && req.params.has('supersededBy'),
+    );
+    expect(request.request.params.get('supersededBy')).toBe('qits-378');
+    request.flush({
+      entities: [
+        row('id-377', 'id-378'),
+        row('id-378', null),
+        row('id-379', 'id-other'),
+        row('id-380', 'id-378'),
+      ],
+    });
+    expect((await closed).map((r) => r.id)).toEqual(['id-377', 'id-380']);
+  });
+
+  it('keeps nothing of a whole-project answer when no row names the item', () => {
+    expect(closedBy([row('a', null), row('b', 'c')], 'x')).toEqual([]);
+    expect(closedBy([row('a', null)], '')).toEqual([]);
+  });
+
   it("reads a node's children, bodies included", async () => {
     const children = api.children('qits-2');
     http
@@ -438,3 +489,28 @@ describe('ProjectsApi', () => {
     await expect(status).resolves.toMatchObject({ behind: 2 });
   });
 });
+
+function row(id: string, supersededBy: string | null): WorkEntityDto {
+  return {
+    id,
+    archetype: 'TICKET',
+    projectId: 'p1',
+    number: 1,
+    qualifiedId: `qits-${id}`,
+    title: id,
+    slug: id,
+    status: 'DROPPED',
+    ticketType: 'BUG',
+    impetus: null,
+    assignee: null,
+    createdBy: null,
+    supersededBy,
+    repositoryId: null,
+    implementedAt: null,
+    dependsOn: null,
+    parent: null,
+    position: null,
+    createdAt: '2026-10-11T00:00:00Z',
+    updatedAt: '2026-10-11T00:00:00Z',
+  };
+}

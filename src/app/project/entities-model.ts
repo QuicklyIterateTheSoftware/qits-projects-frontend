@@ -9,8 +9,10 @@ import type {
   TaskDto,
   TicketDto,
   TicketType,
+  WorkOutcome,
   WorkspaceReferenceDto,
 } from '../api/dto';
+import type { DropResolution } from '../api/work';
 
 /**
  * **One entity, two archetypes** — the plan a project is changed by and the small work beside it, as
@@ -113,6 +115,16 @@ interface EntityFields {
    * built by hand (a fixture, a transition's answer) need not restate it.
    */
   readonly acceptanceCriteria?: readonly string[];
+  /**
+   * Why a `DROPPED` entity was dropped (qits-248) — see {@link WorkOutcome}. Null (or absent) on
+   * every other, on a row dropped before outcomes were recorded, and on an older service.
+   */
+  readonly outcome?: WorkOutcome | null;
+  /**
+   * The item that closed this one, by id — on every archetype since qits-248. An epic's is also
+   * {@link EpicEntity.supersededByEpicId}, the name the epic-only field had.
+   */
+  readonly supersededBy?: string | null;
 }
 
 /**
@@ -178,6 +190,8 @@ export function epicEntity(epic: EpicDto, features: readonly FeatureNode[] = [])
     blockedBy: epic.blockedBy,
     status: epic.status,
     supersededByEpicId: epic.supersededByEpicId,
+    outcome: epic.outcome ?? null,
+    supersededBy: epic.supersededByEpicId,
     assignee: epic.assignee ?? null,
     acceptanceCriteria: epic.acceptanceCriteria ?? [],
     features,
@@ -208,6 +222,8 @@ export function ticketEntity(ticket: TicketDto): TicketEntity {
     assignee: ticket.assignee,
     createdBy: ticket.createdBy,
     acceptanceCriteria: ticket.acceptanceCriteria ?? [],
+    outcome: ticket.outcome ?? null,
+    supersededBy: ticket.supersededBy ?? null,
   };
 }
 
@@ -422,6 +438,150 @@ export function statusBadge(status: EntityStatus | null): StatusBadge {
 /** `IMPLEMENTED` → `implemented`, `SOME_WORD` → `some word`. The one rule a status is spelled by. */
 export function statusLabel(status: EntityStatus): string {
   return status.toLowerCase().replace(/_/g, ' ');
+}
+
+// ---- outcomes (qits-248) ------------------------------------------------------------------------
+
+/** One way a drop can end, as the drop form offers it. */
+export interface OutcomeOption {
+  readonly value: WorkOutcome;
+  /** What a person picks, and what the archive's badge says. */
+  readonly label: string;
+  /** The one sentence telling it apart from the other five. */
+  readonly explanation: string;
+  /** Whether the drop has to name the other item — the service refuses it either way otherwise. */
+  readonly needsReference: boolean;
+  /** How the link to that item reads on the dropped item's page; null where there is none. */
+  readonly referenceLabel: string | null;
+}
+
+/**
+ * **The six outcomes a drop records**, in the order the form offers them: the three that name another
+ * item first, then the three that refuse one. The service's rules, mirrored here for the form only —
+ * a drop it refuses still answers 400 with the rule, and the page shows that sentence.
+ */
+export const WORK_OUTCOMES: readonly OutcomeOption[] = [
+  {
+    value: 'DUPLICATE',
+    label: 'Duplicate',
+    explanation: 'Another item asks for the same thing.',
+    needsReference: true,
+    referenceLabel: 'Duplicate of',
+  },
+  {
+    value: 'RESOLVED_ELSEWHERE',
+    label: 'Resolved elsewhere',
+    explanation: 'Another item’s change resolved it.',
+    needsReference: true,
+    referenceLabel: 'Resolved by',
+  },
+  {
+    value: 'SUPERSEDED',
+    label: 'Superseded',
+    explanation: 'A successor replaced it.',
+    needsReference: true,
+    referenceLabel: 'Superseded by',
+  },
+  {
+    value: 'OBSOLETE',
+    label: 'Obsolete',
+    explanation: 'The subject went away by itself — there is nothing to do any more.',
+    needsReference: false,
+    referenceLabel: null,
+  },
+  {
+    value: 'INVALID',
+    label: 'Invalid',
+    explanation: 'It never was a problem — a misreport, a stale environment.',
+    needsReference: false,
+    referenceLabel: null,
+  },
+  {
+    value: 'WONT_DO',
+    label: 'Won’t do',
+    explanation: 'A decision was taken not to do it — scratch and probe items too.',
+    needsReference: false,
+    referenceLabel: null,
+  },
+];
+
+/** The option for `outcome`, or undefined for null, absent, or a word this client has not met. */
+export function outcomeOption(outcome: string | null | undefined): OutcomeOption | undefined {
+  return outcome ? WORK_OUTCOMES.find((option) => option.value === outcome) : undefined;
+}
+
+/** Whether a drop with `outcome` must name the other item: `DUPLICATE`, `RESOLVED_ELSEWHERE`, `SUPERSEDED`. */
+export function outcomeNeedsReference(outcome: string | null | undefined): boolean {
+  return outcomeOption(outcome)?.needsReference ?? false;
+}
+
+/**
+ * The badge a `DROPPED` row carries **beside** its status, saying why — or null, which draws
+ * nothing: a row that is not dropped, a legacy drop with no recorded outcome, an older service. A
+ * word this client has not met is spelled the way {@link statusLabel} spells one, not dropped.
+ */
+export function outcomeBadge(row: {
+  readonly status: EntityStatus | null;
+  readonly outcome?: string | null;
+}): StatusBadge | null {
+  if (row.status !== 'DROPPED' || !row.outcome) {
+    return null;
+  }
+  return {
+    label: outcomeOption(row.outcome)?.label.toLowerCase() ?? statusLabel(row.outcome),
+    tone: 'neutral',
+  };
+}
+
+/**
+ * How the link to the item that closed this one reads: "Duplicate of", "Resolved by", "Superseded
+ * by" — the last also for a row with no recorded outcome, which is what an epic's supersede wrote
+ * before outcomes existed.
+ */
+export function closedByLabel(outcome: string | null | undefined): string {
+  return outcomeOption(outcome)?.referenceLabel ?? 'Superseded by';
+}
+
+/** What the drop form holds: the outcome picked (none yet) and the reference typed. */
+export interface DropDraft {
+  readonly outcome: WorkOutcome | null;
+  readonly reference: string;
+}
+
+/** A qualified id (`qits-378`, `my-project-12`) or a UUID — the two spellings the service resolves. */
+const REFERENCE =
+  /^(?:[A-Za-z0-9][A-Za-z0-9_-]*-\d+|[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$/;
+
+/**
+ * What stops the drop from being sent, as sentences — empty when it may go. An outcome is required;
+ * the reference is required, and has to look like a qualified id, exactly for the three outcomes
+ * that need one. For the other three the reference is not read at all: the form hides it and
+ * {@link dropResolution} leaves it out.
+ */
+export function dropProblems(draft: DropDraft): readonly string[] {
+  if (!draft.outcome) {
+    return ['Choose why it is dropped.'];
+  }
+  if (!outcomeNeedsReference(draft.outcome)) {
+    return [];
+  }
+  const reference = draft.reference.trim();
+  if (!reference) {
+    return ['Name the other item, by its qualified id — qits-378, say.'];
+  }
+  return REFERENCE.test(reference)
+    ? []
+    : [`“${reference}” is not a qualified id — write it like qits-378.`];
+}
+
+/** The drop's body besides its target, or null while {@link dropProblems} names anything. */
+export function dropResolution(draft: DropDraft): DropResolution | null {
+  if (!draft.outcome || dropProblems(draft).length > 0) {
+    return null;
+  }
+  return outcomeNeedsReference(draft.outcome)
+    ? { outcome: draft.outcome, supersededBy: draft.reference.trim() }
+    : { outcome: draft.outcome };
 }
 
 /**

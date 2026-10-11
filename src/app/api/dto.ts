@@ -259,6 +259,26 @@ export interface WrapperDto {
 export type EntityStatus = string;
 
 /**
+ * **Why a `DROPPED` item was dropped** (qits-248) — carried on every archetype's row, and set only
+ * together with a move into `DROPPED`.
+ *
+ * <p>The first three name another item, `supersededBy`, and the service refuses them without one;
+ * the last three refuse one:
+ *
+ * - `DUPLICATE` — another item asks for the same thing;
+ * - `RESOLVED_ELSEWHERE` — another item's change resolved it;
+ * - `SUPERSEDED` — replaced by a successor (what an epic's supersede records);
+ * - `OBSOLETE` — the subject went away by itself;
+ * - `INVALID` — it never was a problem;
+ * - `WONT_DO` — a decision was taken not to do it (scratch and probe items included).
+ *
+ * <p>Read as **optional and nullable** everywhere: a service older than qits-248 sends no `outcome`
+ * at all, and a row dropped before it keeps a null one, meaning "unrecorded". Both draw nothing.
+ */
+export type WorkOutcome =
+  'DUPLICATE' | 'RESOLVED_ELSEWHERE' | 'SUPERSEDED' | 'OBSOLETE' | 'INVALID' | 'WONT_DO';
+
+/**
  * Where an entity's **effective** block comes from (qits-895) — `blocked` stopped being a person's
  * flag alone and became that flag **OR** the platform's own derived fact, that the agent working the
  * entity ended its turn with nothing in flight and nobody has picked it up since.
@@ -335,6 +355,8 @@ export interface EpicDto {
    * *operation* lands the epic DROPPED and names its successor here); null on every other.
    */
   readonly supersededByEpicId: string | null;
+  /** Why it was dropped (qits-248); see {@link WorkOutcome}. Absent on an older service. */
+  readonly outcome?: WorkOutcome | null;
   /**
    * What has to be true for the work to be accepted (qits-887) — a list of one-line Markdown items,
    * in order. Optional because it arrived after epics were on the wire: absent (an older service) or
@@ -401,6 +423,14 @@ export interface FeatureDto {
    * the same as null. The task's twin is `implementingAt`.
    */
   readonly implementingOn?: string | null;
+  /** Why it was dropped (qits-248); see {@link WorkOutcome}. Absent on an older service. */
+  readonly outcome?: WorkOutcome | null;
+  /**
+   * The item that closed this one — a duplicate's original, the item that resolved it, its
+   * successor (qits-248: on every archetype, where it was an epic's alone). Absent on an older
+   * service, which reads the same as null.
+   */
+  readonly supersededBy?: string | null;
   readonly createdAt: string;
   readonly updatedAt: string;
 }
@@ -436,6 +466,14 @@ export interface TaskDto {
    * not serve it yet, which reads the same as null. The feature's twin is `implementingOn`.
    */
   readonly implementingAt?: string | null;
+  /** Why it was dropped (qits-248); see {@link WorkOutcome}. Absent on an older service. */
+  readonly outcome?: WorkOutcome | null;
+  /**
+   * The item that closed this one — a duplicate's original, the item that resolved it, its
+   * successor (qits-248: on every archetype, where it was an epic's alone). Absent on an older
+   * service, which reads the same as null.
+   */
+  readonly supersededBy?: string | null;
   readonly createdAt: string;
   readonly updatedAt: string;
 }
@@ -609,6 +647,10 @@ export interface TicketDto {
    * saying so rather than as an empty panel.
    */
   readonly description: string | null;
+  /** Why it was dropped (qits-248); see {@link WorkOutcome}. Absent on an older service. */
+  readonly outcome?: WorkOutcome | null;
+  /** The item that closed this one — see {@link FeatureDto.supersededBy}. */
+  readonly supersededBy?: string | null;
   readonly createdAt: string;
   readonly updatedAt: string;
   /**
@@ -1762,6 +1804,14 @@ export interface CampaignSummaryDto {
   readonly active: boolean;
   /** How many members it gathers. */
   readonly members: number;
+  /** Why it was dropped (qits-248); see {@link WorkOutcome}. Absent on an older service. */
+  readonly outcome?: WorkOutcome | null;
+  /**
+   * The item that closed this one — a duplicate's original, the item that resolved it, its
+   * successor (qits-248: on every archetype, where it was an epic's alone). Absent on an older
+   * service, which reads the same as null.
+   */
+  readonly supersededBy?: string | null;
 }
 
 /** A campaign's start; null on a campaign never started. */

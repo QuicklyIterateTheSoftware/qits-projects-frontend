@@ -14,7 +14,7 @@ import { ActivatedRoute, Router, RouterLink, convertToParamMap } from '@angular/
 import { QitsAppLinks, QitsBadge, QitsButton } from '@qits/ui-components';
 import { ArchetypesApi, type ArchetypeRegistry } from '../api/archetypes-api';
 import { DossierApi, epicDossier, ticketDossier, type DossierOwner } from '../api/dossier-api';
-import { workRef } from '../api/work';
+import { workRef, type DropResolution, type WorkEntityDto } from '../api/work';
 import type {
   AuditEntryDto,
   DispatchMode,
@@ -42,11 +42,13 @@ import {
 import { MarkdownView } from '../ui/markdown-view';
 import { CampaignMembers, type CampaignCandidate } from './campaign-members';
 import { CampaignProgress } from './campaign-progress';
+import { DropForm } from './drop-form';
 import {
   ACCEPTANCE_CRITERIA,
   IMPETUS_RULE,
   blockedBadges,
   blockedReasonLine,
+  closedByLabel,
   criteriaEditable,
   criterionProblems,
   featureStatus,
@@ -54,6 +56,8 @@ import {
   isExplicitBlock,
   isFinalStatus,
   lifecycleMoves,
+  outcomeBadge,
+  outcomeOption,
   statusBadge,
   lifecycleOf,
   permits,
@@ -193,6 +197,7 @@ interface TreeRow {
     CampaignMembers,
     CampaignProgress,
     DossierPanel,
+    DropForm,
     EntityThread,
     EntityTransitionPanel,
     MarkdownView,
@@ -234,6 +239,9 @@ interface TreeRow {
           }
           @if (n.status !== null) {
             <qits-badge class="status" [label]="badge().label" [tone]="badge().tone" />
+            @if (outcome(); as why) {
+              <qits-badge class="outcome" [label]="why.label" [tone]="why.tone" />
+            }
           } @else {
             <qits-badge class="marker" [label]="marker().label" [tone]="marker().tone" />
           }
@@ -257,9 +265,24 @@ interface TreeRow {
           </dd>
         }
         @if (successor(); as next) {
-          <dt>Superseded by</dt>
+          <dt>{{ successorLabel() }}</dt>
           <dd class="successor">
             <a [routerLink]="routeOf(next)">{{ label(next) }}</a>
+          </dd>
+        }
+        @if (closes().length > 0) {
+          <dt>Closes</dt>
+          <dd class="closes">
+            <ul class="closes-list">
+              @for (closed of closes(); track closed.id) {
+                <li class="closed">
+                  <a [routerLink]="routeOf(closed)">{{ label(closed) }}</a>
+                  @if (closedAs(closed); as why) {
+                    <span class="note closed-as">{{ why }}</span>
+                  }
+                </li>
+              }
+            </ul>
           </dd>
         }
         @if (assigneePermitted()) {
@@ -621,6 +644,14 @@ interface TreeRow {
         </section>
       }
 
+      @if (dropping(); as step) {
+        <app-drop-form
+          [busy]="action() === 'move:' + step.target"
+          (dropped)="drop(step, $event)"
+          (cancelled)="dropping.set(null)"
+        />
+      }
+
       @if (reshaping()) {
         <app-entity-transition-panel
           [projectId]="projectId()"
@@ -883,6 +914,14 @@ interface TreeRow {
       align-items: baseline;
       margin: 0.5rem 0 0;
     }
+    .closes-list {
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }
+    .closed-as {
+      margin-left: 0.4rem;
+    }
     .form {
       margin: 0 0 1rem;
       padding: 0.9rem 1rem;
@@ -1090,6 +1129,13 @@ export class EntityDetailPage {
 
   protected readonly blocking = signal<'block' | 'unblock' | null>(null);
   protected readonly blockNote = signal('');
+  /** The Drop pressed and waiting for its outcome (qits-248) — the form is open while this is set. */
+  protected readonly dropping = signal<LifecycleMove | null>(null);
+  /**
+   * What names this node as its `supersededBy` — the reverse link, read per node (qits-248): the
+   * duplicates it is the original of, what it resolved, what it succeeded.
+   */
+  protected readonly closes = signal<readonly WorkEntityDto[]>([]);
   protected readonly reshaping = signal(false);
 
   private readonly loaded = computed<Ground | null>(() => {
@@ -1145,6 +1191,11 @@ export class EntityDetailPage {
 
   protected readonly archetype = computed(() => archetypeLabel(this.node()?.archetype ?? ''));
   protected readonly badge = computed(() => statusBadge(this.node()?.status ?? null));
+  /** Why a dropped node was dropped, beside its status; null draws nothing (qits-248). */
+  protected readonly outcome = computed(() => {
+    const node = this.node();
+    return node ? outcomeBadge(node) : null;
+  });
   protected readonly type = computed(() => ticketTypeBadge(this.ticket()?.type ?? 'BUG'));
 
   /**
@@ -1411,12 +1462,17 @@ export class EntityDetailPage {
     return ground ? nodeById(ground.nodes, this.node()?.parentId ?? null) : null;
   });
 
+  /**
+   * The item that closed this one — a duplicate's original, what resolved it, its successor — on
+   * every archetype (qits-248; an epic's supersede alone before), resolved in the project's nodes.
+   */
   protected readonly successor = computed(() => {
     const ground = this.loaded();
-    const epic = this.node()?.entity;
-    const id = epic?.archetype === 'EPIC' ? epic.supersededByEpicId : null;
-    return ground ? nodeById(ground.nodes, id) : null;
+    return ground ? nodeById(ground.nodes, this.node()?.supersededBy ?? null) : null;
   });
+
+  /** "Duplicate of", "Resolved by", "Superseded by" — read off this node's outcome. */
+  protected readonly successorLabel = computed(() => closedByLabel(this.node()?.outcome));
 
   protected readonly dependsOn = computed(() => {
     const ground = this.loaded();
@@ -1549,6 +1605,8 @@ export class EntityDetailPage {
         this.editing.set(false);
         this.reshaping.set(false);
         this.blocking.set(null);
+        this.dropping.set(null);
+        this.closes.set([]);
         this.actionFailure.set(null);
       }
       this.watching = key;
@@ -1608,7 +1666,22 @@ export class EntityDetailPage {
       this.readFlow(node, attempt),
       this.readAudit(quiet),
       this.readDossier(attempt),
+      this.readClosed(projectId, node, attempt),
     ]);
+  }
+
+  /**
+   * What names this node as its `supersededBy` — {@link ProjectsApi.supersededBy}, which filters
+   * the answer itself because a service older than qits-248 ignores the query and answers the whole
+   * project. A failure draws nothing rather than hiding the page.
+   */
+  private async readClosed(projectId: string, node: EntityNode, attempt: number): Promise<void> {
+    const rows = await this.projects
+      .supersededBy(projectId, this.ref(node), node.id)
+      .catch(() => null);
+    if (attempt === this.attempt && rows !== null) {
+      this.closes.set(rows);
+    }
   }
 
   /**
@@ -1739,17 +1812,49 @@ export class EntityDetailPage {
 
   // ---- moves and edits --------------------------------------------------------------------------
 
-  /** One lifecycle step, through the archetype's lifecycle door — see the class note. */
+  /**
+   * One lifecycle step, through the archetype's lifecycle door — see the class note. A Drop moves
+   * nothing yet: it opens the form asking why (qits-248), and {@link drop} sends it.
+   */
   protected async move(step: LifecycleMove): Promise<void> {
     const node = this.node();
     if (!node || this.action()) {
       return;
     }
     this.blocking.set(null);
+    if (step.kind === 'DROP') {
+      this.actionFailure.set(null);
+      this.editing.set(false);
+      this.dropping.set(step);
+      return;
+    }
+    this.dropping.set(null);
+    await this.step(node, step, {});
+  }
+
+  /**
+   * The Drop, with what the form asked: the outcome, and the item it names where it needs one. A
+   * refusal (a 400 naming the rule) keeps the form open under the service's own sentence.
+   */
+  protected async drop(step: LifecycleMove, resolution: DropResolution): Promise<void> {
+    const node = this.node();
+    if (!node || this.action()) {
+      return;
+    }
+    await this.step(node, step, resolution, () => this.dropping.set(null));
+  }
+
+  private async step(
+    node: EntityNode,
+    step: LifecycleMove,
+    resolution: DropResolution,
+    landed: () => void = () => undefined,
+  ): Promise<void> {
     await this.run(`move:${step.target}`, async () => {
       // One lifecycle door for every archetype (`POST /work/{q}/status`); a campaign's move also
       // re-reads its members and progress.
-      await this.api.transition(this.ref(node), step.target);
+      await this.api.transition(this.ref(node), step.target, resolution);
+      landed();
       if (node.archetype === 'CAMPAIGN') {
         this.revision.update((count) => count + 1);
       }
@@ -1792,6 +1897,7 @@ export class EntityDetailPage {
     this.draftCriteria.set([...this.criteria()]);
     this.actionFailure.set(null);
     this.blocking.set(null);
+    this.dropping.set(null);
     this.editing.set(true);
   }
 
@@ -1891,6 +1997,7 @@ export class EntityDetailPage {
     this.actionFailure.set(null);
     this.editing.set(false);
     this.blockNote.set('');
+    this.dropping.set(null);
     this.blocking.set(mode);
   }
 
@@ -1950,15 +2057,20 @@ export class EntityDetailPage {
     return workRef(node);
   }
 
-  protected routeOf(node: EntityNode): readonly string[] {
+  protected routeOf(node: Pick<EntityNode, 'qualifiedId' | 'number'>): readonly string[] {
     return entityRoute(this.projectSlug(), node);
+  }
+
+  /** How a row this node closed was closed — `duplicate`, `resolved elsewhere`, … — or nothing. */
+  protected closedAs(row: Pick<WorkEntityDto, 'outcome'>): string | null {
+    return outcomeOption(row.outcome)?.label.toLowerCase() ?? null;
   }
 
   protected address(node: EntityNode): string {
     return entityAddress(node);
   }
 
-  protected label(node: EntityNode): string {
+  protected label(node: Pick<EntityNode, 'qualifiedId' | 'number' | 'title'>): string {
     return `${entityAddress(node)} ${node.title}`;
   }
 

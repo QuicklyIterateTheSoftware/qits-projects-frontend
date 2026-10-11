@@ -261,9 +261,10 @@ export class WorkOverview {
     inject(DestroyRef).onDestroy(() => this.events.close());
   }
 
-  /** The epic that superseded this one, when the desk holds it. */
+  /** The item that closed this one — any archetype (qits-248) — when the desk holds it. */
   protected successorOf(entity: WorkItem): WorkItem | null {
-    const id = entity.archetype === 'EPIC' ? entity.supersededByEpicId : null;
+    const id =
+      entity.supersededBy ?? (entity.archetype === 'EPIC' ? entity.supersededByEpicId : null);
     return id ? (this.byId().get(id) ?? null) : null;
   }
 

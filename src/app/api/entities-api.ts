@@ -37,6 +37,7 @@ import {
   taskOf,
   ticketOf,
   workRef,
+  type DropResolution,
   type WorkEntityDto,
   type WorkWorkspacesResponse,
 } from './work';
@@ -184,9 +185,16 @@ export class EntitiesApi {
    * <p><b>A status move stays on this door.</b> The multi-entity write ({@link transitionEntities})
    * restates a row's shape and runs no lifecycle at all — no adjacency, no phase advance after the
    * move, no discarding of the refinement room a resolving move ends.
+   *
+   * <p><b>A drop carries its `resolution`</b> (qits-248) — the outcome, and the item it names where
+   * the outcome needs one; see {@link ProjectsApi.setStatus}. Every other move passes none.
    */
-  transition(ref: string, target: EntityStatus): Promise<WorkEntityDto> {
-    return this.projects.setStatus(ref, target);
+  transition(
+    ref: string,
+    target: EntityStatus,
+    resolution: DropResolution = {},
+  ): Promise<WorkEntityDto> {
+    return this.projects.setStatus(ref, target, resolution);
   }
 
   /**

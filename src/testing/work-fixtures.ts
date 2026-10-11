@@ -61,6 +61,7 @@ export function workOfEpic(epic: Partial<EpicDto>): WorkEntityDto {
     blockedBy: epic.blockedBy,
     assignee: epic.assignee ?? null,
     supersededBy: epic.supersededByEpicId ?? null,
+    ...(epic.outcome !== undefined ? { outcome: epic.outcome } : {}),
     acceptanceCriteria: epic.acceptanceCriteria ?? null,
   };
 }
@@ -80,6 +81,8 @@ export function workOfTicket(ticket: Partial<TicketDto>): WorkEntityDto {
     impetus: ticket.impetus ?? null,
     assignee: ticket.assignee ?? null,
     createdBy: ticket.createdBy ?? null,
+    supersededBy: ticket.supersededBy ?? null,
+    ...(ticket.outcome !== undefined ? { outcome: ticket.outcome } : {}),
     acceptanceCriteria: ticket.acceptanceCriteria ?? null,
   };
 }

@@ -2,12 +2,13 @@ import { PactV4 } from '@pact-foundation/pact';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { addGoldenInteraction } from '@qits/angular/testing';
+import { addGoldenInteraction, type GoldenMasters } from '@qits/angular/testing';
 import { projectsGoldenMasters as masters } from '../../testing/golden-masters';
 import { apiAt } from '../../testing/pact-client';
 import { assertPactPart } from '../../testing/pact-part';
 import { EntitiesApi } from './entities-api';
 import { ProjectsApi } from './projects-api';
+import type { DropResolution } from './work';
 
 /**
  * `ProjectsApi`'s part of qits-projects-frontend's pact with qits-projects-service (epic qits-965):
@@ -114,6 +115,34 @@ const CREATE_WORK = [
   'ticketType',
   'impetus',
 ] as const;
+
+/**
+ * **A drop's move, which no golden master records yet** (qits-248). The service's recording of a
+ * drop arrives with the release that makes `outcome` required, and this SPA releases before it, so
+ * the drop is composed here from a recorded move — `a reported ticket`'s, the same door, method,
+ * path and status — with the drop's own request body and the target's word in the answer.
+ *
+ * <p>Only the REQUEST carries the new fields. The answer binds `status` alone (no `outcome`), and no
+ * interaction leans on the listing's new filters, so the provider deployed today — which ignores the
+ * unknown body fields and answers the move as it always did — satisfies these as well as the next.
+ * A `supersededBy` is a state param's pinned example, which the provider's verification replaces
+ * with the id its run created.
+ */
+const RECORDED_MOVE = 'a reported ticket';
+const dropOf = (state: string, body: Readonly<Record<string, string>>): GoldenMasters => ({
+  operation: (s, operationId) => {
+    if (s !== state || operationId !== 'setWorkStatus') return masters.operation(s, operationId);
+    const move = masters.operation(RECORDED_MOVE, 'setWorkStatus');
+    const params =
+      state === RECORDED_MOVE ? move.params : masters.operation(state, 'getWork').params;
+    return { ...move, state, params, body: { ...body } };
+  },
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- the recorded JSON, as `body` types it
+  body: <T = any>(s: string, operationId: string): T =>
+    s === state && operationId === 'setWorkStatus'
+      ? ({ ...masters.body(RECORDED_MOVE, 'setWorkStatus'), status: body['target'] } as T)
+      : masters.body<T>(s, operationId),
+});
 
 const dir = mkdtempSync(join(tmpdir(), 'qits-projects-frontend-projects-api-pact-'));
 const pact = new PactV4({ consumer: CONSUMER, provider: PROVIDER, dir, logLevel: 'warn' });
@@ -233,6 +262,35 @@ describe('qits-projects-frontend → qits-projects-service pact: ProjectsApi', (
       expect(moved.status).toBe(target);
     }),
   );
+
+  it.each([
+    ['a reported ticket', { target: 'DROPPED', outcome: 'WONT_DO' }],
+    [
+      'an improvement ticket in detail',
+      {
+        target: 'DROPPED',
+        outcome: 'DUPLICATE',
+        supersededBy: param('an improvement ticket in detail', 'getWork', 'bugTicketId'),
+      },
+    ],
+  ])('drop-work-item: %s, dropped with its outcome', (state, body) => {
+    const drop = dropOf(state, body);
+    return addGoldenInteraction(pact, drop, {
+      provider: PROVIDER,
+      state,
+      operationId: 'setWorkStatus',
+      trigger: { kind: 'ui', app: CONSUMER, interaction: 'drop-work-item' },
+      consumes: ['status'],
+    }).executeTest(async (server) => {
+      const { target, ...resolution } = body;
+      const moved = await apiAt(server.url, ProjectsApi).setStatus(
+        drop.operation(state, 'setWorkStatus').params['qualifiedId'],
+        target,
+        resolution as DropResolution,
+      );
+      expect(moved.status).toBe('DROPPED');
+    });
+  });
 
   it.each([
     ['an epic in detail', 'FEATURE'],

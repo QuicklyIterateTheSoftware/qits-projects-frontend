@@ -70,6 +70,13 @@
               }
             </div>
           }
+          @if (dropping(); as step) {
+            <app-drop-form
+              [busy]="resolutionPending() === step.target"
+              (dropped)="drop(step, $event)"
+              (cancelled)="dropping.set(null)"
+            />
+          }
           @if (resolutionFailure(); as message) {
             <p class="fault" role="alert">Could not move it — {{ message }}.</p>
           }

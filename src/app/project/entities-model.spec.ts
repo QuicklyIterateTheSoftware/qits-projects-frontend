@@ -5,8 +5,11 @@ import {
   BLOCKED_BADGE,
   blockedBadges,
   blockedReasonLine,
+  closedByLabel,
   criteriaEditable,
   criterionProblems,
+  dropProblems,
+  dropResolution,
   entityBySlug,
   epicBranch,
   epicEntity,
@@ -26,7 +29,10 @@ import {
   lifecycleOf,
   newestFirst,
   ofArchetype,
+  outcomeBadge,
+  outcomeNeedsReference,
   permits,
+  WORK_OUTCOMES,
   refiningBranch,
   statusBadge,
   statusVocabulary,
@@ -899,5 +905,98 @@ describe('entities model', () => {
       expect(isEdited({ createdAt: 'nonsense', updatedAt: AT })).toBe(false);
       expect(isEdited({ createdAt: AT, updatedAt: 'nonsense' })).toBe(false);
     });
+  });
+});
+
+describe('outcomes (qits-248)', () => {
+  it('offers the six outcomes, each with a label and an explanation', () => {
+    expect(WORK_OUTCOMES.map((option) => option.value)).toEqual([
+      'DUPLICATE',
+      'RESOLVED_ELSEWHERE',
+      'SUPERSEDED',
+      'OBSOLETE',
+      'INVALID',
+      'WONT_DO',
+    ]);
+    for (const option of WORK_OUTCOMES) {
+      expect(option.label).toBeTruthy();
+      expect(option.explanation).toBeTruthy();
+    }
+  });
+
+  it('needs a reference for exactly DUPLICATE, RESOLVED_ELSEWHERE and SUPERSEDED', () => {
+    expect(WORK_OUTCOMES.filter((o) => outcomeNeedsReference(o.value)).map((o) => o.value)).toEqual(
+      ['DUPLICATE', 'RESOLVED_ELSEWHERE', 'SUPERSEDED'],
+    );
+    expect(outcomeNeedsReference(null)).toBe(false);
+    expect(outcomeNeedsReference('SOMETHING_NEW')).toBe(false);
+  });
+
+  describe('the drop form', () => {
+    it('requires an outcome', () => {
+      expect(dropProblems({ outcome: null, reference: 'qits-378' })).toEqual([
+        'Choose why it is dropped.',
+      ]);
+      expect(dropResolution({ outcome: null, reference: 'qits-378' })).toBeNull();
+    });
+
+    it.each(['DUPLICATE', 'RESOLVED_ELSEWHERE', 'SUPERSEDED'] as const)(
+      'requires a reference for %s, and sends it trimmed',
+      (outcome) => {
+        expect(dropProblems({ outcome, reference: '  ' })).toHaveLength(1);
+        expect(dropResolution({ outcome, reference: '' })).toBeNull();
+        expect(dropResolution({ outcome, reference: ' qits-378 ' })).toEqual({
+          outcome,
+          supersededBy: 'qits-378',
+        });
+      },
+    );
+
+    it('accepts a qualified id or a UUID as the reference, and nothing else', () => {
+      const draft = (reference: string) => ({ outcome: 'DUPLICATE' as const, reference });
+      expect(dropProblems(draft('my-project-12'))).toEqual([]);
+      expect(dropProblems(draft('0b6c1e3a-1f2d-4c5b-9a8e-7d6c5b4a3f21'))).toEqual([]);
+      expect(dropProblems(draft('the other one'))).toEqual([
+        '“the other one” is not a qualified id — write it like qits-378.',
+      ]);
+    });
+
+    it.each(['OBSOLETE', 'INVALID', 'WONT_DO'] as const)(
+      'needs no reference for %s, and never sends one',
+      (outcome) => {
+        expect(dropProblems({ outcome, reference: '' })).toEqual([]);
+        expect(dropResolution({ outcome, reference: 'qits-378' })).toEqual({ outcome });
+      },
+    );
+  });
+
+  describe('outcomeBadge', () => {
+    it('says why beside a DROPPED status', () => {
+      expect(outcomeBadge({ status: 'DROPPED', outcome: 'DUPLICATE' })).toEqual({
+        label: 'duplicate',
+        tone: 'neutral',
+      });
+      expect(outcomeBadge({ status: 'DROPPED', outcome: 'WONT_DO' })?.label).toBe('won’t do');
+    });
+
+    it('draws nothing for a drop with no recorded outcome, or an older service', () => {
+      expect(outcomeBadge({ status: 'DROPPED', outcome: null })).toBeNull();
+      expect(outcomeBadge({ status: 'DROPPED' })).toBeNull();
+    });
+
+    it('draws nothing on a status that is not DROPPED', () => {
+      expect(outcomeBadge({ status: 'DONE', outcome: 'DUPLICATE' })).toBeNull();
+    });
+
+    it('spells an outcome this client has not met rather than losing it', () => {
+      expect(outcomeBadge({ status: 'DROPPED', outcome: 'MOVED_AWAY' })?.label).toBe('moved away');
+    });
+  });
+
+  it('labels the link to the closing item by the outcome', () => {
+    expect(closedByLabel('DUPLICATE')).toBe('Duplicate of');
+    expect(closedByLabel('RESOLVED_ELSEWHERE')).toBe('Resolved by');
+    expect(closedByLabel('SUPERSEDED')).toBe('Superseded by');
+    expect(closedByLabel(null)).toBe('Superseded by');
   });
 });

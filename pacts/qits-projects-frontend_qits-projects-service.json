@@ -1232,6 +1232,222 @@
         "references": {
           "qits-call": {
             "app": "qits-projects-service",
+            "operationId": "setWorkStatus"
+          },
+          "qits-trigger": {
+            "app": "qits-projects-frontend",
+            "interaction": "drop-work-item",
+            "kind": "ui"
+          }
+        }
+      },
+      "description": "drop-work-item: setWorkStatus",
+      "pending": false,
+      "providerStates": [
+        {
+          "name": "a reported ticket",
+          "params": {
+            "projectId": "00000000-0000-4000-8000-000000000001",
+            "qualifiedId": "contract-00000001-1",
+            "ticketId": "00000000-0000-4000-8000-000000000002"
+          }
+        }
+      ],
+      "request": {
+        "body": {
+          "content": {
+            "outcome": "WONT_DO",
+            "target": "DROPPED"
+          },
+          "contentType": "application/json",
+          "encoded": false
+        },
+        "generators": {
+          "path": {
+            "expression": "/projects/api/work/${qualifiedId}/status",
+            "type": "ProviderState"
+          }
+        },
+        "headers": {
+          "Content-Type": [
+            "application/json"
+          ]
+        },
+        "matchingRules": {
+          "path": {
+            "combine": "AND",
+            "matchers": [
+              {
+                "match": "type"
+              }
+            ]
+          }
+        },
+        "method": "POST",
+        "path": "/projects/api/work/contract-00000001-1/status"
+      },
+      "response": {
+        "body": {
+          "content": {
+            "status": "DROPPED"
+          },
+          "contentType": "application/json",
+          "encoded": false
+        },
+        "headers": {
+          "Content-Type": [
+            "application/json"
+          ]
+        },
+        "matchingRules": {
+          "body": {
+            "$.status": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          },
+          "header": {
+            "Content-Type": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "application/json.*"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      },
+      "type": "Synchronous/HTTP"
+    },
+    {
+      "comments": {
+        "references": {
+          "qits-call": {
+            "app": "qits-projects-service",
+            "operationId": "setWorkStatus"
+          },
+          "qits-trigger": {
+            "app": "qits-projects-frontend",
+            "interaction": "drop-work-item",
+            "kind": "ui"
+          }
+        }
+      },
+      "description": "drop-work-item: setWorkStatus",
+      "pending": false,
+      "providerStates": [
+        {
+          "name": "an improvement ticket in detail",
+          "params": {
+            "bugTicketId": "00000000-0000-4000-8000-000000000001",
+            "campaignId": "00000000-0000-4000-8000-000000000002",
+            "campaignQualifiedId": "contract-00000001-1",
+            "creditNoteTicketId": "00000000-0000-4000-8000-000000000003",
+            "csvFeatureId": "00000000-0000-4000-8000-000000000004",
+            "csvTaskId": "00000000-0000-4000-8000-000000000005",
+            "epicId": "00000000-0000-4000-8000-000000000006",
+            "featureId": "00000000-0000-4000-8000-000000000007",
+            "figureAssetId": "00000000-0000-4000-8000-000000000008",
+            "figurePageId": "00000000-0000-4000-8000-000000000009",
+            "frontendRepositoryId": "00000000-0000-4000-8000-00000000000a",
+            "improvementTicketId": "00000000-0000-4000-8000-00000000000b",
+            "maintenanceTicketId": "00000000-0000-4000-8000-00000000000c",
+            "pdfTaskId": "00000000-0000-4000-8000-00000000000d",
+            "previewTaskId": "00000000-0000-4000-8000-00000000000e",
+            "projectId": "00000000-0000-4000-8000-00000000000f",
+            "qualifiedId": "contract-00000001-11",
+            "serviceRepositoryId": "00000000-0000-4000-8000-000000000010",
+            "taskId": "00000000-0000-4000-8000-000000000011",
+            "taxesEpicId": "00000000-0000-4000-8000-000000000012"
+          }
+        }
+      ],
+      "request": {
+        "body": {
+          "content": {
+            "outcome": "DUPLICATE",
+            "supersededBy": "00000000-0000-4000-8000-000000000001",
+            "target": "DROPPED"
+          },
+          "contentType": "application/json",
+          "encoded": false
+        },
+        "generators": {
+          "path": {
+            "expression": "/projects/api/work/${qualifiedId}/status",
+            "type": "ProviderState"
+          }
+        },
+        "headers": {
+          "Content-Type": [
+            "application/json"
+          ]
+        },
+        "matchingRules": {
+          "path": {
+            "combine": "AND",
+            "matchers": [
+              {
+                "match": "type"
+              }
+            ]
+          }
+        },
+        "method": "POST",
+        "path": "/projects/api/work/contract-00000001-11/status"
+      },
+      "response": {
+        "body": {
+          "content": {
+            "status": "DROPPED"
+          },
+          "contentType": "application/json",
+          "encoded": false
+        },
+        "headers": {
+          "Content-Type": [
+            "application/json"
+          ]
+        },
+        "matchingRules": {
+          "body": {
+            "$.status": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          },
+          "header": {
+            "Content-Type": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "application/json.*"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      },
+      "type": "Synchronous/HTTP"
+    },
+    {
+      "comments": {
+        "references": {
+          "qits-call": {
+            "app": "qits-projects-service",
             "operationId": "addWorkMember"
           },
           "qits-trigger": {

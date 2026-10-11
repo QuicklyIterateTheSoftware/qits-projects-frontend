@@ -9,6 +9,7 @@ import type {
   TaskDto,
   TicketDto,
   TicketType,
+  WorkOutcome,
   WorkspaceReferenceDto,
 } from './dto';
 
@@ -44,8 +45,17 @@ export interface WorkEntityDto {
   readonly impetus: string | null;
   readonly assignee: string | null;
   readonly createdBy: string | null;
-  /** The successor's id on a superseded (so `DROPPED`) epic. */
+  /**
+   * The item that closed this one, by id: a duplicate's original, the item that resolved it, a
+   * successor. On every archetype since qits-248 (an epic's supersede alone wrote it before). Null
+   * on a row nothing closed — and on any row of an older service but a superseded epic.
+   */
   readonly supersededBy: string | null;
+  /**
+   * Why a `DROPPED` row was dropped (qits-248); see {@link WorkOutcome}. **Optional and nullable**:
+   * the service before qits-248 sends no such field, and a row dropped before it keeps a null one.
+   */
+  readonly outcome?: WorkOutcome | null;
   readonly repositoryId: string | null;
   readonly implementedAt: string | null;
   readonly implementingAt?: string | null;
@@ -71,6 +81,24 @@ export interface WorkEntityDto {
   /** Absent on the listing's summary rows; see the type's note. */
   readonly acceptanceCriteria?: readonly string[] | null;
 }
+
+/**
+ * The body of `POST /work/{q}/status` — `WorkStatusMove`.
+ *
+ * <p>`outcome` goes with a move into `DROPPED` and with no other (qits-248), and `supersededBy` — a
+ * qualified id (`qits-378`) or a UUID — with the three outcomes that name another item
+ * ({@link ../project/entities-model#outcomeNeedsReference}). Both are left out of the body when
+ * absent, never sent as null: a service older than qits-248 ignores them either way, and the newer
+ * one reads an absent field as "none".
+ */
+export interface WorkStatusMove {
+  readonly target: string;
+  readonly outcome?: WorkOutcome;
+  readonly supersededBy?: string;
+}
+
+/** What a drop says besides its target: why, and — for three of the six — which item. */
+export type DropResolution = Omit<WorkStatusMove, 'target'>;
 
 /** `GET /projects/{project}/work`: the project's tree, flat — each root, then its descendants. */
 export interface WorkListResponse {
@@ -137,6 +165,7 @@ export function epicOf(
     blockReason: work.blockReason,
     blockedBy: work.blockedBy,
     supersededByEpicId: work.supersededBy,
+    outcome: work.outcome ?? null,
     acceptanceCriteria: work.acceptanceCriteria ?? [],
     assignee: work.assignee,
     createdAt: work.createdAt,
@@ -168,6 +197,8 @@ export function ticketOf(
     acceptanceCriteria: work.acceptanceCriteria ?? [],
     impetus: work.impetus,
     description: work.description ?? null,
+    outcome: work.outcome ?? null,
+    supersededBy: work.supersededBy ?? null,
     createdAt: work.createdAt,
     updatedAt: work.updatedAt,
     workspaces,
@@ -189,6 +220,8 @@ export function featureOf(work: WorkEntityDto): FeatureDto {
     status: work.status,
     implementedOn: work.implementedAt,
     implementingOn: work.implementingAt ?? null,
+    outcome: work.outcome ?? null,
+    supersededBy: work.supersededBy ?? null,
     createdAt: work.createdAt,
     updatedAt: work.updatedAt,
   };
@@ -210,6 +243,8 @@ export function taskOf(work: WorkEntityDto): TaskDto {
     status: work.status,
     implementedAt: work.implementedAt,
     implementingAt: work.implementingAt ?? null,
+    outcome: work.outcome ?? null,
+    supersededBy: work.supersededBy ?? null,
     createdAt: work.createdAt,
     updatedAt: work.updatedAt,
   };
@@ -239,5 +274,7 @@ export function campaignSummaryOf(
     started: start !== null,
     active: start?.active ?? false,
     members: progress?.members.length ?? 0,
+    outcome: work.outcome ?? null,
+    supersededBy: work.supersededBy ?? null,
   };
 }

@@ -15,7 +15,13 @@ import type {
   WrapperDto,
   WrapperReconcileResponse,
 } from './dto';
-import type { WorkChildrenResponse, WorkEntityDto, WorkListResponse } from './work';
+import type {
+  DropResolution,
+  WorkChildrenResponse,
+  WorkEntityDto,
+  WorkListResponse,
+  WorkStatusMove,
+} from './work';
 
 /**
  * One project's components, and the wrapper they are supposed to agree with, from one read.
@@ -187,13 +193,47 @@ export class ProjectsApi {
    * answer's `supersededBy` names the successor draft it spawned. An illegal move is a 409 whose
    * `message` says why.
    *
+   * <p><b>A drop says why</b> (qits-248): a move into `DROPPED` carries an `outcome`, and — for the
+   * three outcomes that name another item — `supersededBy`. Each is put in the body only when given,
+   * so every other move still sends `{target}` alone. A refusal of those rules is a 400 whose
+   * `message` names the rule. A service older than qits-248 ignores both fields.
+   *
    * <p>The answer is not spliced into a tree: a move can change more than the one row (an epic's
    * pieces follow it on some moves), so callers re-read.
    */
-  setStatus(ref: string, target: string): Promise<WorkEntityDto> {
-    return firstValueFrom(
-      this.http.post<WorkEntityDto>(`${this.workPath(ref)}/status`, { target }),
+  setStatus(ref: string, target: string, resolution: DropResolution = {}): Promise<WorkEntityDto> {
+    const body: WorkStatusMove = {
+      target,
+      ...(resolution.outcome ? { outcome: resolution.outcome } : {}),
+      ...(resolution.supersededBy ? { supersededBy: resolution.supersededBy } : {}),
+    };
+    return firstValueFrom(this.http.post<WorkEntityDto>(`${this.workPath(ref)}/status`, body));
+  }
+
+  /**
+   * **What names `ref` as its `supersededBy`** — the reverse link (qits-248): the duplicates it is
+   * the original of, what it resolved, what it succeeded. `GET /projects/{project}/work` with the
+   * `supersededBy` filter, then filtered **here too**, to the rows whose `supersededBy` is `id`.
+   *
+   * <p>The second filter is not redundant. A service older than qits-248 ignores the unknown query
+   * parameter and answers the project's whole tree, so without it every row would read as one this
+   * item closed. Against the newer service it is a no-op.
+   *
+   * @param ref what the query names: the qualified id, or the id when there is none
+   * @param id the item's UUID, which every row's `supersededBy` holds
+   */
+  async supersededBy(
+    projectId: string,
+    ref: string,
+    id: string,
+  ): Promise<readonly WorkEntityDto[]> {
+    const response = await firstValueFrom(
+      this.http.get<WorkListResponse>(
+        `${this.base}/projects/api/projects/${encodeURIComponent(projectId)}/work`,
+        { params: { supersededBy: ref } },
+      ),
     );
+    return closedBy(response.entities ?? [], id);
   }
 
   /** An epic's features, or a feature's tasks, in order — `GET /work/{q}/children`, bodies included. */
@@ -235,4 +275,12 @@ export class ProjectsApi {
   private workPath(ref: string): string {
     return `${this.base}/projects/api/work/${encodeURIComponent(ref)}`;
   }
+}
+
+/**
+ * The rows that name `id` as their `supersededBy` — {@link ProjectsApi.supersededBy}'s own filter,
+ * exported so the rule has a test of its own. `id` is the UUID: the wire's `supersededBy` is one.
+ */
+export function closedBy(rows: readonly WorkEntityDto[], id: string): readonly WorkEntityDto[] {
+  return id ? rows.filter((row) => row.supersededBy === id) : [];
 }

@@ -14,7 +14,7 @@ import { QitsBadge, QitsButton } from '@qits/ui-components';
 import { ArchetypesApi, type ArchetypeRegistry } from '../api/archetypes-api';
 import { DesignsApi } from '../api/designs-api';
 import { epicDossier, ticketDossier, type DossierOwner } from '../api/dossier-api';
-import { workRef } from '../api/work';
+import { workRef, type DropResolution } from '../api/work';
 import { EntitiesApi } from '../api/entities-api';
 import { WorkspaceDaemonApi } from '../api/workspace-daemon-api';
 import { WorkspaceEvents, anyOf } from '../api/workspace-events';
@@ -36,6 +36,7 @@ import {
   refinementRoute,
   type EntityNode,
 } from '../project/entity-nodes';
+import { DropForm } from '../project/drop-form';
 import { restatement, subjectsOf } from '../project/entity-transition-model';
 import { Async } from '../ui/async';
 import {
@@ -187,6 +188,7 @@ interface Subject {
     ChatPanel,
     DesignPanel,
     DossierPanel,
+    DropForm,
     EpicDocument,
     FilesPanel,
     PanelPlaceholder,
@@ -345,6 +347,8 @@ export class RefiningPage {
   });
   protected readonly resolutionPending = signal<string | null>(null);
   protected readonly resolutionFailure = signal<string | null>(null);
+  /** The Drop pressed and waiting for its outcome (qits-248), as on the entity's page. */
+  protected readonly dropping = signal<LifecycleMove | null>(null);
 
   /** Which entity the subject on hand was resolved for, so a hop is told from a hint. */
   private resolvedFor: string | null = null;
@@ -930,13 +934,30 @@ export class RefiningPage {
    * then go to the entity's page, which is where a moved entity is read.
    */
   protected async move(move: LifecycleMove): Promise<void> {
+    if (move.kind === 'DROP') {
+      // A drop says why (qits-248): the form asks, and {@link drop} sends it.
+      this.resolutionFailure.set(null);
+      this.dropping.set(move);
+      return;
+    }
+    this.dropping.set(null);
+    await this.step(move, {});
+  }
+
+  /** The Drop, with the outcome — and the item it names — the form asked for. */
+  protected async drop(move: LifecycleMove, resolution: DropResolution): Promise<void> {
+    await this.step(move, resolution);
+  }
+
+  private async step(move: LifecycleMove, resolution: DropResolution): Promise<void> {
     const current = this.resolved();
     if (!current || this.resolutionPending()) return;
     const node = current.node;
     this.resolutionPending.set(move.target);
     this.resolutionFailure.set(null);
     try {
-      await this.entitiesApi.transition(workRef(node), move.target);
+      await this.entitiesApi.transition(workRef(node), move.target, resolution);
+      this.dropping.set(null);
       await this.router.navigate(entityRoute(this.projectSlug(), node) as string[]);
     } catch (error) {
       this.resolutionFailure.set(describeError(error));
