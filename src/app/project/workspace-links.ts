@@ -2,9 +2,6 @@ import { ChangeDetectionStrategy, Component, computed, inject, input } from '@an
 import { QitsAppLinks } from '@qits/ui-components';
 import type { WorkspaceReferenceDto } from '../api/dto';
 
-/** The application in qits-workspaces' own vocabulary — what the platform navigation names it. */
-export const WORKSPACES_APP = 'qits-workspaces';
-
 /**
  * Whether a workspace is still being worked in — **the one question the status is ever asked**.
  *
@@ -19,29 +16,70 @@ export function isLiveWorkspace(workspace: WorkspaceReferenceDto): boolean {
 }
 
 /**
- * The address of one workspace in qits-workspaces: `repositories/{repositoryId}/workspaces/{rowId}`.
+ * The landing app's origin — the environment's own, where qits-landing-app serves the workspace
+ * pages (epic qits-1230) — with no trailing slash, or `undefined` while the navigation has not said.
+ */
+function landingOrigin(links: QitsAppLinks): string | undefined {
+  const origin = links.environmentOrigin();
+  return origin ? origin.replace(/\/+$/, '') : undefined;
+}
+
+/**
+ * A work item's agent in the landing app: `/projects/{slug}/work/detail/{qualifiedId}/agent`, and
+ * one of its tabs below that when `tab` is given.
  *
- * <p><b>Unscoped on purpose.</b> That application addresses a workspace by the repository row id
- * alone, so spelling this project's scope in front of it would compose a URL nothing serves.
+ * <p>Answers `undefined` — never a guessed URL — while the navigation has not named the
+ * environment's origin. The caller draws its sentence instead of an anchor.
+ */
+export function agentAddress(
+  links: QitsAppLinks,
+  projectSlug: string,
+  qualifiedId: string,
+  tab?: 'chat' | 'files' | 'terminal',
+): string | undefined {
+  const origin = landingOrigin(links);
+  if (!origin) return undefined;
+  const path = `/projects/${encodeURIComponent(projectSlug)}/work/detail/${encodeURIComponent(qualifiedId)}/agent`;
+  return `${origin}${tab ? `${path}/${tab}` : path}`;
+}
+
+/**
+ * One workspace slot in the landing app: `/projects/{slug}/workspaces/{slotRowId}` — the workspace
+ * row id, which is what the landing app calls a slot. `undefined` on {@link agentAddress}'s terms.
+ */
+export function slotAddress(
+  links: QitsAppLinks,
+  projectSlug: string,
+  slotRowId: number,
+): string | undefined {
+  const origin = landingOrigin(links);
+  return origin
+    ? `${origin}/projects/${encodeURIComponent(projectSlug)}/workspaces/${slotRowId}`
+    : undefined;
+}
+
+/**
+ * Where one of an item's workspaces opens, in the landing app.
  *
- * <p><b>`?tab=chat` is for a live workspace and only a live one.</b> A workspace still being worked
- * in renders tabs, and the conversation is what a reader following one of these links came for. A
- * resolved workspace is a different branch of that same route — a record of what happened, with no
- * tabs on it at all — so the parameter there names a tab nothing draws, which is a URL that says
- * something untrue about the page it opens. Every caller goes through this function rather than
- * composing the path, because two copies of that rule is one copy that quietly keeps the parameter.
+ * <p><b>A live workspace opens the item's agent, on its chat</b>: the conversation is what a reader
+ * following one of these links came for, and the agent page is where the landing app keeps it.
  *
- * <p>Answers `undefined` — never a guessed URL — when the platform serves qits-workspaces nowhere,
- * or when the navigation tree has not arrived. The caller draws its sentence instead of an anchor.
+ * <p><b>A resolved workspace opens its slot</b>, without a tab: the item's agent page answers with
+ * the item's newest agent, which a resolved workspace no longer is, so the reference is about that
+ * one workspace and nothing else. So is a live one whose item has no qualified id to address it by.
+ * Every caller goes through this function rather than composing the path, because two copies of
+ * that rule is one copy that quietly drifts.
  */
 export function workspaceAddress(
   links: QitsAppLinks,
-  repositoryId: string,
-  workspaceRowId: number,
+  projectSlug: string,
+  qualifiedId: string | null | undefined,
+  slotRowId: number,
   live = true,
 ): string | undefined {
-  const path = `repositories/${encodeURIComponent(repositoryId)}/workspaces/${workspaceRowId}`;
-  return links.href(WORKSPACES_APP, live ? `${path}?tab=chat` : path);
+  return live && qualifiedId
+    ? agentAddress(links, projectSlug, qualifiedId, 'chat')
+    : slotAddress(links, projectSlug, slotRowId);
 }
 
 /** `INTEGRATED` → `integrated`. A word this build has not seen is lowercased and said as it is. */
@@ -64,19 +102,20 @@ interface DrawnWorkspace {
  * to mean one thing — somebody is working on this, here is the way in — and one row drew it. Now it
  * means two: a live workspace to open the conversation in, and a resolved one kept so the ticket
  * still answers where its work happened. That distinction is three decisions deep — whether the
- * address carries `?tab=chat`, what the anchor says out loud, and what the sentence says when there
- * is no anchor — and it has to come out identically on the entity rows and on the ticket's detail
- * page. A second copy is the one that would keep `?tab=chat` on a resolved workspace after somebody
- * fixed it here, and nothing would fail until a reader landed on a page with no such tab.
+ * address is the item's agent chat or the workspace's slot, what the anchor says out loud, and what
+ * the sentence says when there is no anchor — and it has to come out identically on the entity rows
+ * and on the ticket's detail page. A second copy is the one that would keep sending a resolved
+ * workspace to the agent chat after somebody fixed it here, and nothing would fail until a reader
+ * landed on an agent that is not the one the link named.
  *
  * <p><b>The label names what opening it gets you</b>, because the two links go to genuinely
- * different pages: a live one opens an agent's chat, a resolved one opens the record of a workspace
- * that is no longer there. "Open the branch" for both would make the second read as a promise the
+ * different pages in the landing app: a live one opens the item's agent on its chat, a resolved one
+ * opens the slot of a workspace that is no longer there. "Open the branch" for both would make the second read as a promise the
  * page cannot keep.
  *
- * <p><b>The fallback sentence is not a fallback for a bug.</b> `QitsAppLinks.href` answers
- * `undefined` for an application this platform serves nowhere and for a navigation tree that has not
- * arrived yet, and both are ordinary. Saying which branch the work is — or was — on is still worth
+ * <p><b>The fallback sentence is not a fallback for a bug.</b> `QitsAppLinks.environmentOrigin`
+ * answers `undefined` for a navigation tree that has not arrived yet, or one that names no origin,
+ * and both are ordinary. Saying which branch the work is — or was — on is still worth
  * more than a blank, so the reference is stated in prose rather than dropped.
  *
  * <p>`display: contents`, so the host box is not a box: the anchors have to sit in whatever row or
@@ -119,6 +158,12 @@ export class WorkspaceLinks {
    */
   readonly workspaces = input.required<readonly WorkspaceReferenceDto[]>();
 
+  /** The project's slug, as the landing app's addresses spell it. */
+  readonly projectSlug = input.required<string>();
+
+  /** The item these workspaces were cut for — `qits-41` — whose agent a live one opens. */
+  readonly qualifiedId = input<string | null>(null);
+
   /** Each reference resolved once: its address, its label and the sentence standing in for both. */
   protected readonly drawn = computed<readonly DrawnWorkspace[]>(() =>
     this.workspaces().map((workspace) => {
@@ -127,7 +172,8 @@ export class WorkspaceLinks {
         key: workspace.workspaceRowId,
         href: workspaceAddress(
           this.appLinks,
-          workspace.repositoryId,
+          this.projectSlug(),
+          this.qualifiedId(),
           workspace.workspaceRowId,
           live,
         ),

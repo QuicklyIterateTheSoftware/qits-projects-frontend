@@ -547,9 +547,10 @@ export type TicketType = 'BUG' | 'IMPROVEMENT' | 'MAINTENANCE';
  * that dropped its workspaces the moment they resolved would answer "who did this, and where?" with
  * nothing, on exactly the tickets that have an answer.
  *
- * <p>`workspaceRowId` and `repositoryId` are the pair the link is composed from — that application
- * routes a workspace as `repositories/{repositoryId}/workspaces/{workspaceRowId}` — and `branch` is
- * what the link says out loud.
+ * <p>`workspaceRowId` is the workspace's slot, which the landing app routes as
+ * `projects/{slug}/workspaces/{workspaceRowId}`; a live one's link opens the item's agent instead
+ * (`projects/{slug}/work/detail/{qualifiedId}/agent/chat`). `repositoryId` is the repository it was
+ * cut on, and `branch` is what the link says out loud.
  */
 export interface WorkspaceReferenceDto {
   readonly workspaceRowId: number;
@@ -755,9 +756,10 @@ export type AgentLaunch = 'SCHEDULED' | 'SKIPPED_RUNNING';
  * Where one press of Dispatch or Run the next phase put an agent — `POST /work/{q}/dispatch`.
  *
  * <p><b>`workspaceRowId` is a number and `repositoryId` is a string</b>, which is qits-workspaces'
- * own split: together they are the workspace's address there,
- * `repositories/{repositoryId}/workspaces/{workspaceRowId}`. The branch is the entity's own on the
- * project's wrapper — `ticket/<slug>` or `epic/<slug>`.
+ * own split. The row id is the workspace's slot in the landing app,
+ * `projects/{slug}/workspaces/{workspaceRowId}`, though the "Open workspace" link goes to the
+ * entity's agent rather than to the slot. The branch is the entity's own on the project's wrapper —
+ * `ticket/<slug>` or `epic/<slug>`.
  *
  * <p><b>Nothing here is stored.</b> It is the answer to one press; the record that survives a reload
  * is the entity's own `workspaces`, and pressing again is find-or-create onto the same workspace.

@@ -146,9 +146,9 @@ function toDesk(archetype: string): RedirectFunction {
  * a question the sidebar could not put anywhere: the per-repository rows hang under a repository, so
  * finding one open request meant opening every repository in turn. Its row reaches the chrome the
  * way the repository ones do — `project.detail.Release Requests:3=release-requests` in this
- * repository's service's `deployments.yml`, below qits-workspaces' Workspaces 1 and Editor 2 — and
- * it is a registry entry rather than something this SPA declares because the shared chrome draws the
- * Project node's children itself, so there is no other way to put a row there.
+ * repository's service's `deployments.yml` — and it is a registry entry rather than something this
+ * SPA declares because the shared chrome draws the Project node's children itself, so there is no
+ * other way to put a row there.
  *
  * <p><b>`:project/:group/:repository` is the repository detail</b>, the address every other SPA
  * on the platform also serves — so the sidebar's per-repository entries and this page's cards are

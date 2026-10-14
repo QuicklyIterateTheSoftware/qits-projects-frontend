@@ -112,7 +112,11 @@ interface Desk {
                           Reshape
                         </qits-button>
                       }
-                      <app-workspace-links [workspaces]="entity.workspaces" />
+                      <app-workspace-links
+                        [workspaces]="entity.workspaces"
+                        [projectSlug]="linkSlug()"
+                        [qualifiedId]="entity.qualifiedId"
+                      />
                     </div>
                     @if (reshaping() === entity.id) {
                       <app-entity-transition-panel

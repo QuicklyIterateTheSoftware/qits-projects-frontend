@@ -23,19 +23,11 @@ import { workAnswer, workOfCampaign, workOfEpic, workOfTicket } from '../../test
 
 const AT = '2026-09-07T09:00:00Z';
 
+/** The environment's origin is where the landing app serves an item's agent page. */
 const PLATFORM: QitsNavigation = {
   environment: 'dev',
   origin: 'https://dev.example.test',
-  slots: {
-    'services.details': [
-      {
-        app: 'qits-workspaces',
-        label: 'Workspaces',
-        host: 'workspaces.dev.example.test',
-        origin: 'https://workspaces.dev.example.test',
-      },
-    ],
-  },
+  slots: {},
 };
 
 const WORDS = ['REPORTED', 'REFINED', 'IMPLEMENTED', 'VERIFIED', 'DONE', 'DROPPED'];
@@ -771,8 +763,8 @@ describe('EntityDetailPage', () => {
         url: '/projects/api/work/qits-41/dispatch',
         body: { mode: 'FLOW' },
       });
-      expect(element().querySelector('.dispatched a')?.getAttribute('href')).toContain(
-        'repositories/wrapper/workspaces/7',
+      expect(element().querySelector('.dispatched a')?.getAttribute('href')).toBe(
+        'https://dev.example.test/projects/qits/work/detail/qits-41/agent/chat',
       );
 
       sent = [];

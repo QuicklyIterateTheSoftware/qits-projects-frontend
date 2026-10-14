@@ -767,7 +767,11 @@ interface TreeRow {
           <section class="workspaces-section" aria-label="Workspaces">
             <h2>Workspaces</h2>
             <div class="workspaces">
-              <app-workspace-links [workspaces]="n.entity?.workspaces ?? []" />
+              <app-workspace-links
+                [workspaces]="n.entity?.workspaces ?? []"
+                [projectSlug]="projectSlug()"
+                [qualifiedId]="n.qualifiedId"
+              />
             </div>
           </section>
         }
@@ -1393,7 +1397,12 @@ export class EntityDetailPage {
   protected readonly dispatchHref = computed(() => {
     const answer = this.dispatched();
     return answer
-      ? workspaceAddress(this.appLinks, answer.repositoryId, answer.workspaceRowId)
+      ? workspaceAddress(
+          this.appLinks,
+          this.projectSlug(),
+          this.node()?.qualifiedId,
+          answer.workspaceRowId,
+        )
       : undefined;
   });
 

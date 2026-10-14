@@ -30,9 +30,9 @@ interface ElsewhereLink extends HubLink {
  * <p><b>This address is a hub node now, and holds no work of its own.</b> It used to be the epics
  * board, which made the plan a thing a reader could only find by knowing that the bare project
  * address renders it — there was no row in the chrome saying so. The board moved to `epics`, one
- * segment down, where it is a sub-element beside `project-setup` and the workspaces application's
- * own two, and this page became what the repository page already is one level down: a name, and a
- * card per place the project is worked on.
+ * segment down, where it is a sub-element beside `project-setup` and whatever the platform's other
+ * applications place there, and this page became what the repository page already is one level
+ * down: a name, and a card per place the project is worked on.
  *
  * <p><b>It costs nothing.</b> The name and the description come from the shared project list {@link
  * ProjectParam} has already read to resolve the address's slug, and the cards are composed from the

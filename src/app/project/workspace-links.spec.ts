@@ -4,26 +4,17 @@ import type { WorkspaceReferenceDto } from '../api/dto';
 import { WorkspaceLinks, isLiveWorkspace } from './workspace-links';
 
 /**
- * The platform as the edge states it, with qits-workspaces on a host of its own — which is the shape
- * `QitsAppLinks.href` can answer an address for, and the only way an anchor is drawn at all.
+ * The platform as the edge states it. Its `origin` is the environment's own, where the landing app
+ * serves the workspace pages — the only thing an anchor is composed from.
  */
 const PLATFORM: QitsNavigation = {
   environment: 'dev',
   origin: 'https://dev.example.test',
-  slots: {
-    'services.details': [
-      {
-        app: 'qits-workspaces',
-        label: 'Workspaces',
-        host: 'workspaces.dev.example.test',
-        origin: 'https://workspaces.dev.example.test',
-      },
-    ],
-  },
+  slots: {},
 };
 
-/** The same platform serving qits-workspaces nowhere — `href` answers `undefined` for it. */
-const WITHOUT_WORKSPACES: QitsNavigation = { ...PLATFORM, slots: {} };
+/** A navigation naming no environment origin — `environmentOrigin()` answers `undefined` for it. */
+const WITHOUT_ORIGIN: QitsNavigation = { environment: 'dev', slots: {} };
 
 function workspace(over: Partial<WorkspaceReferenceDto> = {}): WorkspaceReferenceDto {
   return {
@@ -56,12 +47,12 @@ describe('isLiveWorkspace', () => {
 /**
  * The workspaces an entity names, as links.
  *
- * <p>Three things are worth pinning and none of them is the markup. **A live workspace is addressed
- * on its chat** — that is what a reader following the link came for, and the exact string is what
- * the entity rows already assert. **A resolved one is not**: the resolved page is a different branch
- * of that route and renders no tabs, so `?tab=chat` there names a tab nothing draws. And **an
- * application this platform serves nowhere draws a sentence rather than a guessed URL**, which is an
- * ordinary state and not a failure — the branch is still worth saying out loud.
+ * <p>Three things are worth pinning and none of them is the markup. **A live workspace opens the
+ * item's agent on its chat** in the landing app — that is what a reader following the link came for.
+ * **A resolved one opens its slot instead**: the agent page answers with the item's newest agent,
+ * which a resolved workspace no longer is. And **a navigation naming no environment origin draws a
+ * sentence rather than a guessed URL**, which is an ordinary state and not a failure — the branch is
+ * still worth saying out loud.
  */
 describe('WorkspaceLinks', () => {
   let fixture: ComponentFixture<WorkspaceLinks>;
@@ -69,11 +60,14 @@ describe('WorkspaceLinks', () => {
   function mount(
     workspaces: readonly WorkspaceReferenceDto[],
     tree: QitsNavigation = PLATFORM,
+    qualifiedId: string | null = 'qits-41',
   ): void {
     TestBed.resetTestingModule();
     TestBed.configureTestingModule({ providers: [provideQitsNavigationTree(tree)] });
     fixture = TestBed.createComponent(WorkspaceLinks);
     fixture.componentRef.setInput('workspaces', workspaces);
+    fixture.componentRef.setInput('projectSlug', 'qits');
+    fixture.componentRef.setInput('qualifiedId', qualifiedId);
     fixture.detectChanges();
   }
 
@@ -85,12 +79,12 @@ describe('WorkspaceLinks', () => {
     return Array.from(element().querySelectorAll('a.workspace'));
   }
 
-  it('opens a live workspace on its chat, and says which branch it is', () => {
+  it('opens a live workspace on the item’s agent chat, and says which branch it is', () => {
     mount([workspace()]);
 
     expect(links()).toHaveLength(1);
     expect(links()[0].getAttribute('href')).toBe(
-      'https://workspaces.dev.example.test/repositories/r1/workspaces/41?tab=chat',
+      'https://dev.example.test/projects/qits/work/detail/qits-41/agent/chat',
     );
     expect(links()[0].textContent?.trim()).toBe('Open ticket/badge');
     // Cross-application, so it is an href and never a router command.
@@ -107,14 +101,14 @@ describe('WorkspaceLinks', () => {
   });
 
   /**
-   * The parameter is the whole point of the distinction: the resolved page is a record with no tabs
-   * on it, so `?tab=chat` there would be a URL saying something untrue about the page it opens.
+   * The address is the whole point of the distinction: the agent page shows the item's newest agent,
+   * so a resolved workspace sent there would open somebody else's conversation, or none.
    */
-  it('drops the chat tab for a resolved workspace and says what became of it', () => {
+  it('opens the slot of a resolved workspace and says what became of it', () => {
     mount([workspace({ status: 'INTEGRATED' })]);
 
     expect(links()[0].getAttribute('href')).toBe(
-      'https://workspaces.dev.example.test/repositories/r1/workspaces/41',
+      'https://dev.example.test/projects/qits/workspaces/41',
     );
     expect(links()[0].textContent?.trim()).toBe('Open ticket/badge (integrated)');
   });
@@ -122,15 +116,17 @@ describe('WorkspaceLinks', () => {
   it('does the same for an abandoned one', () => {
     mount([workspace({ status: 'ABANDONED' })]);
 
-    expect(links()[0].getAttribute('href')).not.toContain('tab=chat');
+    expect(links()[0].getAttribute('href')).toBe(
+      'https://dev.example.test/projects/qits/workspaces/41',
+    );
     expect(links()[0].textContent?.trim()).toBe('Open ticket/badge (abandoned)');
   });
 
   /** A word this build has never seen is said as it stands rather than guessed at or hidden. */
-  it('names a status it does not recognise, and still drops the tab', () => {
+  it('names a status it does not recognise, and still opens the slot', () => {
     mount([workspace({ status: 'SOMETHING_NEW' })]);
 
-    expect(links()[0].getAttribute('href')).not.toContain('tab=chat');
+    expect(links()[0].getAttribute('href')).not.toContain('/agent');
     expect(links()[0].textContent?.trim()).toBe('Open ticket/badge (something_new)');
   });
 
@@ -150,8 +146,17 @@ describe('WorkspaceLinks', () => {
    * No anchor, but never a blank: which branch the work is — or was — on is the part of the
    * reference that still means something without an address to hang it on.
    */
-  it('states the branch in prose where the platform serves no workspaces application', () => {
-    mount([workspace()], WITHOUT_WORKSPACES);
+  /** An item with no qualified id has no agent address, but its workspace is still a slot. */
+  it('opens the slot of a live workspace whose item has no qualified id', () => {
+    mount([workspace()], PLATFORM, null);
+
+    expect(links()[0].getAttribute('href')).toBe(
+      'https://dev.example.test/projects/qits/workspaces/41',
+    );
+  });
+
+  it('states the branch in prose where the navigation names no environment origin', () => {
+    mount([workspace()], WITHOUT_ORIGIN);
 
     expect(links()).toHaveLength(0);
     expect(element().querySelector('.note')?.textContent?.trim()).toBe(
@@ -161,7 +166,7 @@ describe('WorkspaceLinks', () => {
 
   /** The same sentence has to read as history for a workspace that is no longer being worked in. */
   it('puts the resolved sentence in the past tense', () => {
-    mount([workspace({ status: 'INTEGRATED' })], WITHOUT_WORKSPACES);
+    mount([workspace({ status: 'INTEGRATED' })], WITHOUT_ORIGIN);
 
     expect(element().querySelector('.note')?.textContent?.trim()).toBe(
       'integrated: a workspace was on ticket/badge',
