@@ -20,7 +20,12 @@ import { MarkdownView } from '../ui/markdown-view';
 import { archetypeLabel } from './entity-nodes';
 import { isEdited } from './entities-model';
 
-/** One comment, with the two things the row derives rather than reads off the wire. */
+/**
+ * One comment, with the things the row derives rather than reads off the wire. `author` is the
+ * byline text: an agent's comment ({@link CommentDto.authorAgentOf} set) reads
+ * "`<authorAgentOf>'s agent`" rather than the stamped `author`, which a person's comment still
+ * shows (or {@link NONE} where even that is null).
+ */
 interface DrawnComment {
   readonly comment: CommentDto;
   readonly author: string;
@@ -42,7 +47,9 @@ interface DrawnComment {
  * <p>{@link archetype} decides only the wording — "Say something about this epic.", "Nothing has been
  * said about this campaign yet." — never the behaviour: add, inline edit and delete are the same door
  * for every archetype, and the server still answers a non-admin's delete with 403 whichever kind is
- * on the other end.
+ * on the other end. Edit is narrower still: only a comment's own author may edit it, so the Edit
+ * button is drawn only where the answer says {@link CommentDto.editable} is true, and the server
+ * answers anyone else's attempt with 403.
  *
  * <p>It listens to the project's `tickets` **and** `epics` topics — a comment write fires `tickets`
  * for a ticket and `epics` for anything else (see {@link ../api/project-events#PROJECT_TOPICS}), and
@@ -109,14 +116,16 @@ interface DrawnComment {
                 } @else {
                   <app-markdown class="body" [text]="entry.comment.body" />
                   <div class="actions">
-                    <qits-button
-                      variant="ghost"
-                      size="sm"
-                      [disabled]="commentAction() !== null"
-                      (pressed)="startEditingComment(entry.comment)"
-                    >
-                      Edit
-                    </qits-button>
+                    @if (entry.comment.editable === true) {
+                      <qits-button
+                        variant="ghost"
+                        size="sm"
+                        [disabled]="commentAction() !== null"
+                        (pressed)="startEditingComment(entry.comment)"
+                      >
+                        Edit
+                      </qits-button>
+                    }
                     <qits-button
                       variant="ghost"
                       size="sm"
@@ -269,12 +278,15 @@ export class EntityThread {
     if (state.kind !== 'ready') {
       return [];
     }
-    return state.value.map((comment) => ({
-      comment,
-      author: comment.author || NONE,
-      age: relativeSince(comment.createdAt),
-      edited: isEdited(comment),
-    }));
+    return state.value.map((comment) => {
+      const agentOf = comment.authorAgentOf?.trim();
+      return {
+        comment,
+        author: agentOf ? `${agentOf}'s agent` : comment.author || NONE,
+        age: relativeSince(comment.createdAt),
+        edited: isEdited(comment),
+      };
+    });
   });
 
   private watching: string | null = null;

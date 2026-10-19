@@ -676,15 +676,24 @@ export interface TicketDto {
  * same reason. `updatedAt` moving past `createdAt` is the only record that a comment was edited —
  * there is no revision history and no `edited` flag, so the two timestamps together are what the
  * "edited" hint is derived from.
+ *
+ * <p>`authorAgentOf` names the work item whose agent wrote the comment — non-null means the author
+ * was an agent acting on that item, and the thread shows "<authorAgentOf>'s agent" in place of
+ * `author`. `editable` is whether the caller reading the thread may edit this one: only a comment's
+ * own author may now edit it, so this is server-computed per caller rather than derived here.
  */
 export interface CommentDto {
   readonly id: string;
   readonly entityId: string;
   /** Stamped from the session, never sent. Null for a comment with no principal behind it. */
   readonly author: string | null;
+  /** The qualified id of the work item whose agent wrote this comment, or null for a person's. */
+  readonly authorAgentOf?: string | null;
   readonly body: string;
   readonly createdAt: string;
   readonly updatedAt: string;
+  /** Whether the current caller may edit this comment — only its author may. */
+  readonly editable?: boolean;
 }
 
 /**

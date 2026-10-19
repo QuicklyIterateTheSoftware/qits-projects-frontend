@@ -96,8 +96,40 @@ describe('EntityThread', () => {
     expect(element().querySelector('.comment .body')?.textContent).toContain('Reproduced on dev.');
   });
 
+  it('names an agent author by the work item behind it', async () => {
+    await answer([comment({ author: null, authorAgentOf: 'qits-1402' })]);
+
+    expect(element().querySelector('.author')?.textContent).toBe("qits-1402's agent");
+  });
+
+  it("renders a person's own author when no agent wrote the comment", async () => {
+    await answer([comment({ author: 'kim', authorAgentOf: null })]);
+
+    expect(element().querySelector('.author')?.textContent).toBe('kim');
+  });
+
+  function hasEditButton(row: Element): boolean {
+    return Array.from(row.querySelectorAll('button')).some(
+      (node) => node.textContent?.trim() === 'Edit',
+    );
+  }
+
+  it('offers Edit only where the comment answers editable: true', async () => {
+    await answer([
+      comment({ id: 'c1', editable: true }),
+      comment({ id: 'c2', editable: false }),
+      comment({ id: 'c3' }),
+    ]);
+
+    const rows = Array.from(element().querySelectorAll('.comment'));
+    expect(rows).toHaveLength(3);
+    expect(hasEditButton(rows[0])).toBe(true);
+    expect(hasEditButton(rows[1])).toBe(false);
+    expect(hasEditButton(rows[2])).toBe(false);
+  });
+
   it('edits a comment with a merge patch, changing only the body', async () => {
-    await answer([comment()]);
+    await answer([comment({ editable: true })]);
 
     const edit = Array.from(element().querySelectorAll('button')).find(
       (node) => node.textContent?.trim() === 'Edit',
