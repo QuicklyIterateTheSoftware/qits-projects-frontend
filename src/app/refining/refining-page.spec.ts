@@ -358,12 +358,12 @@ describe('RefiningPage', () => {
    * Two requests and no more, however deep the tree — only wholly-ignored directories are fetched a
    * level at a time, and nothing here opens one.
    */
-  function answerFilesPanel(workspaceRowId = 7): void {
+  function answerFilesPanel(workspaceRowId = 7, entityId = 'e1'): void {
+    // The room's agent's own worktree, named by the room's entity (qits-1285).
+    const agent = `/projects/refinement-container/${workspaceRowId}/agent-worktrees/${entityId}`;
+    http.expectOne(`${agent}/files`).flush({ paths: [], lazyDirs: [], generation: 'gen-1' });
     http
-      .expectOne(`/projects/refinement-container/${workspaceRowId}/files`)
-      .flush({ paths: [], lazyDirs: [], generation: 'gen-1' });
-    http
-      .expectOne(`/projects/refinement-container/${workspaceRowId}/detection`)
+      .expectOne(`${agent}/detection`)
       .flush({ projects: [], frameworks: [], links: [], generation: 'gen-1' });
   }
 
@@ -376,10 +376,10 @@ describe('RefiningPage', () => {
    * purpose, and why the id is a parameter rather than a constant.
    *
    * The lineage answers **one** session rather than none, and that is not padding: no history at all is
-   * the one branch that launches an agent by itself, so an empty answer here would put a `POST /agents`
-   * on a test about mounting a panel.
+   * the one branch that launches an agent by itself, so an empty answer here would put a
+   * `POST /agent-worktrees` on a test about mounting a panel.
    */
-  async function answerAgentsPanel(workspaceRowId = 7): Promise<void> {
+  async function answerAgentsPanel(workspaceRowId = 7, entityId = 'e1'): Promise<void> {
     const base = `/projects/refinement-container/${workspaceRowId}`;
     http.expectOne(`${base}/commands`).flush({ entries: [] });
     http
@@ -391,7 +391,7 @@ describe('RefiningPage', () => {
     await settle();
     http.expectOne(`${base}/agent-plugins`).flush({ installed: [] });
     http
-      .expectOne(`${base}/detection`)
+      .expectOne(`${base}/agent-worktrees/${entityId}/detection`)
       .flush({ projects: [], frameworks: [], links: [], generation: 'gen-1' });
     await settle();
   }

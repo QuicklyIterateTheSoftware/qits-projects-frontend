@@ -3,6 +3,8 @@ import { HttpTestingController, provideHttpClientTesting } from '@angular/common
 import { ChangeDetectionStrategy, Component, signal } from '@angular/core';
 import { TestBed, type ComponentFixture } from '@angular/core/testing';
 import { WorkspaceDetection } from '../../api/workspace-detection';
+import { RefinementAgent } from '../../api/refinement-agent';
+import type { RefinementDto } from '../../api/refinements-api';
 import { PluginsSection } from './plugins-section';
 
 const settle = async () => {
@@ -39,6 +41,9 @@ describe('PluginsSection', () => {
       providers: [provideHttpClient(), provideHttpClientTesting()],
     });
     http = TestBed.inject(HttpTestingController);
+    TestBed.inject(RefinementAgent).observe([
+      { id: 7, entityId: 'e-7', branch: 'refining/the-epic' } as RefinementDto,
+    ]);
   });
 
   afterEach(() => http.verify());
@@ -59,14 +64,14 @@ describe('PluginsSection', () => {
     await open();
     // The detection entry is empty and this section does ask for one — exactly one, and only
     // because nothing else has. The Files panel's read is what normally fills it.
-    http.expectOne('/projects/refinement-container/7/detection').flush({
+    http.expectOne('/projects/refinement-container/7/agent-worktrees/e-7/detection').flush({
       projects: [],
       frameworks: [],
       links: [],
       generation: 'g1',
     });
     await settle();
-    http.expectNone('/projects/refinement-container/7/detection');
+    http.expectNone('/projects/refinement-container/7/agent-worktrees/e-7/detection');
   });
 
   it('takes a detection another panel already read rather than fetching one', async () => {
@@ -77,7 +82,7 @@ describe('PluginsSection', () => {
       generation: 'g1',
     });
     await open();
-    http.expectNone('/projects/refinement-container/7/detection');
+    http.expectNone('/projects/refinement-container/7/agent-worktrees/e-7/detection');
     expect(rows()[0].textContent).toContain('Recommended');
     expect(rows()[0].textContent).toContain('TypeScript');
   });

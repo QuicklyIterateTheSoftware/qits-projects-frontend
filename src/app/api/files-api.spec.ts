@@ -2,6 +2,8 @@ import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
 import { FilesApi } from './files-api';
+import { RefinementAgent } from './refinement-agent';
+import type { RefinementDto } from './refinements-api';
 
 /**
  * The two reads the file browser is built from, and the one thing about their addressing that is
@@ -22,18 +24,23 @@ describe('FilesApi', () => {
     });
     api = TestBed.inject(FilesApi);
     http = TestBed.inject(HttpTestingController);
+    TestBed.inject(RefinementAgent).observe([
+      { id: 7, entityId: 'e-7', branch: 'refining/the-epic' } as RefinementDto,
+    ]);
   });
 
   afterEach(() => http.verify());
 
   it('reads the whole eager tree with no path at all', async () => {
     const answer = api.files(7);
-    const request = http.expectOne('/projects/refinement-container/7/files');
+    const request = http.expectOne('/projects/refinement-container/7/agent-worktrees/e-7/files');
     request.flush({ paths: ['src/main.ts'], lazyDirs: [], generation: 'gen-1' });
 
     // Absent rather than blank: the daemon reads both as "the root", and `path=` would make the
     // request that fetches everything look like a request for a directory called nothing.
-    expect(request.request.urlWithParams).toBe('/projects/refinement-container/7/files');
+    expect(request.request.urlWithParams).toBe(
+      '/projects/refinement-container/7/agent-worktrees/e-7/files',
+    );
     expect((await answer).paths).toEqual(['src/main.ts']);
   });
 
@@ -41,7 +48,7 @@ describe('FilesApi', () => {
     const answer = api.files(7, 'node_modules');
     const request = http.expectOne(
       (candidate) =>
-        candidate.url === '/projects/refinement-container/7/files' &&
+        candidate.url === '/projects/refinement-container/7/agent-worktrees/e-7/files' &&
         candidate.params.get('path') === 'node_modules',
     );
     request.flush({
@@ -55,7 +62,7 @@ describe('FilesApi', () => {
 
   it('reads the detection and its token, which is the point of it', async () => {
     const answer = api.detection(7);
-    http.expectOne('/projects/refinement-container/7/detection').flush({
+    http.expectOne('/projects/refinement-container/7/agent-worktrees/e-7/detection').flush({
       projects: [{ root: 'webui', frameworkId: 'angular', label: 'Angular' }],
       frameworks: [
         {
@@ -77,7 +84,7 @@ describe('FilesApi', () => {
     http
       .expectOne(
         (candidate) =>
-          candidate.url === '/projects/refinement-container/7/files/content' &&
+          candidate.url === '/projects/refinement-container/7/agent-worktrees/e-7/files/content' &&
           candidate.params.get('path') === 'service/target/build.log',
       )
       .flush({ path: 'service/target/build.log', binary: false, content: 'a\nb\n' });

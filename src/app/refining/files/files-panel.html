@@ -45,11 +45,15 @@
     </div>
 
     <app-async
-      [state]="listing()"
+      [state]="listingShown()"
       loadingLabel="Loading files"
       errorLabel="Could not load the working tree"
       (retry)="reload()"
     />
+
+    @if (notStarted()) {
+      <app-empty message="Start the agent to browse its worktree." />
+    }
 
     @if (noMatch()) {
       <app-empty message="No files match." />

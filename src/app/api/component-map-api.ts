@@ -1,4 +1,5 @@
 import { Injectable, inject } from '@angular/core';
+import { RefinementAgent } from './refinement-agent';
 import { WorkspaceDaemonApi } from './workspace-daemon-api';
 
 /**
@@ -44,8 +45,13 @@ export interface ComponentMapDto {
 @Injectable({ providedIn: 'root' })
 export class ComponentMapApi {
   private readonly daemon = inject(WorkspaceDaemonApi);
+  private readonly room = inject(RefinementAgent);
 
+  /** The room's agent's map; 404 until that agent has been started. */
   async componentMap(workspaceRowId: number): Promise<ComponentMapDto> {
-    return this.daemon.get<ComponentMapDto>(workspaceRowId, '/component-map');
+    return this.daemon.get<ComponentMapDto>(
+      workspaceRowId,
+      this.room.path(workspaceRowId, '/component-map'),
+    );
   }
 }

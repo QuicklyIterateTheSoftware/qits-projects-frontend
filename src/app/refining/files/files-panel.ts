@@ -12,6 +12,7 @@ import { toSignal } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, Router, convertToParamMap } from '@angular/router';
 import type { DetectionDto, FileListingDto } from '../../api/files-api';
 import { FilesApi } from '../../api/files-api';
+import { RefinementAgent } from '../../api/refinement-agent';
 import { WorkspaceDetection } from '../../api/workspace-detection';
 import { WorkspaceEvents } from '../../api/workspace-events';
 import { Async } from '../../ui/async';
@@ -134,6 +135,7 @@ export interface FrameworkToggle {
 })
 export class FilesPanel {
   private readonly filesApi = inject(FilesApi);
+  private readonly agent = inject(RefinementAgent);
   private readonly shared = inject(WorkspaceDetection);
   private readonly events = inject(WorkspaceEvents);
   private readonly route = inject(ActivatedRoute);
@@ -174,6 +176,20 @@ export class FilesPanel {
   );
 
   protected readonly listing = signal<Loadable<FileListingDto>>(IDLE);
+
+  /**
+   * The root read answered 404: the room's agent has no worktree yet, because it was never started
+   * (qits-1285). Not a failure — drawn as a sentence, and re-read when a start succeeds.
+   */
+  protected readonly notStarted = computed(() => {
+    const state = this.listing();
+    return state.kind === 'error' && state.status === 404;
+  });
+
+  /** What the spinner and the error line are drawn from: nothing at all while {@link notStarted}. */
+  protected readonly listingShown = computed<Loadable<FileListingDto>>(() =>
+    this.notStarted() ? IDLE : this.listing(),
+  );
 
   /** One entry per opened lazy directory. Cleared only when the tree's generation moves. */
   private readonly opened = signal<ReadonlyMap<string, FileListingDto>>(new Map());
@@ -220,6 +236,7 @@ export class FilesPanel {
   private loadedFor: number | null = null;
   private resetFor: number | null = null;
   private seenHint = -1;
+  private seenStart = 0;
   private missedHint = false;
   private readingIgnores = new Set<string>();
   private consumedNear: string | null = null;
@@ -230,8 +247,9 @@ export class FilesPanel {
     effect(() => {
       const workspaceRowId = this.workspaceRowId();
       const hint = this.fileHints();
+      const start = this.agent.started(workspaceRowId);
       const visible = this.visible();
-      untracked(() => this.decideRead(workspaceRowId, hint, visible));
+      untracked(() => this.decideRead(workspaceRowId, hint, visible, start));
     });
 
     // The generation gate. It writes rather than computes because holding the last consistent answer
@@ -644,12 +662,14 @@ export class FilesPanel {
 
   // ---- reads ---------------------------------------------------------------------------------
 
-  private decideRead(workspaceRowId: number, hint: number, visible: boolean): void {
+  private decideRead(workspaceRowId: number, hint: number, visible: boolean, start: number): void {
     if (workspaceRowId <= 0) {
       return;
     }
-    if (hint !== this.seenHint) {
+    // A start is a hint of its own: the worktree that answered 404 exists now.
+    if (hint !== this.seenHint || start !== this.seenStart) {
       this.seenHint = hint;
+      this.seenStart = start;
       this.missedHint = true;
     }
     // Once per workspace, not once per effect run: these are fresh objects, so re-setting them while

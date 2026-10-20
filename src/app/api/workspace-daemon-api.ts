@@ -69,7 +69,7 @@ export class WorkspaceDaemonApi {
 
   /**
    * The proxy prefix for one workspace. Every path below is appended to it verbatim, because the proxy
-   * strips nothing: `/files` on the daemon is `/workspaces/container/7/files` from here.
+   * strips nothing: `/commands` on the daemon is `/projects/refinement-container/7/commands` from here.
    */
   containerBase(workspaceRowId: number): string {
     return `${this.base}/projects/refinement-container/${encodeURIComponent(workspaceRowId)}`;

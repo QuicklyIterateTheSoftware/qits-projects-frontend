@@ -1,13 +1,9 @@
 import { DOCUMENT } from '@angular/common';
 import { Injectable, computed, effect, inject, signal, untracked } from '@angular/core';
 import { AgentsApi, type AgentSessionNodeDto, type AvailableAgentsDto } from '../../api/agents-api';
-import {
-  CommandsApi,
-  type AgentType,
-  type CommandDto,
-  type LaunchAgentRequest,
-} from '../../api/commands-api';
+import { CommandsApi, type AgentType, type CommandDto } from '../../api/commands-api';
 import { notSignedIn } from '../../api/agent-sign-in';
+import { RefinementAgent, type RefinementAgentLaunch } from '../../api/refinement-agent';
 import { WEB_SOCKET_FACTORY } from '../../api/web-socket';
 import { WorkspaceCommands } from '../../api/workspace-commands';
 import { WorkspaceDaemonApi } from '../../api/workspace-daemon-api';
@@ -86,8 +82,8 @@ export function isSignInTerminal(command: CommandDto): boolean {
  *
  * ## Nobody signed in is answered, not substituted
  *
- * When the agent is not signed in on the shared credential volume, `POST /agents` **refuses** and
- * names the harness. It used to answer a login terminal instead — a different session than the one
+ * When the agent is not signed in on the shared credential volume, `POST /agent-worktrees`
+ * **refuses** and names the harness. It used to answer a login terminal instead — a different session than the one
  * asked for, swapped invisibly, which this tab attached to exactly as it would a real one. So the
  * refusal lands in `signed-out`, which says so and offers {@link openSignIn}; the terminal opens
  * because it was pressed.
@@ -110,6 +106,7 @@ export function isSignInTerminal(command: CommandDto): boolean {
 export class AgentSession {
   private readonly agents = inject(AgentsApi);
   private readonly commandsApi = inject(CommandsApi);
+  private readonly room = inject(RefinementAgent);
   private readonly entry = inject(WorkspaceCommands);
   private readonly daemon = inject(WorkspaceDaemonApi);
   private readonly openSocket = inject(WEB_SOCKET_FACTORY);
@@ -124,14 +121,16 @@ export class AgentSession {
   private readonly ownCommandId = signal<string | null>(null);
 
   /** The sign-in terminal on screen, and the launch it interrupted. */
-  private readonly signIn = signal<{ commandId: string; replay: LaunchAgentRequest } | null>(null);
+  private readonly signIn = signal<{ commandId: string; replay: RefinementAgentLaunch } | null>(
+    null,
+  );
   private replays = 0;
 
   /** The refusal, and the launch it refused — held so completing the sign-in replays it. */
   private readonly signedOut = signal<{
     harness: string;
     message: string;
-    replay: LaunchAgentRequest;
+    replay: RefinementAgentLaunch;
   } | null>(null);
 
   private readonly inFlight = signal(false);
@@ -344,30 +343,26 @@ export class AgentSession {
   /** Start a brand-new session. The one launch where the harness may be chosen. */
   async startFresh(agentType?: AgentType): Promise<void> {
     await this.launch({
-      scope: 'REPOSITORY',
       mode: 'INTERACTIVE',
       surface: 'epic.agent',
-      ...(agentType ? { agentType } : {}),
+      ...(agentType ? { harness: agentType } : {}),
     });
   }
 
   /**
-   * Continue a recorded session, or branch it.
+   * Continue a recorded session.
    *
-   * **Only ever from a press.** And `fork` is never sent without `resumeSessionId`: the daemon
-   * refuses that pairing with a 400, and sending it would be this client asking for an answer it
-   * already knows.
+   * **Only ever from a press.** `fork` is accepted and not sent: `POST /agent-worktrees` has no fork,
+   * so a fork resumes the session it names until the room moves to the project desk (qits-770).
    */
-  async resume(sessionId: string, fork = false): Promise<void> {
+  async resume(sessionId: string, _fork = false): Promise<void> {
     if (!sessionId) {
       return;
     }
     await this.launch({
-      scope: 'REPOSITORY',
       mode: 'INTERACTIVE',
       surface: 'epic.agent',
-      resumeSessionId: sessionId,
-      ...(fork ? { fork: true } : {}),
+      sessionId,
     });
   }
 
@@ -392,7 +387,7 @@ export class AgentSession {
 
   // ---- the machinery -----------------------------------------------------------------------
 
-  private async launch(request: LaunchAgentRequest): Promise<void> {
+  private async launch(request: RefinementAgentLaunch): Promise<void> {
     const workspaceRowId = this.workspaceRowId();
     if (workspaceRowId <= 0 || this.inFlight()) {
       return;
@@ -400,11 +395,11 @@ export class AgentSession {
     this.inFlight.set(true);
     this.problemText.set(null);
     try {
-      const command = await this.commandsApi.launchAgent(workspaceRowId, request);
+      const started = await this.room.start(workspaceRowId, request);
       // Whatever comes back is the session that was asked for. A daemon does not substitute a login
       // terminal for it any more — it refuses with 409 not-signed-in, caught below — so there is no
       // second thing a launch can answer with.
-      this.ownCommandId.set(command.id);
+      this.ownCommandId.set(started.commandId);
       await Promise.all([this.entry.refresh(), this.refreshSessions()]);
     } catch (error) {
       // The one refusal that is not a fault. A branch rather than the problem line, because it has

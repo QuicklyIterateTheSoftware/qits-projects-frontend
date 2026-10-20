@@ -10,9 +10,9 @@ import { WorkspaceDaemonApi } from './workspace-daemon-api';
  * one-container-per-project refinement agent, and this one drives a workspace's container. Two
  * daemons, two identifier types, two contracts that are free to diverge.
  *
- * One client for both because **a coding agent is a command**: `POST /agents` answers the same
- * `{command: …}` envelope `POST /commands` does, and the document says so explicitly so that one
- * decoder serves both. Splitting them would buy two decoders for one shape.
+ * One client for both because **a coding agent is a command**: the harness `POST /agent-worktrees`
+ * starts is listed by `GET /commands` and attached to by its command id like any other run.
+ * Splitting them would buy two decoders for one shape.
  *
  * These types are what the whole agent surface is built on — the Chat tab here, the run history and
  * the session tree later — so they are written from the contract rather than from what Chat happens
@@ -32,14 +32,6 @@ export type CommandKind = 'TERMINAL' | 'CHAT';
 
 /** Which harness ran, or is to run. */
 export type AgentType = 'CLAUDE' | 'KIMI';
-
-/**
- * Which MCP servers a launch is wired to.
- *
- * `ACTIONS` fails with an explanation today — no service in the split serves that server — so
- * `REPOSITORY` is the only value this client sends.
- */
-export type AgentMcpScope = 'ACTIONS' | 'REPOSITORY';
 
 /** `CHAT` is the stream-json conversation over pipes; `INTERACTIVE` is the full agent TUI on a PTY. */
 export type AgentLaunchMode = 'CHAT' | 'INTERACTIVE';
@@ -101,7 +93,7 @@ export interface CommandDto {
   readonly shortCommitHash?: string;
   readonly agentSessions: readonly AgentSessionRefDto[];
   /**
-   * Which surface started this run — the key {@link LaunchAgentRequest.surface} carried in.
+   * Which surface started this run — the key {@link AgentWorktreeStart.surface} carried in.
    *
    * Optional because two things answer nothing: a command launched before the daemon shipped the
    * field, and the sign-in terminal, which nobody starts from anywhere in the product.
@@ -109,7 +101,7 @@ export interface CommandDto {
   readonly agentSurface?: string;
 }
 
-/** The single-command envelope both `POST /commands` and `POST /agents` answer with. */
+/** The single-command envelope `POST /commands` and `POST /agents/sign-in` answer with. */
 interface CommandEnvelope {
   readonly command: CommandDto;
 }
@@ -120,28 +112,42 @@ interface CommandListResponse {
 }
 
 /**
- * What a launch asks for.
+ * What `POST /agent-worktrees` is sent: start one agent in its own worktree, or find it running.
  *
- * **`deliverTaskPrompt` is never set true by this client.** It seeds the session with an instruction
- * to fetch the prompt through an MCP tool called `taskPrompt`, and that tool is not implemented
- * anywhere on the platform — the agent would be told to call something that does not exist. The
- * composed prompt rides `initialContext` instead, which works today and covers everything except
- * images.
+ * The per-agent replacement for the checkout-wide `POST /agents` a workspace daemon stopped serving in
+ * qits-1152. There is no `scope`, no `fork` and no `deliverTaskPrompt`; `harness` is the old
+ * `agentType`, `sessionId` the old `resumeSessionId` and `instruction` the old `initialContext`.
  */
-export interface LaunchAgentRequest {
-  readonly scope: AgentMcpScope;
-  readonly mode: AgentLaunchMode;
-  /**
-   * Where in the product this session was started from. Sent on **every** launch this client makes.
-   * An omitted one resolves to the daemon's shape-implied default, which cannot tell an epic's chat
-   * from a workspace's — see {@link AgentSurface}.
-   */
+export interface AgentWorktreeStart {
+  readonly agentId: string;
+  /** The top-level work item, `<project>-<n>`. */
+  readonly workId: string;
+  /** The wrapper worktree's branch. Never the default branch. */
+  readonly wrapperBranch: string;
+  readonly entityId?: string;
+  readonly harness?: AgentType;
+  readonly sessionId?: string;
+  readonly instruction?: string;
   readonly surface?: AgentSurface;
-  readonly agentType?: AgentType;
-  readonly initialContext?: string;
-  readonly resumeSessionId?: string;
-  readonly fork?: boolean;
-  readonly deliverTaskPrompt?: boolean;
+  readonly mode?: AgentLaunchMode;
+  readonly entityTitle?: string;
+  readonly entityStatus?: string;
+  readonly entityBlocked?: boolean;
+  readonly blockSource?: string;
+  readonly env?: Readonly<Record<string, string>>;
+}
+
+/**
+ * What a start answers. Not a command: `commandId` names the harness's command, which
+ * `GET /commands/{id}` reads and the sockets attach to. `launched` is false when it was already running.
+ */
+export interface AgentWorktreeStarted {
+  readonly agentId: string;
+  readonly path: string;
+  readonly commandId: string;
+  readonly launched: boolean;
+  readonly resumed: boolean;
+  readonly sessionId?: string | null;
 }
 
 /** What `POST /prompt-refinements` answers. */
@@ -227,6 +233,14 @@ export class CommandsApi {
     return answer.actions ?? [];
   }
 
+  /** One command, bare — `GET /commands/{id}` answers no `{command: …}` envelope. */
+  async command(workspaceRowId: number, commandId: string): Promise<CommandDto> {
+    return this.daemon.get<CommandDto>(
+      workspaceRowId,
+      `/commands/${encodeURIComponent(commandId)}`,
+    );
+  }
+
   /**
    * Launch a declared action. Spawn-and-return, always.
    *
@@ -274,16 +288,17 @@ export class CommandsApi {
   }
 
   /**
-   * Launch a coding agent. The answer is the command to attach a socket to.
+   * Make an agent's worktree if it is missing and start its harness there — `POST /agent-worktrees`,
+   * what a workspace daemon serves in place of the checkout-wide `POST /agents` since qits-1152.
+   * Idempotent.
    *
-   * **It can refuse.** A harness nobody has signed in on the shared credential volume used to be
-   * answered by quietly substituting the sign-in terminal for the session that was asked for; the
-   * shared library refuses instead, and callers read that refusal with
-   * {@link ./agent-sign-in#notSignedIn} and offer {@link launchLogin} as a press.
+   * It refuses the same way: `409 not-signed-in`, read with {@link ./agent-sign-in#notSignedIn}.
    */
-  async launchAgent(workspaceRowId: number, request: LaunchAgentRequest): Promise<CommandDto> {
-    const answer = await this.daemon.post<CommandEnvelope>(workspaceRowId, '/agents', request);
-    return answer.command;
+  async startAgentWorktree(
+    workspaceRowId: number,
+    request: AgentWorktreeStart,
+  ): Promise<AgentWorktreeStarted> {
+    return this.daemon.post<AgentWorktreeStarted>(workspaceRowId, '/agent-worktrees', request);
   }
 
   /**

@@ -1,4 +1,5 @@
 import { Injectable, inject } from '@angular/core';
+import { RefinementAgent } from './refinement-agent';
 import { WorkspaceDaemonApi } from './workspace-daemon-api';
 
 /**
@@ -121,10 +122,14 @@ export interface DetectionDto {
  * `/workspaces/container/{id}` verbatim and watches for the daemon going away. Nothing here catches:
  * a 502 is the daemon being gone and the panel renders that state, and swallowing it would leave the
  * page looking empty rather than looking broken.
+ *
+ * Each read is the room's agent's own, `/agent-worktrees/{agentId}/…` ({@link RefinementAgent}), and
+ * answers 404 until that agent has been started — a state the panel draws, not a fault.
  */
 @Injectable({ providedIn: 'root' })
 export class FilesApi {
   private readonly daemon = inject(WorkspaceDaemonApi);
+  private readonly room = inject(RefinementAgent);
 
   /**
    * One level of the tree. Omit `path` for the root, which is the whole eager tree in one answer.
@@ -134,7 +139,11 @@ export class FilesApi {
    * look like a request for a directory called nothing.
    */
   async files(workspaceRowId: number, path?: string): Promise<FileListingDto> {
-    return this.daemon.get<FileListingDto>(workspaceRowId, '/files', path ? { path } : undefined);
+    return this.daemon.get<FileListingDto>(
+      workspaceRowId,
+      this.room.path(workspaceRowId, '/files'),
+      path ? { path } : undefined,
+    );
   }
 
   /**
@@ -145,7 +154,10 @@ export class FilesApi {
    * token matches the tree on screen. See `applyDetection` in the tree model for the rule.
    */
   async detection(workspaceRowId: number): Promise<DetectionDto> {
-    return this.daemon.get<DetectionDto>(workspaceRowId, '/detection');
+    return this.daemon.get<DetectionDto>(
+      workspaceRowId,
+      this.room.path(workspaceRowId, '/detection'),
+    );
   }
 
   /**
@@ -159,6 +171,10 @@ export class FilesApi {
    * `path` is required here, unlike on `/files`, where its absence means the root.
    */
   async content(workspaceRowId: number, path: string): Promise<FileContentDto> {
-    return this.daemon.get<FileContentDto>(workspaceRowId, '/files/content', { path });
+    return this.daemon.get<FileContentDto>(
+      workspaceRowId,
+      this.room.path(workspaceRowId, '/files/content'),
+      { path },
+    );
   }
 }

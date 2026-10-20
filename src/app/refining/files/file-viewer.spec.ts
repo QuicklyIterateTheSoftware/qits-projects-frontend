@@ -3,6 +3,8 @@ import { HttpTestingController, provideHttpClientTesting } from '@angular/common
 import { ChangeDetectionStrategy, Component, signal } from '@angular/core';
 import { TestBed, type ComponentFixture } from '@angular/core/testing';
 import { WorkspaceEvents } from '../../api/workspace-events';
+import { RefinementAgent } from '../../api/refinement-agent';
+import type { RefinementDto } from '../../api/refinements-api';
 import type { LineRange } from './file-navigation';
 import { FileViewer, type PickedRange } from './file-viewer';
 
@@ -45,6 +47,9 @@ describe('FileViewer', () => {
       providers: [provideHttpClient(), provideHttpClientTesting()],
     });
     http = TestBed.inject(HttpTestingController);
+    TestBed.inject(RefinementAgent).observe([
+      { id: 7, entityId: 'e-7', branch: 'refining/the-epic' } as RefinementDto,
+    ]);
   });
 
   afterEach(() => http.verify());
@@ -61,7 +66,10 @@ describe('FileViewer', () => {
 
   function answer(body: Record<string, unknown>): void {
     http
-      .expectOne((request) => request.url === '/projects/refinement-container/7/files/content')
+      .expectOne(
+        (request) =>
+          request.url === '/projects/refinement-container/7/agent-worktrees/e-7/files/content',
+      )
       .flush(body);
   }
 

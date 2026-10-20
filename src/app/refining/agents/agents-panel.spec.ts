@@ -8,6 +8,8 @@ import type { AgentActivityState } from '../../api/technical-process-dto';
 import { EVENT_SOURCE_FACTORY, type EventSourceLike } from '../../api/event-source';
 import { WEB_SOCKET_FACTORY, WEB_SOCKET_OPEN, type WebSocketLike } from '../../api/web-socket';
 import { WorkspaceEvents } from '../../api/workspace-events';
+import { RefinementAgent } from '../../api/refinement-agent';
+import type { RefinementDto } from '../../api/refinements-api';
 import { AgentsPanel } from './agents-panel';
 
 const settle = async () => {
@@ -95,6 +97,9 @@ describe('AgentsPanel', () => {
       ],
     });
     http = TestBed.inject(HttpTestingController);
+    TestBed.inject(RefinementAgent).observe([
+      { id: 7, entityId: 'e-7', branch: 'refining/the-epic' } as RefinementDto,
+    ]);
   });
 
   afterEach(() => http.verify());
@@ -133,9 +138,9 @@ describe('AgentsPanel', () => {
     expect(asked.sort()).toEqual([
       '/projects/refinement-container/7/agent-plugins',
       '/projects/refinement-container/7/agent-sessions',
+      '/projects/refinement-container/7/agent-worktrees/e-7/detection',
       '/projects/refinement-container/7/agents/available',
       '/projects/refinement-container/7/commands',
-      '/projects/refinement-container/7/detection',
     ]);
     http.expectNone(() => true);
   });
@@ -144,7 +149,7 @@ describe('AgentsPanel', () => {
     await open();
     expect(text()).toContain('Sessions are not resumed automatically');
     expect(text()).toContain('Resume the last session');
-    http.expectNone('/projects/refinement-container/7/agents');
+    http.expectNone('/projects/refinement-container/7/agent-worktrees');
   });
 
   it('names the activity, including the ended state and how long it lasts', async () => {

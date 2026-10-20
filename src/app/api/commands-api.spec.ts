@@ -20,8 +20,8 @@ const COMMAND: CommandDto = {
  * The daemon's command and agent surface, and the two things about it that are easy to get wrong.
  *
  * The proxy **rewrites nothing** — `/commands` on the daemon is `/projects/refinement-container/{id}/commands`
- * from the browser — and a coding agent **is** a command, so `POST /agents` answers the same
- * `{command: …}` envelope `POST /commands` does.
+ * from the browser — and a coding agent **is** a command: `POST /agent-worktrees` answers the id of
+ * the command its harness runs as.
  */
 describe('CommandsApi', () => {
   let api: CommandsApi;
@@ -54,24 +54,43 @@ describe('CommandsApi', () => {
     expect(await answer).toEqual([]);
   });
 
-  it('launches an agent as a chat, inline, and never through the missing MCP tool', async () => {
-    // `deliverTaskPrompt` sends the agent to fetch `taskPrompt`, which is not implemented anywhere
-    // on the platform — the agent would be told to call something that does not exist.
-    const answer = api.launchAgent(7, {
-      scope: 'REPOSITORY',
+  it('starts an agent in its own worktree and answers the start, not a command', async () => {
+    // The checkout-wide `POST /agents` is gone from the workspace daemon (qits-1152): an agent is
+    // started under `/agent-worktrees`, and what comes back names its harness's command by id.
+    const answer = api.startAgentWorktree(7, {
+      agentId: 'e-1',
+      workId: 'qits-1285',
+      wrapperBranch: 'refining/run-on-worktrees',
       mode: 'CHAT',
-      initialContext: 'add a health check',
-      deliverTaskPrompt: false,
+      instruction: 'add a health check',
     });
-    const request = http.expectOne('/projects/refinement-container/7/agents');
-    request.flush({ command: COMMAND });
+    const request = http.expectOne('/projects/refinement-container/7/agent-worktrees');
+    request.flush({
+      agentId: 'e-1',
+      path: '/workspace/agents/e-1/qits-qits',
+      commandId: 'cmd-1',
+      launched: true,
+      resumed: false,
+      sessionId: 's-1',
+    });
 
+    expect(request.request.method).toBe('POST');
     expect(request.request.body).toEqual({
-      scope: 'REPOSITORY',
+      agentId: 'e-1',
+      workId: 'qits-1285',
+      wrapperBranch: 'refining/run-on-worktrees',
       mode: 'CHAT',
-      initialContext: 'add a health check',
-      deliverTaskPrompt: false,
+      instruction: 'add a health check',
     });
+    expect((await answer).commandId).toBe('cmd-1');
+  });
+
+  it('reads one command bare, as `GET /commands/{id}` answers it', async () => {
+    const answer = api.command(7, 'cmd-1');
+    const request = http.expectOne('/projects/refinement-container/7/commands/cmd-1');
+    request.flush(COMMAND);
+
+    expect(request.request.method).toBe('GET');
     expect(await answer).toEqual(COMMAND);
   });
 

@@ -3,6 +3,8 @@ import { HttpTestingController, provideHttpClientTesting } from '@angular/common
 import { TestBed } from '@angular/core/testing';
 import type { CommandDto } from '../../api/commands-api';
 import { EVENT_SOURCE_FACTORY, type EventSourceLike } from '../../api/event-source';
+import { RefinementAgent } from '../../api/refinement-agent';
+import type { RefinementDto } from '../../api/refinements-api';
 import { WEB_SOCKET_FACTORY, WEB_SOCKET_OPEN, type WebSocketLike } from '../../api/web-socket';
 import { WorkspaceCommands } from '../../api/workspace-commands';
 import { AgentSession } from './agent-session';
@@ -53,6 +55,19 @@ const command = (over: Partial<CommandDto> & Pick<CommandDto, 'id'>): CommandDto
   ...over,
 });
 
+/** Where a start goes: the room's one agent, named by its entity (qits-1285). */
+const START = '/projects/refinement-container/7/agent-worktrees';
+
+/** What `POST /agent-worktrees` answers — a command id, not a command. */
+const started = (commandId: string) => ({
+  agentId: 'e-7',
+  path: '/workspace/agents/e-7/qits-qits',
+  commandId,
+  launched: true,
+  resumed: false,
+  sessionId: null,
+});
+
 const session = (sessionId: string) => ({
   sessionId,
   recordedAt: '2026-08-01T10:00:00Z',
@@ -90,6 +105,9 @@ describe('AgentSession', () => {
       ],
     });
     http = TestBed.inject(HttpTestingController);
+    TestBed.inject(RefinementAgent).observe([
+      { id: 7, entityId: 'e-7', branch: 'refining/the-epic' } as RefinementDto,
+    ]);
   });
 
   afterEach(() => http.verify());
@@ -142,7 +160,7 @@ describe('AgentSession', () => {
     expect(service.branch()).toEqual({ kind: 'attached', commandId: 'c1' });
     expect(sockets[0].url).toContain('/projects/refinement-container/7/terminal/commands/c1');
     expect(service.liveSessionId()).toBe('s1');
-    http.expectNone('/projects/refinement-container/7/agents');
+    http.expectNone(START);
   });
 
   it('2 — defers to a running chat and launches nothing, even with no session history', async () => {
@@ -152,24 +170,36 @@ describe('AgentSession', () => {
     expect(service.branch()).toEqual({ kind: 'deferred', commandId: 'chat1' });
     expect(sockets).toHaveLength(0);
     // The collision session-pinning exists to prevent: no launch, no attach, a jump link instead.
-    http.expectNone('/projects/refinement-container/7/agents');
+    http.expectNone(START);
   });
 
   it('3 — launches fresh when there is no session history at all, once', async () => {
+    TestBed.inject(RefinementAgent).describe({
+      id: 'e-7',
+      qualifiedId: 'qits-7',
+      title: 'The epic',
+      status: 'REFINING',
+      blocked: false,
+    });
     const service = await open([]);
-    const launch = http.expectOne('/projects/refinement-container/7/agents');
-    // No `agentType`: the automatic launch takes the container's own resolved default rather than
+    const launch = http.expectOne(START);
+    // No `harness`: the automatic launch takes the container's own resolved default rather than
     // this page naming one. Only a launch a person asked for may pick a harness.
     expect(launch.request.body).toEqual({
-      scope: 'REPOSITORY',
+      // The room's one agent is its entity, on the room's own branch (qits-1285).
+      agentId: 'e-7',
+      workId: 'qits-7',
+      wrapperBranch: 'refining/the-epic',
+      entityId: 'e-7',
       mode: 'INTERACTIVE',
       // Sent on every launch: this daemon's four human surfaces are otherwise indistinguishable,
       // and an epic's agent tab must not take an ad-hoc workspace's configuration.
       surface: 'epic.agent',
+      entityTitle: 'The epic',
+      entityStatus: 'REFINING',
+      entityBlocked: false,
     });
-    // `deliverTaskPrompt` is never set: the tool it names is not implemented anywhere.
-    expect(launch.request.body.deliverTaskPrompt).toBeUndefined();
-    launch.flush({ command: command({ id: 'c9', agentSessions: [session('s9')] }) });
+    launch.flush(started('c9'));
     await settle();
     http.expectOne('/projects/refinement-container/7/commands').flush({
       entries: [{ command: command({ id: 'c9', agentSessions: [session('s9')] }) }],
@@ -189,26 +219,29 @@ describe('AgentSession', () => {
     expect(service.branch()).toEqual({ kind: 'idle' });
     expect(sockets).toHaveLength(0);
     // **Never automatic.** A recorded session can be gone from the agent's own state.
-    http.expectNone('/projects/refinement-container/7/agents');
+    http.expectNone(START);
     expect(service.lastSession()?.sessionId).toBe('s1');
   });
 
-  it('resumes only on a press, and never pairs fork with no session id', async () => {
+  it('resumes only on a press, and sends no fork the daemon has no field for', async () => {
     const service = await open(
       [command({ id: 'c1', status: 'EXITED', agentSessions: [session('s1')] })],
       [{ sessionId: 's1', subagents: [], children: [] }],
     );
     void service.resume('s1', true);
     await settle();
-    const launch = http.expectOne('/projects/refinement-container/7/agents');
+    const launch = http.expectOne(START);
+    // Without `describe`, the entity id stands in for the work id and nothing seeds the name.
     expect(launch.request.body).toEqual({
-      scope: 'REPOSITORY',
+      agentId: 'e-7',
+      workId: 'e-7',
+      wrapperBranch: 'refining/the-epic',
+      entityId: 'e-7',
       mode: 'INTERACTIVE',
       surface: 'epic.agent',
-      resumeSessionId: 's1',
-      fork: true,
+      sessionId: 's1',
     });
-    launch.flush({ command: command({ id: 'c2', agentSessions: [session('s2')] }) });
+    launch.flush(started('c2'));
     await settle();
     http.match('/projects/refinement-container/7/commands').forEach((request) =>
       request.flush({
@@ -244,7 +277,7 @@ describe('AgentSession', () => {
 
     void service.startFresh('CLAUDE');
     await settle();
-    http.expectOne('/projects/refinement-container/7/agents').flush(
+    http.expectOne(START).flush(
       {
         error: 'not-signed-in',
         agentType: 'CLAUDE',
@@ -279,14 +312,14 @@ describe('AgentSession', () => {
     // The operator completes the sign-in and the terminal exits. That is the trigger.
     await refresh([command({ id: 'login1', actionName: 'Claude sign-in', status: 'EXITED' })]);
 
-    const replay = http.expectOne('/projects/refinement-container/7/agents');
-    expect(replay.request.body).toEqual({
-      scope: 'REPOSITORY',
+    const replay = http.expectOne(START);
+    expect(replay.request.body).toMatchObject({
+      agentId: 'e-7',
       mode: 'INTERACTIVE',
       surface: 'epic.agent',
-      agentType: 'CLAUDE',
+      harness: 'CLAUDE',
     });
-    replay.flush({ command: command({ id: 'c5', agentSessions: [session('s5')] }) });
+    replay.flush(started('c5'));
     await settle();
     await answer([command({ id: 'c5', agentSessions: [session('s5')] })]);
     expect(service.branch()).toEqual({ kind: 'attached', commandId: 'c5' });

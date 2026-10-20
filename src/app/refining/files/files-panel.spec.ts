@@ -5,6 +5,8 @@ import { TestBed, type ComponentFixture } from '@angular/core/testing';
 import { Router, provideRouter } from '@angular/router';
 import type { DetectionDto, FileListingDto } from '../../api/files-api';
 import { WorkspaceEvents } from '../../api/workspace-events';
+import { RefinementAgent } from '../../api/refinement-agent';
+import type { RefinementDto } from '../../api/refinements-api';
 import { PickedContext } from '../chat/picked-context';
 import { FileNavigation } from './file-navigation';
 import { isShown, type FilterLayers } from './filter-rules';
@@ -123,6 +125,9 @@ describe('FilesPanel', () => {
       ],
     });
     http = TestBed.inject(HttpTestingController);
+    TestBed.inject(RefinementAgent).observe([
+      { id: 7, entityId: 'e-7', branch: 'refining/the-epic' } as RefinementDto,
+    ]);
   });
 
   afterEach(() => http.verify());
@@ -161,10 +166,12 @@ describe('FilesPanel', () => {
     detection: DetectionDto | null = detectionAt('gen-1'),
   ): void {
     const files = http.expectOne(
-      (request) => request.url === '/projects/refinement-container/7/files' && !request.params.has('path'),
+      (request) =>
+        request.url === '/projects/refinement-container/7/agent-worktrees/e-7/files' &&
+        !request.params.has('path'),
     );
     files.flush(listing);
-    const detect = http.expectOne('/projects/refinement-container/7/detection');
+    const detect = http.expectOne('/projects/refinement-container/7/agent-worktrees/e-7/detection');
     if (detection) {
       detect.flush(detection);
     } else {
@@ -176,7 +183,7 @@ describe('FilesPanel', () => {
   function answerContent(path: string, content: string | null): void {
     const request = http.expectOne(
       (candidate) =>
-        candidate.url === '/projects/refinement-container/7/files/content' &&
+        candidate.url === '/projects/refinement-container/7/agent-worktrees/e-7/files/content' &&
         candidate.params.get('path') === path,
     );
     request.flush(content === null ? { path, binary: true } : { path, binary: false, content });
@@ -219,8 +226,8 @@ describe('FilesPanel', () => {
       const requests = http.match(() => true);
 
       expect(requests.map((request) => request.request.urlWithParams).sort()).toEqual([
-        '/projects/refinement-container/7/detection',
-        '/projects/refinement-container/7/files',
+        '/projects/refinement-container/7/agent-worktrees/e-7/detection',
+        '/projects/refinement-container/7/agent-worktrees/e-7/files',
       ]);
       for (const request of requests) {
         request.flush(request.request.url.endsWith('/detection') ? detectionAt('gen-1') : ROOT);
@@ -236,7 +243,7 @@ describe('FilesPanel', () => {
       http
         .expectOne(
           (request) =>
-            request.url === '/projects/refinement-container/7/files' &&
+            request.url === '/projects/refinement-container/7/agent-worktrees/e-7/files' &&
             request.params.get('path') === 'node_modules',
         )
         .flush({
@@ -282,12 +289,54 @@ describe('FilesPanel', () => {
 
       const requests = http.match(() => true);
       expect(requests.map((request) => request.request.urlWithParams)).toEqual([
-        '/projects/refinement-container/7/files/content?path=README.md',
+        '/projects/refinement-container/7/agent-worktrees/e-7/files/content?path=README.md',
       ]);
       requests[0].flush({ path: 'README.md', binary: false, content: 'hello\n' });
       await settle();
 
       expect(lineNumbers()).toEqual(['1']);
+    });
+  });
+
+  describe('an agent not started yet (qits-1285)', () => {
+    it('says so calmly on a 404, and reads the tree once a start succeeds', async () => {
+      fixture = TestBed.createComponent(PanelHost);
+      host = fixture.componentInstance;
+      await settle();
+      // The worktree is the room's agent's own, and it does not exist before the agent was started.
+      http
+        .expectOne(
+          (request) =>
+            request.url === '/projects/refinement-container/7/agent-worktrees/e-7/files' &&
+            !request.params.has('path'),
+        )
+        .flush({ message: 'No such agent' }, { status: 404, statusText: 'Not Found' });
+      http
+        .expectOne('/projects/refinement-container/7/agent-worktrees/e-7/detection')
+        .flush({ message: 'No such agent' }, { status: 404, statusText: 'Not Found' });
+      await settle();
+
+      expect(element().textContent).toContain('Start the agent to browse its worktree.');
+      expect(element().querySelector('[role="alert"]')).toBeNull();
+
+      const starting = TestBed.inject(RefinementAgent).start(7, {
+        mode: 'CHAT',
+        surface: 'epic.chat',
+      });
+      http.expectOne('/projects/refinement-container/7/agent-worktrees').flush({
+        agentId: 'e-7',
+        path: '/workspace/agents/e-7/qits-qits',
+        commandId: 'cmd-1',
+        launched: true,
+        resumed: false,
+      });
+      await starting;
+      await settle();
+      answerRoot();
+      await settle();
+
+      expect(element().textContent).not.toContain('Start the agent');
+      expect(rowPaths()).toContain('README.md');
     });
   });
 

@@ -18,6 +18,7 @@ import { workRef, type DropResolution } from '../api/work';
 import { EntitiesApi } from '../api/entities-api';
 import { WorkspaceDaemonApi } from '../api/workspace-daemon-api';
 import { WorkspaceEvents, anyOf } from '../api/workspace-events';
+import { RefinementAgent } from '../api/refinement-agent';
 import { RefinementsApi, type RefinementDto } from '../api/refinements-api';
 import { ProjectParam } from '../nav/project-param';
 import {
@@ -213,6 +214,7 @@ export class RefiningPage {
   private readonly daemon = inject(WorkspaceDaemonApi);
   private readonly events = inject(WorkspaceEvents);
   private readonly memory = inject(AgentActivityMemory);
+  private readonly agent = inject(RefinementAgent);
   private readonly router = inject(Router);
   private readonly picked = inject(PickedContext);
   private readonly designs = inject(DesignsApi);
@@ -412,8 +414,7 @@ export class RefiningPage {
       }
       const subject = this.resolved();
       const belongsToRoute =
-        subject?.node.projectId === this.projectId() &&
-        subject.node.number === this.entityNumber();
+        subject?.node.projectId === this.projectId() && subject.node.number === this.entityNumber();
       const workspace = belongsToRoute ? this.workspace() : null;
       if (!workspace || this.autoContainerWorkspaceId === workspace.id) return;
       this.autoContainerWorkspaceId = workspace.id;
@@ -680,8 +681,19 @@ export class RefiningPage {
       this.archetypes.registry(),
     ]);
     if (!node) {
-      return { kind: 'error', status: 404, message: `No entity numbered ${number} in this project.` };
+      return {
+        kind: 'error',
+        status: 404,
+        message: `No entity numbered ${number} in this project.`,
+      };
     }
+    this.agent.describe({
+      id: node.id,
+      qualifiedId: node.qualifiedId,
+      title: node.title,
+      status: node.status,
+      blocked: node.entity?.blocked,
+    });
     return ready({ node, nodes, registry });
   }
 
@@ -726,8 +738,10 @@ export class RefiningPage {
       if (attempt !== this.attempt) {
         return;
       }
-      // Before the signal, so the bar's order is settled by the time anything renders it.
+      // Before the signal, so the bar's order is settled — and every room's agent known — by the
+      // time anything renders it.
       this.memory.observe(rows);
+      this.agent.observe(rows);
       this.workspaces.set(ready(rows));
 
       await this.upgradeMatch(attempt);

@@ -4,6 +4,8 @@ import { ChangeDetectionStrategy, Component, signal } from '@angular/core';
 import { TestBed, type ComponentFixture } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { EVENT_SOURCE_FACTORY, type EventSourceLike } from '../../api/event-source';
+import { RefinementAgent } from '../../api/refinement-agent';
+import type { RefinementDto } from '../../api/refinements-api';
 import { WorkspaceEvents } from '../../api/workspace-events';
 import { WEB_SOCKET_FACTORY, WEB_SOCKET_OPEN, type WebSocketLike } from '../../api/web-socket';
 import type { CommandDto } from '../../api/commands-api';
@@ -117,6 +119,9 @@ describe('ChatPanel', () => {
         },
       ],
     });
+    TestBed.inject(RefinementAgent).observe([
+      { id: 7, entityId: 'e-7', branch: 'refining/the-epic' } as RefinementDto,
+    ]);
     fixture = TestBed.createComponent(PanelHost);
     http = TestBed.inject(HttpTestingController);
   });
@@ -334,9 +339,17 @@ describe('ChatPanel', () => {
     save.flush({ draft: { content: save.request.body.content, updatedAt: 'T1' } });
     await settle();
 
+    http.expectOne('/projects/refinement-container/7/agent-worktrees').flush({
+      agentId: 'e-7',
+      path: '/workspace/agents/e-7/qits-qits',
+      commandId: 'cmd-new',
+      launched: true,
+      resumed: false,
+    });
+    await settle();
     http
-      .expectOne('/projects/refinement-container/7/agents')
-      .flush({ command: chat('cmd-new', 'RUNNING') });
+      .expectOne('/projects/refinement-container/7/commands/cmd-new')
+      .flush(chat('cmd-new', 'RUNNING'));
     await settle();
 
     // The registry has not answered yet, and the conversation is already on screen.

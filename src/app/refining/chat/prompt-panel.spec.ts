@@ -4,6 +4,8 @@ import { ChangeDetectionStrategy, Component, signal } from '@angular/core';
 import { TestBed, type ComponentFixture } from '@angular/core/testing';
 import { Router, provideRouter } from '@angular/router';
 import { EVENT_SOURCE_FACTORY, type EventSourceLike } from '../../api/event-source';
+import { RefinementAgent } from '../../api/refinement-agent';
+import type { RefinementDto } from '../../api/refinements-api';
 import { WorkspaceEvents } from '../../api/workspace-events';
 import { PickedContext } from './picked-context';
 import { DRAFT_DEBOUNCE_MS, PromptPanel } from './prompt-panel';
@@ -42,6 +44,7 @@ class PanelHost {
 }
 
 const DRAFT_URL = '/projects/api/refinements/7/prompt-draft';
+const START = '/projects/refinement-container/7/agent-worktrees';
 
 /**
  * The composition panel: what it reads, what it saves, and the one rule that must survive every
@@ -68,6 +71,9 @@ describe('PromptPanel', () => {
         { provide: SPEECH_RUNTIME, useValue: NO_MICROPHONE },
       ],
     });
+    TestBed.inject(RefinementAgent).observe([
+      { id: 7, entityId: 'e-7', branch: 'refining/the-epic' } as RefinementDto,
+    ]);
     fixture = TestBed.createComponent(PanelHost);
     host = fixture.componentInstance;
     http = TestBed.inject(HttpTestingController);
@@ -389,7 +395,7 @@ describe('PromptPanel', () => {
     press('Start the conversation');
     await settle();
 
-    http.expectNone('/projects/refinement-container/7/agents');
+    http.expectNone(START);
   });
 
   it('flushes the draft before it launches', async () => {
@@ -407,15 +413,28 @@ describe('PromptPanel', () => {
     save.flush({ draft: { content: save.request.body.content, updatedAt: 'T1' } });
     await settle();
 
-    const launch = http.expectOne('/projects/refinement-container/7/agents');
+    const launch = http.expectOne(START);
     expect(launch.request.body).toEqual({
-      scope: 'REPOSITORY',
+      agentId: 'e-7',
+      workId: 'e-7',
+      wrapperBranch: 'refining/the-epic',
+      entityId: 'e-7',
       mode: 'CHAT',
       surface: 'epic.chat',
-      initialContext: 'build the thing',
-      deliverTaskPrompt: false,
+      instruction: 'build the thing',
     });
-    launch.flush({ command: { id: 'cmd-9', kind: 'CHAT', status: 'RUNNING' } });
+    launch.flush({
+      agentId: 'e-7',
+      path: '/workspace/agents/e-7/qits-qits',
+      commandId: 'cmd-9',
+      launched: true,
+      resumed: false,
+    });
+    await settle();
+    // A start names the command; the tab is handed the command itself, read once.
+    http
+      .expectOne('/projects/refinement-container/7/commands/cmd-9')
+      .flush({ id: 'cmd-9', kind: 'CHAT', status: 'RUNNING' });
     await settle();
 
     expect(host.launched()).toBe('cmd-9');
@@ -437,7 +456,7 @@ describe('PromptPanel', () => {
       .flush({ message: 'nope' }, { status: 500, statusText: 'Server Error' });
     await settle();
 
-    http.expectNone('/projects/refinement-container/7/agents');
+    http.expectNone(START);
     expect(fixture.nativeElement.textContent).toContain('nothing was launched');
     expect(host.launched()).toBeNull();
   });
@@ -487,7 +506,7 @@ describe('PromptPanel', () => {
 
     press('Start the conversation');
     await settle();
-    http.expectNone('/projects/refinement-container/7/agents');
+    http.expectNone(START);
   });
 
   function press(label: string): void {

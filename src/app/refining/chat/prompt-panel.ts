@@ -15,6 +15,7 @@ import { QitsButton } from '@qits/ui-components';
 import { notSignedIn, type NotSignedIn } from '../../api/agent-sign-in';
 import { CommandsApi, type CommandDto } from '../../api/commands-api';
 import { PromptDraftApi } from '../../api/prompt-draft-api';
+import { RefinementAgent } from '../../api/refinement-agent';
 import { SpeechApi } from '../../api/speech-api';
 import { WorkspaceEvents } from '../../api/workspace-events';
 import { relativeSince } from '../../ui/format';
@@ -110,6 +111,7 @@ type SaveState = 'clean' | 'pending' | 'saving' | 'dirty';
 export class PromptPanel {
   private readonly drafts = inject(PromptDraftApi);
   private readonly commandsApi = inject(CommandsApi);
+  private readonly room = inject(RefinementAgent);
   private readonly speech = inject(SpeechApi);
   private readonly events = inject(WorkspaceEvents);
   protected readonly picked = inject(PickedContext);
@@ -541,9 +543,12 @@ export class PromptPanel {
   /**
    * Flush, then launch as a chat.
    *
-   * The flush is awaited and its failure is fatal to the launch. `deliverTaskPrompt` stays false and
-   * the composed prompt rides `initialContext`: text, code references and picked elements are all
-   * text, and the fetch path exists only for images, which are phase two.
+   * The flush is awaited and its failure is fatal to the launch. The composed prompt rides
+   * `instruction`: text, code references and picked elements are all text, and the fetch path exists
+   * only for images, which are phase two.
+   *
+   * A start answers a command id, not a command, so the command is read once to hand the tab what it
+   * attaches to.
    */
   protected async launchChat(): Promise<void> {
     if (!this.canLaunch()) {
@@ -559,14 +564,13 @@ export class PromptPanel {
         );
         return;
       }
-      const command = await this.commandsApi.launchAgent(this.workspaceRowId(), {
-        scope: 'REPOSITORY',
+      const workspaceRowId = this.workspaceRowId();
+      const started = await this.room.start(workspaceRowId, {
         mode: 'CHAT',
         surface: 'epic.chat',
-        initialContext: this.composed(),
-        deliverTaskPrompt: false,
+        instruction: this.composed(),
       });
-      this.launched.emit(command);
+      this.launched.emit(await this.commandsApi.command(workspaceRowId, started.commandId));
     } catch (error) {
       // "Nobody has signed in" is not "the agent did not start" — it is a refusal with one next
       // step, and this used to be invisible: the launch quietly answered a login terminal and the

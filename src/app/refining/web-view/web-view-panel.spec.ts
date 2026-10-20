@@ -4,6 +4,8 @@ import { ChangeDetectionStrategy, Component, signal } from '@angular/core';
 import { TestBed, type ComponentFixture } from '@angular/core/testing';
 import type { QitsNavLink, QitsNavigation } from '@qits/ui-components';
 import { provideRouter } from '@angular/router';
+import { RefinementAgent } from '../../api/refinement-agent';
+import type { RefinementDto } from '../../api/refinements-api';
 import { PickedContext } from '../chat/picked-context';
 import type { WebViewFreeze } from '../design/freeze';
 import { WebViewPanel } from './web-view-panel';
@@ -50,6 +52,9 @@ describe('WebViewPanel', () => {
       ],
     });
     http = TestBed.inject(HttpTestingController);
+    TestBed.inject(RefinementAgent).observe([
+      { id: 7, entityId: 'e-7', branch: 'refining/the-epic' } as RefinementDto,
+    ]);
   });
 
   afterEach(() => http.verify());
@@ -358,7 +363,7 @@ describe('WebViewPanel', () => {
       const button = framedButton();
       pickButton().click();
       fixture.detectChanges();
-      http.expectOne('/projects/refinement-container/7/component-map').flush({
+      http.expectOne('/projects/refinement-container/7/agent-worktrees/e-7/component-map').flush({
         framework: 'angular',
         components: [
           {
@@ -378,7 +383,7 @@ describe('WebViewPanel', () => {
       const button = await armed();
       button.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
       fixture.detectChanges();
-      http.expectNone('/projects/refinement-container/7/component-map');
+      http.expectNone('/projects/refinement-container/7/agent-worktrees/e-7/component-map');
       expect(TestBed.inject(PickedContext).elements()).toHaveLength(1);
     });
 
