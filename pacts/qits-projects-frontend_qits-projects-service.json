@@ -4221,6 +4221,137 @@
         "references": {
           "qits-call": {
             "app": "qits-projects-service",
+            "operationId": "getWorkRefinement"
+          },
+          "qits-trigger": {
+            "app": "qits-projects-frontend",
+            "interaction": "show-refinement-room",
+            "kind": "ui"
+          }
+        }
+      },
+      "description": "show-refinement-room: getWorkRefinement",
+      "pending": false,
+      "providerStates": [
+        {
+          "name": "a ticket with a design",
+          "params": {
+            "designId": "00000000-0000-4000-8000-000000000001",
+            "projectId": "00000000-0000-4000-8000-000000000002",
+            "qualifiedId": "contract-00000001-1",
+            "refinementId": "1",
+            "ticketId": "00000000-0000-4000-8000-000000000003"
+          }
+        }
+      ],
+      "request": {
+        "generators": {
+          "path": {
+            "expression": "/projects/api/work/${qualifiedId}/refinement",
+            "type": "ProviderState"
+          }
+        },
+        "matchingRules": {
+          "path": {
+            "combine": "AND",
+            "matchers": [
+              {
+                "match": "type"
+              }
+            ]
+          }
+        },
+        "method": "GET",
+        "path": "/projects/api/work/contract-00000001-1/refinement"
+      },
+      "response": {
+        "body": {
+          "content": {
+            "refinement": {
+              "commandId": null,
+              "deskBase": "/projects/container/00000000-0000-4000-8000-000000000002/",
+              "deskDetail": null,
+              "deskStatus": "QUEUED",
+              "entityId": "00000000-0000-4000-8000-000000000003",
+              "id": 1,
+              "runtimeError": null,
+              "runtimeStatus": "STARTING",
+              "sessionId": null
+            }
+          },
+          "contentType": "application/json",
+          "encoded": false
+        },
+        "headers": {
+          "Content-Type": [
+            "application/json"
+          ]
+        },
+        "matchingRules": {
+          "body": {
+            "$.refinement.deskBase": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.refinement.deskStatus": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.refinement.entityId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                }
+              ]
+            },
+            "$.refinement.id": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "number"
+                }
+              ]
+            },
+            "$.refinement.runtimeStatus": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          },
+          "header": {
+            "Content-Type": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "application/json.*"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      },
+      "type": "Synchronous/HTTP"
+    },
+    {
+      "comments": {
+        "references": {
+          "qits-call": {
+            "app": "qits-projects-service",
             "operationId": "listProjectWork"
           },
           "qits-trigger": {
@@ -13013,6 +13144,226 @@
                       }
                     }
                   ]
+                }
+              ]
+            }
+          },
+          "header": {
+            "Content-Type": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "application/json.*"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      },
+      "type": "Synchronous/HTTP"
+    },
+    {
+      "comments": {
+        "references": {
+          "qits-call": {
+            "app": "qits-projects-service",
+            "operationId": "ensureRefinementSession"
+          },
+          "qits-trigger": {
+            "app": "qits-projects-frontend",
+            "interaction": "start-refinement-session",
+            "kind": "ui"
+          }
+        }
+      },
+      "description": "start-refinement-session: ensureRefinementSession",
+      "pending": false,
+      "providerStates": [
+        {
+          "name": "a ticket with a design",
+          "params": {
+            "designId": "00000000-0000-4000-8000-000000000001",
+            "projectId": "00000000-0000-4000-8000-000000000002",
+            "qualifiedId": "contract-00000001-1",
+            "refinementId": "1",
+            "ticketId": "00000000-0000-4000-8000-000000000003"
+          }
+        }
+      ],
+      "request": {
+        "generators": {
+          "path": {
+            "expression": "/projects/api/refinements/${refinementId}/ensure",
+            "type": "ProviderState"
+          }
+        },
+        "matchingRules": {
+          "path": {
+            "combine": "AND",
+            "matchers": [
+              {
+                "match": "type"
+              }
+            ]
+          }
+        },
+        "method": "POST",
+        "path": "/projects/api/refinements/1/ensure"
+      },
+      "response": {
+        "body": {
+          "content": {
+            "refinement": {
+              "deskDetail": null,
+              "deskStatus": "QUEUED",
+              "id": 1,
+              "runtimeError": null,
+              "runtimeStatus": "STARTING"
+            }
+          },
+          "contentType": "application/json",
+          "encoded": false
+        },
+        "headers": {
+          "Content-Type": [
+            "application/json"
+          ]
+        },
+        "matchingRules": {
+          "body": {
+            "$.refinement.deskStatus": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.refinement.id": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "number"
+                }
+              ]
+            },
+            "$.refinement.runtimeStatus": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          },
+          "header": {
+            "Content-Type": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "application/json.*"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      },
+      "type": "Synchronous/HTTP"
+    },
+    {
+      "comments": {
+        "references": {
+          "qits-call": {
+            "app": "qits-projects-service",
+            "operationId": "stopRefinementSession"
+          },
+          "qits-trigger": {
+            "app": "qits-projects-frontend",
+            "interaction": "stop-refinement-session",
+            "kind": "ui"
+          }
+        }
+      },
+      "description": "stop-refinement-session: stopRefinementSession",
+      "pending": false,
+      "providerStates": [
+        {
+          "name": "a ticket with a design",
+          "params": {
+            "designId": "00000000-0000-4000-8000-000000000001",
+            "projectId": "00000000-0000-4000-8000-000000000002",
+            "qualifiedId": "contract-00000001-1",
+            "refinementId": "1",
+            "ticketId": "00000000-0000-4000-8000-000000000003"
+          }
+        }
+      ],
+      "request": {
+        "generators": {
+          "path": {
+            "expression": "/projects/api/refinements/${refinementId}/stop",
+            "type": "ProviderState"
+          }
+        },
+        "matchingRules": {
+          "path": {
+            "combine": "AND",
+            "matchers": [
+              {
+                "match": "type"
+              }
+            ]
+          }
+        },
+        "method": "POST",
+        "path": "/projects/api/refinements/1/stop"
+      },
+      "response": {
+        "body": {
+          "content": {
+            "refinement": {
+              "deskDetail": null,
+              "deskStatus": "STOPPED",
+              "id": 1,
+              "runtimeError": null,
+              "runtimeStatus": "STOPPED"
+            }
+          },
+          "contentType": "application/json",
+          "encoded": false
+        },
+        "headers": {
+          "Content-Type": [
+            "application/json"
+          ]
+        },
+        "matchingRules": {
+          "body": {
+            "$.refinement.deskStatus": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.refinement.id": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "number"
+                }
+              ]
+            },
+            "$.refinement.runtimeStatus": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
                 }
               ]
             }
