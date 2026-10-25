@@ -34,7 +34,11 @@
             <qits-badge [label]="statusBadge().label" [tone]="statusBadge().tone" />
           </h1>
           <p class="meta">
-            <code>{{ branch() }}</code>
+            @if (branch(); as legacy) {
+              <code>{{ legacy }}</code>
+            } @else {
+              <span>a session of the project’s front desk</span>
+            }
             @if (repositoryId()) {
               <span class="sep">·</span>
               <span
@@ -93,7 +97,7 @@
           <app-starting-panel [processId]="processId" (settled)="onSettled($event)" />
         </ng-template>
       }
-      @for (tab of durableTabs; track tab.slug) {
+      @for (tab of durableTabs(); track tab.slug) {
         @if (tab.slug !== 'epic') {
           <ng-template [appTabPanel]="tab.slug">
             @if (tab.slug === 'chat') {
@@ -101,6 +105,9 @@
                 [workspaceRowId]="ws.id"
                 [preamble]="promptContext()"
                 [visible]="selected() === 'chat'"
+                [sessionRoom]="sessionRoom()"
+                [sessionCommandId]="sessionCommandId()"
+                (changed)="onChanged()"
               />
             } @else if (tab.slug === 'files') {
               <app-files-panel [workspaceRowId]="ws.id" [visible]="selected() === 'files'" />
@@ -127,20 +134,20 @@
                 [workspaceRowId]="ws.id"
                 [activity]="ws.agentActivity"
                 [visible]="selected() === 'agents'"
+                [sessionRoom]="sessionRoom()"
               />
             } @else if (tab.slug === 'container') {
               @if (autoStartFailure(); as message) {
                 <p class="fault" role="alert">
-                  The container could not be started automatically — {{ message }}.
+                  The {{ sessionRoom() ? 'session' : 'container' }} could not be started
+                  automatically — {{ message }}.
                 </p>
               }
               <app-status-strip
                 [workspace]="ws"
-                [mainBranch]="mainBranch()"
                 [reachability]="reachability()"
                 [live]="live()"
                 (changed)="onChanged()"
-                (started)="onStarted($event)"
               />
             } @else {
               <app-panel-placeholder [title]="tab.label" [note]="panelNote(tab.slug)" />
@@ -157,10 +164,10 @@
     <section class="offer" aria-label="Start refining">
       <h2>No refinement room is open for this {{ subjectLabel().toLowerCase() }}</h2>
       <p>
-        Refining happens in a room on <code>{{ branch() }}</code
-        >, and there is none right now — either nobody has opened one, or the last one was
-        discarded. Opening one creates the branch and the room again. The service opens a room only
-        while the entity is in the first phase of its lifecycle.
+        Refining happens in a room — a session of the project’s front desk — and there is none right
+        now: either nobody has opened one, or the last one was discarded. Opening one starts it
+        again. The service opens a room only while the
+        {{ subjectLabel().toLowerCase() }} is in the first phase of its lifecycle.
       </p>
       <qits-button variant="primary" [busy]="starting()" (pressed)="startRefining()">
         Start refining

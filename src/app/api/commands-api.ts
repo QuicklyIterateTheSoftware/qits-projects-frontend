@@ -99,6 +99,23 @@ export interface CommandDto {
    * field, and the sign-in terminal, which nobody starts from anywhere in the product.
    */
   readonly agentSurface?: string;
+  /**
+   * The session key the front desk's daemon launched this run for (epic qits-770): a refinement
+   * session room's entity id, or `front-desk` for the desk's own session. Absent on a run nothing
+   * keyed — anything started by hand — and on every workspace daemon.
+   */
+  readonly sessionKey?: string;
+}
+
+/**
+ * The runs of one desk session: those the desk daemon stamped with `sessionKey`. A session room
+ * shares its desk with the desk's own session and every other room's, so its tabs read only these.
+ */
+export function commandsOfSession(
+  commands: readonly CommandDto[],
+  sessionKey: string,
+): readonly CommandDto[] {
+  return commands.filter((command) => command.sessionKey === sessionKey);
 }
 
 /** The single-command envelope `POST /commands` and `POST /agents/sign-in` answer with. */

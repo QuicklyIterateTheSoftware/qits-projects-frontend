@@ -334,6 +334,19 @@ interface TreeRow {
                 Cancel
               </qits-button>
             }
+            @if (refinable()) {
+              <!-- Only while it can be pressed: a campaign's room is opened while it is REPORTED
+                   (epic qits-770), and past that the press would be a dead button beside Start. -->
+              <qits-button
+                class="refine"
+                variant="secondary"
+                [disabled]="action() !== null"
+                [busy]="action() === 'refine'"
+                (pressed)="refine()"
+              >
+                {{ room() ? 'Open refinement' : 'Refine' }}
+              </qits-button>
+            }
             <span class="note flow-note">{{ flowNote() }}</span>
           </div>
           @if (confirming() === 'start') {
@@ -1340,9 +1353,17 @@ export class EntityDetailPage {
    * Refine is offered where refining is the phase that runs — the dispatch state's `nextPhase` — or
    * wherever a room already stands, since the service always answers an existing one.
    */
-  protected readonly refinable = computed(
-    () => this.room() !== null || this.state()?.nextPhase === 'refine',
-  );
+  protected readonly refinable = computed(() => {
+    if (this.room() !== null) {
+      return true;
+    }
+    // A campaign's start is its flow, so its dispatch state names no refine phase: its room is
+    // offered while it is REPORTED, which is the one status the service opens a room in (qits-770).
+    const node = this.node();
+    return node?.archetype === 'CAMPAIGN'
+      ? node.status === 'REPORTED'
+      : this.state()?.nextPhase === 'refine';
+  });
 
   /** The start press's word: *Start campaign*, or *Re-check members* once a start is live. */
   protected readonly startLabel = computed(() =>
@@ -1703,12 +1724,10 @@ export class EntityDetailPage {
       this.room.set(null);
       return;
     }
-    // A campaign has no refinement room — its members are refined, not it.
+    // A campaign has a room too since epic qits-770 — the campaign and its REPORTED members.
     const [state, room] = await Promise.all([
       this.api.dispatchState(this.ref(node)).catch(() => null),
-      node.archetype === 'CAMPAIGN'
-        ? Promise.resolve(null)
-        : this.refinements.findFor(this.ref(node)).catch(() => null),
+      this.refinements.findFor(this.ref(node)).catch(() => null),
     ]);
     if (attempt === this.attempt) {
       this.state.set(state);

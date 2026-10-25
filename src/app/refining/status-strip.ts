@@ -9,43 +9,102 @@ import {
 } from '@angular/core';
 import { QitsBadge, QitsButton, type QitsBadgeTone } from '@qits/ui-components';
 import type { WorkspaceDaemonReachability } from '../api/workspace-daemon-api';
-import { RefinementsApi, type RefinementDto } from '../api/refinements-api';
-import { driftLabel, relativeSince } from '../ui/format';
+import { RefinementsApi, isSessionRoom, type RefinementDto } from '../api/refinements-api';
 import { describeError } from '../ui/loadable';
 
 /** Which button is waiting on the server. Never "some mutation is pending" — one Stop must not spin Start. */
-type Pending = 'start' | 'stop' | 'recreate' | null;
-
-/** What the page can say about the in-container daemon right now. */
-type DaemonState = 'connected' | 'gone' | 'not-running';
+type Pending = 'start' | 'stop' | null;
 
 const RUNTIME_TONES: Readonly<Record<string, QitsBadgeTone>> = {
   RUNNING: 'success',
+  STARTING: 'info',
   STOPPED: 'neutral',
   PROVISIONING: 'info',
   FAILED: 'danger',
 };
 
+/** What the strip says about the front desk a session room's session runs in. */
+export interface DeskState {
+  readonly label: string;
+  readonly tone: QitsBadgeTone;
+  /** What the state means for the room's session, or null when it needs no sentence. */
+  readonly note: string | null;
+}
+
 /**
- * Everything the refining page knows about the state of its own workspace, plus the verbs that change
- * it. Copied from qits-spa-workspaces' detail shell, where every field here was already on the wire.
+ * The desk's state word, said for a room whose session runs in it. An unknown word is drawn as
+ * itself: the vocabulary is the service's (`FrontDeskState`) and may grow.
+ */
+export function deskState(status: string | null | undefined): DeskState {
+  switch (status) {
+    case 'RUNNING':
+      return { label: 'running', tone: 'success', note: null };
+    case 'QUEUED':
+      return {
+        label: 'queued',
+        tone: 'info',
+        note: 'The desk is waiting for a front-desk runner to take it. The session starts once it is up.',
+      };
+    case 'PROVISIONING':
+      return {
+        label: 'provisioning',
+        tone: 'info',
+        note: 'The desk is being brought up. The session starts once it is.',
+      };
+    case 'UNAVAILABLE':
+      return {
+        label: 'unavailable',
+        tone: 'warning',
+        note: 'The desk’s runner has been offline past its reconnect grace. No session can run in it until the runner is back.',
+      };
+    case 'FAILED':
+      return {
+        label: 'failed',
+        tone: 'danger',
+        note: 'The desk failed, so the session cannot run in it.',
+      };
+    case 'STOPPED':
+      return {
+        label: 'stopped',
+        tone: 'neutral',
+        note: 'The desk is stopped. Starting the room asks for it again.',
+      };
+    case 'ABSENT':
+      return {
+        label: 'not created',
+        tone: 'neutral',
+        note: 'The project has no desk yet. Starting the room asks for one.',
+      };
+    case null:
+    case undefined:
+    case '':
+      return { label: 'state unknown', tone: 'neutral', note: null };
+    default:
+      return { label: status.toLowerCase(), tone: 'neutral', note: null };
+  }
+}
+
+/**
+ * Everything the refining page knows about the state of its room, plus the verbs that change it.
  *
- * **The verbs live beside the state they act on**, which is why this is a strip and not a toolbar.
- * Start, Stop and Recreate sit next to the runtime state. Epic lifecycle decisions are deliberately
- * absent: they belong below the epic document, not among container diagnostics.
+ * **Two kinds of room, one strip** (epic qits-770). A room opened now is a **session** of the
+ * project's front desk: the strip shows the session's state (`runtimeStatus`, with `runtimeError`
+ * as its detail) and the desk's (`deskStatus`, with `deskDetail`), because a queued, unavailable or
+ * failed desk is the commonest reason a session is not running and the session's own state cannot
+ * say so. A **legacy** room — one with a `refining/<slug>` branch, opened before the sessions — is
+ * still a container of its own until qits-1316 retires it, and shows that container's state.
  *
- * **Recreate is disabled unless the tree is provably clean.** The service refuses with a 400
- * otherwise, and `clean: null` — what a workspace with no live daemon reports — counts as not clean.
- * That combination is the sharp edge: recreate is the remedy for an outdated daemon, and an outdated
- * daemon is quite often a disconnected one, so the button most likely to be reached for is exactly
- * the one that must explain why it cannot be pressed.
+ * **What the container rooms used to show is gone**: the daemon's version, the working tree's
+ * cleanliness, the drift against the parent and the Recreate guarded by them. A session room has
+ * none of it, and the service stops serving those fields with the next release, so a legacy room
+ * would soon have read "unknown" in every one of them. Recreate went with them — it is no door of a
+ * session room, and its container door goes in the same release.
  *
- * **The daemon's connection is a first-class state here, and the live channel's is not.** They are
- * different sizes of problem. A dropped hint channel means the page is briefly behind and will catch
- * up, so it gets a quiet inline marker. A dropped daemon control socket takes the file browser, every
- * terminal and the whole agent surface down with it — the reverse tunnel made that socket
- * load-bearing for the container proxy — and without a sentence here the only symptom is a wall of
- * identical 502s in seven panels.
+ * **The verbs live beside the state they act on.** Start is the room's `ensure` and Stop its `stop`,
+ * for either kind. Lifecycle decisions about the entity are deliberately absent.
+ *
+ * **A legacy room's unreachable daemon is still a sentence**, not seven 502s: the container proxy
+ * failing to reach anything takes the file browser, every terminal and the agent surface down at once.
  *
  * **Mutations refresh on settled, not on success.** A failed start still changed something worth
  * re-reading, and the truth after a refusal is more useful than the stale row that produced it.
@@ -61,10 +120,7 @@ export class StatusStrip {
   /** The refinement row, as qits-projects last reported it. */
   readonly workspace = input.required<RefinementDto>();
 
-  /** The repository's default branch — what decides the door. */
-  readonly mainBranch = input.required<string>();
-
-  /** What the container proxy last said about the daemon. */
+  /** What the room's daemon proxy last said. */
   readonly reachability = input<WorkspaceDaemonReachability>('unknown');
 
   /** Whether the hint channel is up. False draws the quiet stale-data marker. */
@@ -73,92 +129,47 @@ export class StatusStrip {
   /** Something changed on the server. The page re-reads. */
   readonly changed = output<void>();
 
-  /** A container verb answered with a process id — the Starting tab attaches to it at once. */
-  readonly started = output<string>();
-
   private readonly api = inject(RefinementsApi);
 
   protected readonly pending = signal<Pending>(null);
   protected readonly failure = signal<string | null>(null);
+
+  /** Whether the room is a session of the front desk rather than a container of its own. */
+  protected readonly session = computed(() => isSessionRoom(this.workspace()));
 
   protected readonly runtimeTone = computed<QitsBadgeTone>(
     () => RUNTIME_TONES[this.workspace().runtimeStatus ?? ''] ?? 'neutral',
   );
 
   protected readonly runtimeLabel = computed(
-    () => this.workspace().runtimeStatus?.toLowerCase() ?? 'runtime unknown',
+    () => this.workspace().runtimeStatus?.toLowerCase() ?? 'state unknown',
   );
 
-  protected readonly running = computed(() => this.workspace().runtimeStatus === 'RUNNING');
-
-  protected readonly drift = computed(() => {
-    const workspace = this.workspace();
-    return driftLabel(workspace.ahead, workspace.behind);
-  });
-
   /**
-   * Clean, dirty, or unknown — and unknown is drawn as unknown.
-   *
-   * qits-workspaces answers null when no live daemon told it, and a null rendered as "clean" would
-   * be the strip's one outright lie — on the field that gates the recreate.
+   * Whether Stop is the verb on offer. A session that is starting is already wanted, so it is
+   * stopped rather than started again; a container is only stopped once it runs.
    */
-  protected readonly cleanliness = computed(() => {
-    const clean = this.workspace().clean;
-    if (clean === null) {
-      return { label: 'working tree unknown', tone: 'neutral' as QitsBadgeTone };
-    }
-    return clean
-      ? { label: 'clean', tone: 'success' as QitsBadgeTone }
-      : { label: 'uncommitted changes', tone: 'warning' as QitsBadgeTone };
+  protected readonly running = computed(() => {
+    const status = this.workspace().runtimeStatus;
+    return status === 'RUNNING' || (this.session() && status === 'STARTING');
   });
 
-  protected readonly daemonState = computed<DaemonState>(() => {
-    const workspace = this.workspace();
-    if (workspace.runtimeStatus !== 'RUNNING') {
-      return 'not-running';
-    }
-    if (this.reachability() === 'unreachable' || !workspace.daemonConnectedAt) {
-      return 'gone';
-    }
-    return 'connected';
-  });
+  protected readonly desk = computed(() => deskState(this.workspace().deskStatus));
 
-  protected readonly daemonSince = computed(() => {
-    const at = this.workspace().daemonConnectedAt;
-    return at ? relativeSince(at) : '';
-  });
-
-  /** The recreate guard, as one sentence or null when there is nothing to explain. */
-  protected readonly recreateBlocked = computed<string | null>(() => {
-    const clean = this.workspace().clean;
-    if (clean === true) {
-      return null;
-    }
-    return clean === false
-      ? 'Recreate needs a clean working tree — this one has uncommitted changes, and recreating would throw them away.'
-      : 'Recreate needs a working tree the service can prove is clean. Nothing is reporting one here, so it is refused rather than risked.';
-  });
+  /** A legacy room's daemon is reached through its own container; say so when it is not. */
+  protected readonly daemonGone = computed(
+    () =>
+      !this.session() &&
+      this.workspace().runtimeStatus === 'RUNNING' &&
+      this.reachability() === 'unreachable',
+  );
 
   protected async start(): Promise<void> {
-    await this.run('start', async () => {
-      const answer = await this.api.ensureContainer(this.workspace().id);
-      if (answer.technicalProcessId) {
-        this.started.emit(answer.technicalProcessId);
-      }
-    });
+    await this.run('start', () => this.api.ensure(this.workspace().id));
   }
 
   protected async stop(): Promise<void> {
-    await this.run('stop', () => this.api.stopContainer(this.workspace().id));
-  }
-
-  protected async recreate(): Promise<void> {
-    await this.run('recreate', async () => {
-      const answer = await this.api.recreateContainer(this.workspace().id);
-      if (answer.technicalProcessId) {
-        this.started.emit(answer.technicalProcessId);
-      }
-    });
+    await this.run('stop', () => this.api.stop(this.workspace().id));
   }
 
   /**

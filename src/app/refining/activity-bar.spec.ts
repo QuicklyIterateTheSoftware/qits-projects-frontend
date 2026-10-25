@@ -18,14 +18,7 @@ const workspace = (
   label,
   runtimeStatus: 'RUNNING',
   runtimeError: null,
-  clean: true,
-  ahead: 0,
-  behind: 0,
-  conflictsWithParent: false,
   agentActivity,
-  daemonConnectedAt: null,
-  daemonVersion: null,
-  daemonOutdated: null,
   createdAt: null,
 });
 

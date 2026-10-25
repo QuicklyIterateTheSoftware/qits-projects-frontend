@@ -51,14 +51,7 @@ const REFINEMENT: RefinementDto = {
   label: 'refining-the-badge-is-wrong',
   runtimeStatus: null,
   runtimeError: null,
-  clean: null,
-  ahead: null,
-  behind: null,
-  conflictsWithParent: false,
   agentActivity: null,
-  daemonConnectedAt: null,
-  daemonVersion: null,
-  daemonOutdated: null,
   createdAt: AT,
 };
 

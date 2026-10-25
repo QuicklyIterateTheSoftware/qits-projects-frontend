@@ -1,7 +1,8 @@
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
-import { WorkspaceDaemonApi } from './workspace-daemon-api';
+import type { RefinementDto } from './refinements-api';
+import { WorkspaceDaemonApi, daemonBaseOf } from './workspace-daemon-api';
 
 /**
  * The transport every daemon-backed panel will be written against: the path it builds, and the one
@@ -110,5 +111,59 @@ describe('WorkspaceDaemonApi', () => {
     expect(api.socketUrl(7, '/terminal/commands/c-1')).toMatch(
       /^wss?:\/\/[^/]+\/projects\/refinement-container\/7\/terminal\/commands\/c-1$/,
     );
+  });
+
+  /**
+   * The base a room's daemon is reached on (epic qits-770): a session room's is the front desk's
+   * proxy, which the row names; a legacy container room keeps its own until it is retired. The
+   * branch decides, as on the service; a row without a desk base (an older service) is legacy.
+   */
+  describe('the base a room is reached on', () => {
+    const row = (over: Partial<RefinementDto>) => ({ id: 7, ...over }) as RefinementDto;
+
+    it('is the desk for a session room, and the room’s container for a legacy one', () => {
+      expect(daemonBaseOf('', row({ branch: null, deskBase: '/projects/container/p1/' }))).toBe(
+        '/projects/container/p1',
+      );
+      expect(
+        daemonBaseOf('', row({ branch: 'refining/x', deskBase: '/projects/container/p1/' })),
+      ).toBe('/projects/refinement-container/7');
+      expect(daemonBaseOf('', row({ branch: null, deskBase: null }))).toBe(
+        '/projects/refinement-container/7',
+      );
+      expect(daemonBaseOf('', row({}))).toBe('/projects/refinement-container/7');
+      expect(daemonBaseOf('https://qits.test', row({ deskBase: '/projects/container/p1/' }))).toBe(
+        'https://qits.test/projects/container/p1',
+      );
+    });
+
+    it('sends a session room’s reads and sockets to the desk once the listing has named it', async () => {
+      api.observeRooms([
+        row({ id: 8, entityId: 'e-8', branch: null, deskBase: '/projects/container/p1/' }),
+        row({ id: 7, entityId: 'e-7', branch: 'refining/x', deskBase: null }),
+      ]);
+
+      expect(api.isSession(8)).toBe(true);
+      expect(api.sessionKey(8)).toBe('e-8');
+      expect(api.sessionKey(7)).toBeNull();
+      expect(api.socketUrl(8, '/chat/commands/c-1')).toMatch(
+        /^wss?:\/\/[^/]+\/projects\/container\/p1\/chat\/commands\/c-1$/,
+      );
+
+      const answer = api.get<unknown>(8, '/commands');
+      http.expectOne('/projects/container/p1/commands').flush({ entries: [] });
+      await answer;
+      const legacy = api.get<unknown>(7, '/commands');
+      http.expectOne('/projects/refinement-container/7/commands').flush({ entries: [] });
+      await legacy;
+    });
+
+    it('forgets a row that is no longer a session room', () => {
+      api.observeRooms([row({ id: 8, entityId: 'e-8', deskBase: '/projects/container/p1/' })]);
+      api.observeRooms([row({ id: 8, entityId: 'e-8', branch: 'refining/x', deskBase: null })]);
+
+      expect(api.isSession(8)).toBe(false);
+      expect(api.containerBase(8)).toBe('/projects/refinement-container/8');
+    });
   });
 });

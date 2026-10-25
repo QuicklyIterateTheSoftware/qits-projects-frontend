@@ -50,8 +50,27 @@ export interface AgentSessionNodeDto {
   readonly messageCount?: number;
   /** The most recent command that drove this session — the daemon's own re-attach target. */
   readonly newestCommandId?: string;
+  /**
+   * The session key of the newest command behind this session, on the front desk's daemon (epic
+   * qits-770) — a refinement session room's entity id, or `front-desk`. Absent when nothing keyed it.
+   */
+  readonly sessionKey?: string;
   readonly subagents: readonly AgentSubagentDto[];
   readonly children: readonly AgentSessionNodeDto[];
+}
+
+/**
+ * The lineage of one desk session: every root whose own node, or any node beneath it, the desk
+ * stamped with `sessionKey`. The tree is kept whole under such a root — a fork of the room's session
+ * is still the room's history, whichever command drove it last.
+ */
+export function sessionsOfKey(
+  sessions: readonly AgentSessionNodeDto[],
+  sessionKey: string,
+): readonly AgentSessionNodeDto[] {
+  const keyed = (node: AgentSessionNodeDto): boolean =>
+    node.sessionKey === sessionKey || node.children.some(keyed);
+  return sessions.filter(keyed);
 }
 
 interface AgentSessionTreeResponse {

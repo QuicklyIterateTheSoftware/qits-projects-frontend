@@ -112,6 +112,14 @@ import { TerminalView } from '../../project/agent/terminal-view';
         </div>
       }
 
+      @case ('desk') {
+        <p class="note desk">
+          This room’s session runs in the project’s front desk, which starts, resumes and stops it —
+          nothing of it is running right now. Start the room from its Session tab; its conversation
+          is on the Chat tab.
+        </p>
+      }
+
       @case ('idle') {
         <div class="idle">
           <p class="note">

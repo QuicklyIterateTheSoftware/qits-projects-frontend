@@ -138,7 +138,7 @@ export class EntitiesApi {
   /**
    * The epics and the tickets, without the campaigns — the pre-campaign "everything". For the readers
    * a campaign can never be a subject of: the reshape form (the multi-entity transition refuses a
-   * campaign) and the refinement room (a campaign has none).
+   * campaign). The refinement room reads {@link list}, since a campaign has a room (epic qits-770).
    */
   async epicsAndTickets(projectId: string): Promise<readonly Entity[]> {
     const rows = await this.projects.work(projectId);

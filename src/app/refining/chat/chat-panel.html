@@ -33,7 +33,7 @@
       }
       @if (live()) {
         <qits-button variant="ghost" size="sm" [busy]="terminating()" (pressed)="terminate()">
-          Terminate
+          {{ sessionRoom() ? 'Stop the session' : 'Terminate' }}
         </qits-button>
       }
     </div>
@@ -125,6 +125,22 @@
       <qits-button variant="primary" [disabled]="!canSend()" (pressed)="send()">Send</qits-button>
     </footer>
   }
+} @else if (sessionRoom() && commandsState().kind === 'ready') {
+  <header class="strip">
+    <p class="reassure">
+      This room’s session runs in the project’s front desk, and it is not running right now.
+      Starting it asks the desk for it; the conversation appears here once the desk reports it
+      running.
+    </p>
+  </header>
+  <section class="desk-session" aria-label="The room’s session">
+    <qits-button variant="primary" [busy]="ensuring()" (pressed)="ensureSession()">
+      Start the session
+    </qits-button>
+    @if (ensureProblem(); as problem) {
+      <p class="problem" role="alert">⚠ {{ problem }}</p>
+    }
+  </section>
 } @else if (commandsState().kind === 'ready') {
   <header class="strip">
     <p class="reassure">

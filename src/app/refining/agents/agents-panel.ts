@@ -82,6 +82,13 @@ export class AgentsPanel {
   /** Whether this tab is showing. The socket ignores it; the reads do not. */
   readonly visible = input(false);
 
+  /**
+   * Whether the room is a session of the project's front desk (epic qits-770). The desk serves no
+   * plugin store, so the Plugins block is not drawn there; the session list is the room's own
+   * (`sessionKey`), filtered by {@link AgentSession}.
+   */
+  readonly sessionRoom = input(false);
+
   private readonly hints = this.events.invalidations('commands');
 
   private readFor: number | null = null;

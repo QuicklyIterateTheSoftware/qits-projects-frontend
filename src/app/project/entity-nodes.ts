@@ -1,4 +1,10 @@
-import type { EntityStatus, FeatureDto, TaskDto, WorkOutcome } from '../api/dto';
+import type {
+  CampaignMemberEntityDto,
+  EntityStatus,
+  FeatureDto,
+  TaskDto,
+  WorkOutcome,
+} from '../api/dto';
 import type { CampaignEntity, WorkItem } from './campaign-model';
 import type { Entity, EpicEntity, TicketEntity } from './entities-model';
 
@@ -297,11 +303,39 @@ export function archetypeLabel(archetype: string): string {
  * description cannot hold it — and answers the impetus rather than rewriting it, and stops short of
  * implementing, which is the refine phase's own boundary.
  *
+ * <p>A campaign's room (epic qits-770) refines the campaign **and its REPORTED members** — nothing
+ * server-side tells the session which those are, so the prompt names each, with its entity id for
+ * the room's tools. Pass the members as the campaign's members read answers them; the non-REPORTED
+ * ones are left out here.
+ *
  * <p>Derived, never stored: rename the entity and the next rewrite is told the new name. The entity's
  * id is in it because the room's tools (`list_designs`, `get_design`, `put_design`) take `entityId`.
  */
-export function refinePrompt(node: EntityNode): string {
+export function refinePrompt(
+  node: EntityNode,
+  members: readonly CampaignMemberEntityDto[] = [],
+): string {
   const name = node.qualifiedId ? `${node.qualifiedId}: ${node.title}` : node.title;
+  if (node.archetype === 'CAMPAIGN') {
+    const reported = members.filter((member) => member.status === 'REPORTED');
+    return [
+      `# Refine campaign ${name}`,
+      `Refine this campaign (entity id ${node.id}) together with its REPORTED members: their ` +
+        'descriptions (an epic’s feature/task tree and dossier too), so the campaign can be ' +
+        'readied and started. Do not implement.',
+      ...(reported.length > 0
+        ? [
+            'Its members still REPORTED:',
+            ...reported.map((member) => {
+              const said = member.qualifiedId
+                ? `${member.qualifiedId}: ${member.title}`
+                : member.title;
+              return `- ${said} (${archetypeLabel(member.archetype)}, entity id ${member.id})`;
+            }),
+          ]
+        : ['None of its members is REPORTED.']),
+    ].join('\n');
+  }
   if (node.archetype === 'TICKET') {
     return [
       `# Refine ticket ${name}`,

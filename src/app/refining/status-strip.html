@@ -1,6 +1,6 @@
 <div class="strip">
-  <section class="field" aria-label="Container">
-    <span class="key">Container</span>
+  <section class="field" [attr.aria-label]="session() ? 'Session' : 'Container'">
+    <span class="key">{{ session() ? 'Session' : 'Container' }}</span>
     <span class="value">
       <qits-badge [label]="runtimeLabel()" [tone]="runtimeTone()" />
       @if (workspace().runtimeError) {
@@ -27,71 +27,39 @@
           >Start</qits-button
         >
       }
-      <qits-button
-        variant="ghost"
-        size="sm"
-        [busy]="pending() === 'recreate'"
-        [disabled]="pending() !== null || recreateBlocked() !== null"
-        [attr.title]="recreateBlocked()"
-        (pressed)="recreate()"
-        >Recreate</qits-button
-      >
     </span>
-    @if (recreateBlocked()) {
-      <p class="note">{{ recreateBlocked() }}</p>
-    }
-  </section>
-
-  <section class="field" aria-label="Daemon">
-    <span class="key">Daemon</span>
-    <span class="value">
-      @switch (daemonState()) {
-        @case ('connected') {
-          <span
-            >connected {{ daemonSince() }}
-            @if (workspace().daemonVersion) {
-              , version <code>{{ workspace().daemonVersion }}</code>
-            }
-          </span>
-          @if (workspace().daemonOutdated) {
-            <qits-badge label="outdated" tone="warning" />
-          }
-        }
-        @case ('gone') {
-          <span class="fault" role="alert"
-            >Not connected. Files, terminals and the agent surface cannot work right now. It usually
-            comes back on its own.</span
-          >
-        }
-        @case ('not-running') {
-          <span class="muted">No container running, so there is no daemon to reach.</span>
-        }
-      }
-    </span>
-    @if (workspace().daemonOutdated) {
+    @if (session()) {
       <p class="note">
-        This daemon is older than the platform expects. Recreating the container is the way to
-        replace it
-        @if (recreateBlocked()) {
-          , once the working tree is clean
-        }
-        .
+        This room is a session of the project’s front desk, not a container of its own. Its chat,
+        agents and commands are the desk’s, read for this room alone.
       </p>
     }
   </section>
 
-  <section class="field" aria-label="Working tree">
-    <span class="key">Working tree</span>
-    <span class="value">
-      <qits-badge [label]="cleanliness().label" [tone]="cleanliness().tone" />
-      @if (drift()) {
-        <span class="muted">{{ drift() }} on {{ workspace().parent ?? mainBranch() }}</span>
+  @if (session()) {
+    <section class="field" aria-label="Front desk">
+      <span class="key">Front desk</span>
+      <span class="value">
+        <qits-badge [label]="desk().label" [tone]="desk().tone" />
+        @if (workspace().deskDetail) {
+          <span class="fault" role="alert">{{ workspace().deskDetail }}</span>
+        }
+      </span>
+      @if (desk().note; as note) {
+        <p class="note">{{ note }}</p>
       }
-      @if (workspace().conflictsWithParent) {
-        <qits-badge label="conflicts with parent" tone="warning" />
-      }
-    </span>
-  </section>
+    </section>
+  } @else if (daemonGone()) {
+    <section class="field" aria-label="Daemon">
+      <span class="key">Daemon</span>
+      <span class="value">
+        <span class="fault" role="alert"
+          >Not reachable. Files, terminals and the agent surface cannot work right now. It usually
+          comes back on its own.</span
+        >
+      </span>
+    </section>
+  }
 
   @if (failure()) {
     <p class="fault" role="alert">That did not work — {{ failure() }}.</p>

@@ -1628,7 +1628,7 @@ describe('EntityDetailPage', () => {
       ).toBeGreaterThan(before);
     });
 
-    it('offers Start, and not Run the next phase, Refine, Edit or Reshape', async () => {
+    it('offers Start, and not Run the next phase, Refine, Edit or Reshape, once refined', async () => {
       await open('/qits/work/qits-430');
 
       expect(buttonNamed('Start campaign').disabled).toBe(false);
@@ -1648,8 +1648,33 @@ describe('EntityDetailPage', () => {
       ]) {
         expect(labels).not.toContain(absent);
       }
-      // A campaign has no refinement room, so none is looked for.
-      expect(sent.some((request) => request.url.endsWith('/c1/refinement'))).toBe(false);
+      // A campaign has a room since epic qits-770, so one is looked for — and there is none.
+      expect(sent.some((request) => request.url.endsWith('/qits-430/refinement'))).toBe(true);
+    });
+
+    /** Epic qits-770: a REPORTED campaign is refined in a room of its own, with its members. */
+    it('offers Refine on a REPORTED campaign, and opens its room through the entity door', async () => {
+      campaignRowPatch = { status: 'REPORTED' };
+      await open('/qits/work/qits-430');
+      const navigate = vi.spyOn(TestBed.inject(Router), 'navigate').mockResolvedValue(true);
+
+      expect(button('.refine').disabled).toBe(false);
+      expect(button('.refine').textContent?.trim()).toBe('Refine');
+      button('.refine').click();
+      await serve();
+
+      expect(writes()).toEqual([
+        { method: 'POST', url: '/projects/api/work/qits-430/refinement', body: null },
+      ]);
+      expect(navigate).toHaveBeenCalledWith(['/', 'qits', 'work', 'qits-430', 'refinement']);
+    });
+
+    it('offers a campaign’s standing room as Open refinement, whatever its status', async () => {
+      rooms['c1'] = { id: 4, entityId: 'c1' };
+      await open('/qits/work/qits-430');
+
+      expect(button('.refine').disabled).toBe(false);
+      expect(button('.refine').textContent?.trim()).toBe('Open refinement');
     });
 
     it('starts only on the confirm press, which names what it authorises', async () => {

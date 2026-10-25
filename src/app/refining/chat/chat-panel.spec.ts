@@ -6,6 +6,7 @@ import { provideRouter } from '@angular/router';
 import { EVENT_SOURCE_FACTORY, type EventSourceLike } from '../../api/event-source';
 import { RefinementAgent } from '../../api/refinement-agent';
 import type { RefinementDto } from '../../api/refinements-api';
+import { WorkspaceDaemonApi } from '../../api/workspace-daemon-api';
 import { WorkspaceEvents } from '../../api/workspace-events';
 import { WEB_SOCKET_FACTORY, WEB_SOCKET_OPEN, type WebSocketLike } from '../../api/web-socket';
 import type { CommandDto } from '../../api/commands-api';
@@ -84,6 +85,34 @@ class PanelHost {
   readonly workspaceRowId = signal(7);
   readonly visible = signal(true);
 }
+
+/** The panel in a session room of the front desk (epic qits-770). */
+@Component({
+  selector: 'app-session-host',
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [ChatPanel],
+  template: `<app-chat-panel
+    [workspaceRowId]="8"
+    [preamble]="preamble()"
+    [visible]="true"
+    [sessionRoom]="true"
+    [sessionCommandId]="commandId()"
+    (changed)="changes.set(changes() + 1)"
+  />`,
+})
+class SessionHost {
+  readonly preamble = signal<string | null>(null);
+  readonly commandId = signal<string | null>(null);
+  readonly changes = signal(0);
+}
+
+/** Room 8: a session of the desk of project p1, keyed by its entity e-8. */
+const SESSION_ROOM = {
+  id: 8,
+  entityId: 'e-8',
+  branch: null,
+  deskBase: '/projects/container/p1/',
+} as RefinementDto;
 
 /**
  * The Chat tab: two modes, one tab, and no navigation between them.
@@ -405,6 +434,123 @@ describe('ChatPanel', () => {
 
     expect(text()).toContain('This conversation has ended');
     expect(fixture.nativeElement.querySelector('textarea')).toBeNull();
+  });
+
+  /**
+   * A session room's conversation is the desk's (epic qits-770): read through the desk's proxy,
+   * narrowed to the room's session key, attached to the session the row reports — and never launched
+   * from here, since the desk runs it.
+   */
+  describe('in a session room', () => {
+    let host: ComponentFixture<SessionHost>;
+
+    // One panel per page: the outer host's legacy room would otherwise read the same shared list.
+    beforeEach(() => fixture.destroy());
+
+    const keyed = (id: string, sessionKey: string): CommandDto => ({
+      ...chat(id, 'RUNNING'),
+      sessionKey,
+    });
+
+    const mount = async (entries: CommandDto[], commandId: string | null = null) => {
+      TestBed.inject(WorkspaceDaemonApi).observeRooms([SESSION_ROOM]);
+      host = TestBed.createComponent(SessionHost);
+      host.componentInstance.commandId.set(commandId);
+      host.detectChanges();
+      http
+        .expectOne('/projects/container/p1/commands')
+        .flush({ entries: entries.map((command) => ({ command })) });
+      for (let turn = 0; turn < 8; turn++) {
+        await Promise.resolve();
+      }
+      host.detectChanges();
+    };
+
+    const hostText = () => host.nativeElement.textContent ?? '';
+
+    const hostButton = (label: string) =>
+      Array.from(
+        host.nativeElement.querySelectorAll('button') as NodeListOf<HTMLButtonElement>,
+      ).find((candidate) => candidate.textContent?.trim() === label);
+
+    it('attaches to the room’s own running chat on the desk, never another session’s', async () => {
+      await mount([keyed('desk-1', 'front-desk'), keyed('room-1', 'e-8'), keyed('other', 'e-9')]);
+
+      expect(sockets).toHaveLength(1);
+      expect(latest().url).toContain('/projects/container/p1/chat/commands/room-1');
+      expect(host.nativeElement.querySelector('app-prompt-panel')).toBeNull();
+    });
+
+    it('attaches to the command the row reports before the desk’s list has it', async () => {
+      await mount([keyed('desk-1', 'front-desk')], 'room-2');
+
+      expect(sockets).toHaveLength(1);
+      expect(latest().url).toContain('/projects/container/p1/chat/commands/room-2');
+    });
+
+    it('offers the room’s ensure instead of a launch when its session is not running', async () => {
+      await mount([keyed('desk-1', 'front-desk')]);
+
+      expect(sockets).toHaveLength(0);
+      expect(host.nativeElement.querySelector('app-prompt-panel')).toBeNull();
+      expect(hostText()).toContain('runs in the project’s front desk');
+      // No draft read, no launch: the prompt panel is a container daemon's surface.
+      http.expectNone('/projects/api/refinements/8/prompt-draft');
+
+      hostButton('Start the session')!.click();
+      host.detectChanges();
+      const ensure = http.expectOne('/projects/api/refinements/8/ensure');
+      expect(ensure.request.method).toBe('POST');
+      ensure.flush({ refinement: { ...SESSION_ROOM, runtimeStatus: 'STARTING' } });
+      for (let turn = 0; turn < 8; turn++) {
+        await Promise.resolve();
+      }
+      http.expectOne('/projects/container/p1/commands').flush({ entries: [] });
+      for (let turn = 0; turn < 8; turn++) {
+        await Promise.resolve();
+      }
+
+      expect(host.componentInstance.changes()).toBe(1);
+    });
+
+    it('seeds the room’s brief into the first message of an empty conversation', async () => {
+      TestBed.inject(WorkspaceDaemonApi).observeRooms([SESSION_ROOM]);
+      host = TestBed.createComponent(SessionHost);
+      host.componentInstance.preamble.set('# Refine campaign qits-4: Rename');
+      host.componentInstance.commandId.set('room-1');
+      host.detectChanges();
+      http.expectOne('/projects/container/p1/commands').flush({ entries: [] });
+      for (let turn = 0; turn < 8; turn++) {
+        await Promise.resolve();
+      }
+      host.detectChanges();
+      host.detectChanges();
+
+      const box = host.nativeElement.querySelector('textarea') as HTMLTextAreaElement;
+      expect(box.value).toBe('# Refine campaign qits-4: Rename');
+    });
+
+    it('stops the session through the room rather than terminating its command', async () => {
+      await mount([keyed('room-1', 'e-8')]);
+      latest().connect();
+      host.detectChanges();
+
+      hostButton('Stop the session')!.click();
+      host.detectChanges();
+      http.expectNone('/projects/container/p1/commands/room-1/terminate');
+      http
+        .expectOne('/projects/api/refinements/8/stop')
+        .flush({ refinement: { ...SESSION_ROOM, runtimeStatus: 'STOPPED' } });
+      for (let turn = 0; turn < 8; turn++) {
+        await Promise.resolve();
+      }
+      http.expectOne('/projects/container/p1/commands').flush({ entries: [] });
+      for (let turn = 0; turn < 8; turn++) {
+        await Promise.resolve();
+      }
+
+      expect(host.componentInstance.changes()).toBe(1);
+    });
   });
 
   function press(label: string): void {

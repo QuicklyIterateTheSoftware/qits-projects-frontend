@@ -3,6 +3,7 @@ import { HttpClient, HttpErrorResponse, HttpParams } from '@angular/common/http'
 import { Injectable, inject, signal, type Signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { QITS_API_BASE } from './api-base';
+import { isSessionRoom, type RefinementDto } from './refinements-api';
 
 /** What the last call through the workspaces proxy said about the workspace's daemon. */
 export type WorkspaceDaemonReachability = 'unknown' | 'reachable' | 'unreachable';
@@ -48,6 +49,32 @@ const UNREACHABLE_STATUSES: readonly number[] = [0, 502, 503, 504];
  * wall of identical 502s in seven panels. {@link reachability} is what lets the status strip say "half
  * of this page cannot work right now" in one sentence instead.
  */
+/**
+ * Where one room's daemon is reached, as a proxy prefix on `apiBase` with no trailing slash.
+ *
+ * <p>A **session room** (epic qits-770) has no container of its own: its session runs in the
+ * project's front desk, so its chat, agents and commands are the desk's, reached through the desk's
+ * container proxy the row names in `deskBase` (`/projects/container/<projectId>/`). A **legacy**
+ * container room keeps `/projects/refinement-container/<rowId>` until qits-1316 retires it.
+ */
+export function daemonBaseOf(
+  apiBase: string,
+  row: Pick<RefinementDto, 'id' | 'branch' | 'deskBase'>,
+): string {
+  if (isSessionRoom(row)) {
+    const desk = (row.deskBase ?? '').replace(/\/+$/, '');
+    return `${apiBase}${desk.startsWith('/') ? desk : `/${desk}`}`;
+  }
+  return `${apiBase}/projects/refinement-container/${encodeURIComponent(row.id)}`;
+}
+
+/** What the page has told the transport about one session room. */
+interface SessionRoute {
+  readonly base: string;
+  /** The desk's key for the room's session: the room's entity id. */
+  readonly sessionKey: string;
+}
+
 @Injectable({ providedIn: 'root' })
 export class WorkspaceDaemonApi {
   private readonly http = inject(HttpClient);
@@ -55,6 +82,13 @@ export class WorkspaceDaemonApi {
   private readonly document = inject(DOCUMENT);
 
   private readonly reach = signal<WorkspaceDaemonReachability>('unknown');
+
+  /**
+   * The session rooms the page has seen, by row id. A plain map, not a signal: it is learnt from the
+   * listing before the rows are published (as {@link ./refinement-agent#RefinementAgent} learns its
+   * rooms), so no panel can ask for a room before this knows which daemon serves it.
+   */
+  private readonly sessions = new Map<number, SessionRoute>();
 
   /**
    * What the proxy last said. `unknown` until something is asked — an untried daemon is not a broken
@@ -68,11 +102,45 @@ export class WorkspaceDaemonApi {
   }
 
   /**
-   * The proxy prefix for one workspace. Every path below is appended to it verbatim, because the proxy
-   * strips nothing: `/commands` on the daemon is `/projects/refinement-container/7/commands` from here.
+   * Learn which rooms are sessions of the front desk (epic qits-770). Called with every listing the
+   * refining page reads, before it is published; a row that is no longer a session room is forgotten.
+   */
+  observeRooms(rows: readonly RefinementDto[]): void {
+    for (const row of rows) {
+      const entityId = row.entityId ?? row.epicId ?? '';
+      if (isSessionRoom(row) && entityId) {
+        this.sessions.set(row.id, { base: daemonBaseOf(this.base, row), sessionKey: entityId });
+      } else {
+        this.sessions.delete(row.id);
+      }
+    }
+  }
+
+  /**
+   * The desk's session key for a session room — its entity id, which the desk daemon stamps on the
+   * commands and session nodes it runs for the room (`sessionKey`) — or null for a legacy room, whose
+   * container runs nothing but the room.
+   */
+  sessionKey(workspaceRowId: number): string | null {
+    return this.sessions.get(workspaceRowId)?.sessionKey ?? null;
+  }
+
+  /** Whether the row is a session of the front desk, as far as the listing has said. */
+  isSession(workspaceRowId: number): boolean {
+    return this.sessions.has(workspaceRowId);
+  }
+
+  /**
+   * The proxy prefix for one room — the desk's for a session room, the room's own container's for a
+   * legacy one (see {@link daemonBaseOf}). Every path below is appended to it verbatim, because the
+   * proxy strips nothing: `/commands` on the daemon is `/projects/refinement-container/7/commands`
+   * (or `/projects/container/p1/commands`) from here.
    */
   containerBase(workspaceRowId: number): string {
-    return `${this.base}/projects/refinement-container/${encodeURIComponent(workspaceRowId)}`;
+    return (
+      this.sessions.get(workspaceRowId)?.base ??
+      `${this.base}/projects/refinement-container/${encodeURIComponent(workspaceRowId)}`
+    );
   }
 
   /** A read against the daemon. `path` starts with a slash and is the daemon's own. */

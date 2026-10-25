@@ -12,6 +12,8 @@ import { toSignal } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, Router, RouterLink, convertToParamMap } from '@angular/router';
 import { QitsBadge, QitsButton } from '@qits/ui-components';
 import { ArchetypesApi, type ArchetypeRegistry } from '../api/archetypes-api';
+import { CampaignsApi } from '../api/campaigns-api';
+import type { CampaignMemberEntityDto } from '../api/dto';
 import { DesignsApi } from '../api/designs-api';
 import { epicDossier, ticketDossier, type DossierOwner } from '../api/dossier-api';
 import { workRef, type DropResolution } from '../api/work';
@@ -19,12 +21,11 @@ import { EntitiesApi } from '../api/entities-api';
 import { WorkspaceDaemonApi } from '../api/workspace-daemon-api';
 import { WorkspaceEvents, anyOf } from '../api/workspace-events';
 import { RefinementAgent } from '../api/refinement-agent';
-import { RefinementsApi, type RefinementDto } from '../api/refinements-api';
+import { RefinementsApi, isSessionRoom, type RefinementDto } from '../api/refinements-api';
 import { ProjectParam } from '../nav/project-param';
 import {
   lifecycleMoves,
   lifecycleOf,
-  refiningBranch,
   statusBadge,
   type LifecycleMove,
 } from '../project/entities-model';
@@ -74,7 +75,14 @@ import type { ProcessOutcome } from './starting/process-log';
 import { StatusStrip } from './status-strip';
 import { TabHost } from './tabs/tab-host';
 import { TabPanel } from './tabs/tab-panel';
-import { DEFAULT_TAB, DURABLE_TABS, STARTING_SLUG, isDurableTab, type TabDef } from './tabs/tabs';
+import {
+  CONTAINER_ONLY_TABS,
+  DEFAULT_TAB,
+  DURABLE_TABS,
+  STARTING_SLUG,
+  isDurableTab,
+  type TabDef,
+} from './tabs/tabs';
 import { WebViewPanel } from './web-view/web-view-panel';
 
 /**
@@ -109,19 +117,28 @@ interface Subject {
   readonly node: EntityNode;
   /** The project's nodes, so a peer room in the activity bar can be addressed by its number. */
   readonly nodes: readonly EntityNode[];
+  /**
+   * A campaign's members that are still REPORTED — what its room refines alongside it (epic
+   * qits-770), and what its prompt names. Empty for an epic or a ticket.
+   */
+  readonly members: readonly CampaignMemberEntityDto[];
   /** The served registry — what the moves are drawn from, and the walk the first word is read off. */
   readonly registry: ArchetypeRegistry;
 }
 
 /**
- * The room you sit in while an agent refines an epic or a ticket.
+ * The room you sit in while an agent refines an epic, a ticket or a campaign.
  *
  * ## What it is
  *
- * A refinement is a qits-projects row and a container on the project's **wrapper** repository, on
- * `refining/<slug>`. This page is its detail UI — copied from qits-spa-workspaces, which is this
- * codebase's sanctioned way to share a screen — with one difference that shapes the whole file: **the
- * URL does not name the room.**
+ * A refinement is a qits-projects row. A room opened now is a **session of the project's front
+ * desk** (epic qits-770): no container and no branch of its own — its chat, agents and commands are
+ * the desk's, reached through the desk's container proxy (`deskBase`) and narrowed to the room's
+ * `sessionKey`, its entity id. A legacy room, one opened before that, is still a container on the
+ * project's **wrapper** repository on `refining/<slug>` until qits-1316 retires it; see
+ * {@link isSessionRoom}, which is the one place the two are told apart. This page is the detail UI of
+ * either — copied from qits-spa-workspaces, which is this codebase's sanctioned way to share a
+ * screen — with one difference that shapes the whole file: **the URL does not name the room.**
  *
  * ## Resolution, and why the URL is what it is
  *
@@ -211,6 +228,7 @@ export class RefiningPage {
   private readonly refinementsApi = inject(RefinementsApi);
   private readonly entitiesApi = inject(EntitiesApi);
   private readonly archetypes = inject(ArchetypesApi);
+  private readonly campaigns = inject(CampaignsApi);
   private readonly daemon = inject(WorkspaceDaemonApi);
   private readonly events = inject(WorkspaceEvents);
   private readonly memory = inject(AgentActivityMemory);
@@ -240,12 +258,27 @@ export class RefiningPage {
   protected readonly entityNumber = computed(() => parseEntityNumber(this.entityParam()));
 
   /**
-   * The branch this room is on: the room row's own once there is one, and until then the
-   * `refining/<slug>` the service would cut — which is only ever drawn, never matched against.
+   * The branch a **legacy** container room is on, or null — a session room (epic qits-770) has none,
+   * and no room opened now cuts one. Only ever drawn, never matched against.
    */
-  protected readonly branch = computed(
-    () => this.workspace()?.branch ?? refiningBranch(this.resolved()?.node.slug ?? ''),
-  );
+  protected readonly branch = computed(() => this.workspace()?.branch ?? null);
+
+  /** Whether the room is a session of the project's front desk rather than a container of its own. */
+  protected readonly sessionRoom = computed(() => {
+    const row = this.workspace();
+    return row !== null && isSessionRoom(row);
+  });
+
+  /**
+   * The desk command a session room's session runs as, while the row says it runs — what Chat
+   * attaches to before the desk's command list has caught up.
+   */
+  protected readonly sessionCommandId = computed(() => {
+    const row = this.workspace();
+    return row && this.sessionRoom() && row.runtimeStatus === 'RUNNING'
+      ? (row.commandId ?? null)
+      : null;
+  });
 
   protected readonly subject = signal<Loadable<Subject>>(LOADING);
 
@@ -402,7 +435,8 @@ export class RefiningPage {
       }
     });
 
-    // Entering a refining route makes its in-container tools usable without a separate Start press.
+    // Entering a refining route makes its tools usable without a separate Start press — the room's
+    // ensure, which wants a session room's session from the desk and begins a legacy room's container.
     // The route key resets the one-shot guard when Angular reuses this component for another epic;
     // workspace hints do not, so a deliberate Stop is not immediately undone by the next refresh.
     effect(() => {
@@ -418,7 +452,11 @@ export class RefiningPage {
       const workspace = belongsToRoute ? this.workspace() : null;
       if (!workspace || this.autoContainerWorkspaceId === workspace.id) return;
       this.autoContainerWorkspaceId = workspace.id;
-      if (workspace.runtimeStatus === 'RUNNING' || workspace.runtimeStatus === 'PROVISIONING')
+      if (
+        workspace.runtimeStatus === 'RUNNING' ||
+        workspace.runtimeStatus === 'PROVISIONING' ||
+        workspace.runtimeStatus === 'STARTING'
+      )
         return;
       untracked(() => void this.startContainerOnEntry(workspace.id));
     });
@@ -469,7 +507,6 @@ export class RefiningPage {
 
   /** Both live on the refinement row now — the wrapper is the server's business. */
   protected readonly repositoryId = computed(() => this.workspace()?.repositoryId ?? '');
-  protected readonly mainBranch = computed(() => this.workspace()?.parent ?? '');
   protected readonly title = computed(() => this.resolved()?.node.title ?? this.entityParam());
 
   /**
@@ -489,8 +526,8 @@ export class RefiningPage {
    * word would be two names for one thing.
    */
   protected readonly promptContext = computed(() => {
-    const node = this.resolved()?.node;
-    return node ? refinePrompt(node) : `# Refine: ${this.title()}`;
+    const subject = this.resolved();
+    return subject ? refinePrompt(subject.node, subject.members) : `# Refine: ${this.title()}`;
   });
   protected readonly description = computed(() => this.resolved()?.node.description ?? '');
 
@@ -556,7 +593,7 @@ export class RefiningPage {
 
   protected readonly urlTab = computed(() => {
     const slug = this.query().get('tab');
-    return isDurableTab(slug) ? slug! : DEFAULT_TAB;
+    return isDurableTab(slug) && this.hasTab(slug!) ? slug! : DEFAULT_TAB;
   });
 
   protected readonly selected = computed(() =>
@@ -566,9 +603,12 @@ export class RefiningPage {
   /** The row: the transient tab when there is one, then the durable refinement tools. */
   protected readonly tabs = computed<readonly TabDef[]>(() => {
     const activity = this.workspace()?.agentActivity ?? null;
-    const durable = DURABLE_TABS.map((tab) => {
+    const durable = this.durableTabs().map((tab) => {
       if (tab.slug === 'epic') {
         return { ...tab, label: this.subjectLabel() };
+      }
+      if (tab.slug === 'container' && this.sessionRoom()) {
+        return { ...tab, label: 'Session' };
       }
       if (tab.slug === 'agents' && activity) {
         return {
@@ -589,7 +629,16 @@ export class RefiningPage {
       : durable;
   });
 
-  protected readonly durableTabs = DURABLE_TABS;
+  /** The durable tabs this room has: a session room has no container tools (epic qits-770). */
+  protected readonly durableTabs = computed<readonly TabDef[]>(() =>
+    this.sessionRoom()
+      ? DURABLE_TABS.filter((tab) => !CONTAINER_ONLY_TABS.includes(tab.slug))
+      : DURABLE_TABS,
+  );
+
+  private hasTab(slug: string): boolean {
+    return this.durableTabs().some((tab) => tab.slug === slug);
+  }
 
   protected panelNote(slug: string): string {
     return PANEL_NOTES[slug] ?? '';
@@ -647,6 +696,7 @@ export class RefiningPage {
       if (attempt !== this.attempt || current.kind !== 'ready') {
         return;
       }
+      this.daemon.observeRooms([full]);
       this.workspaces.set(
         ready(current.value.map((entry) => (entry.id === match.id ? full : entry))),
       );
@@ -692,9 +742,28 @@ export class RefiningPage {
       qualifiedId: node.qualifiedId,
       title: node.title,
       status: node.status,
-      blocked: node.entity?.blocked,
+      blocked: node.entity?.blocked ?? node.campaign?.blocked,
     });
-    return ready({ node, nodes, registry });
+    return ready({ node, nodes, registry, members: await this.reportedMembers(node) });
+  }
+
+  /**
+   * A campaign's REPORTED members, for its room's prompt (epic qits-770): its room's scope is the
+   * campaign and those members, and nothing server-side composes a room's prompt. A failed read
+   * costs the list and not the room — the prompt then names the campaign alone.
+   */
+  private async reportedMembers(node: EntityNode): Promise<readonly CampaignMemberEntityDto[]> {
+    if (node.archetype !== 'CAMPAIGN') {
+      return [];
+    }
+    try {
+      const members = await this.campaigns.members(workRef(node));
+      return members
+        .map((member) => member.entity)
+        .filter((entity) => entity.status === 'REPORTED');
+    } catch {
+      return [];
+    }
   }
 
   /**
@@ -742,6 +811,7 @@ export class RefiningPage {
       // time anything renders it.
       this.memory.observe(rows);
       this.agent.observe(rows);
+      this.daemon.observeRooms(rows);
       this.workspaces.set(ready(rows));
 
       await this.upgradeMatch(attempt);
@@ -760,7 +830,9 @@ export class RefiningPage {
    * than leaving a tab that never closes.
    */
   private async loadActiveProcess(workspaceId: number): Promise<void> {
-    if (workspaceId <= 0) {
+    // A session room has no container to narrate (epic qits-770): the service answers null there,
+    // so it is not asked. The Session tab says what the desk reports instead.
+    if (workspaceId <= 0 || this.daemon.isSession(workspaceId)) {
       return;
     }
     try {
@@ -782,12 +854,14 @@ export class RefiningPage {
   private async startContainerOnEntry(workspaceId: number): Promise<void> {
     this.autoStartFailure.set(null);
     try {
-      const answer = await this.refinementsApi.ensureContainer(workspaceId);
-      if (answer.technicalProcessId) this.onStarted(answer.technicalProcessId);
+      await this.refinementsApi.ensure(workspaceId);
     } catch (error) {
       this.autoStartFailure.set(describeError(error));
     } finally {
       await this.loadRefinements(this.projectId());
+      // A legacy room's ensure begins a ladder whose narration is read off the room, not off the
+      // ensure's answer; a session room has none and is not asked.
+      await this.loadActiveProcess(workspaceId);
     }
   }
 
@@ -930,12 +1004,6 @@ export class RefiningPage {
       return;
     }
     this.startLinger();
-  }
-
-  protected onStarted(processId: string): void {
-    this.clearLinger();
-    this.retainFailedProcess = false;
-    this.shownProcessId.set(processId);
   }
 
   protected onChanged(): void {

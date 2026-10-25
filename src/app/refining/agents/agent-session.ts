@@ -1,6 +1,11 @@
 import { DOCUMENT } from '@angular/common';
 import { Injectable, computed, effect, inject, signal, untracked } from '@angular/core';
-import { AgentsApi, type AgentSessionNodeDto, type AvailableAgentsDto } from '../../api/agents-api';
+import {
+  AgentsApi,
+  sessionsOfKey,
+  type AgentSessionNodeDto,
+  type AvailableAgentsDto,
+} from '../../api/agents-api';
 import { CommandsApi, type AgentType, type CommandDto } from '../../api/commands-api';
 import { notSignedIn } from '../../api/agent-sign-in';
 import { RefinementAgent, type RefinementAgentLaunch } from '../../api/refinement-agent';
@@ -32,6 +37,8 @@ export type SessionBranch =
   | { readonly kind: 'signed-out'; readonly harness: string; readonly message: string }
   /** 4 — history exists and nothing is running, so nothing happens without a press. */
   | { readonly kind: 'idle' }
+  /** A session room with nothing of its own running: the desk launches its session, not this tab. */
+  | { readonly kind: 'desk' }
   | { readonly kind: 'unavailable'; readonly message: string };
 
 /** How many times a completed sign-in may replay the launch before the loop is called off. */
@@ -288,13 +295,13 @@ export class AgentSession {
     if (chat) {
       return { kind: 'deferred', commandId: chat.id };
     }
-    if (!this.hasHistory()) {
-      // Branch 3. The launch is fired by an effect; until it answers this is still resolving.
+    if (!this.hasHistory() && !this.daemon.isSession(this.workspaceRowId())) {
+      // Branch 3 — never for a session room, whose session the desk launches. The launch is fired by an effect; until it answers this is still resolving.
       return this.autoLaunchedFor === this.workspaceRowId() && !this.inFlight()
         ? { kind: 'idle' }
         : { kind: 'resolving' };
     }
-    return { kind: 'idle' };
+    return this.daemon.isSession(this.workspaceRowId()) ? { kind: 'desk' } : { kind: 'idle' };
   });
 
   /** The default harness for a fresh launch, or null until the list has been read. */
@@ -392,6 +399,12 @@ export class AgentSession {
     if (workspaceRowId <= 0 || this.inFlight()) {
       return;
     }
+    if (this.daemon.isSession(workspaceRowId)) {
+      // A session room's session is the desk's to run (epic qits-770): the service tells the desk
+      // which sessions it wants, and the desk serves no per-agent launch. Ensure the room instead.
+      this.problemText.set(SESSION_ROOM_LAUNCH);
+      return;
+    }
     this.inFlight.set(true);
     this.problemText.set(null);
     try {
@@ -467,6 +480,10 @@ export class AgentSession {
     if (this.hasHistory() || this.ownsConversation() || this.signIn() !== null) {
       return;
     }
+    // Nothing is launched into a session room from here: the desk launches its session.
+    if (this.daemon.isSession(workspaceRowId)) {
+      return;
+    }
     if (this.autoLaunchedFor === workspaceRowId) {
       return;
     }
@@ -537,7 +554,10 @@ export class AgentSession {
       return;
     }
     try {
-      const sessions = await this.agents.sessions(workspaceRowId);
+      const all = await this.agents.sessions(workspaceRowId);
+      // The desk's lineage holds every session it runs; a session room reads only its own.
+      const key = this.daemon.sessionKey(workspaceRowId);
+      const sessions = key === null ? all : sessionsOfKey(all, key);
       if (this.workspaceRowId() === workspaceRowId) {
         this.sessionState.set(ready(sessions));
       }
@@ -563,6 +583,10 @@ export class AgentSession {
 }
 
 /** A launch failure, preferring the daemon's own sentence — it explains refusals this cannot. */
+/** Why a session room's Agents tab launches nothing itself. */
+export const SESSION_ROOM_LAUNCH =
+  'This room’s session runs in the project’s front desk, which starts and resumes it. Start the room from its Session tab instead.';
+
 function describeLaunch(error: unknown): string {
   const body = (error as { error?: { message?: string } } | null)?.error;
   if (body && typeof body.message === 'string' && body.message.trim()) {

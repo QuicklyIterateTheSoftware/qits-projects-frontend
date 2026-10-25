@@ -42,7 +42,9 @@
   }
 </section>
 
-<section class="block" aria-label="Agent plugins">
-  <h3>Plugins</h3>
-  <app-plugins-section [workspaceRowId]="workspaceRowId()" />
-</section>
+@if (!sessionRoom()) {
+  <section class="block" aria-label="Agent plugins">
+    <h3>Plugins</h3>
+    <app-plugins-section [workspaceRowId]="workspaceRowId()" />
+  </section>
+}

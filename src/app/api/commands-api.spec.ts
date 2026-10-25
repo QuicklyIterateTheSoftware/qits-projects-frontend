@@ -1,7 +1,7 @@
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
-import { CommandsApi, type CommandDto } from './commands-api';
+import { CommandsApi, commandsOfSession, type CommandDto } from './commands-api';
 
 const COMMAND: CommandDto = {
   id: 'cmd-1',
@@ -124,5 +124,25 @@ describe('CommandsApi', () => {
 
     expect(request.request.body).toEqual({ transcript: 'transcript' });
     await answer;
+  });
+});
+
+/**
+ * The front desk runs every session room's session beside its own (epic qits-770), and stamps each
+ * run with the key it launched it for. A room's tabs read only its own key's runs; a run nothing
+ * keyed — one started by hand — belongs to no room.
+ */
+describe('commandsOfSession', () => {
+  it('keeps exactly the runs the desk keyed to the session', () => {
+    const runs: CommandDto[] = [
+      { ...COMMAND, id: 'desk', sessionKey: 'front-desk' },
+      { ...COMMAND, id: 'room', sessionKey: 'e-8' },
+      { ...COMMAND, id: 'peer', sessionKey: 'e-9' },
+      { ...COMMAND, id: 'by-hand' },
+    ];
+
+    expect(commandsOfSession(runs, 'e-8').map((run) => run.id)).toEqual(['room']);
+    expect(commandsOfSession(runs, 'front-desk').map((run) => run.id)).toEqual(['desk']);
+    expect(commandsOfSession(runs, 'e-1')).toEqual([]);
   });
 });

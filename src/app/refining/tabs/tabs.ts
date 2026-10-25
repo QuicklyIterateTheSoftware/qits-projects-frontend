@@ -65,6 +65,13 @@ export const DURABLE_TABS: readonly TabDef[] = [
 /** The default selection: the epic document. A bare URL means "no tool open". */
 export const DEFAULT_TAB = DURABLE_TABS[0].slug;
 
+/**
+ * The tabs a **session room** does without (epic qits-770): its session runs in the project's front
+ * desk, whose daemon serves commands, agents and the chat but no file tree and no app to view, so
+ * the Files and Web view tabs would read a surface that is not there.
+ */
+export const CONTAINER_ONLY_TABS: readonly string[] = ['files', 'web-view'];
+
 /** Whether a slug names a durable tab. An unknown slug in the URL is normalised away, not obeyed. */
 export function isDurableTab(slug: string | null): boolean {
   return DURABLE_TABS.some((tab) => tab.slug === slug);

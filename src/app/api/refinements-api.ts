@@ -24,25 +24,58 @@ export interface RefinementDto {
   readonly epicId?: string;
   readonly projectId: string;
   readonly repositoryId: string;
-  /** `refining/<slug>` on the project's wrapper — the epic's or the ticket's slug. */
-  readonly branch: string;
-  /** What the refinement forked from — the wrapper's default branch at create time. */
-  readonly parent: string;
+  /**
+   * `refining/<slug>` on the project's wrapper — **a legacy container room's only** (epic qits-770).
+   * A room opened since is a session of the project's front desk and has no branch: the service
+   * answers null, and drops the field once the legacy rooms are gone (qits-1316). See
+   * {@link isSessionRoom}.
+   */
+  readonly branch?: string | null;
+  /** What a legacy room forked from. Null on a session room, and dropped with {@link branch}. */
+  readonly parent?: string | null;
   /** `refining-<epicSlug>`, decoration — the id above is the address. */
   readonly label: string;
-  readonly runtimeStatus: 'RUNNING' | 'STOPPED' | 'PROVISIONING' | 'FAILED' | null;
+  /**
+   * A session room's session state as the desk reported it (`STARTING | RUNNING | STOPPED | FAILED`),
+   * or a legacy room's container state (`PROVISIONING | RUNNING | STOPPED | FAILED`).
+   */
+  readonly runtimeStatus: 'STARTING' | 'RUNNING' | 'STOPPED' | 'PROVISIONING' | 'FAILED' | null;
+  /** The detail behind {@link runtimeStatus} — a session's failure, or a container's. */
   readonly runtimeError: string | null;
-  /** Three-valued: null is "the daemon has not vouched", which blocks a recreate. */
-  readonly clean: boolean | null;
-  readonly ahead: number | null;
-  readonly behind: number | null;
-  readonly conflictsWithParent: boolean;
   readonly agentActivity: 'IDLE' | 'BUSY' | 'WAITING' | 'ENDED' | null;
-  readonly daemonConnectedAt: string | null;
-  readonly daemonVersion: string | null;
-  /** TRUE or null, never false — "outdated" is a claim, its absence is not one. */
-  readonly daemonOutdated: boolean | null;
   readonly createdAt: string | null;
+  /**
+   * The harness session the desk last reported for this room — kept after a stop, so the next
+   * launch resumes it. Absent from a service before epic qits-770, null on a legacy room.
+   */
+  readonly sessionId?: string | null;
+  /** The desk command running the room's session, while it runs. What the Chat tab attaches to. */
+  readonly commandId?: string | null;
+  /**
+   * The front desk's own state word (QUEUED, PROVISIONING, RUNNING, STOPPED, FAILED, UNAVAILABLE,
+   * ABSENT) — the container every session room's session runs in. Null on a legacy room.
+   */
+  readonly deskStatus?: string | null;
+  /** The desk's failure, when it has one. */
+  readonly deskDetail?: string | null;
+  /**
+   * The desk's container proxy, `/projects/container/<projectId>/` — where a session room's chat,
+   * agents and commands are read. Null on a legacy room, absent from an older service.
+   */
+  readonly deskBase?: string | null;
+}
+
+/**
+ * Whether a room is a **session of its project's front desk** (epic qits-770) rather than a legacy
+ * container room of its own.
+ *
+ * <p>The service's own rule is "the branch decides": every row opened before V57 has a
+ * `refining/<slug>` branch and stays a container room until qits-1316 deletes them, and every row
+ * opened since has none. The desk base is asked as well, so a row from a service older than the
+ * session rooms — which sends no `deskBase` at all — is never mistaken for one.
+ */
+export function isSessionRoom(row: Pick<RefinementDto, 'branch' | 'deskBase'>): boolean {
+  return !row.branch && !!row.deskBase;
 }
 
 interface RefinementResponse {
@@ -58,12 +91,6 @@ interface ListResponse {
   readonly refinements: readonly RefinementDto[];
 }
 
-/** The ensure/recreate answer: the row as it now stands, and the narration to watch. */
-export interface RefinementProcessResponse {
-  readonly refinement: RefinementDto;
-  readonly technicalProcessId: string | null;
-}
-
 interface ActiveProcessResponse {
   readonly technicalProcessId: string | null;
 }
@@ -73,11 +100,14 @@ interface ActiveProcessResponse {
  * from `/workspaces/api/**`, on this SPA's own service.
  *
  * **Find-or-create is one idempotent POST keyed by the entity** — `POST /work/{q}/refinement`, by
- * qualified id (epic qits-965), for an epic or a ticket alike (qits-395). A `refining/<slug>` branch
- * already on the origin is
- * adopted, an entity that already has a room answers it, and two racing opens are settled by a unique
- * constraint rather than by client choreography. The old `POST /refinements {"epicId"}` door is not
- * called from here any more; the service removes it in its next release.
+ * qualified id (epic qits-965), for an epic, a ticket (qits-395) or a campaign (epic qits-770) alike.
+ * An entity that already has a room answers it, and two racing opens are settled by a unique
+ * constraint rather than by client choreography. A room opened now is a session of the project's
+ * front desk and cuts no branch; see {@link isSessionRoom}.
+ *
+ * **The lifecycle verbs are `ensure` and `stop`** (epic qits-770), which answer both kinds of room.
+ * The container verbs (`ensure-container`, `stop-container`, `recreate-container`) are no longer
+ * called from here; the service removes them in its next release.
  */
 @Injectable({ providedIn: 'root' })
 export class RefinementsApi {
@@ -85,12 +115,12 @@ export class RefinementsApi {
   private readonly base = inject(QITS_API_BASE);
 
   /**
-   * Find the entity's room or make one — cutting (or adopting) `refining/<slug>` on the wrapper.
+   * Find the entity's room or make one — a session of the project's front desk (epic qits-770).
    *
-   * <p>Refused with a 409 for a feature or a task — refinement stays an epic's and a ticket's surface
-   * even once a feature and a task carry their own status (qits-763), since neither gets a refinement
-   * room or any other phase machinery of its own — unless the entity is REPORTED, and while a dispatch
-   * runs on it. An existing room is always answered, whatever the entity's state.
+   * <p>Refused with a 409 for a feature or a task — refinement stays an epic's, a ticket's and a
+   * campaign's surface even once a feature and a task carry their own status (qits-763) — unless the
+   * entity is REPORTED, while a dispatch runs on it, and past the project's session cap
+   * (`REFINEMENT_SESSIONS_FULL`). An existing room is always answered, whatever the entity's state.
    */
   async openFor(ref: string): Promise<RefinementDto> {
     const answer = await firstValueFrom(
@@ -107,7 +137,7 @@ export class RefinementsApi {
     return answer?.refinement ?? null;
   }
 
-  /** One refinement with its full projection, git drift included. */
+  /** One refinement with its full projection. */
   async get(refinementId: number): Promise<RefinementDto> {
     const answer = await firstValueFrom(this.http.get<RefinementResponse>(this.url(refinementId)));
     return answer.refinement;
@@ -126,26 +156,28 @@ export class RefinementsApi {
     return answer.refinements ?? [];
   }
 
-  /** Bring the container up. The work runs server-side off the request; watch the process. */
-  async ensureContainer(refinementId: number): Promise<RefinementProcessResponse> {
-    return firstValueFrom(
-      this.http.post<RefinementProcessResponse>(`${this.url(refinementId)}/ensure-container`, {}),
-    );
-  }
-
-  /** Stop the container, leaving it and its checkout in place. */
-  async stopContainer(refinementId: number): Promise<RefinementDto> {
+  /**
+   * Bring the room up — `POST /refinements/{id}/ensure` (epic qits-770). A session room's demand is
+   * stamped and its session pushed to the desk (a **409** `REFINEMENT_SESSIONS_FULL` past the
+   * project's cap); a legacy room's container ladder is begun, its narration found by
+   * {@link activeProcess}. Answers the row as it now stands.
+   */
+  async ensure(refinementId: number): Promise<RefinementDto> {
     const answer = await firstValueFrom(
-      this.http.post<RefinementResponse>(`${this.url(refinementId)}/stop-container`, {}),
+      this.http.post<RefinementResponse>(`${this.url(refinementId)}/ensure`, {}),
     );
     return answer.refinement;
   }
 
-  /** Replace the container. The server refuses with 400 unless the tree is provably clean. */
-  async recreateContainer(refinementId: number): Promise<RefinementProcessResponse> {
-    return firstValueFrom(
-      this.http.post<RefinementProcessResponse>(`${this.url(refinementId)}/recreate-container`, {}),
+  /**
+   * Stop the room — `POST /refinements/{id}/stop`: a session room's demand is cleared and its session
+   * stopped; a legacy room's container is stopped with its checkout left in place.
+   */
+  async stop(refinementId: number): Promise<RefinementDto> {
+    const answer = await firstValueFrom(
+      this.http.post<RefinementResponse>(`${this.url(refinementId)}/stop`, {}),
     );
+    return answer.refinement;
   }
 
   /** Tear the refinement down: container, volume, credential, branch, row. */
@@ -153,7 +185,11 @@ export class RefinementsApi {
     await firstValueFrom(this.http.post<unknown>(`${this.url(refinementId)}/discard`, {}));
   }
 
-  /** The ensure narration currently live for this refinement, or null. */
+  /**
+   * The ensure narration currently live for a **legacy** container room, or null. A session room has
+   * none (the service answers null), so the page does not ask for one; the door goes with the legacy
+   * rooms (qits-1316).
+   */
   async activeProcess(refinementId: number): Promise<string | null> {
     const answer = await firstValueFrom(
       this.http.get<ActiveProcessResponse>(`${this.url(refinementId)}/active-process`),

@@ -1,6 +1,7 @@
 import { Injectable, computed, effect, inject, signal, untracked } from '@angular/core';
 import { IDLE, LOADING, failed, ready, type Loadable } from '../ui/loadable';
-import { CommandsApi, type CommandDto } from './commands-api';
+import { CommandsApi, commandsOfSession, type CommandDto } from './commands-api';
+import { WorkspaceDaemonApi } from './workspace-daemon-api';
 import { WorkspaceEvents } from './workspace-events';
 
 /**
@@ -26,11 +27,15 @@ import { WorkspaceEvents } from './workspace-events';
 export class WorkspaceCommands {
   private readonly api = inject(CommandsApi);
   private readonly events = inject(WorkspaceEvents);
+  private readonly daemon = inject(WorkspaceDaemonApi);
 
   private readonly workspaceRowId = signal(0);
   private readonly state = signal<Loadable<readonly CommandDto[]>>(IDLE);
 
-  /** Every command this container has run, newest first. */
+  /**
+   * Every command this container has run, newest first — or, for a session room, every command the
+   * desk ran for the room's session key.
+   */
   readonly commands = this.state.asReadonly();
 
   /** Which workspace the list on hand belongs to, so a reader can tell it apart from a stale one. */
@@ -91,7 +96,11 @@ export class WorkspaceCommands {
       return;
     }
     try {
-      const commands = await this.api.commands(workspaceRowId);
+      const all = await this.api.commands(workspaceRowId);
+      // A session room's daemon is the project's desk, shared with the desk's own session and every
+      // other room's (epic qits-770): only the runs keyed to this room are this room's.
+      const key = this.daemon.sessionKey(workspaceRowId);
+      const commands = key === null ? all : commandsOfSession(all, key);
       // A late answer for a workspace that has since been left is dropped rather than shown.
       if (this.workspaceRowId() === workspaceRowId) {
         this.state.set(ready(commands));

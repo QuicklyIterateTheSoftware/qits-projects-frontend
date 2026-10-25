@@ -1,7 +1,7 @@
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
-import { AgentsApi, barePluginId } from './agents-api';
+import { AgentsApi, barePluginId, sessionsOfKey, type AgentSessionNodeDto } from './agents-api';
 
 /**
  * The coding-agent reads, and the one verb that has a rule worth a test.
@@ -74,5 +74,34 @@ describe('AgentsApi', () => {
   it('strips the marketplace suffix and leaves a bare id alone', () => {
     expect(barePluginId('jdtls-lsp@claude-plugins-official')).toBe('jdtls-lsp');
     expect(barePluginId('jdtls-lsp')).toBe('jdtls-lsp');
+  });
+});
+
+/** A session room's lineage on the desk (epic qits-770): its roots, kept whole. */
+describe('sessionsOfKey', () => {
+  const node = (
+    sessionId: string,
+    sessionKey?: string,
+    children: AgentSessionNodeDto[] = [],
+  ): AgentSessionNodeDto => ({
+    sessionId,
+    ...(sessionKey ? { sessionKey } : {}),
+    subagents: [],
+    children,
+  });
+
+  it('keeps the roots the key stamps, on themselves or beneath, with their whole tree', () => {
+    const fork = node('fork', 'e-8');
+    const tree = [
+      node('desk', 'front-desk'),
+      node('room', 'e-8'),
+      node('older', undefined, [node('mid', undefined, [fork])]),
+      node('peer', 'e-9', [node('peer-fork', 'e-9')]),
+    ];
+
+    const kept = sessionsOfKey(tree, 'e-8');
+
+    expect(kept.map((entry) => entry.sessionId)).toEqual(['room', 'older']);
+    expect(kept[1].children[0].children[0]).toBe(fork);
   });
 });

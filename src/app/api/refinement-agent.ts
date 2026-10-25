@@ -56,7 +56,7 @@ export class RefinementAgent {
     for (const row of rows) {
       const entityId = row.entityId ?? row.epicId ?? '';
       if (entityId) {
-        this.rooms.set(row.id, { entityId, branch: row.branch });
+        this.rooms.set(row.id, { entityId, branch: row.branch ?? '' });
       }
     }
   }

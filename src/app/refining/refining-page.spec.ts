@@ -145,14 +145,7 @@ const workspace = (over: Partial<RefinementDto> = {}): RefinementDto => ({
   label: 'refining-epic-refining-workspace',
   runtimeStatus: 'RUNNING',
   runtimeError: null,
-  clean: true,
-  ahead: 1,
-  behind: 0,
-  conflictsWithParent: false,
   agentActivity: null,
-  daemonConnectedAt: AT,
-  daemonVersion: '1.4.0',
-  daemonOutdated: null,
   createdAt: AT,
   ...over,
 });
@@ -276,8 +269,9 @@ describe('RefiningPage', () => {
   async function flushWork(
     epics: readonly object[] = [EPIC, OTHER],
     tickets: readonly object[] = [TICKET],
+    campaigns: readonly object[] = [],
   ): Promise<void> {
-    const fixture = { epics, tickets } as WorkFixture;
+    const fixture = { epics, tickets, campaigns } as WorkFixture;
     const isWork = (candidate: HttpRequest<unknown>) =>
       candidate.method === 'GET' && workAnswer('p1', fixture, candidate.url) !== undefined;
     for (let round = 0; round < 4; round++) {
@@ -647,7 +641,7 @@ describe('RefiningPage', () => {
       await settle();
 
       expect(refining.remounts()).toBe(1);
-      expect(text()).toContain('refining/another-epic');
+      expect(text()).toContain('No refinement room is open for this epic');
     });
   });
 
@@ -745,19 +739,21 @@ describe('RefiningPage', () => {
       http.expectOne('/projects/api/refinements/7/active-process').flush({
         technicalProcessId: null,
       });
-      const ensure = http.expectOne('/projects/api/refinements/7/ensure-container');
+      const ensure = http.expectOne('/projects/api/refinements/7/ensure');
       expect(ensure.request.method).toBe('POST');
-      ensure.flush({
-        refinement: workspace({ runtimeStatus: 'PROVISIONING' }),
+      ensure.flush({ refinement: workspace({ runtimeStatus: 'PROVISIONING' }) });
+      await settle();
+
+      // A legacy room's ladder is narrated off the room, not off the ensure's answer.
+      await flushRefinements([workspace()]);
+      http.expectOne('/projects/api/refinements/7/active-process').flush({
         technicalProcessId: 'p1',
       });
       await settle();
 
-      await flushRefinements([workspace()]);
-
       expect(element().querySelector('.tab.active')?.textContent?.trim()).toBe('Starting');
       expect(tabs().map((tab) => tab.textContent?.trim())).toContain('Container');
-      http.expectNone('/projects/api/refinements/7/ensure-container');
+      http.expectNone('/projects/api/refinements/7/ensure');
     });
   });
 
@@ -780,7 +776,8 @@ describe('RefiningPage', () => {
       await settle();
 
       expect(element().querySelector('app-status-strip')).not.toBeNull();
-      expect(text()).toContain('Working tree');
+      expect(text()).toContain('Container');
+      expect(text()).not.toContain('Working tree');
       expect(text()).not.toContain('Resolution');
       expect(text()).not.toContain('Release');
       expect(text()).not.toContain('Integrate');
@@ -1109,6 +1106,162 @@ describe('RefiningPage', () => {
    * its single-row read is the one that refreshes the wrapper's git mirror behind a lock, which is
    * cold precisely when the branch it is asked about was cut a second ago.
    */
+  /**
+   * A room opened now is a session of the project's front desk (epic qits-770): no container, no
+   * branch. Its chat, agents and commands are the desk's, through the desk's proxy; the container
+   * tools the desk does not serve are not offered; and nothing asks for a container's narration.
+   */
+  describe('a session room', () => {
+    const session = (over: Partial<RefinementDto> = {}): RefinementDto =>
+      workspace({
+        branch: null,
+        parent: null,
+        runtimeStatus: 'RUNNING',
+        sessionId: 's-1',
+        commandId: null,
+        deskStatus: 'RUNNING',
+        deskDetail: null,
+        deskBase: '/projects/container/p1/',
+        ...over,
+      });
+
+    async function enter(row: RefinementDto, url = URL_BASE): Promise<void> {
+      await harness.navigateByUrl(url);
+      await flushSubject();
+      await flushRefinements([row]);
+    }
+
+    it('names the desk instead of a branch, and offers no container tools', async () => {
+      await enter(session());
+
+      http.expectNone('/projects/api/refinements/7/active-process');
+      expect(text()).toContain('a session of the project’s front desk');
+      expect(text()).not.toContain('refining/');
+      const labels = tabs().map((tab) => tab.textContent?.trim());
+      expect(labels).toContain('Session');
+      expect(labels).toContain('Chat');
+      expect(labels).toContain('Agents');
+      expect(labels).not.toContain('Container');
+      expect(labels).not.toContain('Files');
+      expect(labels).not.toContain('Web view');
+    });
+
+    it('wants a stopped session from the desk on entry, through the room’s ensure', async () => {
+      await enter(session({ runtimeStatus: 'STOPPED' }));
+
+      const ensure = http.expectOne('/projects/api/refinements/7/ensure');
+      expect(ensure.request.method).toBe('POST');
+      ensure.flush({ refinement: session({ runtimeStatus: 'STARTING' }) });
+      await settle();
+      await flushRefinements([session({ runtimeStatus: 'STARTING' })]);
+
+      http.expectNone('/projects/api/refinements/7/active-process');
+      http.expectNone('/projects/api/refinements/7/ensure-container');
+    });
+
+    it('reads the room’s chat from the desk, and offers its ensure rather than a launch', async () => {
+      await enter(
+        session({ runtimeStatus: 'STOPPED', deskStatus: 'QUEUED' }),
+        `${URL_BASE}?tab=chat`,
+      );
+      http
+        .expectOne('/projects/api/refinements/7/ensure')
+        .flush({ refinement: session({ runtimeStatus: 'STARTING', deskStatus: 'QUEUED' }) });
+      await settle();
+      await flushRefinements([session({ runtimeStatus: 'STARTING', deskStatus: 'QUEUED' })]);
+
+      http.expectNone('/projects/refinement-container/7/commands');
+      http.expectOne('/projects/container/p1/commands').flush({
+        entries: [
+          {
+            command: {
+              id: 'desk-1',
+              kind: 'CHAT',
+              status: 'RUNNING',
+              sessionKey: 'front-desk',
+              agentSessions: [],
+            },
+          },
+        ],
+      });
+      await settle();
+
+      // The desk's own running chat is not this room's, so there is nothing to attach to.
+      expect(text()).toContain('Start the session');
+      expect(element().querySelector('app-prompt-panel')).toBeNull();
+      http.expectNone('/projects/api/refinements/7/prompt-draft');
+    });
+
+    it('shows the desk’s state on the Session tab', async () => {
+      await enter(session({ deskStatus: 'UNAVAILABLE', runtimeStatus: 'STARTING' }));
+      tabs()
+        .find((tab) => tab.textContent?.trim() === 'Session')!
+        .click();
+      await settle();
+
+      expect(element().querySelector('app-status-strip')).not.toBeNull();
+      expect(text()).toContain('Front desk');
+      expect(text()).toContain('unavailable');
+    });
+  });
+
+  /**
+   * Epic qits-770: a campaign has a room of its own, refining it with its REPORTED members — and
+   * since nothing server-side composes a room's prompt, the room's brief names them.
+   */
+  describe('a campaign’s room', () => {
+    const CAMPAIGN = {
+      id: 'c1',
+      number: 430,
+      qualifiedId: 'qits-430',
+      projectId: 'p1',
+      title: 'Rename qits-x',
+      status: 'REPORTED',
+      started: false,
+      active: false,
+      members: 2,
+    };
+    const member = (id: string, qualifiedId: string, status: string, position: number) => ({
+      membershipId: `m-${id}`,
+      position,
+      entity: { id, archetype: 'EPIC', qualifiedId, title: `Member ${qualifiedId}`, status },
+      claimedAt: null,
+      joinedRunning: false,
+      dispatchedAt: null,
+      dispatch: { workspaceId: null, branch: null, agentLaunch: null },
+      dispatchRefusal: null,
+      dispatchRefusedAt: null,
+      dispatchError: null,
+      groups: [],
+    });
+
+    it('resolves the campaign, and names its REPORTED members in the room’s brief', async () => {
+      await harness.navigateByUrl('/p1/work/qits-430/refinement');
+      await flushProjectList();
+      await flushWork([EPIC], [], [CAMPAIGN]);
+      http.expectOne('/projects/api/work/qits-430/members').flush({
+        members: [member('e1', 'qits-5', 'REPORTED', 0), member('e8', 'qits-9', 'REFINED', 1)],
+      });
+      await settle();
+      const room = workspace({
+        id: 4,
+        entityId: 'c1',
+        branch: null,
+        parent: null,
+        runtimeStatus: 'RUNNING',
+        deskStatus: 'RUNNING',
+        deskBase: '/projects/container/p1/',
+      });
+      await flushRefinements([room], 'c1');
+
+      expect(text()).toContain('Rename qits-x');
+      const brief = page()['promptContext']();
+      expect(brief).toContain('# Refine campaign qits-430: Rename qits-x');
+      expect(brief).toContain('- qits-5: Member qits-5 (epic, entity id e1)');
+      expect(brief).not.toContain('qits-9');
+    });
+  });
+
   describe('while the refinements are still being read', () => {
     it('says it is looking rather than drawing nothing at all', async () => {
       await harness.navigateByUrl(URL_BASE);
@@ -1142,7 +1295,9 @@ describe('RefiningPage', () => {
       expect(text()).toContain('Epic refining workspace');
 
       // Only then does the upgrade land, and it swaps the row underneath a page already drawn.
-      http.expectOne('/projects/api/refinements/7').flush({ refinement: workspace({ ahead: 4 }) });
+      http
+        .expectOne('/projects/api/refinements/7')
+        .flush({ refinement: workspace({ runtimeError: 'the disk is full' }) });
       await settle();
       http.expectOne('/projects/api/refinements/7/active-process').flush({
         technicalProcessId: null,
@@ -1154,7 +1309,7 @@ describe('RefiningPage', () => {
         .find((tab) => tab.textContent?.trim() === 'Container')!
         .click();
       await settle();
-      expect(text()).toContain('4 ahead');
+      expect(text()).toContain('the disk is full');
     });
 
     /** The residue of the three states is a state too, and it is never an empty content area. */
@@ -1191,11 +1346,7 @@ describe('RefiningPage', () => {
         branch: 'refining/agent-configuration-system',
         label: 'refining-agent-configuration-system',
         runtimeStatus: 'RUNNING',
-        clean: true,
-        ahead: null,
-        behind: null,
         agentActivity: null,
-        daemonOutdated: null,
       });
 
     it('opens on the listing alone, with the drift read still outstanding', async () => {

@@ -7,6 +7,7 @@ import { RefinementAgent } from '../../api/refinement-agent';
 import type { RefinementDto } from '../../api/refinements-api';
 import { WEB_SOCKET_FACTORY, WEB_SOCKET_OPEN, type WebSocketLike } from '../../api/web-socket';
 import { WorkspaceCommands } from '../../api/workspace-commands';
+import { WorkspaceDaemonApi } from '../../api/workspace-daemon-api';
 import { AgentSession } from './agent-session';
 
 /** Several turns, because a client call is several awaits deep. */
@@ -344,5 +345,92 @@ describe('AgentSession', () => {
     const branch = service.branch();
     expect(branch.kind).toBe('unavailable');
     expect(branch.kind === 'unavailable' && branch.message).toContain('container');
+  });
+
+  /**
+   * A session room (epic qits-770): its daemon is the project's desk, shared with the desk's own
+   * session and every other room's. Its Agents tab reads only what the desk keyed to the room's
+   * entity, and launches nothing — the desk runs the room's session.
+   */
+  describe('in a session room', () => {
+    const DESK = '/projects/container/p1';
+
+    async function openSession(
+      commands: readonly CommandDto[],
+      sessions: readonly object[],
+    ): Promise<AgentSession> {
+      TestBed.inject(WorkspaceDaemonApi).observeRooms([
+        {
+          id: 8,
+          entityId: 'e-8',
+          branch: null,
+          deskBase: '/projects/container/p1/',
+        } as RefinementDto,
+      ]);
+      const service = TestBed.inject(AgentSession);
+      service.use(8);
+      TestBed.tick();
+      http.expectOne(`${DESK}/agent-sessions`).flush({ sessions });
+      http
+        .expectOne(`${DESK}/agents/available`)
+        .flush({ agents: ['CLAUDE'], defaultAgent: 'CLAUDE' });
+      http
+        .expectOne(`${DESK}/commands`)
+        .flush({ entries: commands.map((entry) => ({ command: entry })) });
+      await settle();
+      TestBed.tick();
+      await settle();
+      return service;
+    }
+
+    const node = (sessionId: string, sessionKey?: string, children: object[] = []) => ({
+      sessionId,
+      ...(sessionKey ? { sessionKey } : {}),
+      subagents: [],
+      children,
+    });
+
+    it('lists only the sessions and runs keyed to the room’s entity', async () => {
+      const service = await openSession(
+        [
+          command({ id: 'desk', agentSessions: [session('s-desk')], sessionKey: 'front-desk' }),
+          command({ id: 'mine', agentSessions: [session('s-mine')], sessionKey: 'e-8' }),
+        ],
+        [
+          node('s-desk', 'front-desk'),
+          node('s-mine', 'e-8'),
+          node('s-root', undefined, [node('s-fork', 'e-8')]),
+          node('s-other', 'e-9'),
+        ],
+      );
+
+      const state = service.sessions();
+      expect(state.kind === 'ready' && state.value.map((entry) => entry.sessionId)).toEqual([
+        's-mine',
+        's-root',
+      ]);
+      expect(service.branch()).toEqual({ kind: 'attached', commandId: 'mine' });
+      expect(sockets[0].url).toContain(`${DESK}/terminal/commands/mine`);
+    });
+
+    it('launches nothing with no history, and says the desk runs the session', async () => {
+      const service = await openSession(
+        [command({ id: 'desk', agentSessions: [session('s-desk')], sessionKey: 'front-desk' })],
+        [node('s-desk', 'front-desk')],
+      );
+
+      expect(service.branch()).toEqual({ kind: 'desk' });
+      http.expectNone(`${DESK}/agent-worktrees`);
+      expect(sockets).toHaveLength(0);
+    });
+
+    it('refuses a press to start one, rather than sending a launch the desk does not serve', async () => {
+      const service = await openSession([], []);
+
+      await service.startFresh();
+
+      http.expectNone(`${DESK}/agent-worktrees`);
+      expect(service.problem()).toContain('front desk');
+    });
   });
 });

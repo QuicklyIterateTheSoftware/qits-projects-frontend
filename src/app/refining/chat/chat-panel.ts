@@ -7,12 +7,14 @@ import {
   effect,
   inject,
   input,
+  output,
   signal,
   untracked,
   viewChild,
 } from '@angular/core';
 import { QitsButton } from '@qits/ui-components';
 import { CommandsApi, type CommandDto } from '../../api/commands-api';
+import { RefinementsApi } from '../../api/refinements-api';
 import { WEB_SOCKET_FACTORY } from '../../api/web-socket';
 import { WorkspaceCommands } from '../../api/workspace-commands';
 import { WorkspaceDaemonApi } from '../../api/workspace-daemon-api';
@@ -61,6 +63,17 @@ import { PromptPanel } from './prompt-panel';
  * launch just returned and stops the moment the registry knows the command — either by reporting it
  * running, or by reporting it finished.
  *
+ * ## A session room's conversation is the desk's (epic qits-770)
+ *
+ * A room opened now is a session of the project's front desk: the desk launches, resumes and stops
+ * it, and nothing here launches one. So in a session room the panel attaches to the session the row
+ * reports ({@link sessionCommandId}) or to the room's own running chat on the desk (the command list
+ * is already narrowed to the room's `sessionKey`), and with neither it offers the room's ensure in
+ * place of the prompt panel, whose launch and rewrite are a container daemon's. Terminate becomes
+ * the room's stop, since a terminated session the desk still wants is simply launched again. The
+ * room's brief ({@link preamble}) seeds the first message of an empty conversation, which is how a
+ * campaign's room is told its REPORTED members.
+ *
  * ## Side-chains join at the end, and the UI says so
  *
  * The live tail covers the main session only; a sub-agent's side-chain is imported by the exit
@@ -81,6 +94,7 @@ export class ChatPanel {
   private readonly commands = inject(WorkspaceCommands);
   private readonly api = inject(CommandsApi);
   private readonly daemon = inject(WorkspaceDaemonApi);
+  private readonly refinements = inject(RefinementsApi);
   private readonly openSocket = inject(WEB_SOCKET_FACTORY);
   protected readonly picked = inject(PickedContext);
 
@@ -92,6 +106,22 @@ export class ChatPanel {
 
   /** Whether the keep-mounted tab is currently measurable on screen. */
   readonly visible = input(true);
+
+  /** Whether the room is a session of the project's front desk rather than a container room. */
+  readonly sessionRoom = input(false);
+
+  /** The desk command running a session room's session, as the row reports it while RUNNING. */
+  readonly sessionCommandId = input<string | null>(null);
+
+  /** A session room's ensure or stop was pressed here. The page re-reads the row. */
+  readonly changed = output<void>();
+
+  /** A session room's ensure from this tab, while it is out. */
+  protected readonly ensuring = signal(false);
+  protected readonly ensureProblem = signal<string | null>(null);
+
+  /** The brief last seeded into the draft, and the session it was seeded for. */
+  private seeded: { readonly commandId: string; readonly text: string } | null = null;
 
   protected readonly commandsState = this.commands.commands;
 
@@ -165,15 +195,32 @@ export class ChatPanel {
       });
     });
 
+    // A session room's brief seeds the first message of an empty conversation, once per session,
+    // and leaves again untouched if the replay shows the conversation was not empty after all.
+    effect(() => {
+      const commandId = this.sessionRoom() ? (this.session()?.id ?? null) : null;
+      const empty = this.conversation().items.length === 0;
+      const brief = (this.preamble() ?? '').trim();
+      untracked(() => this.seed(commandId, empty, brief));
+    });
+
     inject(DestroyRef).onDestroy(() => this.detach());
   }
 
   // ---- which conversation, if any ----------------------------------------------------------------
 
-  /** The chat that owns this workspace: what the registry says, or what a launch just returned. */
-  protected readonly session = computed<CommandDto | null>(
-    () => this.commands.runningChat() ?? this.bridged(),
-  );
+  /**
+   * The chat that owns this workspace: what the registry says, what the row reports for a session
+   * room, or what a launch just returned.
+   */
+  protected readonly session = computed<{ readonly id: string } | null>(() => {
+    const running = this.commands.runningChat();
+    if (running) {
+      return running;
+    }
+    const reported = this.sessionRoom() ? this.sessionCommandId() : null;
+    return reported ? { id: reported } : this.bridged();
+  });
 
   private readonly lines = computed<readonly string[]>(() => this.socket()?.lines() ?? []);
 
@@ -242,7 +289,11 @@ export class ChatPanel {
     this.followTail = distanceFromTail <= ChatPanel.TAIL_THRESHOLD_PX;
   }
 
-  /** End the run. Invalidates on settled, not on success — a failed terminate still refetches. */
+  /**
+   * End the run. Invalidates on settled, not on success — a failed terminate still refetches. A
+   * session room's run is stopped through the room (`POST /refinements/{id}/stop`): the desk keeps
+   * launching a session the service still wants, so terminating its command would be undone.
+   */
   protected async terminate(): Promise<void> {
     const command = this.session();
     if (!command || this.terminating()) {
@@ -251,6 +302,11 @@ export class ChatPanel {
     this.terminating.set(true);
     this.terminateProblem.set(null);
     try {
+      if (this.sessionRoom()) {
+        await this.refinements.stop(this.workspaceRowId());
+        this.changed.emit();
+        return;
+      }
       await this.api.terminate(this.workspaceRowId(), command.id);
     } catch (error) {
       this.terminateProblem.set(`The session did not stop — ${describeError(error)}.`);
@@ -262,6 +318,40 @@ export class ChatPanel {
 
   protected retry(): void {
     void this.commands.refresh();
+  }
+
+  /** Bring a session room's session up — the room's ensure — and let the page re-read the row. */
+  protected async ensureSession(): Promise<void> {
+    if (this.ensuring()) {
+      return;
+    }
+    this.ensuring.set(true);
+    this.ensureProblem.set(null);
+    try {
+      await this.refinements.ensure(this.workspaceRowId());
+    } catch (error) {
+      this.ensureProblem.set(`The session did not start — ${describeError(error)}.`);
+    } finally {
+      this.ensuring.set(false);
+      this.changed.emit();
+      await this.commands.refresh();
+    }
+  }
+
+  private seed(commandId: string | null, empty: boolean, brief: string): void {
+    if (!commandId || !brief) {
+      return;
+    }
+    if (this.seeded?.commandId !== commandId) {
+      if (empty && this.draft() === '') {
+        this.draft.set(brief);
+        this.seeded = { commandId, text: brief };
+      }
+      return;
+    }
+    if (!empty && this.draft() === this.seeded.text) {
+      this.draft.set('');
+    }
   }
 
   // ---- the socket ---------------------------------------------------------------------------------
