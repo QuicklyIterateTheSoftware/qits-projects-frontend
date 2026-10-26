@@ -23,10 +23,8 @@ import { RefinementsApi, isSessionRoom } from './refinements-api';
  * them (qits-1316) without breaking this pact: the SPA tells a legacy room by a `branch` that is
  * there, and an absent one reads as a session room.
  *
- * <p>Those three interactions need the session golden masters (qits-projects-service f4e0962d,
- * released by its rr-362). Until the pinned `@qits/projects-golden-masters` records them, this spec
- * neither generates nor owns them — {@link SESSIONS} — and the committed pact keeps the ones
- * generated against the service's own recording; once the pin moves, they are checked like the rest.
+ * <p>They are the session golden masters qits-projects-service recorded in its rr-362
+ * (2026.1025.214027).
  */
 const CONSUMER = 'qits-projects-frontend';
 const PROVIDER = 'qits-projects-service';
@@ -48,31 +46,11 @@ const SESSION_FIELDS = [
   'refinement.deskBase',
 ];
 
-/** Whether the pinned golden masters record a session room — see the class note. */
-const SESSIONS = ((): boolean => {
-  try {
-    masters.operation(SESSION_STATE, 'ensureRefinementSession');
-    masters.operation(SESSION_STATE, 'stopRefinementSession');
-    const found = masters.body<{ refinement?: Record<string, unknown> }>(
-      SESSION_STATE,
-      'getWorkRefinement',
-    );
-    return found.refinement !== undefined && 'deskBase' in found.refinement;
-  } catch {
-    return false;
-  }
-})();
-
 const OPERATIONS: readonly OwnedOperation[] = [
   'startWorkRefinement',
-  { operationId: 'getWorkRefinement', interactions: ['show-work-item'] },
-  ...(SESSIONS
-    ? [
-        { operationId: 'getWorkRefinement', interactions: ['show-refinement-room'] },
-        'ensureRefinementSession',
-        'stopRefinementSession',
-      ]
-    : []),
+  { operationId: 'getWorkRefinement', interactions: ['show-work-item', 'show-refinement-room'] },
+  'ensureRefinementSession',
+  'stopRefinementSession',
 ];
 
 const dir = mkdtempSync(join(tmpdir(), 'qits-projects-frontend-refinements-api-pact-'));
@@ -99,9 +77,6 @@ const ref = (state: string, operationId: string) =>
 /** The room a recording addresses. */
 const roomId = (state: string, operationId: string) =>
   Number(masters.operation(state, operationId).params['refinementId']);
-
-/** Registers the test only where the pinned golden masters record a session room. */
-const withSessions = SESSIONS ? it : it.skip;
 
 describe('qits-projects-frontend → qits-projects-service pact: RefinementsApi', () => {
   afterAll(() => {
@@ -142,7 +117,7 @@ describe('qits-projects-frontend → qits-projects-service pact: RefinementsApi'
     );
   });
 
-  withSessions('show-refinement-room: a session room is found with its session and its desk', () =>
+  it('show-refinement-room: a session room is found with its session and its desk', () =>
     given(SESSION_STATE, 'getWorkRefinement', 'show-refinement-room', SESSION_FIELDS).executeTest(
       async (server) => {
         const room = await apiAt(server.url, RefinementsApi).findFor(
@@ -154,10 +129,9 @@ describe('qits-projects-frontend → qits-projects-service pact: RefinementsApi'
         expect(room!.deskStatus).toBe('QUEUED');
         expect(room!.runtimeStatus).toBe('STARTING');
       },
-    ),
-  );
+    ));
 
-  withSessions('start-refinement-session: ensure answers the room as it now stands', () =>
+  it('start-refinement-session: ensure answers the room as it now stands', () =>
     given(SESSION_STATE, 'ensureRefinementSession', 'start-refinement-session', [
       'refinement.id',
       'refinement.runtimeStatus',
@@ -169,10 +143,9 @@ describe('qits-projects-frontend → qits-projects-service pact: RefinementsApi'
         roomId(SESSION_STATE, 'ensureRefinementSession'),
       );
       expect(room.runtimeStatus).toBe('STARTING');
-    }),
-  );
+    }));
 
-  withSessions('stop-refinement-session: stop answers the room stopped', () =>
+  it('stop-refinement-session: stop answers the room stopped', () =>
     given(SESSION_STATE, 'stopRefinementSession', 'stop-refinement-session', [
       'refinement.id',
       'refinement.runtimeStatus',
@@ -184,6 +157,5 @@ describe('qits-projects-frontend → qits-projects-service pact: RefinementsApi'
         roomId(SESSION_STATE, 'stopRefinementSession'),
       );
       expect(room.runtimeStatus).toBe('STOPPED');
-    }),
-  );
+    }));
 });

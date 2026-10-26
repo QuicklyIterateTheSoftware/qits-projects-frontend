@@ -198,6 +198,8 @@ describe('WorkPage', () => {
         },
       };
     }
+    // A campaign has a refinement room since epic qits-770, so its page looks for one: none yet.
+    if (url === '/projects/api/work/qits-430/refinement') return { refinement: null };
     if (url === '/projects/api/projects/p1/repositories') return { entries: [], wrapper: null };
     if (/\/audit$/.test(url)) return { entries: [] };
     // The campaign's own thread (qits-551): the detail page renders it for every archetype.
