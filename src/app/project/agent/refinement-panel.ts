@@ -9,7 +9,7 @@ import {
   signal,
   untracked,
 } from '@angular/core';
-import { QitsBadge, QitsButton, type QitsBadgeTone } from '@qits/ui-components';
+import { QitsAppLinks, QitsBadge, QitsButton, type QitsBadgeTone } from '@qits/ui-components';
 import type { AgentSurface } from '../../api/agent-daemon-api';
 import type { AgentContainerDto } from '../../api/project-agent-api';
 import { ProjectEvents } from '../../api/project-events';
@@ -163,6 +163,13 @@ const WORDS: Readonly<Record<AgentSurface, DeskWords>> = {
               Signing in writes to the platform's shared credential volume, so one sign-in serves
               every container on it. The terminal below is opened because you asked for it — nothing
               was started in place of the session.
+            </p>
+            <p class="prose">
+              Or sign the desk's target in on its node:
+              <code>qits targets sign-in --target &lt;name&gt;</code>
+              @if (targetsHref(); as href) {
+                — the target and its state are on <a [href]="href">System Targets</a>.
+              }
             </p>
             <qits-button
               variant="secondary"
@@ -334,6 +341,13 @@ const WORDS: Readonly<Record<AgentSurface, DeskWords>> = {
 export class RefinementPanel {
   protected readonly session = inject(RefinementSession);
   private readonly events = inject(ProjectEvents);
+  private readonly appLinks = inject(QitsAppLinks);
+  /**
+   * qits-system's Targets page: a desk runs as a DESK lease on a target, and that target's one
+   * credential volume is what a sign-in writes (epic qits-1481). `undefined` where the platform names
+   * no address for it, so the hint then carries the command alone.
+   */
+  protected readonly targetsHref = computed(() => this.appLinks.href('qits-system', 'targets'));
 
   /** Which project's agent. The panel is per project, and so is the container behind it. */
   readonly projectId = input.required<string>();
