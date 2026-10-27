@@ -1,5 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import { Router, RouterLink } from '@angular/router';
+import { QitsAppLinks } from '@qits/ui-components';
 import type { ProjectDto } from '../api/dto';
 import { ProjectsStore } from '../api/projects-store';
 import { Async } from '../ui/async';
@@ -65,8 +66,13 @@ import { LOADING, failed, ready, type Loadable } from '../ui/loadable';
       <span class="note">What every coding-agent session on this platform runs as.</span>
     </p>
     <p class="platform">
-      <a routerLink="/runners">Front-desk runners</a>
-      <span class="note">The nodes every project's front desk runs on.</span>
+      @if (targetsHref(); as href) {
+        <a [href]="href">System Targets</a>
+      }
+      <span class="note">
+        Where every project's front desk runs. Not signed in on one? Run
+        <code>qits targets sign-in --target &lt;name&gt;</code> on it.
+      </span>
     </p>
   `,
   styles: `
@@ -105,8 +111,16 @@ import { LOADING, failed, ready, type Loadable } from '../ui/loadable';
 export class LandingPage {
   private readonly store = inject(ProjectsStore);
   private readonly router = inject(Router);
+  private readonly appLinks = inject(QitsAppLinks);
 
   protected readonly projects = signal<Loadable<readonly ProjectDto[]>>(LOADING);
+
+  /**
+   * qits-system's Targets page, where a front desk's node is signed in — this application has no
+   * runners page of its own any more (epic qits-1481). `undefined` where the platform names no
+   * address for it, in which case the template draws no link at all rather than one that would 404.
+   */
+  protected readonly targetsHref = computed(() => this.appLinks.href('qits-system', 'targets'));
 
   /** The list, or nothing while it is still a state rather than an answer. */
   protected readonly loaded = computed(() => {
