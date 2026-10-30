@@ -966,6 +966,8 @@ function drawn(kind: string, target: EntityStatus): Pick<LifecycleMove, 'label' 
       return { label: 'Reopen', variant: 'secondary' };
     case 'SKIP':
       return { label: `Skip to ${statusLabel(target)}`, variant: 'ghost' };
+    case 'CLOSE':
+      return { label: 'Close as done', variant: 'primary' };
     default:
       return { label: `Move to ${statusLabel(target)}`, variant: 'ghost' };
   }

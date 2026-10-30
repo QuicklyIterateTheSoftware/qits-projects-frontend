@@ -833,6 +833,34 @@ describe('entities model', () => {
       ]);
     });
 
+    /** CLOSE (qits-1757): a campaign, epic or feature whose children are all closed, straight to DONE. */
+    it('offers a CLOSE move as the primary way to close as done', () => {
+      const withClose: ArchetypeRegistry = {
+        ...REGISTRY,
+        archetypes: [
+          {
+            ...spec('EPIC', WORDS),
+            transitions: {
+              ...TRANSITIONS,
+              VERIFIED: [...TRANSITIONS.VERIFIED, { to: 'DONE', kind: 'CLOSE' }],
+            },
+          },
+        ],
+      };
+      expect(lifecycleMoves(withClose, 'EPIC', 'VERIFIED')).toEqual([
+        { target: 'DONE', kind: 'FORWARD', label: 'Mark done', variant: 'primary', gates: [] },
+        {
+          target: 'IMPLEMENTED',
+          kind: 'BACK',
+          label: 'Back to implemented',
+          variant: 'ghost',
+          gates: [],
+        },
+        { target: 'DROPPED', kind: 'DROP', label: 'Drop', variant: 'ghost', gates: [] },
+        { target: 'DONE', kind: 'CLOSE', label: 'Close as done', variant: 'primary', gates: [] },
+      ]);
+    });
+
     it('draws a kind it has never met plainly', () => {
       const odd: ArchetypeRegistry = {
         ...REGISTRY,
