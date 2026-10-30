@@ -19,7 +19,6 @@ const CATALOG = {
     },
   ],
   reservedKeys: ['repository', 'observability', 'actions'],
-  credentialApplication: 'qits-agent-mcp',
 };
 
 /**
@@ -30,7 +29,8 @@ const CATALOG = {
  * *displace* a platform server rather than collide with it, and the session would look entirely
  * normal while talking to somebody else's server — a bare "already in use" would hide exactly the
  * dangerous half. The second is that the credential is a **reference**: the value lives in
- * qits-configuration, which is what lets it become a secret later without this page changing.
+ * qits-projects' own credential store, is set and deleted with the `qits` CLI, and is never shown
+ * back.
  */
 describe('AgentMcpCatalogPage', () => {
   let http: HttpTestingController;
@@ -108,12 +108,17 @@ describe('AgentMcpCatalogPage', () => {
     http.verify();
   });
 
-  /** The reference is the design, so the page says where the value lives and what to spell. */
-  it('says the credential lives in qits-configuration, under the reserved application', async () => {
+  /** The reference is the design, so the page says where the value lives and how to set it. */
+  it('says the credential lives in qits-projects and is set with the qits CLI', async () => {
     await open();
     expect(text()).toContain('A reference, not the value');
-    expect(text()).toContain('qits-agent-mcp');
+    expect(text()).toContain('qits-projects');
+    expect(text()).toContain('qits agent-mcp credentials set --key <KEY>');
+    expect(text()).toContain('qits agent-mcp credentials delete --key <KEY>');
+    expect(text()).toContain('never shown back');
     expect(text()).toContain('env.');
+    expect(text()).not.toContain('qits-configuration');
+    expect(text()).not.toContain('qits-agent-mcp');
   });
 
   it('writes a new entry under its key', async () => {

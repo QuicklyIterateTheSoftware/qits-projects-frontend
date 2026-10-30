@@ -107,7 +107,6 @@ describe('AgentSurfacePage', () => {
     http.expectOne('/projects/api/agent-mcp-catalog').flush({
       entries: [],
       reservedKeys: ['repository', 'observability', 'actions'],
-      credentialApplication: 'qits-agent-mcp',
     });
     await settle();
   }

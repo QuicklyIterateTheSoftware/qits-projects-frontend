@@ -33,11 +33,11 @@ const BLANK: EntryDraft = {
  * it (url, header, pre-approved tools) belongs to the entry; a surface holds only the key.
  *
  * <p><b>The credential is a reference, and this page says so plainly.</b> The value is never stored
- * here: the entry names a qits-configuration key, and qits-projects resolves it when it builds the
- * document a container is created with. Today that resolves to an ordinary `plain` entry, because
- * qits-configuration's `secret` class does not exist yet — and that is accepted on purpose. **The
- * reference is what makes it a secret later without anything on this page changing**: when secrets
- * management lands there, the same key is served as a secret, no field moves and no editor changes.
+ * in an entry: the entry names a credential key, the value lives in qits-projects' own credential
+ * store, and qits-projects resolves it when it builds the document a container is created with. The
+ * value is set with the `qits` CLI (`qits agent-mcp credentials set --key <KEY>`, the value on stdin)
+ * or removed (`qits agent-mcp credentials delete --key <KEY>`), and nothing ever shows it back —
+ * not this page, not the CLI.
  *
  * <p><b>The reserved keys are explained, not merely refused.</b> `repository`, `actions` and
  * `observability` are the platform's own servers, and both harnesses render one key-to-config object
@@ -193,14 +193,12 @@ const BLANK: EntryDraft = {
             (input)="patch({ credentialKey: $any($event.target).value })"
           />
           <span class="hint">
-            <strong>A reference, not the value.</strong> The header's value lives in
-            qits-configuration and is read when the document a container is created with is built —
-            nothing about it is stored here, and nothing here ever shows it. Spell it
-            <code>env.&lt;VAR&gt;</code> under the reserved application
-            <code>{{ answer.credentialApplication }}</code
-            >, which nothing deploys, so the key is never rendered into any application's
-            environment. When qits-configuration grows secrets management the same key is served as
-            a secret and this page does not change.
+            <strong>A reference, not the value.</strong> The header's value lives in qits-projects'
+            own credential store and is read when the document a container is created with is built
+            — nothing about it is stored in the entry, and it is never shown back. Spell the key
+            <code>env.&lt;VAR&gt;</code>, set its value first with
+            <code>qits agent-mcp credentials set --key &lt;KEY&gt;</code> (the value on stdin), and
+            remove it with <code>qits agent-mcp credentials delete --key &lt;KEY&gt;</code>.
           </span>
         </label>
 
@@ -495,7 +493,7 @@ function splitTools(text: string): readonly string[] {
  * A save failure, preferring the service's own sentence.
  *
  * The three refusals it can answer — a reserved key, a url that is not http(s), a credential key
- * qits-configuration does not hold — each explain themselves better than a status can, and the last
+ * with no credential set — each explain themselves better than a status can, and the last
  * one names the missing key, which is the only way a reader finds it.
  */
 function describeSave(error: unknown): string {

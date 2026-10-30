@@ -40,11 +40,11 @@ export interface AgentMcpCatalogEntryDto {
   readonly url: string;
   readonly headerName: string;
   /**
-   * The **qits-configuration key** holding the header's value — never the value.
+   * The **credential key** holding the header's value — never the value.
    *
-   * That indirection is the whole design: the value lives in qits-configuration and is resolved when
-   * the document a container is born with is built, so when that service grows real secrets
-   * management the same key is served as a secret and nothing here changes.
+   * That indirection is the whole design: the value lives in qits-projects' own write-only
+   * credential store (set with `qits agent-mcp credentials set`) and is resolved when the document a
+   * container is born with is built.
    */
   readonly credentialKey: string;
   readonly allowedTools: readonly string[];
@@ -147,13 +147,11 @@ export interface AgentCapabilityCatalogueDto {
   readonly harnesses: readonly AgentHarnessCapabilityDto[];
 }
 
-/** The catalog, and the two facts an operator needs before adding to it. */
+/** The catalog, and the keys an entry may not claim. */
 export interface CatalogListResponse {
   readonly entries: readonly AgentMcpCatalogEntryDto[];
   /** Keys an entry may not claim, because a platform server already renders under them. */
   readonly reservedKeys: readonly string[];
-  /** The qits-configuration application every `credentialKey` lives under. Reserved; nothing deploys it. */
-  readonly credentialApplication: string;
 }
 
 /** One catalog entry, written whole. The key is the address, so it is not in the body. */
