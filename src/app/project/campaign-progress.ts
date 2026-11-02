@@ -29,7 +29,14 @@ import {
   statusOf,
   type Loadable,
 } from '../ui/loadable';
-import { STATE_MEANINGS, STATE_TONES, evidenceLine, stateLabel } from './campaign-model';
+import {
+  STATE_MEANINGS,
+  STATE_TONES,
+  campaignLive,
+  evidenceLine,
+  heldByLine,
+  stateLabel,
+} from './campaign-model';
 import { statusLabel } from './entities-model';
 
 /** The header line, drawn only when nothing is listening for the events the criteria wait on. */
@@ -44,6 +51,9 @@ const EVALUATOR_DOWN =
  * presses. There is no polling and no topic of its own.
  *
  * <ul>
+ *   <li><b>The derived status</b> (qits-650): the campaign's status is the lowest among its
+ *       non-dropped members', and the header says so and — where the service sends `heldBy` — names
+ *       the members holding it there, each a link to its page.</li>
  *   <li><b>A state chip per member</b>, one of the eight words, with its meaning on hover.</li>
  *   <li><b>WAITING</b> lists each outstanding criterion's `wouldBeSatisfiedBy`. One with
  *       `satisfiable: false` is drawn in the warning variant with its `reason` — the "stuck versus
@@ -78,6 +88,20 @@ const EVALUATOR_DOWN =
       />
 
       @if (loaded(); as p) {
+        @if (live()) {
+          <p class="derived">
+            Its status is derived from its members: the lowest status among those not dropped.
+          </p>
+        }
+        @if (heldBy(); as held) {
+          <p class="held-by">
+            Held at {{ held.status }} by
+            @for (qualified of held.members; track qualified; let last = $last) {
+              <a class="holder" [routerLink]="memberRoute(qualified)">{{ qualified }}</a
+              >{{ last ? '' : ', ' }}
+            }
+          </p>
+        }
         @if (!p.evaluator.connected || p.evaluator.stalled) {
           <p class="evaluator-warning" role="status">{{ evaluatorDown }}</p>
         }
@@ -211,6 +235,19 @@ const EVALUATOR_DOWN =
       color: #6b7280;
       font-style: italic;
     }
+    .derived {
+      margin: 0 0 0.25rem;
+      color: #6b7280;
+      font-size: 0.85rem;
+    }
+    .held-by {
+      margin: 0 0 0.6rem;
+      color: #374151;
+      font-size: 0.85rem;
+    }
+    .holder {
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    }
     .evaluator-warning {
       margin: 0 0 0.6rem;
       padding: 0.35rem 0.55rem;
@@ -331,6 +368,21 @@ export class CampaignProgress {
     const state = this.progress();
     return state.kind === 'ready' ? state.value : null;
   });
+
+  /**
+   * Which members set the campaign's derived status (qits-650) — "Held at refined by qits-752".
+   * Nothing when the service sends no `heldBy` (one older than qits-650) or an empty one.
+   */
+  protected readonly heldBy = computed(() => {
+    const campaign = this.loaded()?.campaign;
+    return campaign ? heldByLine(campaign) : null;
+  });
+
+  /**
+   * Neither DONE nor DROPPED — the two statuses a campaign is never recomputed out of (qits-650), so
+   * the derived-status line is drawn only off them.
+   */
+  protected readonly live = computed(() => campaignLive(this.loaded()?.campaign.status ?? null));
 
   /** A finished campaign takes no approval (the service answers 409), so none is asked for. */
   protected readonly askable = computed(() => {

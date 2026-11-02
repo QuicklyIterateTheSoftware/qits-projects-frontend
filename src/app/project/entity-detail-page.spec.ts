@@ -57,6 +57,19 @@ const TRANSITIONS = {
   DROPPED: [{ to: 'REPORTED', kind: 'REOPEN' }],
 };
 
+/**
+ * A campaign's served moves since qits-650: its status is derived from its members, so a person only
+ * drops it (from every status but DONE and DROPPED) or reopens it (DROPPED → REPORTED).
+ */
+const CAMPAIGN_TRANSITIONS = {
+  REPORTED: [{ to: 'DROPPED', kind: 'DROP' }],
+  REFINED: [{ to: 'DROPPED', kind: 'DROP' }],
+  IMPLEMENTED: [{ to: 'DROPPED', kind: 'DROP' }],
+  VERIFIED: [{ to: 'DROPPED', kind: 'DROP' }],
+  DONE: [],
+  DROPPED: [{ to: 'REPORTED', kind: 'REOPEN' }],
+};
+
 function spec(archetype: string, lifecycle: readonly string[], permitted: readonly string[]) {
   return {
     archetype,
@@ -71,7 +84,8 @@ function spec(archetype: string, lifecycle: readonly string[], permitted: readon
     permitted,
     legalStatuses: [...lifecycle].sort(),
     lifecycle,
-    transitions: lifecycle.length > 0 ? TRANSITIONS : {},
+    transitions:
+      lifecycle.length === 0 ? {} : archetype === 'CAMPAIGN' ? CAMPAIGN_TRANSITIONS : TRANSITIONS,
   };
 }
 
@@ -1738,7 +1752,41 @@ describe('EntityDetailPage', () => {
       );
     });
 
-    it('names both statuses a campaign starts from where it cannot start', async () => {
+    /** qits-650: a campaign starts at every derived status but DONE and DROPPED. */
+    it('offers Start on an IMPLEMENTED campaign the state calls startable', async () => {
+      campaignRowPatch = { status: 'IMPLEMENTED' };
+      dispatchStates['c1'] = stateOf({
+        entityId: 'c1',
+        archetype: 'CAMPAIGN',
+        status: 'IMPLEMENTED',
+        nextPhase: 'start',
+      });
+      await open('/qits/work/qits-430');
+
+      expect(buttonNamed('Start campaign').disabled).toBe(false);
+      expect(element().querySelector('.flow-note')?.textContent).toContain(
+        'A press starts the campaign.',
+      );
+    });
+
+    it('says a campaign runs until it is done or dropped where a DROPPED one cannot start', async () => {
+      campaignRowPatch = { status: 'DROPPED' };
+      dispatchStates['c1'] = stateOf({
+        entityId: 'c1',
+        archetype: 'CAMPAIGN',
+        status: 'DROPPED',
+        nextPhase: null,
+        dispatchable: false,
+      });
+      await open('/qits/work/qits-430');
+
+      expect(buttonNamed('Start campaign').disabled).toBe(true);
+      expect(element().querySelector('.flow-note')?.textContent).toBe(
+        'Nothing to start at dropped — a campaign runs until it is done or dropped.',
+      );
+    });
+
+    it('names no starting statuses where a live campaign still cannot start', async () => {
       dispatchStates['c1'] = stateOf({
         entityId: 'c1',
         archetype: 'CAMPAIGN',
@@ -1748,8 +1796,24 @@ describe('EntityDetailPage', () => {
       });
       await open('/qits/work/qits-430');
 
-      expect(element().querySelector('.flow-note')?.textContent).toContain(
-        'a campaign starts from refined or ready for dev',
+      const note = element().querySelector('.flow-note')?.textContent ?? '';
+      expect(note).toBe('Nothing to start at reported.');
+      expect(note).not.toContain('refined or ready for dev');
+    });
+
+    it('says to unblock a blocked campaign before starting it', async () => {
+      dispatchStates['c1'] = stateOf({
+        entityId: 'c1',
+        archetype: 'CAMPAIGN',
+        status: 'REFINED',
+        nextPhase: 'start',
+        blocked: true,
+        dispatchable: false,
+      });
+      await open('/qits/work/qits-430');
+
+      expect(element().querySelector('.flow-note')?.textContent).toBe(
+        'Blocked — unblock it before starting.',
       );
     });
 
@@ -1770,17 +1834,36 @@ describe('EntityDetailPage', () => {
       );
     });
 
-    it('moves its status through the campaign door, never the multi-entity transition', async () => {
+    /**
+     * qits-650: the moves are the registry's, and a campaign's are Drop and Reopen alone — no
+     * forward or back, and the page says the status is derived from the members.
+     */
+    it('draws only the served Drop on a live campaign, and says its status follows its members', async () => {
       await open('/qits/work/qits-430');
 
-      button('.move.forward').click();
+      const moves = Array.from(element().querySelectorAll('.moves .move')).map((node) =>
+        node.textContent?.trim(),
+      );
+      expect(moves).toEqual(['Drop']);
+      expect(element().querySelector('.move.forward')).toBeNull();
+      expect(element().querySelector('.move.back')).toBeNull();
+      expect(element().querySelector('.derived-note')?.textContent?.trim()).toBe(
+        'Its status follows its members — by hand it is only dropped or reopened.',
+      );
+    });
+
+    it('reopens a DROPPED campaign through the campaign door, never the multi-entity transition', async () => {
+      campaignRowPatch = { status: 'DROPPED' };
+      await open('/qits/work/qits-430');
+
+      button('.move.reopen').click();
       await serve();
 
       expect(writes()).toEqual([
         {
           method: 'POST',
           url: '/projects/api/work/qits-430/status',
-          body: { target: 'IMPLEMENTED' },
+          body: { target: 'REPORTED' },
         },
       ]);
     });

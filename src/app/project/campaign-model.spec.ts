@@ -2,12 +2,14 @@ import type { CampaignMemberDto, CriterionDto, CriterionGroupDto } from '../api/
 import {
   approvalCriterion,
   campaignEntity,
+  campaignLive,
   campaignLine,
   criterionSentence,
   deploymentCriterion,
   editableMember,
   membershipEditable,
   entityStatusCriterion,
+  heldByLine,
   memberRefs,
   releaseCriterion,
   waitTargets,
@@ -199,22 +201,51 @@ describe('campaign-model', () => {
     expect(criterionSentence(approvalCriterion(), refs)).toBe('a person approves');
   });
 
-  it('is editable only while unclaimed on a campaign being shaped', () => {
+  it('is editable only while unclaimed on a campaign neither done nor dropped', () => {
     expect(editableMember(member('a', 'qits-1'), 'REFINED')).toBe(true);
     expect(
       editableMember(member('a', 'qits-1', [], { claimedAt: '2026-09-27T09:00:00Z' }), 'REFINED'),
     ).toBe(false);
-    expect(editableMember(member('a', 'qits-1'), 'IMPLEMENTED')).toBe(false);
+    // qits-650: a derived IMPLEMENTED no longer freezes the plan — adding a REPORTED member is how
+    // the campaign drops back.
+    expect(editableMember(member('a', 'qits-1'), 'IMPLEMENTED')).toBe(true);
+    expect(editableMember(member('a', 'qits-1'), 'DONE')).toBe(false);
   });
 
-  /** qits-887: the service's CampaignService.EDITABLE — READY_FOR_DEV is still being shaped. */
-  it('takes membership edits at REPORTED, REFINED and READY_FOR_DEV, and nowhere else', () => {
-    expect(membershipEditable('REPORTED')).toBe(true);
-    expect(membershipEditable('REFINED')).toBe(true);
-    expect(membershipEditable('READY_FOR_DEV')).toBe(true);
-    expect(membershipEditable('IMPLEMENTED')).toBe(false);
+  /** qits-650: the service's membership rule — every status but DONE and DROPPED. */
+  it('takes membership edits while the campaign is neither DONE nor DROPPED', () => {
+    for (const status of [
+      'REPORTED',
+      'REFINED',
+      'READY_FOR_DEV',
+      'IMPLEMENTED',
+      'VERIFIED',
+    ] as const) {
+      expect(membershipEditable(status)).toBe(true);
+    }
+    expect(membershipEditable('DONE')).toBe(false);
     expect(membershipEditable('DROPPED')).toBe(false);
     expect(membershipEditable(null)).toBe(false);
+  });
+
+  it('calls a campaign live while it is neither DONE nor DROPPED', () => {
+    expect(campaignLive('REPORTED')).toBe(true);
+    expect(campaignLive('IMPLEMENTED')).toBe(true);
+    expect(campaignLive('DONE')).toBe(false);
+    expect(campaignLive('DROPPED')).toBe(false);
+    expect(campaignLive(null)).toBe(false);
+  });
+
+  /** qits-650: who holds the derived status, read as optional. */
+  it('names the members holding the status, and nothing without heldBy', () => {
+    expect(heldByLine({ status: 'READY_FOR_DEV', heldBy: ['qits-752', 'qits-753'] })).toEqual({
+      status: 'ready for dev',
+      members: ['qits-752', 'qits-753'],
+    });
+    expect(heldByLine({ status: 'REFINED' })).toBeNull();
+    expect(heldByLine({ status: 'REFINED', heldBy: null })).toBeNull();
+    expect(heldByLine({ status: 'DONE', heldBy: [] })).toBeNull();
+    expect(heldByLine({ status: null, heldBy: ['qits-752'] })).toBeNull();
   });
 
   it('draws a listing row as a desk item', () => {

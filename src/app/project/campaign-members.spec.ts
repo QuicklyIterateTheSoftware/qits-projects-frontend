@@ -351,4 +351,46 @@ describe('CampaignMembers', () => {
     // The seeded row is still visible: read-only, not hidden.
     expect(b.querySelector('.seeded')?.textContent).toBe('seeded');
   });
+
+  /** qits-650: membership is edited at every derived status but DONE and DROPPED. */
+  it('keeps the plan editable at a derived IMPLEMENTED', async () => {
+    current = campaign({ status: 'IMPLEMENTED' });
+    void fixture.componentInstance.load();
+    await settle();
+
+    expect(element().querySelector('.locked')).toBeNull();
+    expect(row('a').querySelector('.remove-member')).toBeTruthy();
+  });
+
+  it('fixes the membership on a DONE campaign, and says when it is edited', async () => {
+    current = campaign({ status: 'DONE' });
+    void fixture.componentInstance.load();
+    await settle();
+
+    expect(element().querySelector('.locked')?.textContent?.replace(/\s+/g, ' ').trim()).toBe(
+      'Membership is fixed at done — it is edited while the campaign is neither done nor dropped.',
+    );
+    expect(row('a').querySelector('.remove-member')).toBeNull();
+  });
+
+  /** qits-650: `holdsStatus` marks the members holding the derived status; absent marks nothing. */
+  it('marks the members that hold the status, and none where the service says nothing', async () => {
+    expect(element().querySelector('.holds-status')).toBeNull();
+
+    current = campaign();
+    current = {
+      ...current,
+      members: current.members.map((row) =>
+        row.membershipId === 'm-a' ? { ...row, holdsStatus: true } : { ...row, holdsStatus: false },
+      ),
+    };
+    void fixture.componentInstance.load();
+    await settle();
+
+    expect(row('a').querySelector('.holds-status')?.textContent?.trim()).toBe('holds the status');
+    expect(row('a').querySelector('.holds-status')?.getAttribute('title')).toBe(
+      'Its status sets the campaign at refined.',
+    );
+    expect(row('b').querySelector('.holds-status')).toBeNull();
+  });
 });

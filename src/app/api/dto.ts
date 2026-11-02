@@ -1935,6 +1935,13 @@ export interface CampaignMemberDto {
   readonly dispatchRefusedAt: string | null;
   readonly dispatchError: string | null;
   readonly groups: readonly CriterionGroupDto[];
+  /**
+   * Whether this member sets the campaign's derived status (qits-650): it is not dropped, and its
+   * status, mapped onto the campaign walk, is the campaign's own. Optional — a service older than
+   * qits-650 does not send it, and absent reads as "say nothing". Hand-added; the pacts do not
+   * consume it yet.
+   */
+  readonly holdsStatus?: boolean;
 }
 
 /** A campaign with its start and its members, ordered by position. */
@@ -2000,6 +2007,13 @@ export interface CampaignProgressCampaignDto {
   /** {@link TicketDto.blockedBy}, rule for rule. */
   readonly blockedBy?: string | null;
   readonly start: CampaignStartDto | null;
+  /**
+   * The qualified ids of the members that set the campaign's derived status (qits-650) — the
+   * non-dropped members whose status, mapped onto the campaign walk, equals the campaign's. Empty for
+   * a DONE or DROPPED campaign and for one with no members. Optional: a service older than qits-650
+   * does not send it, and absent reads as "say nothing". Hand-added; the pacts do not consume it yet.
+   */
+  readonly heldBy?: readonly string[];
 }
 
 /**

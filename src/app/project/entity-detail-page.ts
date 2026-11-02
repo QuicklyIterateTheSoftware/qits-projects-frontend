@@ -41,6 +41,7 @@ import {
 } from '../ui/loadable';
 import { MarkdownView } from '../ui/markdown-view';
 import { CampaignMembers, type CampaignCandidate } from './campaign-members';
+import { campaignLive } from './campaign-model';
 import { CampaignProgress } from './campaign-progress';
 import { DropForm } from './drop-form';
 import {
@@ -178,8 +179,10 @@ interface TreeRow {
  *
  * <p><b>A campaign</b> (qits-419, qits-420) is a root with a lifecycle and a body of its own: how
  * it is running ({@link CampaignProgress}), and its members, their order and their conditions
- * ({@link CampaignMembers}). Its status moves go through the same lifecycle door
- * (`POST /work/{q}/status` — the multi-entity door refuses a campaign); its one
+ * ({@link CampaignMembers}). **Its status is derived from its members** (qits-650): the service
+ * serves a campaign only Drop and Reopen, drawn off the registry like every other move, and they go
+ * through the same lifecycle door (`POST /work/{q}/status` — the multi-entity door refuses a
+ * campaign). Start is offered while it is neither DONE nor DROPPED, as the dispatch state says; its one
  * dispatching press is <b>Start campaign</b> (or <b>Re-check members</b> once started), asked twice
  * because it authorises every ungated dispatch in the campaign; and *Run the next phase*, *Refine*,
  * *Edit* and *Reshape* are not offered, because the service would refuse every one of them.
@@ -419,6 +422,11 @@ interface TreeRow {
           @if (step.gates.length > 0) {
             <span class="note gate-hint">{{ step.label }} {{ hints(step) }}</span>
           }
+        }
+        @if (n.archetype === 'CAMPAIGN' && !final()) {
+          <span class="note derived-note">
+            Its status follows its members — by hand it is only dropped or reopened.
+          </span>
         }
         @if (final()) {
           <span class="note final-note">{{ finalNote() }}</span>
@@ -1394,8 +1402,14 @@ export class EntityDetailPage {
           ? 'Running — a press re-checks every waiting member now.'
           : 'A press starts the campaign.';
       }
+      if (state.blocked && isExplicitBlock(state)) {
+        return 'Blocked — unblock it before starting.';
+      }
+      if (state.status && !campaignLive(state.status)) {
+        return `Nothing to start at ${statusLabel(state.status)} — a campaign runs until it is done or dropped.`;
+      }
       return state.status
-        ? `Nothing to start at ${statusLabel(state.status)} — a campaign starts from refined or ready for dev.`
+        ? `Nothing to start at ${statusLabel(state.status)}.`
         : 'Nothing to start.';
     }
     if (state.preApprovedBy) {

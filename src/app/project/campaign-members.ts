@@ -19,6 +19,7 @@ import type {
   ConditionGroup,
   CriterionDto,
   CriterionSpec,
+  EntityStatus,
 } from '../api/dto';
 import { ProjectEvents } from '../api/project-events';
 import { Async } from '../ui/async';
@@ -44,7 +45,7 @@ import {
   withoutCriterion,
   type MemberRef,
 } from './campaign-model';
-import { statusBadge } from './entities-model';
+import { statusBadge, statusLabel } from './entities-model';
 
 /** An epic or a ticket of this project that could join the campaign. */
 export interface CampaignCandidate {
@@ -68,9 +69,10 @@ interface Adding {
  * body on the entity page (qits-419).
  *
  * <ul>
- *   <li><b>The member list</b>, by position: qualified id, title, status, `joinedRunning`. ↑ and ↓
- *       call `moveMember` and nothing else — order and dependency are two facts, so a reorder never
- *       touches a condition.</li>
+ *   <li><b>The member list</b>, by position: qualified id, title, status, `joinedRunning`, and —
+ *       where the service sends `holdsStatus` (qits-650) — a marker on each member whose status sets
+ *       the campaign's derived one. ↑ and ↓ call `moveMember` and nothing else — order and
+ *       dependency are two facts, so a reorder never touches a condition.</li>
  *   <li><b>The "waits for" line</b> under each row names the members its criteria point at, with ↑
  *       for one above the row and ↓ for one below. It is read off the criteria, never off position:
  *       inserting B between A and C leaves C waiting on A, and the line says exactly that.</li>
@@ -112,7 +114,7 @@ interface Adding {
         @if (!editable()) {
           <p class="note locked">
             Membership is fixed at {{ c.status.toLowerCase() }} — it is edited while the campaign is
-            reported, refined or ready for dev.
+            neither done nor dropped.
           </p>
         }
         @if (c.members.length === 0) {
@@ -137,6 +139,14 @@ interface Adding {
                   [label]="statusOf(member).label"
                   [tone]="statusOf(member).tone"
                 />
+                @if (member.holdsStatus) {
+                  <qits-badge
+                    class="holds-status"
+                    label="holds the status"
+                    tone="info"
+                    [attr.title]="holdsTitle(c.status)"
+                  />
+                }
                 @if (member.joinedRunning) {
                   <qits-badge class="joined" label="joined running" tone="info" />
                 }
@@ -629,6 +639,11 @@ export class CampaignMembers {
   }
 
   // ---- reading ------------------------------------------------------------------------------------
+
+  /** The hover on a member's *holds the status* marker (qits-650). */
+  protected holdsTitle(status: EntityStatus): string {
+    return `Its status sets the campaign at ${statusLabel(status)}.`;
+  }
 
   protected statusOf(member: CampaignMemberDto) {
     return statusBadge(member.entity.status);

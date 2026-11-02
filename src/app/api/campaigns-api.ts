@@ -91,9 +91,9 @@ export class CampaignsApi {
   }
 
   /**
-   * A lifecycle step. REFINED or READY_FOR_DEV readies it to be started (qits-887); moving between
-   * the two neither starts nor pauses it — the start press is the only start — and leaving both
-   * (back to REPORTED, DROPPED, or on to IMPLEMENTED) pauses a started one.
+   * A lifecycle step — since qits-650 only Drop and Reopen (DROPPED → REPORTED), as the served
+   * registry says: every other campaign status is derived from its members and moved by the service.
+   * Dropping pauses a started campaign; the start press is the only start.
    */
   transition(ref: string, target: EntityStatus): Promise<WorkEntityDto> {
     return this.projects.setStatus(ref, target);

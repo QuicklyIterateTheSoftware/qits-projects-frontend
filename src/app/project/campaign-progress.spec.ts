@@ -157,6 +157,57 @@ describe('CampaignProgress', () => {
     }
   });
 
+  /** qits-650: the status is derived, and `heldBy` names the members holding it, as links. */
+  describe('the derived status', () => {
+    function heldByText(): string {
+      return element().querySelector('.held-by')?.textContent?.replace(/\s+/g, ' ').trim() ?? '';
+    }
+
+    it('names the members holding it, each a link to its page', async () => {
+      current = {
+        ...progress([member('752', 'WAITING'), member('753', 'WAITING')]),
+        campaign: { ...progress([]).campaign, heldBy: ['qits-752', 'qits-753'] },
+      };
+      await mount();
+
+      expect(element().querySelector('.derived')?.textContent).toContain(
+        'derived from its members',
+      );
+      expect(heldByText()).toBe('Held at refined by qits-752, qits-753');
+      const links = Array.from(element().querySelectorAll<HTMLAnchorElement>('.held-by a.holder'));
+      expect(links.map((link) => link.getAttribute('href'))).toEqual([
+        '/qits/work/qits-752',
+        '/qits/work/qits-753',
+      ]);
+    });
+
+    it('says nothing about holders where the service sends no heldBy', async () => {
+      current = progress([member('1', 'WAITING')]);
+      await mount();
+
+      expect(element().querySelector('.held-by')).toBeNull();
+      expect(element().querySelector('.derived')).toBeTruthy();
+    });
+
+    it('says nothing about holders for an empty heldBy', async () => {
+      current = { ...progress([]), campaign: { ...progress([]).campaign, heldBy: [] } };
+      await mount();
+
+      expect(element().querySelector('.held-by')).toBeNull();
+    });
+
+    it('draws no derived line on a DONE or DROPPED campaign', async () => {
+      current = {
+        ...progress([]),
+        campaign: { ...progress([]).campaign, status: 'DROPPED', heldBy: [] },
+      };
+      await mount();
+
+      expect(element().querySelector('.derived')).toBeNull();
+      expect(element().querySelector('.held-by')).toBeNull();
+    });
+  });
+
   it('lists what a WAITING member waits for', async () => {
     current = progress([
       member('1', 'WAITING', {

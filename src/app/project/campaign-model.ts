@@ -15,7 +15,7 @@ import type {
   WorkspaceReferenceDto,
 } from '../api/dto';
 import { formatInstant } from '../ui/format';
-import type { Entity } from './entities-model';
+import { statusLabel, type Entity } from './entities-model';
 
 /**
  * **The campaign as a client model** — a root of work on the one desk that gathers other entities
@@ -325,16 +325,50 @@ export function editableMember(
 }
 
 /**
- * The campaign statuses a membership is still being shaped at — the service's
- * `CampaignService.EDITABLE`, which this follows; a change to one is made to both. READY_FOR_DEV
- * (qits-887) is among them: it says every member is ready for development, not that the campaign
- * has started, so it is shaped there exactly as at REFINED.
+ * **Whether a campaign is still live** — neither DONE nor DROPPED (qits-650). It is the one rule the
+ * service's start press, its executor and its membership door all read since a campaign's status is
+ * derived from its members: a campaign runs and its plan is edited at every derived word on the walk,
+ * and stops only at the two it is never recomputed out of. Adding a REPORTED member to an IMPLEMENTED
+ * campaign is how it drops back to REPORTED, so the plan cannot freeze at IMPLEMENTED any more.
  */
-const EDITABLE: ReadonlySet<EntityStatus> = new Set(['REPORTED', 'REFINED', 'READY_FOR_DEV']);
+export function campaignLive(campaignStatus: EntityStatus | null): boolean {
+  return campaignStatus !== null && campaignStatus !== 'DONE' && campaignStatus !== 'DROPPED';
+}
 
-/** Add, move, remove and condition are taken while the campaign is REPORTED, REFINED or READY_FOR_DEV. */
+/**
+ * Add, move, remove and condition are taken while the campaign is neither DONE nor DROPPED — the
+ * service's membership rule (qits-650, which replaced `CampaignService.EDITABLE`'s REPORTED, REFINED
+ * and READY_FOR_DEV); a change to one is made to both.
+ */
 export function membershipEditable(campaignStatus: EntityStatus | null): boolean {
-  return campaignStatus !== null && EDITABLE.has(campaignStatus);
+  return campaignLive(campaignStatus);
+}
+
+// ---- the derived status ----------------------------------------------------------------------------
+
+/** One line of "who holds the campaign's status": the sentence's words, and the members it names. */
+export interface HeldByLine {
+  /** The campaign's status as a word — `refined`. */
+  readonly status: string;
+  /** The qualified ids of the members that set it, in the order the service served them. */
+  readonly members: readonly string[];
+}
+
+/**
+ * **Which members set the campaign's status** (qits-650): its status is the lowest status among its
+ * members that are not dropped, and `heldBy` names the members sitting at that floor. Null — draw
+ * nothing — when the service does not send `heldBy` (one older than qits-650), when it sends none (a
+ * DONE or DROPPED campaign, or one with no members), or when the campaign has no status to name.
+ */
+export function heldByLine(campaign: {
+  readonly status: EntityStatus | null;
+  readonly heldBy?: readonly string[] | null;
+}): HeldByLine | null {
+  const members = (campaign.heldBy ?? []).filter((id) => id.length > 0);
+  if (members.length === 0 || !campaign.status) {
+    return null;
+  }
+  return { status: statusLabel(campaign.status), members };
 }
 
 // ---- progress ----------------------------------------------------------------------------------
