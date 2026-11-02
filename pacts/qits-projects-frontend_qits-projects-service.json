@@ -4566,6 +4566,7 @@
                 "blocked": false,
                 "createdAt": "2026-01-01T00:00:00Z",
                 "dependsOn": null,
+                "excerpt": null,
                 "id": "00000000-0000-4000-8000-000000000002",
                 "impetus": null,
                 "implementedAt": null,
@@ -4582,9 +4583,31 @@
                 "updatedAt": "2026-01-01T00:00:00Z"
               },
               {
+                "archetype": "EPIC",
+                "blocked": false,
+                "createdAt": "2026-01-01T00:00:00Z",
+                "dependsOn": null,
+                "excerpt": "Accounting copies every invoice into their tool by hand, about 400 a quarter.",
+                "id": "00000000-0000-4000-8000-000000000006",
+                "impetus": null,
+                "implementedAt": null,
+                "number": 2,
+                "parent": null,
+                "projectId": "00000000-0000-4000-8000-00000000000f",
+                "qualifiedId": "contract-00000001-2",
+                "repositoryId": null,
+                "slug": "export-invoices-for-the-accountants",
+                "status": "IMPLEMENTING",
+                "tags": [],
+                "ticketType": null,
+                "title": "Export invoices for the accountants",
+                "updatedAt": "2026-01-01T00:00:00Z"
+              },
+              {
                 "archetype": "FEATURE",
                 "createdAt": "2026-01-01T00:00:00Z",
                 "dependsOn": null,
+                "excerpt": null,
                 "id": "00000000-0000-4000-8000-000000000004",
                 "impetus": null,
                 "implementedAt": "2026-01-01T00:00:00Z",
@@ -4604,6 +4627,7 @@
                 "archetype": "TASK",
                 "createdAt": "2026-01-01T00:00:00Z",
                 "dependsOn": null,
+                "excerpt": null,
                 "id": "00000000-0000-4000-8000-000000000005",
                 "impetus": null,
                 "implementedAt": "2026-01-01T00:00:00Z",
@@ -4623,6 +4647,7 @@
                 "archetype": "TASK",
                 "createdAt": "2026-01-01T00:00:00Z",
                 "dependsOn": "00000000-0000-4000-8000-000000000005",
+                "excerpt": null,
                 "id": "00000000-0000-4000-8000-000000000011",
                 "impetus": null,
                 "implementedAt": "2026-01-01T00:00:00Z",
@@ -4642,6 +4667,7 @@
                 "archetype": "FEATURE",
                 "createdAt": "2026-01-01T00:00:00Z",
                 "dependsOn": "00000000-0000-4000-8000-000000000004",
+                "excerpt": null,
                 "id": "00000000-0000-4000-8000-000000000007",
                 "impetus": null,
                 "implementedAt": null,
@@ -4661,6 +4687,7 @@
                 "archetype": "TASK",
                 "createdAt": "2026-01-01T00:00:00Z",
                 "dependsOn": null,
+                "excerpt": null,
                 "id": "00000000-0000-4000-8000-00000000000d",
                 "impetus": null,
                 "implementedAt": null,
@@ -4680,6 +4707,7 @@
                 "archetype": "TASK",
                 "createdAt": "2026-01-01T00:00:00Z",
                 "dependsOn": "00000000-0000-4000-8000-00000000000d",
+                "excerpt": null,
                 "id": "00000000-0000-4000-8000-00000000000e",
                 "impetus": null,
                 "implementedAt": null,
@@ -4700,6 +4728,7 @@
                 "blocked": true,
                 "createdAt": "2026-01-01T00:00:00Z",
                 "dependsOn": null,
+                "excerpt": "Each line is rounded before the sum, so rounding errors add up.",
                 "id": "00000000-0000-4000-8000-000000000001",
                 "impetus": "An accountant found three invoices whose total is one cent above the sum of their lines.",
                 "implementedAt": null,
@@ -4713,6 +4742,27 @@
                 "tags": [],
                 "ticketType": "BUG",
                 "title": "Invoice totals are off by one cent",
+                "updatedAt": "2026-01-01T00:00:00Z"
+              },
+              {
+                "archetype": "TICKET",
+                "blocked": false,
+                "createdAt": "2026-01-01T00:00:00Z",
+                "dependsOn": null,
+                "excerpt": null,
+                "id": "00000000-0000-4000-8000-00000000000c",
+                "impetus": "The release request for billing-service has waited on its gates for 6 hours.",
+                "implementedAt": null,
+                "number": 12,
+                "parent": null,
+                "projectId": "00000000-0000-4000-8000-00000000000f",
+                "qualifiedId": "contract-00000001-12",
+                "repositoryId": null,
+                "slug": "release-request-for-billing-service-is-stuck",
+                "status": "REPORTED",
+                "tags": [],
+                "ticketType": "MAINTENANCE",
+                "title": "Release request for billing-service is stuck",
                 "updatedAt": "2026-01-01T00:00:00Z"
               }
             ]
@@ -4841,12 +4891,28 @@
                             }
                           ]
                         },
+                        "$.blocked": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
                         "$.createdAt": {
                           "combine": "AND",
                           "matchers": [
                             {
                               "match": "regex",
                               "regex": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}(:\\d{2}(\\.\\d{1,9})?)?(Z|[+-]\\d{2}:?\\d{2})$"
+                            }
+                          ]
+                        },
+                        "$.excerpt": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
                             }
                           ]
                         },
@@ -4859,29 +4925,11 @@
                             }
                           ]
                         },
-                        "$.implementedAt": {
-                          "combine": "AND",
-                          "matchers": [
-                            {
-                              "match": "regex",
-                              "regex": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}(:\\d{2}(\\.\\d{1,9})?)?(Z|[+-]\\d{2}:?\\d{2})$"
-                            }
-                          ]
-                        },
                         "$.number": {
                           "combine": "AND",
                           "matchers": [
                             {
                               "match": "number"
-                            }
-                          ]
-                        },
-                        "$.parent": {
-                          "combine": "AND",
-                          "matchers": [
-                            {
-                              "match": "regex",
-                              "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
                             }
                           ]
                         },
@@ -5009,15 +5057,6 @@
                             }
                           ]
                         },
-                        "$.repositoryId": {
-                          "combine": "AND",
-                          "matchers": [
-                            {
-                              "match": "regex",
-                              "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
-                            }
-                          ]
-                        },
                         "$.slug": {
                           "combine": "AND",
                           "matchers": [
@@ -5070,15 +5109,6 @@
                             {
                               "match": "regex",
                               "regex": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}(:\\d{2}(\\.\\d{1,9})?)?(Z|[+-]\\d{2}:?\\d{2})$"
-                            }
-                          ]
-                        },
-                        "$.dependsOn": {
-                          "combine": "AND",
-                          "matchers": [
-                            {
-                              "match": "regex",
-                              "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
                             }
                           ]
                         },
@@ -5216,6 +5246,131 @@
                             }
                           ]
                         },
+                        "$.implementedAt": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "regex",
+                              "regex": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}(:\\d{2}(\\.\\d{1,9})?)?(Z|[+-]\\d{2}:?\\d{2})$"
+                            }
+                          ]
+                        },
+                        "$.number": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "number"
+                            }
+                          ]
+                        },
+                        "$.parent": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "regex",
+                              "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                            }
+                          ]
+                        },
+                        "$.projectId": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "regex",
+                              "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                            }
+                          ]
+                        },
+                        "$.qualifiedId": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.repositoryId": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "regex",
+                              "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                            }
+                          ]
+                        },
+                        "$.slug": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.status": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.title": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.updatedAt": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "regex",
+                              "regex": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}(:\\d{2}(\\.\\d{1,9})?)?(Z|[+-]\\d{2}:?\\d{2})$"
+                            }
+                          ]
+                        }
+                      }
+                    },
+                    {
+                      "index": 5,
+                      "rules": {
+                        "$.archetype": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.createdAt": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "regex",
+                              "regex": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}(:\\d{2}(\\.\\d{1,9})?)?(Z|[+-]\\d{2}:?\\d{2})$"
+                            }
+                          ]
+                        },
+                        "$.dependsOn": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "regex",
+                              "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                            }
+                          ]
+                        },
+                        "$.id": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "regex",
+                              "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                            }
+                          ]
+                        },
                         "$.number": {
                           "combine": "AND",
                           "matchers": [
@@ -5286,7 +5441,7 @@
                       }
                     },
                     {
-                      "index": 5,
+                      "index": 6,
                       "rules": {
                         "$.archetype": {
                           "combine": "AND",
@@ -5393,7 +5548,7 @@
                       }
                     },
                     {
-                      "index": 6,
+                      "index": 7,
                       "rules": {
                         "$.archetype": {
                           "combine": "AND",
@@ -5509,7 +5664,128 @@
                       }
                     },
                     {
-                      "index": 7,
+                      "index": 8,
+                      "rules": {
+                        "$.archetype": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.blocked": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.createdAt": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "regex",
+                              "regex": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}(:\\d{2}(\\.\\d{1,9})?)?(Z|[+-]\\d{2}:?\\d{2})$"
+                            }
+                          ]
+                        },
+                        "$.excerpt": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.id": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "regex",
+                              "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                            }
+                          ]
+                        },
+                        "$.impetus": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.number": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "number"
+                            }
+                          ]
+                        },
+                        "$.projectId": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "regex",
+                              "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                            }
+                          ]
+                        },
+                        "$.qualifiedId": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.slug": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.status": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.ticketType": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.title": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.updatedAt": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "regex",
+                              "regex": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}(:\\d{2}(\\.\\d{1,9})?)?(Z|[+-]\\d{2}:?\\d{2})$"
+                            }
+                          ]
+                        }
+                      }
+                    },
+                    {
+                      "index": 9,
                       "rules": {
                         "$.archetype": {
                           "combine": "AND",

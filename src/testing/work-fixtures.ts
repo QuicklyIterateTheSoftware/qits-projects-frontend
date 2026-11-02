@@ -216,13 +216,18 @@ export function workAnswer(
   if (url === `/projects/api/projects/${projectId}/work`) {
     const rows: WorkEntityDto[] = [];
     for (const { epic, features } of epics) {
-      rows.push(workOfEpic(epic));
+      // The listing is the one place an epic's excerpt rides (qits-1821); `workOfEpic` alone is the
+      // whole read's shape, which has none.
+      rows.push({ ...workOfEpic(epic), excerpt: epic.excerpt ?? null });
       (features ?? []).forEach(({ feature, tasks }, at) => {
         rows.push(workOfFeature(feature, at));
         (tasks ?? []).forEach((task, position) => rows.push(workOfTask(task, position)));
       });
     }
-    rows.push(...tickets.map(workOfTicket), ...campaigns.map(workOfCampaign));
+    rows.push(
+      ...tickets.map((ticket) => ({ ...workOfTicket(ticket), excerpt: ticket.excerpt ?? null })),
+      ...campaigns.map(workOfCampaign),
+    );
     // The listing is a summary: no description, no acceptance criteria.
     return {
       entities: rows.map((row) => ({

@@ -55,6 +55,8 @@ const LIST_PROJECT_WORK = [
   // A ticket's card and the newest-first sort (qits-1815: no longer from a whole read).
   'entities[].ticketType',
   'entities[].impetus',
+  // The desk card's body: a plain-text lead of the description, ticket and epic rows only (qits-1821).
+  'entities[].excerpt',
   'entities[].createdAt',
   'entities[].updatedAt',
   // An epic's progress: its features' and tasks' implemented markers, a task's repository.

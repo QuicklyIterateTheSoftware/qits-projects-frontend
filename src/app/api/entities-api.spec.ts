@@ -182,6 +182,38 @@ describe('EntitiesApi', () => {
       ]);
     });
 
+    /**
+     * qits-1821: the listing's excerpt — unlike `description` — is one the desk card draws, so it is
+     * the one body-shaped field that does reach the summary row's mapped item.
+     */
+    it('carries a ticket’s and an epic’s excerpt off the summary row, null for a feature', async () => {
+      const answer = api.list('p1');
+      await serve({
+        epics: [
+          {
+            epic: epic({ excerpt: 'Bill each country at its own VAT rate.' }),
+            features: [{ feature: feature() }],
+          },
+        ],
+        tickets: [ticket({ excerpt: 'Rounding errors add up on a long invoice.' })],
+      });
+
+      const rows = await answer;
+      const found = (id: string) => rows.find((row) => row.id === id);
+      expect(found('e1')?.excerpt).toBe('Bill each country at its own VAT rate.');
+      expect(found('t1')?.excerpt).toBe('Rounding errors add up on a long invoice.');
+      const e1 = found('e1');
+      // A feature carries no excerpt at all — the wire reserves it for a ticket or an epic row.
+      expect(e1?.archetype === 'EPIC' && 'excerpt' in e1.features[0].feature).toBe(false);
+    });
+
+    it('reads no excerpt — a null one — as nothing for a row the listing left blank', async () => {
+      const answer = api.list('p1', 'TICKET');
+      await serve({ tickets: [ticket()] });
+
+      expect((await answer)[0].excerpt).toBeNull();
+    });
+
     it('answers an empty list for a project with none, rather than translating a 404', async () => {
       const answer = api.list('p1', 'TICKET');
       await serve({});
