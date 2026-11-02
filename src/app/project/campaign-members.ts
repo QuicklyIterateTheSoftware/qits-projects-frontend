@@ -113,8 +113,8 @@ interface Adding {
         <h2>Members</h2>
         @if (!editable()) {
           <p class="note locked">
-            Membership is fixed at {{ c.status.toLowerCase() }} — it is edited while the campaign is
-            neither done nor dropped.
+            Membership is fixed at {{ c.status.toLowerCase() }} — it is edited at every status but
+            dropped.
           </p>
         }
         @if (c.members.length === 0) {

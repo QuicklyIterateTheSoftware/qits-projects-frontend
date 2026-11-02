@@ -326,22 +326,24 @@ export function editableMember(
 
 /**
  * **Whether a campaign is still live** — neither DONE nor DROPPED (qits-650). It is the one rule the
- * service's start press, its executor and its membership door all read since a campaign's status is
- * derived from its members: a campaign runs and its plan is edited at every derived word on the walk,
- * and stops only at the two it is never recomputed out of. Adding a REPORTED member to an IMPLEMENTED
- * campaign is how it drops back to REPORTED, so the plan cannot freeze at IMPLEMENTED any more.
+ * service's start press and its executor read since a campaign's status is derived from its members: a
+ * campaign runs at every derived word on the walk, and stops only at the two it is never recomputed out
+ * of. Adding a REPORTED member to an IMPLEMENTED campaign is how it drops back to REPORTED, so the plan
+ * cannot freeze at IMPLEMENTED any more. Membership editing no longer follows this rule — see
+ * {@link membershipEditable}.
  */
 export function campaignLive(campaignStatus: EntityStatus | null): boolean {
   return campaignStatus !== null && campaignStatus !== 'DONE' && campaignStatus !== 'DROPPED';
 }
 
 /**
- * Add, move, remove and condition are taken while the campaign is neither DONE nor DROPPED — the
- * service's membership rule (qits-650, which replaced `CampaignService.EDITABLE`'s REPORTED, REFINED
- * and READY_FOR_DEV); a change to one is made to both.
+ * Add, move, remove and condition are taken at every status but DROPPED — the service's membership
+ * door (qits-1805, which widened qits-650's rule past DONE: a campaign's DONE is derived and follows
+ * its members, so adding an open member lowers it back and the door no longer has to refuse at DONE to
+ * stay safe). DROPPED alone is terminal for membership.
  */
 export function membershipEditable(campaignStatus: EntityStatus | null): boolean {
-  return campaignLive(campaignStatus);
+  return campaignStatus !== null && campaignStatus !== 'DROPPED';
 }
 
 // ---- the derived status ----------------------------------------------------------------------------

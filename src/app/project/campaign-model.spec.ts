@@ -201,7 +201,7 @@ describe('campaign-model', () => {
     expect(criterionSentence(approvalCriterion(), refs)).toBe('a person approves');
   });
 
-  it('is editable only while unclaimed on a campaign neither done nor dropped', () => {
+  it('is editable only while unclaimed on a campaign not dropped', () => {
     expect(editableMember(member('a', 'qits-1'), 'REFINED')).toBe(true);
     expect(
       editableMember(member('a', 'qits-1', [], { claimedAt: '2026-09-27T09:00:00Z' }), 'REFINED'),
@@ -209,21 +209,24 @@ describe('campaign-model', () => {
     // qits-650: a derived IMPLEMENTED no longer freezes the plan — adding a REPORTED member is how
     // the campaign drops back.
     expect(editableMember(member('a', 'qits-1'), 'IMPLEMENTED')).toBe(true);
-    expect(editableMember(member('a', 'qits-1'), 'DONE')).toBe(false);
+    // qits-1805: DONE is derived too, and follows its members the same way — adding an open member
+    // lowers it back, so membership is not refused there either.
+    expect(editableMember(member('a', 'qits-1'), 'DONE')).toBe(true);
+    expect(editableMember(member('a', 'qits-1'), 'DROPPED')).toBe(false);
   });
 
-  /** qits-650: the service's membership rule — every status but DONE and DROPPED. */
-  it('takes membership edits while the campaign is neither DONE nor DROPPED', () => {
+  /** qits-1805: the service's membership door — every status but DROPPED. */
+  it('takes membership edits at every status but DROPPED', () => {
     for (const status of [
       'REPORTED',
       'REFINED',
       'READY_FOR_DEV',
       'IMPLEMENTED',
       'VERIFIED',
+      'DONE',
     ] as const) {
       expect(membershipEditable(status)).toBe(true);
     }
-    expect(membershipEditable('DONE')).toBe(false);
     expect(membershipEditable('DROPPED')).toBe(false);
     expect(membershipEditable(null)).toBe(false);
   });

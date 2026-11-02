@@ -352,7 +352,7 @@ describe('CampaignMembers', () => {
     expect(b.querySelector('.seeded')?.textContent).toBe('seeded');
   });
 
-  /** qits-650: membership is edited at every derived status but DONE and DROPPED. */
+  /** qits-1805: membership is edited at every status but DROPPED. */
   it('keeps the plan editable at a derived IMPLEMENTED', async () => {
     current = campaign({ status: 'IMPLEMENTED' });
     void fixture.componentInstance.load();
@@ -362,13 +362,24 @@ describe('CampaignMembers', () => {
     expect(row('a').querySelector('.remove-member')).toBeTruthy();
   });
 
-  it('fixes the membership on a DONE campaign, and says when it is edited', async () => {
+  // qits-1805: DONE is derived too, and follows its members the same way — adding an open member
+  // lowers it back, so the plan stays editable there instead of freezing.
+  it('keeps the plan editable at a derived DONE', async () => {
     current = campaign({ status: 'DONE' });
     void fixture.componentInstance.load();
     await settle();
 
+    expect(element().querySelector('.locked')).toBeNull();
+    expect(row('a').querySelector('.remove-member')).toBeTruthy();
+  });
+
+  it('fixes the membership on a DROPPED campaign, and says when it is edited', async () => {
+    current = campaign({ status: 'DROPPED' });
+    void fixture.componentInstance.load();
+    await settle();
+
     expect(element().querySelector('.locked')?.textContent?.replace(/\s+/g, ' ').trim()).toBe(
-      'Membership is fixed at done — it is edited while the campaign is neither done nor dropped.',
+      'Membership is fixed at dropped — it is edited at every status but dropped.',
     );
     expect(row('a').querySelector('.remove-member')).toBeNull();
   });
