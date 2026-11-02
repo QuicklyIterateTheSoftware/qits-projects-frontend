@@ -61,4 +61,15 @@ describe('EntitySummaryRow', () => {
     expect(link?.textContent?.trim()).toBe('duplicate of Original');
     expect(link?.getAttribute('href')).toBe('/qits/work/qits-378');
   });
+
+  /** qits-634: the record keeps saying who does the work, as the card does. */
+  it('draws reserved for human, and nothing for an untagged row', () => {
+    const row = draw(ticket({ tags: ['RESERVED_FOR_HUMAN'] }));
+    expect(row.querySelector('.tag')?.textContent?.trim()).toBe('reserved for human');
+    expect(row.querySelector('.tag')?.parentElement?.getAttribute('title')).toContain(
+      'a person does it',
+    );
+    expect(draw(ticket({ tags: [] })).querySelector('.tag')).toBeNull();
+    expect(draw(ticket({})).querySelector('.tag')).toBeNull();
+  });
 });

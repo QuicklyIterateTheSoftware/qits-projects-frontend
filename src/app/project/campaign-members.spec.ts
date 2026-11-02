@@ -393,4 +393,27 @@ describe('CampaignMembers', () => {
     );
     expect(row('b').querySelector('.holds-status')).toBeNull();
   });
+
+  /** qits-634: a member reserved for human says so on its row; absent tags mark nothing. */
+  it('marks a member reserved for human, and none untagged or without tags', async () => {
+    expect(element().querySelector('.tag')).toBeNull();
+
+    current = campaign();
+    current = {
+      ...current,
+      members: current.members.map((row) =>
+        row.membershipId === 'm-a'
+          ? { ...row, entity: { ...row.entity, tags: ['RESERVED_FOR_HUMAN'] } }
+          : { ...row, entity: { ...row.entity, tags: [] } },
+      ),
+    };
+    void fixture.componentInstance.load();
+    await settle();
+
+    expect(row('a').querySelector('.tag')?.textContent?.trim()).toBe('reserved for human');
+    expect(row('a').querySelector('.tag')?.parentElement?.getAttribute('title')).toContain(
+      'No agent is dispatched onto it.',
+    );
+    expect(row('b').querySelector('.tag')).toBeNull();
+  });
 });

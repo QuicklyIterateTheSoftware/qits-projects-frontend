@@ -91,6 +91,7 @@
                 "id": "00000000-0000-4000-8000-000000000008",
                 "qualifiedId": "contract-00000001-4",
                 "status": "REPORTED",
+                "tags": [],
                 "title": "Credit notes show the wrong sign"
               },
               "groups": [
@@ -1531,6 +1532,7 @@
                 "id": "00000000-0000-4000-8000-000000000009",
                 "qualifiedId": "contract-00000001-5",
                 "status": "REPORTED",
+                "tags": [],
                 "title": "Remember the last export format"
               },
               "groups": [
@@ -1818,6 +1820,7 @@
                   "id": "00000000-0000-4000-8000-000000000008",
                   "qualifiedId": "contract-00000001-4",
                   "status": "REPORTED",
+                  "tags": [],
                   "title": "Credit notes show the wrong sign"
                 },
                 "groups": [
@@ -1869,6 +1872,7 @@
                   "id": "00000000-0000-4000-8000-000000000006",
                   "qualifiedId": "contract-00000001-2",
                   "status": "REFINED",
+                  "tags": [],
                   "title": "Export the quarter as CSV"
                 },
                 "groups": [],
@@ -1893,6 +1897,7 @@
                   "id": "00000000-0000-4000-8000-000000000003",
                   "qualifiedId": "contract-00000001-3",
                   "status": "REFINED",
+                  "tags": [],
                   "title": "Tax rates per country"
                 },
                 "groups": [
@@ -2448,6 +2453,7 @@
                   "id": "00000000-0000-4000-8000-000000000006",
                   "qualifiedId": "contract-00000001-2",
                   "status": "REFINED",
+                  "tags": [],
                   "title": "Export the quarter as CSV"
                 },
                 "groups": [],
@@ -2472,6 +2478,7 @@
                   "id": "00000000-0000-4000-8000-000000000003",
                   "qualifiedId": "contract-00000001-3",
                   "status": "REFINED",
+                  "tags": [],
                   "title": "Tax rates per country"
                 },
                 "groups": [
@@ -2865,6 +2872,7 @@
                 "id": "00000000-0000-4000-8000-000000000006",
                 "qualifiedId": "contract-00000001-2",
                 "status": "REFINED",
+                "tags": [],
                 "title": "Export the quarter as CSV"
               },
               "groups": [
@@ -4164,6 +4172,71 @@
         "references": {
           "qits-call": {
             "app": "qits-projects-service",
+            "operationId": "patchWork"
+          },
+          "qits-trigger": {
+            "app": "qits-projects-frontend",
+            "interaction": "reserve-work-item",
+            "kind": "ui"
+          }
+        }
+      },
+      "description": "reserve-work-item: patchWork",
+      "pending": false,
+      "providerStates": [
+        {
+          "name": "a ready for dev ticket",
+          "params": {
+            "projectId": "00000000-0000-4000-8000-000000000001",
+            "qualifiedId": "contract-00000001-1",
+            "ticketId": "00000000-0000-4000-8000-000000000002"
+          }
+        }
+      ],
+      "request": {
+        "body": {
+          "content": {
+            "tags": [
+              "RESERVED_FOR_HUMAN"
+            ]
+          },
+          "contentType": "application/json",
+          "encoded": false
+        },
+        "generators": {
+          "path": {
+            "expression": "/projects/api/work/${qualifiedId}",
+            "type": "ProviderState"
+          }
+        },
+        "headers": {
+          "Content-Type": [
+            "application/json"
+          ]
+        },
+        "matchingRules": {
+          "path": {
+            "combine": "AND",
+            "matchers": [
+              {
+                "match": "type"
+              }
+            ]
+          }
+        },
+        "method": "PATCH",
+        "path": "/projects/api/work/contract-00000001-1"
+      },
+      "response": {
+        "status": 200
+      },
+      "type": "Synchronous/HTTP"
+    },
+    {
+      "comments": {
+        "references": {
+          "qits-call": {
+            "app": "qits-projects-service",
             "operationId": "transitionWork"
           },
           "qits-trigger": {
@@ -4498,6 +4571,7 @@
                 "qualifiedId": "contract-00000001-1",
                 "slug": "invoicing-for-the-q4-close",
                 "status": "REFINED",
+                "tags": [],
                 "title": "Invoicing for the Q4 close"
               },
               {
@@ -4509,6 +4583,7 @@
                 "qualifiedId": "contract-00000001-3",
                 "slug": "csv-export",
                 "status": "IMPLEMENTED",
+                "tags": [],
                 "title": "CSV export"
               }
             ]
@@ -4791,6 +4866,7 @@
                 "repositoryId": "00000000-0000-4000-8000-000000000010",
                 "slug": "render-one-invoice-as-pdf",
                 "status": "IMPLEMENTING",
+                "tags": [],
                 "title": "Render one invoice as PDF",
                 "updatedAt": "2026-01-01T00:00:00Z"
               },
@@ -4809,6 +4885,7 @@
                 "repositoryId": "00000000-0000-4000-8000-00000000000a",
                 "slug": "preview-the-pdf-before-download",
                 "status": "READY_FOR_DEV",
+                "tags": [],
                 "title": "Preview the PDF before download",
                 "updatedAt": "2026-01-01T00:00:00Z"
               }
@@ -5181,6 +5258,7 @@
                 "repositoryId": null,
                 "slug": "csv-export",
                 "status": "IMPLEMENTED",
+                "tags": [],
                 "title": "CSV export",
                 "updatedAt": "2026-01-01T00:00:00Z"
               },
@@ -5199,6 +5277,7 @@
                 "repositoryId": null,
                 "slug": "pdf-export",
                 "status": "IMPLEMENTING",
+                "tags": [],
                 "title": "PDF export",
                 "updatedAt": "2026-01-01T00:00:00Z"
               }
@@ -9269,6 +9348,7 @@
             "qualifiedId": "contract-00000001-10",
             "slug": "invoice-totals-are-off-by-one-cent",
             "status": "IMPLEMENTING",
+            "tags": [],
             "ticketType": "BUG",
             "title": "Invoice totals are off by one cent",
             "updatedAt": "2026-01-01T00:00:00Z"
@@ -9526,6 +9606,7 @@
             "qualifiedId": "contract-00000001-1",
             "slug": "invoicing-for-the-q4-close",
             "status": "REFINED",
+            "tags": [],
             "title": "Invoicing for the Q4 close",
             "updatedAt": "2026-01-01T00:00:00Z"
           },
@@ -9737,6 +9818,7 @@
             "slug": "export-invoices-for-the-accountants",
             "status": "IMPLEMENTING",
             "supersededBy": null,
+            "tags": [],
             "title": "Export invoices for the accountants",
             "updatedAt": "2026-01-01T00:00:00Z"
           },
@@ -10263,6 +10345,7 @@
                     "id": "00000000-0000-4000-8000-000000000012",
                     "qualifiedId": "contract-00000001-9",
                     "status": "VERIFIED",
+                    "tags": [],
                     "title": "Tax rates per country"
                   },
                   "groups": [],
@@ -10291,6 +10374,7 @@
                     "id": "00000000-0000-4000-8000-000000000001",
                     "qualifiedId": "contract-00000001-10",
                     "status": "IMPLEMENTING",
+                    "tags": [],
                     "title": "Invoice totals are off by one cent"
                   },
                   "groups": [
@@ -10337,6 +10421,7 @@
                     "id": "00000000-0000-4000-8000-000000000003",
                     "qualifiedId": "contract-00000001-13",
                     "status": "DONE",
+                    "tags": [],
                     "title": "Credit notes show the wrong sign"
                   },
                   "groups": [
@@ -10383,6 +10468,7 @@
                     "id": "00000000-0000-4000-8000-00000000000b",
                     "qualifiedId": "contract-00000001-11",
                     "status": "REFINED",
+                    "tags": [],
                     "title": "Remember the last export format"
                   },
                   "groups": [
@@ -11929,6 +12015,7 @@
                   "id": "00000000-0000-4000-8000-000000000012",
                   "qualifiedId": "contract-00000001-9",
                   "status": "VERIFIED",
+                  "tags": [],
                   "title": "Tax rates per country"
                 },
                 "groups": [],
@@ -11956,6 +12043,7 @@
                   "id": "00000000-0000-4000-8000-000000000001",
                   "qualifiedId": "contract-00000001-10",
                   "status": "IMPLEMENTING",
+                  "tags": [],
                   "title": "Invoice totals are off by one cent"
                 },
                 "groups": [
@@ -11998,6 +12086,7 @@
                   "id": "00000000-0000-4000-8000-000000000003",
                   "qualifiedId": "contract-00000001-13",
                   "status": "DONE",
+                  "tags": [],
                   "title": "Credit notes show the wrong sign"
                 },
                 "groups": [
@@ -12040,6 +12129,7 @@
                   "id": "00000000-0000-4000-8000-00000000000b",
                   "qualifiedId": "contract-00000001-11",
                   "status": "REFINED",
+                  "tags": [],
                   "title": "Remember the last export format"
                 },
                 "groups": [
@@ -12778,6 +12868,7 @@
                   "id": "00000000-0000-4000-8000-000000000006",
                   "qualifiedId": "contract-00000001-2",
                   "status": "REFINED",
+                  "tags": [],
                   "title": "Export the quarter as CSV"
                 },
                 "groups": [],
@@ -12802,6 +12893,7 @@
                   "id": "00000000-0000-4000-8000-000000000003",
                   "qualifiedId": "contract-00000001-3",
                   "status": "REFINED",
+                  "tags": [],
                   "title": "Tax rates per country"
                 },
                 "groups": [
@@ -12844,6 +12936,7 @@
                   "id": "00000000-0000-4000-8000-000000000008",
                   "qualifiedId": "contract-00000001-4",
                   "status": "REPORTED",
+                  "tags": [],
                   "title": "Credit notes show the wrong sign"
                 },
                 "groups": [

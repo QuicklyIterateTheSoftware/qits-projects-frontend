@@ -274,6 +274,7 @@ function common(row: {
   readonly description?: string | null;
   readonly createdAt?: string;
   readonly updatedAt?: string;
+  readonly tags?: readonly string[];
 }): Pick<
   WorkEntityDto,
   | 'id'
@@ -285,6 +286,7 @@ function common(row: {
   | 'description'
   | 'createdAt'
   | 'updatedAt'
+  | 'tags'
 > {
   return {
     id: row.id ?? '',
@@ -296,5 +298,7 @@ function common(row: {
     description: row.description ?? null,
     createdAt: row.createdAt ?? '',
     updatedAt: row.updatedAt ?? '',
+    // Every answer carries tags since qits-634, `[]` when none.
+    tags: row.tags ?? [],
   };
 }

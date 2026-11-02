@@ -580,7 +580,16 @@ describe('EntityDetailPage', () => {
       };
     }
     if (url === '/projects/api/work/transition') return {};
-    if (method === 'PATCH' && /^\/projects\/api\/work\/[^/]+$/.test(url)) return {};
+    const patched = /^\/projects\/api\/work\/([^/]+)$/.exec(url);
+    if (method === 'PATCH' && patched) {
+      // A tags patch replaces the set (qits-634); the reload after it is what draws the badge.
+      const tags = (request.request.body as { tags?: readonly string[] }).tags;
+      const id = ID_OF[patched[1]];
+      if (tags !== undefined && id === 't1') ticketPatch = { ...ticketPatch, tags };
+      if (tags !== undefined && id === 'e1') epicPatch = { ...epicPatch, tags };
+      if (tags !== undefined && id === 'c1') campaignRowPatch = { ...campaignRowPatch, tags };
+      return {};
+    }
     const blocked = /^\/projects\/api\/work\/([^/]+)\/blocked$/.exec(url);
     if (blocked && method === 'POST') {
       const body = request.request.body as { blocked: boolean };
@@ -1050,6 +1059,114 @@ describe('EntityDetailPage', () => {
       expect(element().querySelector('.block-note')?.textContent?.trim()).toBe(
         'Blocked by kim: Waiting on a design decision.',
       );
+    });
+  });
+
+  /**
+   * qits-634: `reserved for human` — an agent cannot complete the work, a person has to, and the
+   * platform dispatches no agent onto it. A badge beside the title, and a press that sets or clears
+   * the tag through the merge patch at every status.
+   */
+  describe('reserved for human', () => {
+    const RESERVED = 'RESERVED_FOR_HUMAN';
+
+    it('draws the badge beside the title, its tooltip the rule, and offers to unreserve', async () => {
+      ticketPatch = { tags: [RESERVED] };
+      await open('/qits/work/qits-41');
+
+      const badge = element().querySelector('.badges .tag')!;
+      expect(badge.textContent?.trim()).toBe('reserved for human');
+      expect(badge.parentElement?.getAttribute('title')).toBe(
+        'An agent cannot complete this work: a person does it and moves its status by hand. ' +
+          'No agent is dispatched onto it.',
+      );
+      expect(buttonNamed('Unreserve for human')).toBeTruthy();
+    });
+
+    it('draws no badge for an untagged entity, and offers to reserve it', async () => {
+      await open('/qits/work/qits-41');
+
+      expect(element().querySelector('.badges .tag')).toBeNull();
+      expect(buttonNamed('Reserve for human')).toBeTruthy();
+    });
+
+    it('reserves a ticket through the merge patch, and refreshes', async () => {
+      await open('/qits/work/qits-41');
+
+      sent = [];
+      buttonNamed('Reserve for human').click();
+      await serve();
+
+      expect(writes()).toEqual([
+        { method: 'PATCH', url: '/projects/api/work/qits-41', body: { tags: [RESERVED] } },
+      ]);
+      // The reload after the write is what draws the badge.
+      expect(sent.some((r) => r.method === 'GET' && r.url === '/projects/api/work/qits-41')).toBe(
+        true,
+      );
+      expect(element().querySelector('.badges .tag')?.textContent?.trim()).toBe(
+        'reserved for human',
+      );
+      expect(buttonNamed('Unreserve for human')).toBeTruthy();
+    });
+
+    it('clears it with an empty set, at a final status too', async () => {
+      ticketPatch = { status: 'DONE', tags: [RESERVED] };
+      await open('/qits/work/qits-41');
+
+      sent = [];
+      buttonNamed('Unreserve for human').click();
+      await serve();
+
+      expect(writes()).toEqual([
+        { method: 'PATCH', url: '/projects/api/work/qits-41', body: { tags: [] } },
+      ]);
+      expect(element().querySelector('.badges .tag')).toBeNull();
+    });
+
+    it('keeps the other tags in the set it sends, since a patch replaces the whole set', async () => {
+      ticketPatch = { tags: ['SOMETHING_NEW', RESERVED] };
+      await open('/qits/work/qits-41');
+
+      sent = [];
+      buttonNamed('Unreserve for human').click();
+      await serve();
+
+      expect(writes()[0].body).toEqual({ tags: ['SOMETHING_NEW'] });
+    });
+
+    it('reserves an epic and a campaign the same way', async () => {
+      await open('/qits/work/qits-12');
+      sent = [];
+      buttonNamed('Reserve for human').click();
+      await serve();
+      expect(writes()[0]).toEqual({
+        method: 'PATCH',
+        url: '/projects/api/work/qits-12',
+        body: { tags: [RESERVED] },
+      });
+
+      await open('/qits/work/qits-430');
+      sent = [];
+      buttonNamed('Reserve for human').click();
+      await serve();
+      expect(writes()[0]).toEqual({
+        method: 'PATCH',
+        url: '/projects/api/work/qits-430',
+        body: { tags: [RESERVED] },
+      });
+      expect(element().querySelector('.badges .tag')?.textContent?.trim()).toBe(
+        'reserved for human',
+      );
+    });
+
+    it('says why nothing is dispatched onto a reserved ticket', async () => {
+      ticketPatch = { tags: [RESERVED] };
+      dispatchStates['t1'] = stateOf({ dispatchable: false });
+      await open('/qits/work/qits-41');
+
+      expect(button('.dispatch').disabled).toBe(true);
+      expect(element().querySelector('.flow-note')?.textContent).toContain('Reserved for human');
     });
   });
 

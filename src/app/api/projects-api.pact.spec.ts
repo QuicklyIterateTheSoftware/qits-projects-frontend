@@ -45,6 +45,8 @@ const LIST_PROJECT_WORK = [
   'entities[].status',
   'entities[].parent',
   'entities[].blocked',
+  // A campaign's desk row is this row (`campaignSummaryOf`), its reserved-for-human badge too.
+  'entities[].tags',
 ] as const;
 
 /** Every root's fields. */
@@ -59,6 +61,7 @@ const ROOT = [
   'description',
   'status',
   'blocked',
+  'tags',
   'createdAt',
   'updatedAt',
 ] as const;
@@ -95,6 +98,7 @@ const LIST_WORK_CHILDREN = [
   'children[].repositoryId',
   'children[].implementedAt',
   'children[].implementingAt',
+  'children[].tags',
   'children[].createdAt',
   'children[].updatedAt',
 ] as const;
