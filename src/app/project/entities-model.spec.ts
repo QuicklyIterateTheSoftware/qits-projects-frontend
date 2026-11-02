@@ -24,6 +24,7 @@ import {
   isEpic,
   isExplicitBlock,
   isFinalStatus,
+  isReservedForHuman,
   isTicket,
   lifecycleMoves,
   lifecycleOf,
@@ -32,11 +33,13 @@ import {
   outcomeBadge,
   outcomeNeedsReference,
   permits,
+  RESERVED_FOR_HUMAN_BADGE,
   WORK_OUTCOMES,
   refiningBranch,
   statusBadge,
   statusVocabulary,
   statusesOf,
+  tagBadges,
   taskBranch,
   taskStatus,
   ticketEntity,
@@ -629,6 +632,43 @@ describe('entities model', () => {
       expect(blockedBadges(blocked('EXPLICIT', 'Waiting on design.', null))[0].title).toBe(
         'Waiting on design.',
       );
+    });
+  });
+
+  /**
+   * qits-634: tags on every work entity, `RESERVED_FOR_HUMAN` the first and only one — an agent
+   * cannot complete the work, a person has to, and no agent is dispatched onto it.
+   */
+  describe('tags', () => {
+    it('draws reserved for human beside the status, with the rule as its tooltip', () => {
+      expect(RESERVED_FOR_HUMAN_BADGE.label).toBe('reserved for human');
+      expect(RESERVED_FOR_HUMAN_BADGE.title).toBe(
+        'An agent cannot complete this work: a person does it and moves its status by hand. ' +
+          'No agent is dispatched onto it.',
+      );
+      expect(tagBadges({ tags: ['RESERVED_FOR_HUMAN'] })).toEqual([RESERVED_FOR_HUMAN_BADGE]);
+    });
+
+    it('stays apart from the blocked badges: neither red nor the agent-waiting warning', () => {
+      expect(RESERVED_FOR_HUMAN_BADGE.tone).not.toBe(BLOCKED_BADGE.tone);
+      expect(RESERVED_FOR_HUMAN_BADGE.tone).not.toBe(AGENT_WAITING_BADGE.tone);
+    });
+
+    it('draws nothing for no tags, absent tags (an older service) or a tag it has never heard of', () => {
+      expect(tagBadges({ tags: [] })).toEqual([]);
+      expect(tagBadges({})).toEqual([]);
+      expect(tagBadges({ tags: null })).toEqual([]);
+      expect(tagBadges({ tags: ['SOMETHING_NEW'] })).toEqual([]);
+      expect(isReservedForHuman({})).toBe(false);
+      expect(isReservedForHuman({ tags: ['SOMETHING_NEW'] })).toBe(false);
+    });
+
+    it('carries the wire’s tags onto an epic and a ticket, absent read as none', () => {
+      expect(epic([], { tags: ['RESERVED_FOR_HUMAN'] }).tags).toEqual(['RESERVED_FOR_HUMAN']);
+      expect(ticket({ tags: ['RESERVED_FOR_HUMAN'] }).tags).toEqual(['RESERVED_FOR_HUMAN']);
+      expect(isReservedForHuman(ticket({ tags: ['RESERVED_FOR_HUMAN'] }))).toBe(true);
+      expect(epic().tags).toEqual([]);
+      expect(ticket().tags).toEqual([]);
     });
   });
 

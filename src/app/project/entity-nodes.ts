@@ -54,6 +54,12 @@ export interface EntityNode {
   readonly outcome?: WorkOutcome | null;
   /** The item that closed this node, by id — any archetype (qits-248); null or absent otherwise. */
   readonly supersededBy?: string | null;
+  /**
+   * The node's tags (qits-634) — {@link ../api/dto#TicketDto.tags}: what the row it was made from
+   * carries, on every archetype. Optional so a node built by hand need not restate it; absent reads
+   * as none.
+   */
+  readonly tags?: readonly string[];
   /** The root entity when this node is one (epic, ticket); null for a feature or a task. */
   readonly entity: Entity | null;
   /** The epic this node belongs to — itself for an epic, null for a ticket. */
@@ -106,6 +112,7 @@ export function flattenEntities(entities: readonly WorkItem[]): readonly EntityN
         updatedAt: feature.updatedAt,
         outcome: feature.outcome ?? null,
         supersededBy: feature.supersededBy ?? null,
+        tags: feature.tags ?? [],
         entity: null,
         epic: entity,
         feature,
@@ -131,6 +138,7 @@ export function flattenEntities(entities: readonly WorkItem[]): readonly EntityN
           updatedAt: task.updatedAt,
           outcome: task.outcome ?? null,
           supersededBy: task.supersededBy ?? null,
+          tags: task.tags ?? [],
           entity: null,
           epic: entity,
           feature,
@@ -163,6 +171,7 @@ function rootNode(entity: Entity, epic: EpicEntity | null): EntityNode {
     outcome: entity.outcome ?? null,
     supersededBy:
       entity.supersededBy ?? (entity.archetype === 'EPIC' ? entity.supersededByEpicId : null),
+    tags: entity.tags ?? [],
     entity,
     epic,
     feature: null,
@@ -190,6 +199,7 @@ function campaignNode(campaign: CampaignEntity): EntityNode {
     updatedAt: campaign.updatedAt,
     outcome: campaign.outcome ?? null,
     supersededBy: campaign.supersededBy ?? null,
+    tags: campaign.tags ?? [],
     entity: null,
     epic: null,
     feature: null,

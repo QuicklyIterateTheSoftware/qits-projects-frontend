@@ -45,7 +45,7 @@ import {
   withoutCriterion,
   type MemberRef,
 } from './campaign-model';
-import { statusBadge, statusLabel } from './entities-model';
+import { statusBadge, statusLabel, tagBadges, type StatusBadge } from './entities-model';
 
 /** An epic or a ticket of this project that could join the campaign. */
 export interface CampaignCandidate {
@@ -139,6 +139,11 @@ interface Adding {
                   [label]="statusOf(member).label"
                   [tone]="statusOf(member).tone"
                 />
+                @for (tag of tagsOf(member); track tag.label) {
+                  <span [title]="tag.title"
+                    ><qits-badge class="tag" [label]="tag.label" [tone]="tag.tone"
+                  /></span>
+                }
                 @if (member.holdsStatus) {
                   <qits-badge
                     class="holds-status"
@@ -647,6 +652,11 @@ export class CampaignMembers {
 
   protected statusOf(member: CampaignMemberDto) {
     return statusBadge(member.entity.status);
+  }
+
+  /** A member's tag badges (qits-634) — `reserved for human`: no agent is dispatched onto it. */
+  protected tagsOf(member: CampaignMemberDto): readonly StatusBadge[] {
+    return tagBadges(member.entity);
   }
 
   protected name(member: Pick<CampaignMemberDto, 'entity'>): string {

@@ -12,6 +12,7 @@ import type {
   WorkOutcome,
   WorkspaceReferenceDto,
 } from '../api/dto';
+import { RESERVED_FOR_HUMAN } from '../api/dto';
 import type { DropResolution } from '../api/work';
 
 /**
@@ -110,6 +111,12 @@ interface EntityFields {
   /** Who set the explicit block. Absent for a pure `AGENT_WAITING` block, where nobody set one. */
   readonly blockedBy?: string | null;
   /**
+   * The entity's tags (qits-634) — {@link ../api/dto#TicketDto.tags}, with the wire's absence
+   * resolved to none at the boundary. Optional so a row built by hand (a fixture, a transition's
+   * answer) need not restate it. {@link tagBadges} draws the ones this build knows.
+   */
+  readonly tags?: readonly string[];
+  /**
    * What has to be true for the work to be accepted (qits-887), in order — the wire's
    * `acceptanceCriteria` with absent and null resolved to none at the boundary. Optional so a row
    * built by hand (a fixture, a transition's answer) need not restate it.
@@ -188,6 +195,7 @@ export function epicEntity(epic: EpicDto, features: readonly FeatureNode[] = [])
     blockSource: epic.blockSource,
     blockReason: epic.blockReason,
     blockedBy: epic.blockedBy,
+    tags: epic.tags ?? [],
     status: epic.status,
     supersededByEpicId: epic.supersededByEpicId,
     outcome: epic.outcome ?? null,
@@ -218,6 +226,7 @@ export function ticketEntity(ticket: TicketDto): TicketEntity {
     blockSource: ticket.blockSource,
     blockReason: ticket.blockReason,
     blockedBy: ticket.blockedBy,
+    tags: ticket.tags ?? [],
     impetus: ticket.impetus,
     assignee: ticket.assignee,
     createdBy: ticket.createdBy,
@@ -648,6 +657,40 @@ export function blockedBadges(entity: {
     badges.push({ ...AGENT_WAITING_BADGE, title: entity.blockReason ?? '' });
   }
   return badges;
+}
+
+/**
+ * The badge an entity tagged `RESERVED_FOR_HUMAN` carries (qits-634), beside its status and its
+ * block, never instead of either: it says who does the work, not how far it got or whether it can
+ * proceed. `info`, not `warning` or `danger` — nothing is wrong with it, it is just not an agent's.
+ * The tooltip is the whole rule, since the label alone does not say that no agent will be sent.
+ */
+export const RESERVED_FOR_HUMAN_BADGE: StatusBadge = {
+  label: 'reserved for human',
+  tone: 'info',
+  title:
+    'An agent cannot complete this work: a person does it and moves its status by hand. ' +
+    'No agent is dispatched onto it.',
+};
+
+/** Each tag this build has a badge for; a tag it has never heard of draws nothing. */
+const TAG_BADGES: Readonly<Record<string, StatusBadge>> = {
+  [RESERVED_FOR_HUMAN]: RESERVED_FOR_HUMAN_BADGE,
+};
+
+/** Whether an entity carries `RESERVED_FOR_HUMAN` (qits-634). Absent tags read as none. */
+export function isReservedForHuman(entity: { readonly tags?: readonly string[] | null }): boolean {
+  return (entity.tags ?? []).includes(RESERVED_FOR_HUMAN);
+}
+
+/**
+ * The tag badge(s) for an entity, in the order the wire lists its tags (qits-634) — none for an
+ * untagged one, for absent tags (an older service), and for a tag this build has no badge for.
+ */
+export function tagBadges(entity: {
+  readonly tags?: readonly string[] | null;
+}): readonly StatusBadge[] {
+  return (entity.tags ?? []).flatMap((tag) => (TAG_BADGES[tag] ? [TAG_BADGES[tag]] : []));
 }
 
 /**

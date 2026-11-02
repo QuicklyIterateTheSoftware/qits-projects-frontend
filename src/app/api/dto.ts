@@ -293,6 +293,19 @@ export type WorkOutcome =
 export type BlockSource = 'EXPLICIT' | 'AGENT_WAITING' | 'BOTH';
 
 /**
+ * A tag on a work entity (qits-634) — a closed vocabulary the service owns, sent as the enum's name.
+ *
+ * <p>`RESERVED_FOR_HUMAN` is the first and only one: an agent cannot complete the work, a person has
+ * to, and the platform refuses to dispatch an agent onto it. Read as a bare `string` on the wire, so
+ * a tag this build has never heard of is carried through rather than failing to compile — and draws
+ * nothing, since only the ones named here have a badge.
+ */
+export type WorkTag = 'RESERVED_FOR_HUMAN';
+
+/** {@link WorkTag}'s one value, spelled once. */
+export const RESERVED_FOR_HUMAN: WorkTag = 'RESERVED_FOR_HUMAN';
+
+/**
  * An epic: the backbone of a change to the platform.
  *
  * <p>The client's record, no longer a wire shape of its own: `epicOf` in `work.ts` assembles it from
@@ -350,6 +363,8 @@ export interface EpicDto {
   readonly blockReason?: string | null;
   /** {@link TicketDto.blockedBy}, rule for rule. */
   readonly blockedBy?: string | null;
+  /** {@link TicketDto.tags}, rule for rule. */
+  readonly tags?: readonly string[];
   /**
    * The draft that replaced this one — set on a `DROPPED` epic that was superseded (the supersede
    * *operation* lands the epic DROPPED and names its successor here); null on every other.
@@ -423,6 +438,8 @@ export interface FeatureDto {
    * the same as null. The task's twin is `implementingAt`.
    */
   readonly implementingOn?: string | null;
+  /** {@link TicketDto.tags}, rule for rule. */
+  readonly tags?: readonly string[];
   /** Why it was dropped (qits-248); see {@link WorkOutcome}. Absent on an older service. */
   readonly outcome?: WorkOutcome | null;
   /**
@@ -466,6 +483,8 @@ export interface TaskDto {
    * not serve it yet, which reads the same as null. The feature's twin is `implementingOn`.
    */
   readonly implementingAt?: string | null;
+  /** {@link TicketDto.tags}, rule for rule. */
+  readonly tags?: readonly string[];
   /** Why it was dropped (qits-248); see {@link WorkOutcome}. Absent on an older service. */
   readonly outcome?: WorkOutcome | null;
   /**
@@ -619,6 +638,12 @@ export interface TicketDto {
    * present only when {@link blocked} is true.
    */
   readonly blockedBy?: string | null;
+  /**
+   * The entity's tags (qits-634) — see {@link WorkTag}. Set and cleared as a whole set through the
+   * merge patch (`{"tags": [...]}`, `[]` clears), at every status. Optional because a service older
+   * than qits-634 sends none; absent reads as none.
+   */
+  readonly tags?: readonly string[];
   /** Free text — whoever is looking at it. Null when nobody has said. */
   readonly assignee: string | null;
   /** Stamped from the session, never sent. Null for a row with no principal behind it. */
@@ -1809,6 +1834,8 @@ export interface CampaignSummaryDto {
   readonly blockReason?: string | null;
   /** {@link TicketDto.blockedBy}, rule for rule. */
   readonly blockedBy?: string | null;
+  /** {@link TicketDto.tags}, rule for rule. */
+  readonly tags?: readonly string[];
   /** Whether it has ever been started. */
   readonly started: boolean;
   /** Whether its start is live now — leaving REFINED and READY_FOR_DEV both pauses it. */
@@ -1847,6 +1874,8 @@ export interface CampaignMemberEntityDto {
   readonly blockReason?: string | null;
   /** {@link TicketDto.blockedBy}, rule for rule. */
   readonly blockedBy?: string | null;
+  /** {@link TicketDto.tags}, rule for rule. */
+  readonly tags?: readonly string[];
 }
 
 /** Where the campaign's dispatch of a member landed; every field null until it has. */

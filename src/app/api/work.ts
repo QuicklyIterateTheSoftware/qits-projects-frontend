@@ -80,6 +80,12 @@ export interface WorkEntityDto {
   readonly blockedBy?: string | null;
   /** Absent on the listing's summary rows; see the type's note. */
   readonly acceptanceCriteria?: readonly string[] | null;
+  /**
+   * The entity's tags (qits-634), as enum names — {@link ../api/dto#TicketDto.tags}, rule for rule.
+   * On every archetype and every answer, listing rows included, `[]` when none; optional because a
+   * service older than qits-634 sends no such field, which the mappings below resolve to none.
+   */
+  readonly tags?: readonly string[];
 }
 
 /**
@@ -164,6 +170,7 @@ export function epicOf(
     blockSource: work.blockSource,
     blockReason: work.blockReason,
     blockedBy: work.blockedBy,
+    tags: work.tags ?? [],
     supersededByEpicId: work.supersededBy,
     outcome: work.outcome ?? null,
     acceptanceCriteria: work.acceptanceCriteria ?? [],
@@ -192,6 +199,7 @@ export function ticketOf(
     blockSource: work.blockSource,
     blockReason: work.blockReason,
     blockedBy: work.blockedBy,
+    tags: work.tags ?? [],
     assignee: work.assignee,
     createdBy: work.createdBy,
     acceptanceCriteria: work.acceptanceCriteria ?? [],
@@ -222,6 +230,7 @@ export function featureOf(work: WorkEntityDto): FeatureDto {
     implementingOn: work.implementingAt ?? null,
     outcome: work.outcome ?? null,
     supersededBy: work.supersededBy ?? null,
+    tags: work.tags ?? [],
     createdAt: work.createdAt,
     updatedAt: work.updatedAt,
   };
@@ -245,6 +254,7 @@ export function taskOf(work: WorkEntityDto): TaskDto {
     implementingAt: work.implementingAt ?? null,
     outcome: work.outcome ?? null,
     supersededBy: work.supersededBy ?? null,
+    tags: work.tags ?? [],
     createdAt: work.createdAt,
     updatedAt: work.updatedAt,
   };
@@ -271,6 +281,7 @@ export function campaignSummaryOf(
     blockSource: work.blockSource,
     blockReason: work.blockReason,
     blockedBy: work.blockedBy,
+    tags: work.tags ?? [],
     started: start !== null,
     active: start?.active ?? false,
     members: progress?.members.length ?? 0,

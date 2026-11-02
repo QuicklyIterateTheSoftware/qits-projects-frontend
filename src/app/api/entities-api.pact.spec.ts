@@ -142,6 +142,21 @@ describe('qits-projects-frontend → qits-projects-service pact: EntitiesApi', (
     });
   });
 
+  /**
+   * qits-634: the detail page's Reserve for human press — the tag set through the same merge patch,
+   * `{"tags": ["RESERVED_FOR_HUMAN"]}` (`[]` clears it), on a ticket already scheduled, since the tag
+   * is editable at every status. The page reads the entity again afterwards, so the answer's body
+   * is not consumed.
+   */
+  it('reserve-work-item: reserves an entity for a human through the merge patch', () => {
+    const state = 'a ready for dev ticket';
+    return given(state, 'patchWork', 'reserve-work-item', []).executeTest(async (server) => {
+      const body = sent(state, 'patchWork');
+      expect(body).toEqual({ tags: ['RESERVED_FOR_HUMAN'] });
+      await apiAt(server.url, EntitiesApi).patch(ref(state, 'patchWork'), { tags: body.tags });
+    });
+  });
+
   it('block-work-item: blocks an entity, saying why', () => {
     const state = 'a reported ticket';
     const { blocked, reason } = sent(state, 'setWorkBlocked');
