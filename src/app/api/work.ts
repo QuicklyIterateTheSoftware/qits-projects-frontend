@@ -41,6 +41,15 @@ export interface WorkEntityDto {
   readonly slugScope?: string | null;
   /** Absent on the listing's summary rows; see the type's note. */
   readonly description?: string | null;
+  /**
+   * A plain-text lead of {@link description} — at most 240 characters plus `…` — filled for a
+   * ticket or an epic row and null for every other archetype (qits-1821). The inverse of
+   * `description`: present on the listing's summary rows, which is where a desk card draws it
+   * ({@link ../project/entity-card#EntityCard}), and **absent** on a whole read, which has the
+   * description itself instead. Optional for that reason — a service older than qits-1821 sends no
+   * such field, which every reader here resolves to null.
+   */
+  readonly excerpt?: string | null;
   readonly status: EntityStatus | null;
   /** What a move left behind; only a move's (and a transition's) answer carries it. */
   readonly statusBefore?: EntityStatus | null;
@@ -186,6 +195,7 @@ export function epicOf(
     title: work.title,
     slug: work.slug,
     description: work.description ?? null,
+    excerpt: work.excerpt ?? null,
     number: work.number,
     qualifiedId: work.qualifiedId,
     status: work.status ?? 'REPORTED',
@@ -228,6 +238,7 @@ export function ticketOf(
     acceptanceCriteria: work.acceptanceCriteria ?? [],
     impetus: work.impetus,
     description: work.description ?? null,
+    excerpt: work.excerpt ?? null,
     outcome: work.outcome ?? null,
     supersededBy: work.supersededBy ?? null,
     createdAt: work.createdAt,

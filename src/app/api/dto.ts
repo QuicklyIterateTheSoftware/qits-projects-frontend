@@ -327,6 +327,13 @@ export interface EpicDto {
   readonly slug: string;
   readonly description: string | null;
   /**
+   * A plain-text lead of {@link description} — at most 240 characters plus `…`, null for an epic
+   * with no description yet (qits-1821). What a desk card draws instead of the whole, markdown
+   * description; the detail page reads {@link description} for that. Optional because a service
+   * older than qits-1821 sends no such field, which {@link epicOf} resolves to null.
+   */
+  readonly excerpt?: string | null;
+  /**
    * The per-project counter the unified entity gained: 1, 2, 3… within one project, never reused.
    *
    * <p>It is on the wire beside `id` rather than instead of it, because the two answer different
@@ -673,6 +680,8 @@ export interface TicketDto {
    * saying so rather than as an empty panel.
    */
   readonly description: string | null;
+  /** {@link EpicDto.excerpt}, rule for rule — a plain-text lead of {@link description} (qits-1821). */
+  readonly excerpt?: string | null;
   /** Why it was dropped (qits-248); see {@link WorkOutcome}. Absent on an older service. */
   readonly outcome?: WorkOutcome | null;
   /** The item that closed this one — see {@link FeatureDto.supersededBy}. */

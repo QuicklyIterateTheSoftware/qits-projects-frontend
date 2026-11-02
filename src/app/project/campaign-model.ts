@@ -43,6 +43,8 @@ export interface CampaignEntity {
   readonly title: string;
   readonly slug: string;
   readonly description: string | null;
+  /** Always null: the service never fills a campaign's excerpt (qits-1821). */
+  readonly excerpt?: string | null;
   readonly number: number;
   readonly qualifiedId: string | null;
   readonly status: EntityStatus;
@@ -86,6 +88,7 @@ export function campaignEntity(summary: CampaignSummaryDto): CampaignEntity {
     title: summary.title,
     slug: '',
     description: null,
+    excerpt: null,
     number: summary.number,
     qualifiedId: summary.qualifiedId,
     status: summary.status,

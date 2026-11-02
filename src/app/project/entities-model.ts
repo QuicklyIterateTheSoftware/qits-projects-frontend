@@ -73,6 +73,12 @@ interface EntityFields {
   readonly title: string;
   readonly slug: string;
   readonly description: string | null;
+  /**
+   * A plain-text lead of {@link description} — what a desk card draws instead of the whole
+   * description (qits-1821); see {@link ../api/dto#EpicDto.excerpt}. Optional, like `tags`, so a row
+   * built by hand need not restate it.
+   */
+  readonly excerpt?: string | null;
   /** The per-project counter. Always present; it is what `qualifiedId` is composed from. */
   readonly number: number;
   /** `<projectKey>-<number>`, or null when the project could not be resolved. Never draw a null. */
@@ -186,6 +192,7 @@ export function epicEntity(epic: EpicDto, features: readonly FeatureNode[] = [])
     title: epic.title,
     slug: epic.slug,
     description: epic.description,
+    excerpt: epic.excerpt ?? null,
     number: epic.number,
     qualifiedId: epic.qualifiedId,
     createdAt: epic.createdAt,
@@ -215,6 +222,7 @@ export function ticketEntity(ticket: TicketDto): TicketEntity {
     title: ticket.title,
     slug: ticket.slug,
     description: ticket.description,
+    excerpt: ticket.excerpt ?? null,
     number: ticket.number,
     qualifiedId: ticket.qualifiedId,
     createdAt: ticket.createdAt,

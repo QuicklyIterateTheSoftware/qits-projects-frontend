@@ -2,7 +2,6 @@ import { ChangeDetectionStrategy, Component, computed, input } from '@angular/co
 import { RouterLink } from '@angular/router';
 import { QitsBadge, QitsCard } from '@qits/ui-components';
 import { NONE, relativeSince } from '../ui/format';
-import { MarkdownView } from '../ui/markdown-view';
 import {
   blockedBadges,
   epicProgress,
@@ -24,9 +23,10 @@ import { archetypeLabel, entityRoute } from './entity-nodes';
  * dispatching and refining presses live on the page, where the dispatch state can be read first.
  *
  * <p>The body is archetype-shaped and small: a ticket's impetus (the reporter's words) and its
- * refined description, an epic's description and how much of its tree has landed, a campaign's
- * member count and whether it is running (its listing carries no age). Everything larger
- * — the feature/task tree, the thread, the dossier — is the page's.
+ * description's excerpt (qits-1821), or an epic's excerpt, plus how much of its tree has landed; a
+ * campaign's member count and whether it is running (its listing carries no age). The excerpt is a
+ * plain-text lead the listing carries for exactly that drawing — the whole, markdown description is
+ * the page's, like the feature/task tree, the thread and the dossier.
  *
  * <p>A null `qualifiedId` draws no identifier (the service could not resolve the project row), and
  * the link then spells the bare number, which the page reads just as well.
@@ -34,7 +34,7 @@ import { archetypeLabel, entityRoute } from './entity-nodes';
 @Component({
   selector: 'app-entity-card',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [MarkdownView, QitsBadge, QitsCard, RouterLink],
+  imports: [QitsBadge, QitsCard, RouterLink],
   template: `
     <qits-card>
       <div class="head">
@@ -83,8 +83,8 @@ import { archetypeLabel, entityRoute } from './entity-nodes';
         <p class="impetus">{{ impetus }}</p>
       }
 
-      @if (entity().description; as text) {
-        <app-markdown class="description" [text]="text" />
+      @if (entity().excerpt; as lead) {
+        <p class="excerpt">{{ lead }}</p>
       }
     </qits-card>
   `,
@@ -132,10 +132,18 @@ import { archetypeLabel, entityRoute } from './entity-nodes';
       color: #111827;
       overflow-wrap: anywhere;
     }
-    .description {
+    /* Clamped to three lines: the excerpt is already capped server-side, but a narrow card still
+       wraps a long one past where a card should grow (qits-1821). */
+    .excerpt {
       margin-top: 0.5rem;
       font-size: 0.9rem;
       color: #374151;
+      overflow-wrap: anywhere;
+      display: -webkit-box;
+      -webkit-box-orient: vertical;
+      -webkit-line-clamp: 3;
+      line-clamp: 3;
+      overflow: hidden;
     }
   `,
 })
