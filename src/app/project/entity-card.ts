@@ -3,7 +3,13 @@ import { RouterLink } from '@angular/router';
 import { QitsBadge, QitsCard } from '@qits/ui-components';
 import { NONE, relativeSince } from '../ui/format';
 import { MarkdownView } from '../ui/markdown-view';
-import { blockedBadges, epicProgress, statusBadge, ticketTypeBadge } from './entities-model';
+import {
+  blockedBadges,
+  epicProgress,
+  statusBadge,
+  tagBadges,
+  ticketTypeBadge,
+} from './entities-model';
 import { campaignLine, type WorkItem } from './campaign-model';
 import { archetypeLabel, entityRoute } from './entity-nodes';
 
@@ -44,10 +50,16 @@ import { archetypeLabel, entityRoute } from './entity-nodes';
           <qits-badge class="status" [label]="badge().label" [tone]="badge().tone" />
           <!-- Beside the status and never instead of it: blocked is a different fact. Every
                archetype on the desk carries the flag now, not only a ticket. One or two badges
-               (qits-895): an explicit block and an agent-derived one are independent facts. -->
+               (qits-895): an explicit block and an agent-derived one are independent facts. Then
+               the tags (qits-634): reserved for human says who does the work, another fact again. -->
           @for (badge of blocked(); track badge.label) {
             <span [title]="badge.title"
               ><qits-badge class="blocked" [label]="badge.label" [tone]="badge.tone"
+            /></span>
+          }
+          @for (badge of tags(); track badge.label) {
+            <span [title]="badge.title"
+              ><qits-badge class="tag" [label]="badge.label" [tone]="badge.tone"
             /></span>
           }
         </span>
@@ -135,6 +147,8 @@ export class EntityCard {
 
   protected readonly none = NONE;
   protected readonly blocked = computed(() => blockedBadges(this.entity()));
+  /** `reserved for human`, and any other tag this build draws (qits-634). */
+  protected readonly tags = computed(() => tagBadges(this.entity()));
 
   protected readonly ticket = computed(() => {
     const entity = this.entity();

@@ -57,6 +57,8 @@ export interface CampaignEntity {
   readonly blockReason?: string | null;
   /** {@link ../api/dto#TicketDto.blockedBy}, rule for rule. */
   readonly blockedBy?: string | null;
+  /** {@link ../api/dto#TicketDto.tags}, rule for rule — absent reads as none. */
+  readonly tags?: readonly string[];
   /** Empty: the listing has none, and the desk's newest-first sort reads an empty one as oldest. */
   readonly createdAt: string;
   readonly updatedAt: string;
@@ -91,6 +93,7 @@ export function campaignEntity(summary: CampaignSummaryDto): CampaignEntity {
     blockSource: summary.blockSource,
     blockReason: summary.blockReason,
     blockedBy: summary.blockedBy,
+    tags: summary.tags ?? [],
     createdAt: '',
     updatedAt: '',
     workspaces: [],

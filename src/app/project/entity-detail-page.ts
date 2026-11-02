@@ -15,12 +15,13 @@ import { QitsAppLinks, QitsBadge, QitsButton } from '@qits/ui-components';
 import { ArchetypesApi, type ArchetypeRegistry } from '../api/archetypes-api';
 import { DossierApi, epicDossier, ticketDossier, type DossierOwner } from '../api/dossier-api';
 import { workRef, type DropResolution, type WorkEntityDto } from '../api/work';
-import type {
-  AuditEntryDto,
-  DispatchMode,
-  EntityDispatchDto,
-  EntityDispatchStateDto,
-  TicketType,
+import {
+  RESERVED_FOR_HUMAN,
+  type AuditEntryDto,
+  type DispatchMode,
+  type EntityDispatchDto,
+  type EntityDispatchStateDto,
+  type TicketType,
 } from '../api/dto';
 import { EntitiesApi } from '../api/entities-api';
 import { ProjectEvents } from '../api/project-events';
@@ -56,6 +57,7 @@ import {
   gateHints,
   isExplicitBlock,
   isFinalStatus,
+  isReservedForHuman,
   lifecycleMoves,
   outcomeBadge,
   outcomeOption,
@@ -64,6 +66,7 @@ import {
   permits,
   statusLabel,
   statusesOf,
+  tagBadges,
   taskStatus,
   ticketTypeBadge,
   type LifecycleMove,
@@ -251,6 +254,11 @@ interface TreeRow {
           @for (badge of blockBadges(); track badge.label) {
             <span [title]="badge.title"
               ><qits-badge class="blocked" [label]="badge.label" [tone]="badge.tone"
+            /></span>
+          }
+          @for (badge of tags(); track badge.label) {
+            <span [title]="badge.title"
+              ><qits-badge class="tag" [label]="badge.label" [tone]="badge.tone"
             /></span>
           }
         </span>
@@ -455,6 +463,18 @@ interface TreeRow {
             <span class="note block-note">{{ note }}</span>
           }
         }
+        <!-- At every status and on every archetype (qits-634): who does the work is not a phase's
+             question, so a done or dropped item can be marked (or unmarked) for the record too. -->
+        <qits-button
+          class="reserve"
+          variant="ghost"
+          [disabled]="action() !== null"
+          [busy]="action() === 'reserve'"
+          [attr.title]="reserveTitle"
+          (pressed)="toggleReserved()"
+        >
+          {{ reserved() ? 'Unreserve for human' : 'Reserve for human' }}
+        </qits-button>
         @if (n.archetype !== 'CAMPAIGN') {
           <qits-button
             class="reshape"
@@ -1214,6 +1234,17 @@ export class EntityDetailPage {
     return root ? blockedReasonLine(root) : '';
   });
 
+  /** The tag badge(s) beside the title — `reserved for human` (qits-634). */
+  protected readonly tags = computed(() => tagBadges(this.node() ?? {}));
+
+  /** Whether the node is tagged `RESERVED_FOR_HUMAN` — what the Reserve press toggles (qits-634). */
+  protected readonly reserved = computed(() => isReservedForHuman(this.node() ?? {}));
+
+  /** The Reserve press's hover: what the tag means, so nobody presses it to find out. */
+  protected readonly reserveTitle =
+    'Reserved for human: an agent cannot complete this work, so a person does it and moves its ' +
+    'status by hand. No agent is dispatched onto it.';
+
   protected readonly archetype = computed(() => archetypeLabel(this.node()?.archetype ?? ''));
   protected readonly badge = computed(() => statusBadge(this.node()?.status ?? null));
   /** Why a dropped node was dropped, beside its status; null draws nothing (qits-248). */
@@ -1423,6 +1454,10 @@ export class EntityDetailPage {
     }
     if (state.blocked && isExplicitBlock(state)) {
       return 'Blocked — unblock it before dispatching.';
+    }
+    if (this.reserved()) {
+      // The service refuses the press (qits-634); say why rather than only that nothing runs.
+      return 'Reserved for human — no agent is dispatched onto it; a person moves its status.';
     }
     return state.status
       ? `Nothing to dispatch at ${statusLabel(state.status)}.`
@@ -2053,6 +2088,24 @@ export class EntityDetailPage {
       await this.api.setBlocked(this.ref(node), mode === 'block', this.blockNote().trim());
       this.blocking.set(null);
       this.blockNote.set('');
+      await this.load(true);
+    });
+  }
+
+  /**
+   * Set or clear `reserved for human` (qits-634) through the merge patch — `{"tags": [...]}` replaces
+   * the whole set, so the node's other tags ride along unchanged and only this one is added or
+   * taken out; `[]` clears. Then read again, so every badge and the dispatch state follow.
+   */
+  protected async toggleReserved(): Promise<void> {
+    const node = this.node();
+    if (!node) {
+      return;
+    }
+    const others = (node.tags ?? []).filter((tag) => tag !== RESERVED_FOR_HUMAN);
+    const tags = this.reserved() ? others : [...others, RESERVED_FOR_HUMAN];
+    await this.run('reserve', async () => {
+      await this.api.patch(this.ref(node), { tags });
       await this.load(true);
     });
   }

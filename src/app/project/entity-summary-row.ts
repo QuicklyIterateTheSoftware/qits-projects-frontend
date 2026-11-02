@@ -3,7 +3,7 @@ import { RouterLink } from '@angular/router';
 import { QitsBadge } from '@qits/ui-components';
 import { relativeSince } from '../ui/format';
 import type { WorkItem } from './campaign-model';
-import { closedByLabel, outcomeBadge, statusBadge } from './entities-model';
+import { closedByLabel, outcomeBadge, statusBadge, tagBadges } from './entities-model';
 import { archetypeLabel, entityAddress, entityRoute } from './entity-nodes';
 
 /**
@@ -15,6 +15,7 @@ import { archetypeLabel, entityAddress, entityRoute } from './entity-nodes';
  * row with no recorded outcome says nothing more. An entity another one closed (any archetype, where
  * it was a superseded epic alone) links to that one's page when the desk holds it — "duplicate of",
  * "resolved by", "superseded by" — resolved by the desk, which is the only one holding every entity.
+ * A row reserved for human says so (qits-634), as its card does.
  */
 @Component({
   selector: 'app-entity-summary-row',
@@ -27,6 +28,11 @@ import { archetypeLabel, entityAddress, entityRoute } from './entity-nodes';
     <qits-badge [label]="badge().label" [tone]="badge().tone" />
     @if (outcome(); as why) {
       <qits-badge class="outcome" [label]="why.label" [tone]="why.tone" />
+    }
+    @for (tag of tags(); track tag.label) {
+      <span [title]="tag.title"
+        ><qits-badge class="tag" [label]="tag.label" [tone]="tag.tone"
+      /></span>
     }
     @if (successor(); as next) {
       <a class="successor" [routerLink]="successorRoute()"
@@ -79,6 +85,8 @@ export class EntitySummaryRow {
 
   protected readonly badge = computed(() => statusBadge(this.entity().status));
   protected readonly outcome = computed(() => outcomeBadge(this.entity()));
+  /** `reserved for human` (qits-634) — on a done or dropped row too, where it is still the record. */
+  protected readonly tags = computed(() => tagBadges(this.entity()));
   protected readonly successorLabel = computed(() =>
     closedByLabel(this.entity().outcome).toLowerCase(),
   );
