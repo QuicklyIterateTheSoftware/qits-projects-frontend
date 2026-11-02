@@ -937,6 +937,10 @@ export class RefiningPage {
    * Put an image into the subject's description — a field edit, so it goes through the multi-entity
    * transition door as a restatement of the row (the per-archetype PUTs are retired). The subject is
    * then re-read quietly: the room is correct and one field moved.
+   *
+   * <p>The restatement starts from the subject as {@link RefiningService.resolve} read it — whole
+   * (qits-1815): the door is PUT per entry, so a subject built from the listing's summary would send
+   * no criteria and the description it never saw.
    */
   protected async insertEpicImage(insertion: EpicImageInsertion): Promise<void> {
     const current = this.resolved();

@@ -12,7 +12,9 @@ import {
 } from '../project/entities-model';
 import type { EntityTransitionRequest } from '../project/entity-transition-model';
 import { campaignEntity, type CampaignEntity, type WorkItem } from '../project/campaign-model';
+import { flattenEntities, nodeByNumber } from '../project/entity-nodes';
 import { QITS_API_BASE } from './api-base';
+import { boundedAll } from './bounded';
 import { CampaignsApi } from './campaigns-api';
 import { ProjectsApi } from './projects-api';
 import type {
@@ -32,6 +34,7 @@ import type {
   WorkspaceReferenceDto,
 } from './dto';
 import {
+  campaignSummaryOf,
   epicOf,
   featureOf,
   taskOf,
@@ -88,11 +91,24 @@ export interface NewTicket {
  *
  * <p><b>{@link list} is the one read surface, and the archetype is a filter on it.</b> The service
  * answers a project's whole tree in one read (`GET /projects/{project}/work`), so every desk asks the
- * same question and filters the answer. That listing is a summary, though — no description, no
- * acceptance criteria, no workspaces — and every reader here draws those, so each root is read whole
- * (`GET /work/{q}`) and its workspaces asked (`GET /work/{q}/workspaces`), in parallel across the
- * roots. An epic's features and their tasks come from `GET /work/{q}/children`, which carries their
- * bodies: the reshape form restates them, and a restatement without a body would clear it.
+ * same question and filters the answer. **The desk is drawn from that listing alone** (qits-1815):
+ * an epic's features and tasks are the listing's own rows under it, by `parent`; every ticket's and
+ * epic's workspaces come from one more read for the whole project
+ * (`GET /projects/{project}/work/workspaces`, {@link ProjectsApi.workWorkspaces}); and a campaign's
+ * started/active/member count from its progress, at most {@link PROGRESS_IN_FLIGHT} at a time. That
+ * is a request count that does not grow with the project but for the campaigns. It used to be
+ * `GET /work/{q}` and `/workspaces` for every root plus `/children` for every epic and feature, all
+ * at once: about 1,900 requests on a project of 743 roots, which headless Chromium refuses with
+ * `net::ERR_INSUFFICIENT_RESOURCES` and the desk drew as an unreachable service.
+ *
+ * <p><b>So what {@link list} answers is a summary</b> — no description and no acceptance criteria on
+ * any row, epic, ticket, feature or task. A reader that draws a body, or **writes one back**, reads
+ * the one entity it is about whole: {@link get} (a ticket), {@link epic} (an epic with its features'
+ * and tasks' bodies), {@link campaign}, or {@link whole} for whichever root a row is, and
+ * {@link listWithWhole} for a page addressed by number. That matters most for the writes: the
+ * multi-entity transition is PUT per entry, so restating an entity built from a summary row would
+ * *clear* its description. {@link wholeRow} is the read the reshape panel makes for every row it
+ * restates.
  *
  * <p><b>Comments are the one thread every archetype shares</b> (qits-551): `/work/{q}/comments` for
  * the list and the create, and `/work/{q}/comments/{commentId}` for an edit or a delete.
@@ -126,27 +142,63 @@ export class EntitiesApi {
   list(projectId: string, archetype: Archetype): Promise<readonly Entity[]>;
   list(projectId: string, archetype: 'CAMPAIGN'): Promise<readonly CampaignEntity[]>;
   list(projectId: string, archetype?: Archetype | 'CAMPAIGN'): Promise<readonly WorkItem[]>;
-  async list(projectId: string, archetype?: Archetype | 'CAMPAIGN'): Promise<readonly WorkItem[]> {
-    const rows = await this.projects.work(projectId);
-    const roots = rows.filter(
-      (row) => row.parent === null && (archetype === undefined || row.archetype === archetype),
+  list(projectId: string, archetype?: Archetype | 'CAMPAIGN'): Promise<readonly WorkItem[]> {
+    return this.desk(
+      projectId,
+      (row) => archetype === undefined || row.archetype === archetype,
+      // A campaign has no workspaces of its own, so the campaigns desk does not ask for any.
+      archetype !== 'CAMPAIGN',
     );
-    const items = await Promise.all(roots.map((row) => this.root(row)));
-    return items.filter((item): item is WorkItem => item !== null);
   }
 
   /**
    * The epics and the tickets, without the campaigns — the pre-campaign "everything". For the readers
    * a campaign can never be a subject of: the reshape form (the multi-entity transition refuses a
    * campaign). The refinement room reads {@link list}, since a campaign has a room (epic qits-770).
+   * A summary, like {@link list}: see the class note.
    */
   async epicsAndTickets(projectId: string): Promise<readonly Entity[]> {
-    const rows = await this.projects.work(projectId);
-    const roots = rows.filter(
-      (row) => row.parent === null && (row.archetype === 'EPIC' || row.archetype === 'TICKET'),
+    const items = await this.desk(
+      projectId,
+      (row) => row.archetype === 'EPIC' || row.archetype === 'TICKET',
+      true,
     );
-    const items = await Promise.all(roots.map((row) => this.root(row)));
-    return items.filter((item): item is Entity => item !== null && item.archetype !== 'CAMPAIGN');
+    return items.filter((item): item is Entity => item.archetype !== 'CAMPAIGN');
+  }
+
+  /**
+   * **The project's work with one entity's root read whole** — {@link list}, then the root whose tree
+   * holds `number` replaced by {@link whole}'s read of it: an epic for itself, its features and its
+   * tasks; a ticket or a campaign for itself.
+   *
+   * <p>For a page addressed by number (the detail page, the refinement room): there is no read by
+   * number, so the number is looked up in the listing, and the listing is a summary — so the one
+   * entity the page draws a body for, and may write back, is read again whole. The rest of the
+   * project stays summary rows: the page draws only their titles and statuses (the parent, the
+   * siblings, the add-member picker). A number the listing does not hold answers the listing as it is.
+   */
+  async listWithWhole(projectId: string, number: number | null): Promise<readonly WorkItem[]> {
+    const items = await this.list(projectId);
+    const node = number === null ? null : nodeByNumber(flattenEntities(items), number);
+    const root = node ? (node.campaign ?? node.epic ?? node.entity) : null;
+    if (!root) {
+      return items;
+    }
+    const read = await this.whole(root);
+    return items.map((item) => (item.id === read.id ? read : item));
+  }
+
+  /** One root of work read whole, whichever archetype it is — see the class note. */
+  whole(item: WorkItem): Promise<WorkItem> {
+    const ref = workRef(item);
+    switch (item.archetype) {
+      case 'EPIC':
+        return this.epic(ref);
+      case 'CAMPAIGN':
+        return this.campaign(ref);
+      default:
+        return this.get(ref);
+    }
   }
 
   /**
@@ -164,13 +216,70 @@ export class EntitiesApi {
     return ticketEntity(ticketOf(created));
   }
 
-  /** One ticket by qualified id (or id), with its workspaces. */
+  /** One ticket by qualified id (or id), whole, with its workspaces. */
   async get(ref: string): Promise<TicketEntity> {
     const [ticket, workspaces] = await Promise.all([
       this.projects.workItem(ref),
       this.workspaces(ref),
     ]);
     return ticketEntity(ticketOf(ticket, workspaces));
+  }
+
+  /**
+   * One epic by qualified id (or id), whole: the epic (`GET /work/{q}`), its workspaces, and its
+   * features and their tasks with their bodies (`GET /work/{q}/children`, then the same per feature —
+   * the levels in parallel, so the read is three round trips deep however many features it has).
+   */
+  async epic(ref: string): Promise<EpicEntity> {
+    const [epic, workspaces, features] = await Promise.all([
+      this.projects.workItem(ref),
+      this.workspaces(ref),
+      this.features(ref),
+    ]);
+    return epicEntity(epicOf(epic, workspaces), features);
+  }
+
+  /**
+   * One campaign by qualified id (or id), whole: the entity (`GET /work/{q}`) — its description,
+   * slug and timestamps, which the listing's row leaves empty — and its started/active/member count
+   * from its progress, as the desk's row has them.
+   */
+  async campaign(ref: string): Promise<CampaignEntity> {
+    const [row, progress] = await Promise.all([
+      this.projects.workItem(ref),
+      this.campaigns.progress(ref),
+    ]);
+    return {
+      ...campaignEntity(campaignSummaryOf(row, progress)),
+      slug: row.slug,
+      description: row.description ?? null,
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
+    };
+  }
+
+  /**
+   * **One row of any archetype, whole, as the wire answers it** — what a restatement is built from
+   * (the reshape panel, qits-1815). A root (an epic, a ticket) is `GET /work/{q}`; a feature or a task
+   * is picked out of its parent's `GET /work/{parent}/children`, which carries the children's bodies.
+   * Rejects when the parent no longer holds the row: a restatement must never be built from less.
+   *
+   * @param row the row's id and qualified id, and its archetype
+   * @param parentRef the parent's qualified id (or id) for a feature or a task; null for a root
+   */
+  async wholeRow(
+    row: { readonly id: string; readonly qualifiedId: string | null },
+    parentRef: string | null,
+  ): Promise<WorkEntityDto> {
+    if (parentRef === null) {
+      return this.projects.workItem(workRef(row));
+    }
+    const children = await this.projects.children(parentRef);
+    const found = children.find((child) => child.id === row.id);
+    if (!found) {
+      throw new Error(`${workRef(row)} is no longer under ${parentRef}.`);
+    }
+    return found;
   }
 
   /**
@@ -348,42 +457,58 @@ export class EntitiesApi {
     await firstValueFrom(this.http.delete<unknown>(this.comment(ref, commentId)));
   }
 
-  /** One root of the listing as a desk item; null for an archetype no desk draws. */
-  private root(row: WorkEntityDto): Promise<WorkItem | null> {
-    switch (row.archetype) {
-      case 'EPIC':
-        return this.epic(row);
-      case 'TICKET':
-        return this.ticket(row);
-      case 'CAMPAIGN':
-        return this.campaigns.summary(row).then(campaignEntity);
-      default:
-        return Promise.resolve(null);
-    }
-  }
-
-  /** A ticket, read whole, with its workspaces. */
-  private async ticket(row: WorkEntityDto): Promise<TicketEntity> {
-    const ref = workRef(row);
-    const [ticket, workspaces] = await Promise.all([
-      this.projects.workItem(ref),
-      this.workspaces(ref),
-    ]);
-    return ticketEntity(ticketOf(ticket, workspaces));
-  }
-
   /**
-   * An epic, read whole, with its workspaces and its features and their tasks — each level in
-   * parallel across its parents, so a project with twenty epics stays three round trips deep.
+   * The desk, from the listing alone: the roots `wanted` keeps, in the listing's order, each built
+   * from its own summary row — an epic with the rows under it, a ticket and an epic with their
+   * workspaces from the one project-wide read, a campaign with its progress. See the class note.
+   *
+   * <p>The workspaces read goes out beside the listing, not after it. It is asked only when a desk
+   * can draw one (`withWorkspaces`), and a failure of it costs the workspace links and not the desk:
+   * a link is the least of what a card draws, and a desk that cannot be drawn at all for want of one
+   * is the failure this read exists to remove.
    */
-  private async epic(row: WorkEntityDto): Promise<EpicEntity> {
-    const ref = workRef(row);
-    const [epic, workspaces, features] = await Promise.all([
-      this.projects.workItem(ref),
-      this.workspaces(ref),
-      this.features(ref),
+  private async desk(
+    projectId: string,
+    wanted: (row: WorkEntityDto) => boolean,
+    withWorkspaces: boolean,
+  ): Promise<readonly WorkItem[]> {
+    const [rows, workspaces] = await Promise.all([
+      this.projects.work(projectId),
+      withWorkspaces
+        ? this.projects.workWorkspaces(projectId).catch(() => NO_WORKSPACES)
+        : Promise.resolve(NO_WORKSPACES),
     ]);
-    return epicEntity(epicOf(epic, workspaces), features);
+    const roots = rows.filter((row) => row.parent === null && wanted(row));
+    const under = childrenByParent(rows);
+    const campaigns = new Map(
+      (
+        await boundedAll(
+          roots.filter((row) => row.archetype === 'CAMPAIGN'),
+          PROGRESS_IN_FLIGHT,
+          (row) => this.campaigns.summary(row),
+        )
+      ).map((summary) => [summary.id, summary]),
+    );
+    const items: WorkItem[] = [];
+    for (const row of roots) {
+      const own = workspaces.get(row.id) ?? [];
+      switch (row.archetype) {
+        case 'EPIC':
+          items.push(epicEntity(epicOf(row, own), featuresOf(row.id, under)));
+          break;
+        case 'TICKET':
+          items.push(ticketEntity(ticketOf(row, own)));
+          break;
+        case 'CAMPAIGN': {
+          const summary = campaigns.get(row.id);
+          if (summary) {
+            items.push(campaignEntity(summary));
+          }
+          break;
+        }
+      }
+    }
+    return items;
   }
 
   private async features(epicRef: string): Promise<readonly FeatureNode[]> {
@@ -403,4 +528,41 @@ export class EntitiesApi {
   private comment(ref: string, commentId: string): string {
     return `${this.work(ref)}/comments/${encodeURIComponent(commentId)}`;
   }
+}
+
+/**
+ * How many campaign progress reads {@link EntitiesApi.list} keeps in flight at once (qits-1815) —
+ * the one per-root read the desk still makes, bounded so a project of many campaigns is a queue and
+ * never a burst. Six is what a browser opens per HTTP/1.1 origin anyway.
+ */
+export const PROGRESS_IN_FLIGHT = 6;
+
+const NO_WORKSPACES: ReadonlyMap<string, readonly WorkspaceReferenceDto[]> = new Map();
+
+/** The listing's rows by their parent's id, each list in the listing's (the tree's) order. */
+function childrenByParent(
+  rows: readonly WorkEntityDto[],
+): ReadonlyMap<string, readonly WorkEntityDto[]> {
+  const under = new Map<string, WorkEntityDto[]>();
+  for (const row of rows) {
+    if (row.parent !== null) {
+      const siblings = under.get(row.parent) ?? [];
+      siblings.push(row);
+      under.set(row.parent, siblings);
+    }
+  }
+  return under;
+}
+
+/** An epic's features and their tasks, out of the listing's own rows — summaries, without bodies. */
+function featuresOf(
+  epicId: string,
+  under: ReadonlyMap<string, readonly WorkEntityDto[]>,
+): readonly FeatureNode[] {
+  return (under.get(epicId) ?? [])
+    .filter((row) => row.archetype === 'FEATURE')
+    .map((feature) => ({
+      feature: featureOf(feature),
+      tasks: (under.get(feature.id) ?? []).filter((row) => row.archetype === 'TASK').map(taskOf),
+    }));
 }

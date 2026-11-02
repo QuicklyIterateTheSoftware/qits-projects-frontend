@@ -192,8 +192,10 @@ interface TreeRow {
  *
  * <p><b>The number is resolved by reading the project</b>: there is no read by number, so the page
  * reads the collection the desk reads and looks the number up (`entity-nodes.ts`). A feature's page
- * needs its epic and siblings anyway. The page listens to both the `epics` and `tickets` topics and
- * re-reads quietly, never blanking what is on screen for a hint.
+ * needs its epic and siblings anyway. The collection is a summary, so the node itself is then read
+ * whole — its root's tree, bodies and workspaces included (qits-1815, see {@link load}). The page
+ * listens to both the `epics` and `tickets` topics and re-reads quietly, never blanking what is on
+ * screen for a hint.
  */
 @Component({
   selector: 'app-entity-detail-page',
@@ -1710,6 +1712,14 @@ export class EntityDetailPage {
   /**
    * Read the project and resolve the number, then what the frame needs about that node. Loud on
    * arrival and a hop; quiet on a hint and after this page's own writes.
+   *
+   * <p><b>The node the page shows is read whole; the rest of the project is the listing's summary</b>
+   * (qits-1815, {@link EntitiesApi.listWithWhole}). The number resolves in the listing, and then the
+   * root whose tree holds it is read again — an epic with its features' and tasks' bodies, a ticket,
+   * a campaign — before anything is drawn, so the description, the acceptance criteria and the
+   * workspaces on screen are the whole read's. That is also what the edit starts from: the save is a
+   * PUT-shaped restatement ({@link save}), and a draft seeded from a summary row would clear the
+   * description it never saw. Every write re-runs this, so the next draft starts whole too.
    */
   async load(quiet = false): Promise<void> {
     const projectId = this.projectId();
@@ -1723,7 +1733,7 @@ export class EntityDetailPage {
     const attempt = this.attempt;
     try {
       const [entities, registry, repositories] = await Promise.all([
-        this.api.list(projectId),
+        this.api.listWithWhole(projectId, this.number()),
         this.archetypes.registry(),
         this.repositoryNames(projectId),
       ]);

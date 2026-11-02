@@ -12,11 +12,13 @@ import type {
   RepositoryDto,
   RepositoryEntriesResponse,
   SyncStatusDto,
+  WorkspaceReferenceDto,
   WrapperDto,
   WrapperReconcileResponse,
 } from './dto';
 import type {
   DropResolution,
+  ProjectWorkWorkspacesResponse,
   WorkChildrenResponse,
   WorkEntityDto,
   WorkListResponse,
@@ -160,6 +162,31 @@ export class ProjectsApi {
       ),
     );
     return response.entities ?? [];
+  }
+
+  /**
+   * **Every ticket's and epic's workspaces, in one read** — `GET /projects/{project}/work/workspaces`
+   * (qits-1815), keyed by the entity's id.
+   *
+   * <p>The listing ({@link work}) carries no workspaces, and asking `GET /work/{q}/workspaces` per
+   * root is a request per root: 743 of them at once on project `qits`, which is more than a browser
+   * opens before it answers `net::ERR_INSUFFICIENT_RESOURCES`. This is the same answer for the whole
+   * project, as one request beside the listing.
+   *
+   * <p>**A row with no workspaces has no entry**, so a lookup that misses means the empty list. The
+   * map is in the service's order — the tree's — though no reader relies on that.
+   */
+  async workWorkspaces(
+    projectId: string,
+  ): Promise<ReadonlyMap<string, readonly WorkspaceReferenceDto[]>> {
+    const response = await firstValueFrom(
+      this.http.get<ProjectWorkWorkspacesResponse>(
+        `${this.base}/projects/api/projects/${encodeURIComponent(projectId)}/work/workspaces`,
+      ),
+    );
+    return new Map(
+      (response.workspaces ?? []).map((entry) => [entry.workId, entry.workspaces ?? []]),
+    );
   }
 
   /** One entity of any archetype, whole — `GET /work/{q}`. `ref` is a qualified id (or a UUID). */

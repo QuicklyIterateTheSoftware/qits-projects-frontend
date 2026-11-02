@@ -23,8 +23,11 @@ import type {
  * properties a row has — a ticket has no `repositoryId`, an epic no `impetus`.
  *
  * <p><b>The listing is a summary.</b> It carries no `description` and no `acceptanceCriteria`;
- * `GET /work/{q}` and `GET /work/{q}/children` do. That is why both are optional here, and why
- * {@link ../api/entities-api#EntitiesApi.list} reads each root whole.
+ * `GET /work/{q}` and `GET /work/{q}/children` do. That is why both are optional here. The desks are
+ * drawn from the summary alone ({@link ../api/entities-api#EntitiesApi.list}, qits-1815): reading
+ * every root whole was a request or three per root, all at once, and a project of seven hundred
+ * roots is more simultaneous requests than a browser will open. What needs a body reads the one
+ * entity it is about — the detail page's subject, the refinement room's, every row a reshape restates.
  */
 export interface WorkEntityDto {
   readonly id: string;
@@ -124,6 +127,26 @@ export interface WorkMembersResponse {
 /** `GET /work/{q}/workspaces`: every workspace a dispatch stood on the entity's branch. */
 export interface WorkWorkspacesResponse {
   readonly workspaces: readonly WorkspaceReferenceDto[];
+}
+
+/**
+ * One entry of `GET /projects/{project}/work/workspaces` (qits-1815): a ticket's or an epic's
+ * workspaces, keyed by the entity's id — the same list `GET /work/{q}/workspaces` answers for it.
+ */
+export interface WorkWorkspacesEntry {
+  /** The entity's id — what a listing row's `id` is, and what the desk matches the entry by. */
+  readonly workId: string;
+  readonly qualifiedId: string | null;
+  readonly workspaces: readonly WorkspaceReferenceDto[];
+}
+
+/**
+ * `GET /projects/{project}/work/workspaces` (qits-1815): every ticket's and epic's workspaces in one
+ * read, in the tree's order. **A row with none has no entry** — absence is the empty list, not a
+ * missing answer.
+ */
+export interface ProjectWorkWorkspacesResponse {
+  readonly workspaces: readonly WorkWorkspacesEntry[];
 }
 
 /** `GET /work/{q}/progress`. */

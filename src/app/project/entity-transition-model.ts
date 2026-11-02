@@ -1,5 +1,13 @@
 import type { ArchetypeRegistry, ArchetypeSpecDto } from '../api/archetypes-api';
-import type { Entity } from './entities-model';
+import type { FeatureDto, TaskDto } from '../api/dto';
+import { epicOf, featureOf, taskOf, ticketOf, type WorkEntityDto } from '../api/work';
+import {
+  epicEntity,
+  ticketEntity,
+  type EpicEntity,
+  type Entity,
+  type TicketEntity,
+} from './entities-model';
 
 /**
  * **Promoting, demoting and reparenting an entity** — every rule of it derived from the served
@@ -461,88 +469,127 @@ export function subjectsOf(
   const subjects: TransitionSubject[] = [];
   for (const entity of entities) {
     if (entity.archetype === 'EPIC') {
-      subjects.push({
-        id: entity.id,
-        archetype: 'EPIC',
-        title: entity.title,
-        number: entity.number,
-        qualifiedId: entity.qualifiedId,
-        parentId: null,
-        projectId: entity.projectId,
-        values: valuesOf({
-          TITLE: entity.title,
-          SLUG: entity.slug,
-          DESCRIPTION: entity.description,
-          STATUS: entity.status,
-          SUPERSEDED_BY: entity.supersededByEpicId,
-          ASSIGNEE: entity.assignee ?? null,
-        }),
-        lists: listsOf({ ACCEPTANCE_CRITERIA: entity.acceptanceCriteria }),
-      });
+      subjects.push(epicSubject(entity));
       for (const node of entity.features) {
-        const feature = node.feature;
-        subjects.push({
-          id: feature.id,
-          archetype: 'FEATURE',
-          title: feature.title,
-          number: feature.number,
-          qualifiedId: feature.qualifiedId,
-          parentId: feature.epicId,
-          projectId: feature.projectId,
-          values: valuesOf({
-            TITLE: feature.title,
-            SLUG: feature.slug,
-            DESCRIPTION: feature.description,
-            STATUS: statusValue(registry, 'FEATURE', feature.status),
-            IMPLEMENTED_AT: feature.implementedOn,
-            DEPENDS_ON: feature.dependsOnFeatureId,
-          }),
-        });
+        subjects.push(featureSubject(registry, node.feature));
         for (const task of node.tasks) {
-          subjects.push({
-            id: task.id,
-            archetype: 'TASK',
-            title: task.title,
-            number: task.number,
-            qualifiedId: task.qualifiedId,
-            parentId: task.featureId,
-            projectId: task.projectId,
-            values: valuesOf({
-              TITLE: task.title,
-              SLUG: task.slug,
-              DESCRIPTION: task.description,
-              STATUS: statusValue(registry, 'TASK', task.status),
-              REPOSITORY_ID: task.repositoryId,
-              IMPLEMENTED_AT: task.implementedAt,
-              DEPENDS_ON: task.dependsOnTaskId,
-            }),
-          });
+          subjects.push(taskSubject(registry, task));
         }
       }
     } else {
-      subjects.push({
-        id: entity.id,
-        archetype: 'TICKET',
-        title: entity.title,
-        number: entity.number,
-        qualifiedId: entity.qualifiedId,
-        parentId: null,
-        projectId: entity.projectId,
-        values: valuesOf({
-          TITLE: entity.title,
-          SLUG: entity.slug,
-          DESCRIPTION: entity.description,
-          STATUS: entity.status,
-          TICKET_TYPE: entity.type,
-          IMPETUS: entity.impetus,
-          ASSIGNEE: entity.assignee,
-          CREATED_BY: entity.createdBy,
-        }),
-        lists: listsOf({ ACCEPTANCE_CRITERIA: entity.acceptanceCriteria }),
-      });
+      subjects.push(ticketSubject(entity));
     }
   }
   return subjects;
+}
+
+/**
+ * **One row of any archetype, as the wire answers it, as a subject** — the reshape panel's whole
+ * read of a row it is about to restate (qits-1815, {@link ../api/entities-api#EntitiesApi.wholeRow}).
+ * The same mapping {@link subjectsOf} makes, one row at a time; null for an archetype this client
+ * cannot read (a campaign — the transition refuses one).
+ */
+export function subjectOfRow(
+  registry: ArchetypeRegistry,
+  row: WorkEntityDto,
+): TransitionSubject | null {
+  switch (row.archetype) {
+    case 'EPIC':
+      return epicSubject(epicEntity(epicOf(row)));
+    case 'TICKET':
+      return ticketSubject(ticketEntity(ticketOf(row)));
+    case 'FEATURE':
+      return featureSubject(registry, featureOf(row));
+    case 'TASK':
+      return taskSubject(registry, taskOf(row));
+    default:
+      return null;
+  }
+}
+
+function epicSubject(entity: EpicEntity): TransitionSubject {
+  return {
+    id: entity.id,
+    archetype: 'EPIC',
+    title: entity.title,
+    number: entity.number,
+    qualifiedId: entity.qualifiedId,
+    parentId: null,
+    projectId: entity.projectId,
+    values: valuesOf({
+      TITLE: entity.title,
+      SLUG: entity.slug,
+      DESCRIPTION: entity.description,
+      STATUS: entity.status,
+      SUPERSEDED_BY: entity.supersededByEpicId,
+      ASSIGNEE: entity.assignee ?? null,
+    }),
+    lists: listsOf({ ACCEPTANCE_CRITERIA: entity.acceptanceCriteria }),
+  };
+}
+
+function featureSubject(registry: ArchetypeRegistry, feature: FeatureDto): TransitionSubject {
+  return {
+    id: feature.id,
+    archetype: 'FEATURE',
+    title: feature.title,
+    number: feature.number,
+    qualifiedId: feature.qualifiedId,
+    parentId: feature.epicId,
+    projectId: feature.projectId,
+    values: valuesOf({
+      TITLE: feature.title,
+      SLUG: feature.slug,
+      DESCRIPTION: feature.description,
+      STATUS: statusValue(registry, 'FEATURE', feature.status),
+      IMPLEMENTED_AT: feature.implementedOn,
+      DEPENDS_ON: feature.dependsOnFeatureId,
+    }),
+  };
+}
+
+function taskSubject(registry: ArchetypeRegistry, task: TaskDto): TransitionSubject {
+  return {
+    id: task.id,
+    archetype: 'TASK',
+    title: task.title,
+    number: task.number,
+    qualifiedId: task.qualifiedId,
+    parentId: task.featureId,
+    projectId: task.projectId,
+    values: valuesOf({
+      TITLE: task.title,
+      SLUG: task.slug,
+      DESCRIPTION: task.description,
+      STATUS: statusValue(registry, 'TASK', task.status),
+      REPOSITORY_ID: task.repositoryId,
+      IMPLEMENTED_AT: task.implementedAt,
+      DEPENDS_ON: task.dependsOnTaskId,
+    }),
+  };
+}
+
+function ticketSubject(entity: TicketEntity): TransitionSubject {
+  return {
+    id: entity.id,
+    archetype: 'TICKET',
+    title: entity.title,
+    number: entity.number,
+    qualifiedId: entity.qualifiedId,
+    parentId: null,
+    projectId: entity.projectId,
+    values: valuesOf({
+      TITLE: entity.title,
+      SLUG: entity.slug,
+      DESCRIPTION: entity.description,
+      STATUS: entity.status,
+      TICKET_TYPE: entity.type,
+      IMPETUS: entity.impetus,
+      ASSIGNEE: entity.assignee,
+      CREATED_BY: entity.createdBy,
+    }),
+    lists: listsOf({ ACCEPTANCE_CRITERIA: entity.acceptanceCriteria }),
+  };
 }
 
 /** The lists that hold something, empty and absent ones dropped. See {@link TransitionSubject.lists}. */

@@ -49,6 +49,12 @@ interface Entry {
   readonly archetype: string;
   readonly parentId: string | null;
   readonly values: Readonly<Record<string, string>>;
+  /**
+   * Whether the subject it was seeded from was read whole (qits-1815). An entry seeded from a summary
+   * row is drawn as being read, offers nothing to change and keeps the submit disabled; it is seeded
+   * again, from scratch, when the whole read arrives. See {@link EntityTransitionForm.whole}.
+   */
+  readonly whole: boolean;
 }
 
 /** One box or picker on one entry, with whatever the server said about it last time. */
@@ -73,6 +79,8 @@ interface Row {
   readonly fields: readonly Field[];
   readonly lost: readonly string[];
   readonly complete: boolean;
+  /** Its whole read is still out: nothing about it is drawn as changeable yet. */
+  readonly reading: boolean;
 }
 
 /**
@@ -127,6 +135,13 @@ interface Row {
  *
  * <p><b>Cross-project candidates are never offered.</b> The service refuses a cross-project reparent,
  * so offering one would be offering a 400 — see {@link legalParentsFor}.
+ *
+ * <p><b>Nothing is restated from a summary</b> (qits-1815). The pool the panel hands down is the
+ * project's listing, which carries no description and no acceptance criteria — and the write is PUT
+ * per entry, so an entry seeded from such a row would send an empty description box and *clear* the
+ * stored one. So an entry whose subject is not in {@link whole} asks for it ({@link wanted}), is drawn
+ * as being read with nothing to change, keeps the press disabled, and is seeded afresh from the whole
+ * subject when the panel hands it down. Nothing a person typed is lost by that: there was no box.
  */
 @Component({
   selector: 'app-entity-transition-form',
@@ -151,97 +166,104 @@ interface Row {
             <qits-button variant="ghost" size="sm" (pressed)="remove(row.id)">Remove</qits-button>
           </header>
 
-          <label class="field">
-            <span class="label" [id]="row.id + '-archetype'">Becomes</span>
-            <select
-              class="select"
-              [attr.aria-labelledby]="row.id + '-archetype'"
-              (change)="onArchetype(row.id, $event)"
-            >
-              @for (kind of archetypes(); track kind) {
-                <option [value]="kind" [selected]="kind === row.archetype">
-                  {{ label(kind) }}
-                </option>
-              }
-            </select>
-          </label>
-
-          <label class="field">
-            <span class="label" [id]="row.id + '-parent'">
-              Sits under @if (!row.mayBeRoot) { <span class="required" aria-hidden="true">*</span> }
-            </span>
-            <select
-              class="select"
-              [attr.aria-labelledby]="row.id + '-parent'"
-              (change)="onParent(row.id, $event)"
-            >
-              @if (row.mayBeRoot) {
-                <option value="" [selected]="row.parentId === null">No parent — a root</option>
-              } @else if (row.parentId === null) {
-                <option value="" selected>Choose where it goes</option>
-              }
-              @for (candidate of row.parents; track candidate.id) {
-                <option [value]="candidate.id" [selected]="candidate.id === row.parentId">
-                  {{ name(candidate) }}
-                </option>
-              }
-            </select>
-          </label>
-          @if (row.parents.length === 0 && !row.mayBeRoot) {
-            <p class="hint warn">
-              Nothing in this project can hold a {{ label(row.archetype) }}, so this entry cannot be
-              submitted as it stands.
+          @if (row.reading) {
+            <p class="hint reading" role="status">
+              Reading its description and criteria — a transition restates the whole row, so it is
+              read in full before it can be changed.
             </p>
-          }
+          } @else {
+            <label class="field">
+              <span class="label" [id]="row.id + '-archetype'">Becomes</span>
+              <select
+                class="select"
+                [attr.aria-labelledby]="row.id + '-archetype'"
+                (change)="onArchetype(row.id, $event)"
+              >
+                @for (kind of archetypes(); track kind) {
+                  <option [value]="kind" [selected]="kind === row.archetype">
+                    {{ label(kind) }}
+                  </option>
+                }
+              </select>
+            </label>
 
-          @for (field of row.fields; track field.property) {
-            <!-- A div rather than a label: the control inside is a picker or a box depending on the
-                 archetype, so it sits behind an @if and no static analyser can see it wrapped. The
-                 association is spelled explicitly with aria-labelledby instead, which is the same
-                 thing the browser does with a wrapping label and is the only spelling that survives
-                 a control chosen at runtime. -->
-            <div class="field">
-              <span class="label" [id]="row.id + '-' + field.property">
-                {{ field.label }}
-                @if (field.required) { <span class="required" aria-hidden="true">*</span> }
+            <label class="field">
+              <span class="label" [id]="row.id + '-parent'">
+                Sits under @if (!row.mayBeRoot) { <span class="required" aria-hidden="true">*</span> }
               </span>
-              @if (field.options.length > 0) {
-                <select
-                  class="select"
-                  [attr.aria-labelledby]="row.id + '-' + field.property"
-                  (change)="onValue(row.id, field.property, $event)"
-                >
-                  @if (!field.required || field.value === '') {
-                    <option value="" [selected]="field.value === ''">—</option>
-                  }
-                  @for (option of field.options; track option) {
-                    <option [value]="option" [selected]="option === field.value">
-                      {{ label(option) }}
-                    </option>
-                  }
-                </select>
-              } @else {
-                <input
-                  type="text"
-                  class="text"
-                  autocomplete="off"
-                  [attr.aria-labelledby]="row.id + '-' + field.property"
-                  [attr.aria-required]="field.required"
-                  [value]="field.value"
-                  (input)="onValue(row.id, field.property, $event)"
-                />
-              }
-            </div>
-            @for (message of field.messages; track message) {
-              <p class="field-failed" role="alert">{{ message }}</p>
+              <select
+                class="select"
+                [attr.aria-labelledby]="row.id + '-parent'"
+                (change)="onParent(row.id, $event)"
+              >
+                @if (row.mayBeRoot) {
+                  <option value="" [selected]="row.parentId === null">No parent — a root</option>
+                } @else if (row.parentId === null) {
+                  <option value="" selected>Choose where it goes</option>
+                }
+                @for (candidate of row.parents; track candidate.id) {
+                  <option [value]="candidate.id" [selected]="candidate.id === row.parentId">
+                    {{ name(candidate) }}
+                  </option>
+                }
+              </select>
+            </label>
+            @if (row.parents.length === 0 && !row.mayBeRoot) {
+              <p class="hint warn">
+                Nothing in this project can hold a {{ label(row.archetype) }}, so this entry cannot be
+                submitted as it stands.
+              </p>
             }
-          }
 
-          @if (row.lost.length > 0) {
-            <p class="lost" role="status">
-              <strong>This will discard</strong> {{ row.lost.join(', ') }} — a transition states the
-              whole row, so anything the {{ label(row.archetype) }} shape does not carry is cleared.
-            </p>
+            @for (field of row.fields; track field.property) {
+              <!-- A div rather than a label: the control inside is a picker or a box depending on the
+                   archetype, so it sits behind an @if and no static analyser can see it wrapped. The
+                   association is spelled explicitly with aria-labelledby instead, which is the same
+                   thing the browser does with a wrapping label and is the only spelling that survives
+                   a control chosen at runtime. -->
+              <div class="field">
+                <span class="label" [id]="row.id + '-' + field.property">
+                  {{ field.label }}
+                  @if (field.required) { <span class="required" aria-hidden="true">*</span> }
+                </span>
+                @if (field.options.length > 0) {
+                  <select
+                    class="select"
+                    [attr.aria-labelledby]="row.id + '-' + field.property"
+                    (change)="onValue(row.id, field.property, $event)"
+                  >
+                    @if (!field.required || field.value === '') {
+                      <option value="" [selected]="field.value === ''">—</option>
+                    }
+                    @for (option of field.options; track option) {
+                      <option [value]="option" [selected]="option === field.value">
+                        {{ label(option) }}
+                      </option>
+                    }
+                  </select>
+                } @else {
+                  <input
+                    type="text"
+                    class="text"
+                    autocomplete="off"
+                    [attr.aria-labelledby]="row.id + '-' + field.property"
+                    [attr.aria-required]="field.required"
+                    [value]="field.value"
+                    (input)="onValue(row.id, field.property, $event)"
+                  />
+                }
+              </div>
+              @for (message of field.messages; track message) {
+                <p class="field-failed" role="alert">{{ message }}</p>
+              }
+            }
+
+            @if (row.lost.length > 0) {
+              <p class="lost" role="status">
+                <strong>This will discard</strong> {{ row.lost.join(', ') }} — a transition states the
+                whole row, so anything the {{ label(row.archetype) }} shape does not carry is cleared.
+              </p>
+            }
           }
         </article>
       }
@@ -431,6 +453,19 @@ export class EntityTransitionForm {
   readonly busy = input(false);
 
   /**
+   * **The ids of the subjects that were read whole** (qits-1815) — the only ones an entry may be
+   * restated from. Null means every subject in {@link subjects} is whole, for a caller that built its
+   * pool from whole reads. See the class note.
+   */
+  readonly whole = input<ReadonlySet<string> | null>(null);
+
+  /**
+   * A subject was selected that is not {@link whole} yet: read it whole and hand it down in
+   * {@link subjects}, with its id in {@link whole}. Emitted once per selection of such a row.
+   */
+  readonly wanted = output<string>();
+
+  /**
    * The server's own refusal sentence, whole — every violation joined with `"; "`.
    *
    * <p>Passed in raw rather than pre-split, because the splitting *is* the attribution and it belongs
@@ -467,7 +502,30 @@ export class EntityTransitionForm {
         }
         this.seeded = initialId;
         const subject = subjects.find((row) => row.id === initialId);
-        this.selection.set(subject ? new Map([[subject.id, entryOf(subject)]]) : new Map());
+        this.selection.set(subject ? new Map([[subject.id, this.seed(subject)]]) : new Map());
+      });
+    });
+
+    // A whole read landed: every entry still waiting for one is seeded again, from the whole row.
+    effect(() => {
+      const subjects = this.subjects();
+      const whole = this.whole();
+      untracked(() => {
+        const selection = this.selection();
+        const arrived = [...selection.values()].filter(
+          (entry) => !entry.whole && isWhole(whole, entry.subject.id),
+        );
+        if (arrived.length === 0) {
+          return;
+        }
+        const next = new Map(selection);
+        for (const entry of arrived) {
+          const subject = subjects.find((row) => row.id === entry.subject.id);
+          if (subject) {
+            next.set(subject.id, entryOf(subject, true));
+          }
+        }
+        this.selection.set(next);
       });
     });
   }
@@ -553,7 +611,8 @@ export class EntityTransitionForm {
         mayBeRoot: spec?.mayBeRoot ?? false,
         fields,
         lost: lostProperties(registry, entry.subject, entry.archetype).map(propertyLabel),
-        complete: isSubmittable(registry, draftOf(entry)),
+        complete: entry.whole && isSubmittable(registry, draftOf(entry)),
+        reading: !entry.whole,
       });
     }
 
@@ -645,7 +704,7 @@ export class EntityTransitionForm {
     if (!subject) {
       return;
     }
-    this.selection.update((selection) => new Map(selection).set(id, entryOf(subject)));
+    this.selection.update((selection) => new Map(selection).set(id, this.seed(subject)));
     this.candidate.set('');
   }
 
@@ -678,6 +737,18 @@ export class EntityTransitionForm {
     this.submitted.emit(request);
   }
 
+  /**
+   * A new entry for a subject — and, when the subject is not whole yet, the ask for its whole read.
+   * See {@link wanted}.
+   */
+  private seed(subject: TransitionSubject): Entry {
+    const whole = isWhole(this.whole(), subject.id);
+    if (!whole) {
+      this.wanted.emit(subject.id);
+    }
+    return entryOf(subject, whole);
+  }
+
   private patch(id: string, change: (entry: Entry) => Entry): void {
     this.selection.update((selection) => {
       const entry = selection.get(id);
@@ -690,13 +761,19 @@ export class EntityTransitionForm {
 }
 
 /** A row as it stands, which is what a draft opens as: change nothing and nothing changes. */
-function entryOf(subject: TransitionSubject): Entry {
+function entryOf(subject: TransitionSubject, whole: boolean): Entry {
   return {
     subject,
     archetype: subject.archetype,
     parentId: subject.parentId,
     values: { ...subject.values },
+    whole,
   };
+}
+
+/** Whether `id` names a subject read whole; a null set says every subject is. */
+function isWhole(whole: ReadonlySet<string> | null, id: string): boolean {
+  return whole === null || whole.has(id);
 }
 
 /** The entry as the pure model reads it — the same four fields, named the way the derivations are. */

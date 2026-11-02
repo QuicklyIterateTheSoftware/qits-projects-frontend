@@ -36,13 +36,18 @@ export class RefiningService {
   /**
    * The project's nodes, and the one a number names — the room is addressed by the entity's number,
    * like its page, and there is no read by number (see {@link flattenEntities}).
+   *
+   * <p><b>The subject is read whole and the rest stays summary</b> (qits-1815,
+   * {@link EntitiesApi.listWithWhole}): the room draws the subject's description and restates it when
+   * an image is inserted — a PUT-shaped write that would clear a body it never read — while the other
+   * nodes are only the activity bar's peers, addressed by number and named by title.
    */
   async resolve(
     projectId: string,
     number: number,
   ): Promise<{ readonly node: EntityNode | null; readonly nodes: readonly EntityNode[] }> {
     // Campaigns too: a campaign has a room of its own since epic qits-770.
-    const nodes = flattenEntities(await this.entities.list(projectId));
+    const nodes = flattenEntities(await this.entities.listWithWhole(projectId, number));
     return { node: nodeByNumber(nodes, number), nodes };
   }
 }

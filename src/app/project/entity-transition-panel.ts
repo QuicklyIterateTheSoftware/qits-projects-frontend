@@ -12,15 +12,24 @@ import {
 } from '@angular/core';
 import { ArchetypesApi, type ArchetypeRegistry } from '../api/archetypes-api';
 import { EntitiesApi } from '../api/entities-api';
+import { workRef } from '../api/work';
 import { Async } from '../ui/async';
 import { LOADING, describeError, failed, ready, serverMessage, type Loadable } from '../ui/loadable';
 import { EntityTransitionForm } from './entity-transition-form';
-import { subjectsOf, type EntityTransitionRequest, type TransitionSubject } from './entity-transition-model';
+import {
+  subjectOfRow,
+  subjectsOf,
+  type EntityTransitionRequest,
+  type TransitionSubject,
+} from './entity-transition-model';
 
 /** What the panel needs before it can draw anything: the model's rules, and the rows to apply them to. */
 interface Ground {
   readonly registry: ArchetypeRegistry;
+  /** The project's rows — summaries, but for the ones in {@link whole}, which replaced theirs. */
   readonly subjects: readonly TransitionSubject[];
+  /** The ids of the subjects read whole: the only ones the form lets a person restate. */
+  readonly whole: ReadonlySet<string>;
 }
 
 /**
@@ -55,6 +64,19 @@ interface Ground {
  * everything that is not a `{"message": …}` body, because a reader looking at a 503 needs a sentence
  * more than they need an attribution.
  *
+ * <p><b>Every row the request restates was read whole first</b> (qits-1815). The project's rows come
+ * from {@link EntitiesApi.epicsAndTickets}, which is the listing's summary — no description, no
+ * acceptance criteria — and that is fine for what most of the pool is for: naming a row in a picker,
+ * and judging a parent by its archetype and depth. It is not fine for a row that is *restated*: the
+ * door is PUT per entry, so a summary's missing description would be sent as no description, and the
+ * stored one cleared. The form restates exactly the rows in its selection and nothing else, so each
+ * of those is read whole ({@link EntitiesApi.wholeRow}: `GET /work/{q}` for an epic or a ticket, the
+ * parent's `GET /work/{q}/children` for a feature or a task) and replaces its summary in the pool:
+ * the one the press came from before the form is drawn at all, and any other the moment the form
+ * asks for it ({@link want}). The form draws a row being read with nothing to change and keeps the
+ * press disabled until it lands, and {@link apply} refuses, without sending, a request that names a
+ * row that is not whole — the last check, at the one place every write passes.
+ *
  * <p><b>`done` is emitted only on success, and the panel does not re-read.</b> The desk that opened it
  * owns the list, so it closes the panel and reloads — one notion of what the project holds, which is
  * the same reason a create on the tickets page hands the read back to the overview. A failure keeps
@@ -77,10 +99,12 @@ interface Ground {
       <app-entity-transition-form
         [registry]="ground.registry"
         [subjects]="ground.subjects"
+        [whole]="ground.whole"
         [initialId]="entityId()"
         [busy]="sending()"
         [error]="refusal()"
         (submitted)="apply($event)"
+        (wanted)="want($event)"
         (cancelled)="cancelled.emit()"
       />
     }
@@ -150,12 +174,56 @@ export class EntityTransitionPanel {
         // Not the campaigns: the multi-entity transition refuses one (qits-419).
         this.api.epicsAndTickets(projectId),
       ]);
+      const summaries = subjectsOf(registry, entities);
+      // The row the press came from is the one the form opens holding: read it whole before the
+      // form is drawn, so its boxes start from what is stored rather than from a summary.
+      const opened = summaries.find((subject) => subject.id === this.entityId());
+      const subject = opened ? await this.readWhole(registry, opened, summaries) : null;
       if (this.newest(projectId, attempt)) {
-        this.ground.set(ready({ registry, subjects: subjectsOf(registry, entities) }));
+        this.ground.set(
+          ready({
+            registry,
+            subjects: subject ? replaced(summaries, subject) : summaries,
+            whole: new Set(subject ? [subject.id] : []),
+          }),
+        );
       }
     } catch (error) {
       if (this.newest(projectId, attempt)) {
         this.ground.set(failed(error));
+      }
+    }
+  }
+
+  /**
+   * The form selected a row that is still a summary: read it whole and hand it down. A failure is
+   * said in the refusal line and leaves the row being read, so the press stays disabled — the form
+   * never falls back to restating the summary.
+   */
+  protected async want(id: string): Promise<void> {
+    const ground = this.loaded();
+    const summary = ground?.subjects.find((subject) => subject.id === id);
+    if (!ground || !summary || ground.whole.has(id)) {
+      return;
+    }
+    const attempt = this.attempt;
+    try {
+      const subject = await this.readWhole(ground.registry, summary, ground.subjects);
+      const current = this.loaded();
+      if (attempt === this.attempt && current) {
+        this.ground.set(
+          ready({
+            ...current,
+            subjects: replaced(current.subjects, subject),
+            whole: new Set([...current.whole, subject.id]),
+          }),
+        );
+      }
+    } catch (error) {
+      if (attempt === this.attempt) {
+        this.refusal.set(
+          `Could not read ${summary.qualifiedId ?? summary.title}: ${describeError(error)}`,
+        );
       }
     }
   }
@@ -167,6 +235,13 @@ export class EntityTransitionPanel {
    * every entry landed, or none did and the sentence says why.
    */
   protected async apply(request: ReadonlyMap<string, EntityTransitionRequest>): Promise<void> {
+    const whole = this.loaded()?.whole ?? new Set<string>();
+    const unread = [...request.keys()].filter((id) => !whole.has(id));
+    if (unread.length > 0) {
+      // The form never offers this; refusing here is what makes it a guarantee rather than a habit.
+      this.refusal.set(`Not sent: ${unread.join(', ')} has not been read in full yet.`);
+      return;
+    }
     this.sending.set(true);
     this.refusal.set(null);
     try {
@@ -177,6 +252,29 @@ export class EntityTransitionPanel {
     } finally {
       this.sending.set(false);
     }
+  }
+
+  /**
+   * One subject read whole — {@link EntitiesApi.wholeRow} — and mapped the way the pool was. A
+   * feature's or a task's parent is addressed by its qualified id, looked up in the pool.
+   */
+  private async readWhole(
+    registry: ArchetypeRegistry,
+    subject: TransitionSubject,
+    pool: readonly TransitionSubject[],
+  ): Promise<TransitionSubject> {
+    const parent = subject.parentId
+      ? (pool.find((candidate) => candidate.id === subject.parentId) ?? {
+          id: subject.parentId,
+          qualifiedId: null,
+        })
+      : null;
+    const row = await this.api.wholeRow(subject, parent ? workRef(parent) : null);
+    const whole = subjectOfRow(registry, row);
+    if (!whole) {
+      throw new Error(`${subject.qualifiedId ?? subject.id} is not a row a transition restates.`);
+    }
+    return whole;
   }
 
   private newest(projectId: string, attempt: number): boolean {
@@ -197,4 +295,12 @@ function refusalOf(error: unknown): string {
     return serverMessage(error.error) ?? describeError(error);
   }
   return describeError(error);
+}
+
+/** The pool with one subject swapped for its whole read, in place. */
+function replaced(
+  subjects: readonly TransitionSubject[],
+  whole: TransitionSubject,
+): readonly TransitionSubject[] {
+  return subjects.map((subject) => (subject.id === whole.id ? whole : subject));
 }
