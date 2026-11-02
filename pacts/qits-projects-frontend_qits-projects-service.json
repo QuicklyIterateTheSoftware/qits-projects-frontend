@@ -6591,38 +6591,85 @@
                   ],
                   "IMPLEMENTED": [
                     {
-                      "to": "VERIFIED",
-                      "kind": "FORWARD"
+                      "to": "DROPPED",
+                      "kind": "DROP"
                     }
                   ],
                   "READY_FOR_DEV": [
                     {
-                      "to": "IMPLEMENTED",
-                      "kind": "FORWARD"
+                      "to": "DROPPED",
+                      "kind": "DROP"
                     }
                   ],
                   "REFINED": [
                     {
-                      "to": "REPORTED",
-                      "kind": "BACK"
+                      "to": "DROPPED",
+                      "kind": "DROP"
                     }
                   ],
                   "REPORTED": [
                     {
-                      "to": "REFINED",
-                      "kind": "FORWARD"
+                      "to": "DROPPED",
+                      "kind": "DROP"
                     }
                   ],
                   "VERIFIED": [
                     {
-                      "to": "DONE",
-                      "kind": "FORWARD"
+                      "to": "DROPPED",
+                      "kind": "DROP"
                     }
                   ]
+                }
+              },
+              {
+                "archetype": "ISSUE",
+                "depth": 0,
+                "legalStatuses": [
+                  "OBSOLETE",
+                  "OBSOLETE",
+                  "OBSOLETE"
+                ],
+                "lifecycle": [
+                  "OPEN",
+                  "OPEN",
+                  "OPEN"
+                ],
+                "mayBeRoot": true,
+                "permitted": [
+                  "TITLE",
+                  "TITLE",
+                  "TITLE",
+                  "TITLE",
+                  "TITLE",
+                  "TITLE"
+                ],
+                "required": [
+                  "TITLE",
+                  "TITLE"
+                ],
+                "requiredOnTransition": [
+                  "TITLE",
+                  "TITLE",
+                  "TITLE"
+                ],
+                "transitions": {
+                  "OBSOLETE": [],
+                  "OPEN": [
+                    {
+                      "kind": "SETTLE",
+                      "to": "RESOLVED"
+                    },
+                    {
+                      "kind": "SETTLE",
+                      "to": "RESOLVED"
+                    }
+                  ],
+                  "RESOLVED": []
                 }
               }
             ],
             "properties": [
+              "TITLE",
               "TITLE",
               "TITLE",
               "TITLE",
@@ -9433,6 +9480,192 @@
                           ]
                         }
                       }
+                    },
+                    {
+                      "index": 5,
+                      "rules": {
+                        "$.archetype": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.depth": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "number"
+                            }
+                          ]
+                        },
+                        "$.legalStatuses": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type",
+                              "max": 3,
+                              "min": 3
+                            }
+                          ]
+                        },
+                        "$.legalStatuses[*]": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.lifecycle": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type",
+                              "max": 3,
+                              "min": 3
+                            }
+                          ]
+                        },
+                        "$.lifecycle[*]": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.mayBeRoot": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.permitted": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type",
+                              "max": 6,
+                              "min": 6
+                            }
+                          ]
+                        },
+                        "$.permitted[*]": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.required": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type",
+                              "max": 2,
+                              "min": 2
+                            }
+                          ]
+                        },
+                        "$.requiredOnTransition": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type",
+                              "max": 3,
+                              "min": 3
+                            }
+                          ]
+                        },
+                        "$.requiredOnTransition[*]": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.required[*]": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.transitions.OPEN": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type",
+                              "min": 2
+                            }
+                          ]
+                        },
+                        "$.transitions.OPEN[*].kind": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.transitions.OPEN[*].to": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        }
+                      }
                     }
                   ]
                 }
@@ -9443,14 +9676,17 @@
               "matchers": [
                 {
                   "match": "type",
-                  "max": 14,
-                  "min": 14
+                  "max": 15,
+                  "min": 15
                 }
               ]
             },
             "$.properties[*]": {
               "combine": "AND",
               "matchers": [
+                {
+                  "match": "type"
+                },
                 {
                   "match": "type"
                 },
