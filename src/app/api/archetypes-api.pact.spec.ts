@@ -47,12 +47,25 @@ interface Rule {
   readonly matchers: Matcher[];
 }
 type Rules = Record<string, Rule>;
+/** One move as the pact body records it; only `to` and `kind` are matched once open-ended. */
+interface Move {
+  readonly to: string;
+  readonly kind: string;
+  readonly gates?: readonly string[];
+}
+interface RecordedArchetype {
+  readonly archetype: string;
+  readonly transitions?: Record<string, Move[]>;
+}
 interface GeneratedPact {
   readonly interactions: readonly {
     readonly comments?: {
       readonly references?: { readonly ['qits-call']?: { readonly operationId?: string } };
     };
-    readonly response: { readonly matchingRules: { readonly body: Rules } };
+    readonly response: {
+      readonly body: { readonly content: { readonly archetypes: RecordedArchetype[] } };
+      readonly matchingRules: { readonly body: Rules };
+    };
   }[];
 }
 
@@ -64,7 +77,8 @@ interface GeneratedPact {
  * exact move count, so this drops the max and keeps the recorded count as a floor. A status whose
  * moves already differ in shape (REFINED everywhere; REPORTED for EPIC and TICKET, where one move
  * alone carries `gates`) is matched with `arrayContains` already, which pins no length, so it is
- * left as `addGoldenInteraction` built it.
+ * left as `addGoldenInteraction` built it. CAMPAIGN's transitions are reshaped further, see
+ * `openEndedCampaign`.
  *
  * Runs on the pact this spec just generated, between the mock server answering (with qits-projects'
  * real recording, unchanged) and `assertPactPart` comparing or committing the result: it only
@@ -90,9 +104,43 @@ function openEndedTransitions(generated: string): void {
         if (!matcher || matcher.min == null || matcher.max == null) continue;
         delete matcher.max;
       }
+      const archetype = interaction.response.body.content.archetypes[variant.index];
+      if (archetype?.archetype === 'CAMPAIGN') openEndedCampaign(archetype, variant.rules);
     }
   }
   writeFileSync(generated, JSON.stringify(written, null, 2));
+}
+
+/**
+ * qits-650 derives a campaign's status from its members and leaves it two manual moves: DROP from
+ * every status that is neither DONE nor DROPPED, REOPEN from DROPPED, and nothing from DONE. The
+ * FORWARD, BACK and CLOSE moves (and their `gates`) recorded today go, so every recorded
+ * `transitions.<STATUS>` of CAMPAIGN is reshaped to `type`, min 0, no max, each move's `to` and
+ * `kind` matched by type, and none required to carry `gates`. The desks, the reshape form and the
+ * detail page only offer the moves they find, so no count or kind is relied on.
+ *
+ * A provider verifies every element past the recorded length against element 0 alone, and
+ * `arrayContains` would still demand a move with `gates`, so each status's recorded moves are
+ * collapsed to one gate-less representative (`to`, `kind`): a move whose `gates` the provider adds
+ * (today's) is an unexpected key, which a response may carry, while one without (after qits-650)
+ * matches it outright. A status recorded empty (DONE) is left with no rule at all, so it is still
+ * matched as exactly `[]`, which it is before and after qits-650.
+ */
+function openEndedCampaign(archetype: RecordedArchetype, rules: Rules): void {
+  for (const [status, moves] of Object.entries(archetype.transitions ?? {})) {
+    if (moves.length === 0) continue;
+    const path = `$.transitions.${status}`;
+    for (const key of Object.keys(rules)) {
+      if (key === path || key.startsWith(`${path}[`) || key.startsWith(`${path}.`)) {
+        delete rules[key];
+      }
+    }
+    const representative = moves.find((move) => !move.gates) ?? moves[0];
+    moves.splice(0, moves.length, { to: representative.to, kind: representative.kind });
+    rules[path] = { combine: 'AND', matchers: [{ match: 'type', min: 0 }] };
+    rules[`${path}[*].to`] = { combine: 'AND', matchers: [{ match: 'type' }] };
+    rules[`${path}[*].kind`] = { combine: 'AND', matchers: [{ match: 'type' }] };
+  }
 }
 
 const dir = mkdtempSync(join(tmpdir(), 'qits-projects-frontend-archetypes-api-pact-'));
