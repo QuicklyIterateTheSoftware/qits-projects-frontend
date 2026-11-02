@@ -197,8 +197,9 @@ export interface WorkFixture {
 
 /**
  * The answer to a `/work` read of the fixture project, or undefined for a URL that is not one —
- * the listing (`GET /projects/{projectId}/work`), one entity, its workspaces, its children, and a
- * campaign's progress. A spec's own router asks this first and answers the rest itself.
+ * the listing (`GET /projects/{projectId}/work`), every root's workspaces
+ * (`GET /projects/{projectId}/work/workspaces`, qits-1815), one entity, its workspaces, its children,
+ * and a campaign's progress. A spec's own router asks this first and answers the rest itself.
  */
 export function workAnswer(
   projectId: string,
@@ -229,6 +230,19 @@ export function workAnswer(
         description: undefined,
         acceptanceCriteria: undefined,
       })),
+    };
+  }
+  if (url === `/projects/api/projects/${projectId}/work/workspaces`) {
+    // One entry per ticket or epic that has workspaces, in tree order; none for a row without.
+    const roots = [...epics.map((entry) => entry.epic), ...tickets];
+    return {
+      workspaces: roots
+        .filter((root) => (root.workspaces ?? []).length > 0)
+        .map((root) => ({
+          workId: root.id ?? '',
+          qualifiedId: root.qualifiedId ?? null,
+          workspaces: root.workspaces ?? [],
+        })),
     };
   }
   const match = /^\/projects\/api\/work\/([^/]+)(?:\/(workspaces|children|progress))?$/.exec(url);

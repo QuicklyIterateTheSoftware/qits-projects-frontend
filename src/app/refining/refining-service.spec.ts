@@ -101,11 +101,17 @@ describe('RefiningService', () => {
 
   it('resolves a number to its node across the project’s epics and tickets', async () => {
     const resolved = refining.resolve('p1', 4);
+    const urls: string[] = [];
     for (let round = 0; round < 3; round += 1) {
       await settle();
       for (const request of http.match(() => true)) {
+        urls.push(request.request.url);
         request.flush(
-          workAnswer('p1', { epics: [EPIC], tickets: [TICKET] }, request.request.url) as object,
+          workAnswer(
+            'p1',
+            { epics: [EPIC], tickets: [{ ...TICKET, description: 'what to do' }] },
+            request.request.url,
+          ) as object,
         );
       }
     }
@@ -114,11 +120,18 @@ describe('RefiningService', () => {
     expect(node?.id).toBe('t1');
     expect(node?.archetype).toBe('TICKET');
     expect(nodes.map((each) => each.number)).toEqual([3, 4]);
+    // qits-1815: the subject is read whole — the room draws its description and restates it —
+    // while the peers stay the listing's summary rows.
+    expect(node?.description).toBe('what to do');
+    expect(nodes.find((each) => each.id === 'e1')?.description).toBeNull();
+    expect(urls).toContain('/projects/api/work/qits-4');
+    expect(urls.filter((url) => url.includes('qits-3'))).toEqual([]);
   });
 
   it('answers a null node for a number the project does not hold', async () => {
     const resolved = refining.resolve('p1', 99);
     http.expectOne('/projects/api/projects/p1/work').flush({ entities: [] });
+    http.expectOne('/projects/api/projects/p1/work/workspaces').flush({ workspaces: [] });
 
     expect((await resolved).node).toBeNull();
   });

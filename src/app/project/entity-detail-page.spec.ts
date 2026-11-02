@@ -775,6 +775,76 @@ describe('EntityDetailPage', () => {
     });
   });
 
+  /**
+   * qits-1815: the project's listing is a summary — no description, no criteria — so the page reads
+   * the node it shows whole, and only that one; and the edit, a PUT-shaped restatement, starts from it.
+   */
+  describe('the whole read of the shown node', () => {
+    const gets = () =>
+      sent.filter((request) => request.method === 'GET').map((request) => request.url);
+
+    it('reads an epic whole — its features’ and tasks’ bodies too — and no other root', async () => {
+      await open('/qits/work/qits-12');
+
+      expect(gets()).toEqual(
+        expect.arrayContaining([
+          '/projects/api/projects/p1/work',
+          '/projects/api/projects/p1/work/workspaces',
+          '/projects/api/work/qits-12',
+          '/projects/api/work/qits-12/workspaces',
+          '/projects/api/work/qits-12/children',
+          '/projects/api/work/qits-13/children',
+        ]),
+      );
+      expect(gets()).not.toContain('/projects/api/work/qits-41');
+      expect(gets()).not.toContain('/projects/api/work/qits-41/workspaces');
+      expect(gets()).not.toContain('/projects/api/work/qits-430');
+      // The listing has no description: what is drawn is the whole read's.
+      expect(element().querySelector('.description strong')?.textContent).toBe('two');
+    });
+
+    it('reads a feature’s epic whole, which is where the feature’s body comes from', async () => {
+      await open('/qits/work/qits-13');
+
+      expect(gets()).toContain('/projects/api/work/qits-12/children');
+      expect(element().querySelector('.description')?.textContent).toContain('One route.');
+    });
+
+    it('draws a ticket’s body and workspaces off its whole read', async () => {
+      ticketPatch = {
+        description: 'Make it **amber**.',
+        workspaces: [
+          { workspaceRowId: 5, repositoryId: 'r1', workspaceId: 'w', branch: 'ticket/x' },
+        ],
+      };
+      await open('/qits/work/qits-41');
+
+      expect(gets()).toContain('/projects/api/work/qits-41');
+      expect(gets()).toContain('/projects/api/work/qits-41/workspaces');
+      expect(element().querySelector('.description strong')?.textContent).toBe('amber');
+      expect(element().querySelector('app-workspace-links')).not.toBeNull();
+    });
+
+    /** The restatement clears what it leaves out, so it must start from the stored body. */
+    it('starts an edit from the whole read, so the save keeps the description it never touched', async () => {
+      ticketPatch = { description: 'Make it amber.' };
+      await open('/qits/work/qits-41');
+
+      buttonNamed('Edit').click();
+      harness.detectChanges();
+      const title = element().querySelector<HTMLInputElement>('.edit-title')!;
+      title.value = 'Renamed';
+      title.dispatchEvent(new Event('input'));
+      harness.detectChanges();
+      button('.save').click();
+      await serve();
+
+      const body = writes().find((request) => request.url === '/projects/api/work/transition')
+        ?.body as Record<string, Record<string, unknown>>;
+      expect(body['t1']['description']).toBe('Make it amber.');
+    });
+  });
+
   describe('the three actions', () => {
     it('posts Dispatch as FLOW and Run the next phase as PHASE to the entity door', async () => {
       await open('/qits/work/qits-41');

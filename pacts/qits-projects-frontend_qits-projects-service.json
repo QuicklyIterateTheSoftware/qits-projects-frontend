@@ -4564,27 +4564,156 @@
               {
                 "archetype": "CAMPAIGN",
                 "blocked": false,
+                "createdAt": "2026-01-01T00:00:00Z",
+                "dependsOn": null,
                 "id": "00000000-0000-4000-8000-000000000002",
+                "impetus": null,
+                "implementedAt": null,
                 "number": 1,
                 "parent": null,
                 "projectId": "00000000-0000-4000-8000-00000000000f",
                 "qualifiedId": "contract-00000001-1",
+                "repositoryId": null,
                 "slug": "invoicing-for-the-q4-close",
                 "status": "REFINED",
                 "tags": [],
-                "title": "Invoicing for the Q4 close"
+                "ticketType": null,
+                "title": "Invoicing for the Q4 close",
+                "updatedAt": "2026-01-01T00:00:00Z"
               },
               {
                 "archetype": "FEATURE",
+                "createdAt": "2026-01-01T00:00:00Z",
+                "dependsOn": null,
                 "id": "00000000-0000-4000-8000-000000000004",
+                "impetus": null,
+                "implementedAt": "2026-01-01T00:00:00Z",
                 "number": 3,
                 "parent": "00000000-0000-4000-8000-000000000006",
                 "projectId": "00000000-0000-4000-8000-00000000000f",
                 "qualifiedId": "contract-00000001-3",
+                "repositoryId": null,
                 "slug": "csv-export",
                 "status": "IMPLEMENTED",
                 "tags": [],
-                "title": "CSV export"
+                "ticketType": null,
+                "title": "CSV export",
+                "updatedAt": "2026-01-01T00:00:00Z"
+              },
+              {
+                "archetype": "TASK",
+                "createdAt": "2026-01-01T00:00:00Z",
+                "dependsOn": null,
+                "id": "00000000-0000-4000-8000-000000000005",
+                "impetus": null,
+                "implementedAt": "2026-01-01T00:00:00Z",
+                "number": 4,
+                "parent": "00000000-0000-4000-8000-000000000004",
+                "projectId": "00000000-0000-4000-8000-00000000000f",
+                "qualifiedId": "contract-00000001-4",
+                "repositoryId": "00000000-0000-4000-8000-000000000010",
+                "slug": "stream-invoices-as-csv",
+                "status": "IMPLEMENTED",
+                "tags": [],
+                "ticketType": null,
+                "title": "Stream invoices as CSV",
+                "updatedAt": "2026-01-01T00:00:00Z"
+              },
+              {
+                "archetype": "TASK",
+                "createdAt": "2026-01-01T00:00:00Z",
+                "dependsOn": "00000000-0000-4000-8000-000000000005",
+                "id": "00000000-0000-4000-8000-000000000011",
+                "impetus": null,
+                "implementedAt": "2026-01-01T00:00:00Z",
+                "number": 5,
+                "parent": "00000000-0000-4000-8000-000000000004",
+                "projectId": "00000000-0000-4000-8000-00000000000f",
+                "qualifiedId": "contract-00000001-5",
+                "repositoryId": "00000000-0000-4000-8000-00000000000a",
+                "slug": "download-button-on-the-invoice-list",
+                "status": "IMPLEMENTED",
+                "tags": [],
+                "ticketType": null,
+                "title": "Download button on the invoice list",
+                "updatedAt": "2026-01-01T00:00:00Z"
+              },
+              {
+                "archetype": "FEATURE",
+                "createdAt": "2026-01-01T00:00:00Z",
+                "dependsOn": "00000000-0000-4000-8000-000000000004",
+                "id": "00000000-0000-4000-8000-000000000007",
+                "impetus": null,
+                "implementedAt": null,
+                "number": 6,
+                "parent": "00000000-0000-4000-8000-000000000006",
+                "projectId": "00000000-0000-4000-8000-00000000000f",
+                "qualifiedId": "contract-00000001-6",
+                "repositoryId": null,
+                "slug": "pdf-export",
+                "status": "IMPLEMENTING",
+                "tags": [],
+                "ticketType": null,
+                "title": "PDF export",
+                "updatedAt": "2026-01-01T00:00:00Z"
+              },
+              {
+                "archetype": "TASK",
+                "createdAt": "2026-01-01T00:00:00Z",
+                "dependsOn": null,
+                "id": "00000000-0000-4000-8000-00000000000d",
+                "impetus": null,
+                "implementedAt": null,
+                "number": 7,
+                "parent": "00000000-0000-4000-8000-000000000007",
+                "projectId": "00000000-0000-4000-8000-00000000000f",
+                "qualifiedId": "contract-00000001-7",
+                "repositoryId": "00000000-0000-4000-8000-000000000010",
+                "slug": "render-one-invoice-as-pdf",
+                "status": "IMPLEMENTING",
+                "tags": [],
+                "ticketType": null,
+                "title": "Render one invoice as PDF",
+                "updatedAt": "2026-01-01T00:00:00Z"
+              },
+              {
+                "archetype": "TASK",
+                "createdAt": "2026-01-01T00:00:00Z",
+                "dependsOn": "00000000-0000-4000-8000-00000000000d",
+                "id": "00000000-0000-4000-8000-00000000000e",
+                "impetus": null,
+                "implementedAt": null,
+                "number": 8,
+                "parent": "00000000-0000-4000-8000-000000000007",
+                "projectId": "00000000-0000-4000-8000-00000000000f",
+                "qualifiedId": "contract-00000001-8",
+                "repositoryId": "00000000-0000-4000-8000-00000000000a",
+                "slug": "preview-the-pdf-before-download",
+                "status": "READY_FOR_DEV",
+                "tags": [],
+                "ticketType": null,
+                "title": "Preview the PDF before download",
+                "updatedAt": "2026-01-01T00:00:00Z"
+              },
+              {
+                "archetype": "TICKET",
+                "blocked": true,
+                "createdAt": "2026-01-01T00:00:00Z",
+                "dependsOn": null,
+                "id": "00000000-0000-4000-8000-000000000001",
+                "impetus": "An accountant found three invoices whose total is one cent above the sum of their lines.",
+                "implementedAt": null,
+                "number": 10,
+                "parent": null,
+                "projectId": "00000000-0000-4000-8000-00000000000f",
+                "qualifiedId": "contract-00000001-10",
+                "repositoryId": null,
+                "slug": "invoice-totals-are-off-by-one-cent",
+                "status": "IMPLEMENTING",
+                "tags": [],
+                "ticketType": "BUG",
+                "title": "Invoice totals are off by one cent",
+                "updatedAt": "2026-01-01T00:00:00Z"
               }
             ]
           },
@@ -4623,301 +4752,6 @@
                             }
                           ]
                         },
-                        "$.id": {
-                          "combine": "AND",
-                          "matchers": [
-                            {
-                              "match": "regex",
-                              "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
-                            }
-                          ]
-                        },
-                        "$.number": {
-                          "combine": "AND",
-                          "matchers": [
-                            {
-                              "match": "number"
-                            }
-                          ]
-                        },
-                        "$.projectId": {
-                          "combine": "AND",
-                          "matchers": [
-                            {
-                              "match": "regex",
-                              "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
-                            }
-                          ]
-                        },
-                        "$.qualifiedId": {
-                          "combine": "AND",
-                          "matchers": [
-                            {
-                              "match": "type"
-                            }
-                          ]
-                        },
-                        "$.slug": {
-                          "combine": "AND",
-                          "matchers": [
-                            {
-                              "match": "type"
-                            }
-                          ]
-                        },
-                        "$.status": {
-                          "combine": "AND",
-                          "matchers": [
-                            {
-                              "match": "type"
-                            }
-                          ]
-                        },
-                        "$.title": {
-                          "combine": "AND",
-                          "matchers": [
-                            {
-                              "match": "type"
-                            }
-                          ]
-                        }
-                      }
-                    },
-                    {
-                      "index": 1,
-                      "rules": {
-                        "$.archetype": {
-                          "combine": "AND",
-                          "matchers": [
-                            {
-                              "match": "type"
-                            }
-                          ]
-                        },
-                        "$.id": {
-                          "combine": "AND",
-                          "matchers": [
-                            {
-                              "match": "regex",
-                              "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
-                            }
-                          ]
-                        },
-                        "$.number": {
-                          "combine": "AND",
-                          "matchers": [
-                            {
-                              "match": "number"
-                            }
-                          ]
-                        },
-                        "$.parent": {
-                          "combine": "AND",
-                          "matchers": [
-                            {
-                              "match": "regex",
-                              "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
-                            }
-                          ]
-                        },
-                        "$.projectId": {
-                          "combine": "AND",
-                          "matchers": [
-                            {
-                              "match": "regex",
-                              "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
-                            }
-                          ]
-                        },
-                        "$.qualifiedId": {
-                          "combine": "AND",
-                          "matchers": [
-                            {
-                              "match": "type"
-                            }
-                          ]
-                        },
-                        "$.slug": {
-                          "combine": "AND",
-                          "matchers": [
-                            {
-                              "match": "type"
-                            }
-                          ]
-                        },
-                        "$.status": {
-                          "combine": "AND",
-                          "matchers": [
-                            {
-                              "match": "type"
-                            }
-                          ]
-                        },
-                        "$.title": {
-                          "combine": "AND",
-                          "matchers": [
-                            {
-                              "match": "type"
-                            }
-                          ]
-                        }
-                      }
-                    }
-                  ]
-                }
-              ]
-            }
-          },
-          "header": {
-            "Content-Type": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "regex",
-                  "regex": "application/json.*"
-                }
-              ]
-            }
-          }
-        },
-        "status": 200
-      },
-      "type": "Synchronous/HTTP"
-    },
-    {
-      "comments": {
-        "references": {
-          "qits-call": {
-            "app": "qits-projects-service",
-            "operationId": "listWorkChildren"
-          },
-          "qits-trigger": {
-            "app": "qits-projects-frontend",
-            "interaction": "show-work-desk",
-            "kind": "ui"
-          }
-        }
-      },
-      "description": "show-work-desk: listWorkChildren",
-      "pending": false,
-      "providerStates": [
-        {
-          "name": "a feature in detail",
-          "params": {
-            "bugTicketId": "00000000-0000-4000-8000-000000000001",
-            "campaignId": "00000000-0000-4000-8000-000000000002",
-            "campaignQualifiedId": "contract-00000001-1",
-            "creditNoteTicketId": "00000000-0000-4000-8000-000000000003",
-            "csvFeatureId": "00000000-0000-4000-8000-000000000004",
-            "csvTaskId": "00000000-0000-4000-8000-000000000005",
-            "epicId": "00000000-0000-4000-8000-000000000006",
-            "featureId": "00000000-0000-4000-8000-000000000007",
-            "figureAssetId": "00000000-0000-4000-8000-000000000008",
-            "figurePageId": "00000000-0000-4000-8000-000000000009",
-            "frontendRepositoryId": "00000000-0000-4000-8000-00000000000a",
-            "improvementTicketId": "00000000-0000-4000-8000-00000000000b",
-            "maintenanceTicketId": "00000000-0000-4000-8000-00000000000c",
-            "pdfTaskId": "00000000-0000-4000-8000-00000000000d",
-            "previewTaskId": "00000000-0000-4000-8000-00000000000e",
-            "projectId": "00000000-0000-4000-8000-00000000000f",
-            "qualifiedId": "contract-00000001-6",
-            "serviceRepositoryId": "00000000-0000-4000-8000-000000000010",
-            "taskId": "00000000-0000-4000-8000-000000000011",
-            "taxesEpicId": "00000000-0000-4000-8000-000000000012"
-          }
-        }
-      ],
-      "request": {
-        "generators": {
-          "path": {
-            "expression": "/projects/api/work/${qualifiedId}/children",
-            "type": "ProviderState"
-          }
-        },
-        "matchingRules": {
-          "path": {
-            "combine": "AND",
-            "matchers": [
-              {
-                "match": "type"
-              }
-            ]
-          }
-        },
-        "method": "GET",
-        "path": "/projects/api/work/contract-00000001-6/children"
-      },
-      "response": {
-        "body": {
-          "content": {
-            "children": [
-              {
-                "archetype": "TASK",
-                "createdAt": "2026-01-01T00:00:00Z",
-                "dependsOn": null,
-                "description": "Render server-side; embed the fonts so the archive stays readable.",
-                "id": "00000000-0000-4000-8000-00000000000d",
-                "implementedAt": null,
-                "implementingAt": "2026-01-01T00:00:00Z",
-                "number": 7,
-                "parent": "00000000-0000-4000-8000-000000000007",
-                "projectId": "00000000-0000-4000-8000-00000000000f",
-                "qualifiedId": "contract-00000001-7",
-                "repositoryId": "00000000-0000-4000-8000-000000000010",
-                "slug": "render-one-invoice-as-pdf",
-                "status": "IMPLEMENTING",
-                "tags": [],
-                "title": "Render one invoice as PDF",
-                "updatedAt": "2026-01-01T00:00:00Z"
-              },
-              {
-                "archetype": "TASK",
-                "createdAt": "2026-01-01T00:00:00Z",
-                "dependsOn": "00000000-0000-4000-8000-00000000000d",
-                "description": "Show the rendered PDF in a dialog, with a download button.",
-                "id": "00000000-0000-4000-8000-00000000000e",
-                "implementedAt": null,
-                "implementingAt": null,
-                "number": 8,
-                "parent": "00000000-0000-4000-8000-000000000007",
-                "projectId": "00000000-0000-4000-8000-00000000000f",
-                "qualifiedId": "contract-00000001-8",
-                "repositoryId": "00000000-0000-4000-8000-00000000000a",
-                "slug": "preview-the-pdf-before-download",
-                "status": "READY_FOR_DEV",
-                "tags": [],
-                "title": "Preview the PDF before download",
-                "updatedAt": "2026-01-01T00:00:00Z"
-              }
-            ]
-          },
-          "contentType": "application/json",
-          "encoded": false
-        },
-        "headers": {
-          "Content-Type": [
-            "application/json"
-          ]
-        },
-        "matchingRules": {
-          "body": {
-            "$.children": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "arrayContains",
-                  "variants": [
-                    {
-                      "index": 0,
-                      "rules": {
-                        "$.archetype": {
-                          "combine": "AND",
-                          "matchers": [
-                            {
-                              "match": "type"
-                            }
-                          ]
-                        },
                         "$.createdAt": {
                           "combine": "AND",
                           "matchers": [
@@ -4927,14 +4761,6 @@
                             }
                           ]
                         },
-                        "$.description": {
-                          "combine": "AND",
-                          "matchers": [
-                            {
-                              "match": "type"
-                            }
-                          ]
-                        },
                         "$.id": {
                           "combine": "AND",
                           "matchers": [
@@ -4944,29 +4770,11 @@
                             }
                           ]
                         },
-                        "$.implementingAt": {
-                          "combine": "AND",
-                          "matchers": [
-                            {
-                              "match": "regex",
-                              "regex": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}(:\\d{2}(\\.\\d{1,9})?)?(Z|[+-]\\d{2}:?\\d{2})$"
-                            }
-                          ]
-                        },
                         "$.number": {
                           "combine": "AND",
                           "matchers": [
                             {
                               "match": "number"
-                            }
-                          ]
-                        },
-                        "$.parent": {
-                          "combine": "AND",
-                          "matchers": [
-                            {
-                              "match": "regex",
-                              "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
                             }
                           ]
                         },
@@ -4984,15 +4792,6 @@
                           "matchers": [
                             {
                               "match": "type"
-                            }
-                          ]
-                        },
-                        "$.repositoryId": {
-                          "combine": "AND",
-                          "matchers": [
-                            {
-                              "match": "regex",
-                              "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
                             }
                           ]
                         },
@@ -5048,282 +4847,6 @@
                             {
                               "match": "regex",
                               "regex": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}(:\\d{2}(\\.\\d{1,9})?)?(Z|[+-]\\d{2}:?\\d{2})$"
-                            }
-                          ]
-                        },
-                        "$.dependsOn": {
-                          "combine": "AND",
-                          "matchers": [
-                            {
-                              "match": "regex",
-                              "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
-                            }
-                          ]
-                        },
-                        "$.description": {
-                          "combine": "AND",
-                          "matchers": [
-                            {
-                              "match": "type"
-                            }
-                          ]
-                        },
-                        "$.id": {
-                          "combine": "AND",
-                          "matchers": [
-                            {
-                              "match": "regex",
-                              "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
-                            }
-                          ]
-                        },
-                        "$.number": {
-                          "combine": "AND",
-                          "matchers": [
-                            {
-                              "match": "number"
-                            }
-                          ]
-                        },
-                        "$.parent": {
-                          "combine": "AND",
-                          "matchers": [
-                            {
-                              "match": "regex",
-                              "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
-                            }
-                          ]
-                        },
-                        "$.projectId": {
-                          "combine": "AND",
-                          "matchers": [
-                            {
-                              "match": "regex",
-                              "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
-                            }
-                          ]
-                        },
-                        "$.qualifiedId": {
-                          "combine": "AND",
-                          "matchers": [
-                            {
-                              "match": "type"
-                            }
-                          ]
-                        },
-                        "$.repositoryId": {
-                          "combine": "AND",
-                          "matchers": [
-                            {
-                              "match": "regex",
-                              "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
-                            }
-                          ]
-                        },
-                        "$.slug": {
-                          "combine": "AND",
-                          "matchers": [
-                            {
-                              "match": "type"
-                            }
-                          ]
-                        },
-                        "$.status": {
-                          "combine": "AND",
-                          "matchers": [
-                            {
-                              "match": "type"
-                            }
-                          ]
-                        },
-                        "$.title": {
-                          "combine": "AND",
-                          "matchers": [
-                            {
-                              "match": "type"
-                            }
-                          ]
-                        },
-                        "$.updatedAt": {
-                          "combine": "AND",
-                          "matchers": [
-                            {
-                              "match": "regex",
-                              "regex": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}(:\\d{2}(\\.\\d{1,9})?)?(Z|[+-]\\d{2}:?\\d{2})$"
-                            }
-                          ]
-                        }
-                      }
-                    }
-                  ]
-                }
-              ]
-            }
-          },
-          "header": {
-            "Content-Type": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "regex",
-                  "regex": "application/json.*"
-                }
-              ]
-            }
-          }
-        },
-        "status": 200
-      },
-      "type": "Synchronous/HTTP"
-    },
-    {
-      "comments": {
-        "references": {
-          "qits-call": {
-            "app": "qits-projects-service",
-            "operationId": "listWorkChildren"
-          },
-          "qits-trigger": {
-            "app": "qits-projects-frontend",
-            "interaction": "show-work-desk",
-            "kind": "ui"
-          }
-        }
-      },
-      "description": "show-work-desk: listWorkChildren",
-      "pending": false,
-      "providerStates": [
-        {
-          "name": "an epic in detail",
-          "params": {
-            "bugTicketId": "00000000-0000-4000-8000-000000000001",
-            "campaignId": "00000000-0000-4000-8000-000000000002",
-            "campaignQualifiedId": "contract-00000001-1",
-            "creditNoteTicketId": "00000000-0000-4000-8000-000000000003",
-            "csvFeatureId": "00000000-0000-4000-8000-000000000004",
-            "csvTaskId": "00000000-0000-4000-8000-000000000005",
-            "epicId": "00000000-0000-4000-8000-000000000006",
-            "featureId": "00000000-0000-4000-8000-000000000007",
-            "figureAssetId": "00000000-0000-4000-8000-000000000008",
-            "figurePageId": "00000000-0000-4000-8000-000000000009",
-            "frontendRepositoryId": "00000000-0000-4000-8000-00000000000a",
-            "improvementTicketId": "00000000-0000-4000-8000-00000000000b",
-            "maintenanceTicketId": "00000000-0000-4000-8000-00000000000c",
-            "pdfTaskId": "00000000-0000-4000-8000-00000000000d",
-            "previewTaskId": "00000000-0000-4000-8000-00000000000e",
-            "projectId": "00000000-0000-4000-8000-00000000000f",
-            "qualifiedId": "contract-00000001-2",
-            "serviceRepositoryId": "00000000-0000-4000-8000-000000000010",
-            "taskId": "00000000-0000-4000-8000-000000000011",
-            "taxesEpicId": "00000000-0000-4000-8000-000000000012"
-          }
-        }
-      ],
-      "request": {
-        "generators": {
-          "path": {
-            "expression": "/projects/api/work/${qualifiedId}/children",
-            "type": "ProviderState"
-          }
-        },
-        "matchingRules": {
-          "path": {
-            "combine": "AND",
-            "matchers": [
-              {
-                "match": "type"
-              }
-            ]
-          }
-        },
-        "method": "GET",
-        "path": "/projects/api/work/contract-00000001-2/children"
-      },
-      "response": {
-        "body": {
-          "content": {
-            "children": [
-              {
-                "archetype": "FEATURE",
-                "createdAt": "2026-01-01T00:00:00Z",
-                "dependsOn": null,
-                "description": "Stream a date range of invoices as CSV, one row per line item.",
-                "id": "00000000-0000-4000-8000-000000000004",
-                "implementedAt": "2026-01-01T00:00:00Z",
-                "implementingAt": "2026-01-01T00:00:00Z",
-                "number": 3,
-                "parent": "00000000-0000-4000-8000-000000000006",
-                "projectId": "00000000-0000-4000-8000-00000000000f",
-                "qualifiedId": "contract-00000001-3",
-                "repositoryId": null,
-                "slug": "csv-export",
-                "status": "IMPLEMENTED",
-                "tags": [],
-                "title": "CSV export",
-                "updatedAt": "2026-01-01T00:00:00Z"
-              },
-              {
-                "archetype": "FEATURE",
-                "createdAt": "2026-01-01T00:00:00Z",
-                "dependsOn": "00000000-0000-4000-8000-000000000004",
-                "description": "Render one invoice as an A4 PDF, in the same layout as the printed one.",
-                "id": "00000000-0000-4000-8000-000000000007",
-                "implementedAt": null,
-                "implementingAt": "2026-01-01T00:00:00Z",
-                "number": 6,
-                "parent": "00000000-0000-4000-8000-000000000006",
-                "projectId": "00000000-0000-4000-8000-00000000000f",
-                "qualifiedId": "contract-00000001-6",
-                "repositoryId": null,
-                "slug": "pdf-export",
-                "status": "IMPLEMENTING",
-                "tags": [],
-                "title": "PDF export",
-                "updatedAt": "2026-01-01T00:00:00Z"
-              }
-            ]
-          },
-          "contentType": "application/json",
-          "encoded": false
-        },
-        "headers": {
-          "Content-Type": [
-            "application/json"
-          ]
-        },
-        "matchingRules": {
-          "body": {
-            "$.children": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "arrayContains",
-                  "variants": [
-                    {
-                      "index": 0,
-                      "rules": {
-                        "$.archetype": {
-                          "combine": "AND",
-                          "matchers": [
-                            {
-                              "match": "type"
-                            }
-                          ]
-                        },
-                        "$.createdAt": {
-                          "combine": "AND",
-                          "matchers": [
-                            {
-                              "match": "regex",
-                              "regex": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}(:\\d{2}(\\.\\d{1,9})?)?(Z|[+-]\\d{2}:?\\d{2})$"
-                            }
-                          ]
-                        },
-                        "$.description": {
-                          "combine": "AND",
-                          "matchers": [
-                            {
-                              "match": "type"
                             }
                           ]
                         },
@@ -5345,12 +4868,351 @@
                             }
                           ]
                         },
-                        "$.implementingAt": {
+                        "$.number": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "number"
+                            }
+                          ]
+                        },
+                        "$.parent": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "regex",
+                              "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                            }
+                          ]
+                        },
+                        "$.projectId": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "regex",
+                              "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                            }
+                          ]
+                        },
+                        "$.qualifiedId": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.slug": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.status": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.title": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.updatedAt": {
                           "combine": "AND",
                           "matchers": [
                             {
                               "match": "regex",
                               "regex": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}(:\\d{2}(\\.\\d{1,9})?)?(Z|[+-]\\d{2}:?\\d{2})$"
+                            }
+                          ]
+                        }
+                      }
+                    },
+                    {
+                      "index": 2,
+                      "rules": {
+                        "$.archetype": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.createdAt": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "regex",
+                              "regex": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}(:\\d{2}(\\.\\d{1,9})?)?(Z|[+-]\\d{2}:?\\d{2})$"
+                            }
+                          ]
+                        },
+                        "$.id": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "regex",
+                              "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                            }
+                          ]
+                        },
+                        "$.implementedAt": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "regex",
+                              "regex": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}(:\\d{2}(\\.\\d{1,9})?)?(Z|[+-]\\d{2}:?\\d{2})$"
+                            }
+                          ]
+                        },
+                        "$.number": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "number"
+                            }
+                          ]
+                        },
+                        "$.parent": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "regex",
+                              "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                            }
+                          ]
+                        },
+                        "$.projectId": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "regex",
+                              "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                            }
+                          ]
+                        },
+                        "$.qualifiedId": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.repositoryId": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "regex",
+                              "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                            }
+                          ]
+                        },
+                        "$.slug": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.status": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.title": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.updatedAt": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "regex",
+                              "regex": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}(:\\d{2}(\\.\\d{1,9})?)?(Z|[+-]\\d{2}:?\\d{2})$"
+                            }
+                          ]
+                        }
+                      }
+                    },
+                    {
+                      "index": 3,
+                      "rules": {
+                        "$.archetype": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.createdAt": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "regex",
+                              "regex": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}(:\\d{2}(\\.\\d{1,9})?)?(Z|[+-]\\d{2}:?\\d{2})$"
+                            }
+                          ]
+                        },
+                        "$.dependsOn": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "regex",
+                              "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                            }
+                          ]
+                        },
+                        "$.id": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "regex",
+                              "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                            }
+                          ]
+                        },
+                        "$.implementedAt": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "regex",
+                              "regex": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}(:\\d{2}(\\.\\d{1,9})?)?(Z|[+-]\\d{2}:?\\d{2})$"
+                            }
+                          ]
+                        },
+                        "$.number": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "number"
+                            }
+                          ]
+                        },
+                        "$.parent": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "regex",
+                              "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                            }
+                          ]
+                        },
+                        "$.projectId": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "regex",
+                              "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                            }
+                          ]
+                        },
+                        "$.qualifiedId": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.repositoryId": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "regex",
+                              "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                            }
+                          ]
+                        },
+                        "$.slug": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.status": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.title": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.updatedAt": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "regex",
+                              "regex": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}(:\\d{2}(\\.\\d{1,9})?)?(Z|[+-]\\d{2}:?\\d{2})$"
+                            }
+                          ]
+                        }
+                      }
+                    },
+                    {
+                      "index": 4,
+                      "rules": {
+                        "$.archetype": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.createdAt": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "regex",
+                              "regex": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}(:\\d{2}(\\.\\d{1,9})?)?(Z|[+-]\\d{2}:?\\d{2})$"
+                            }
+                          ]
+                        },
+                        "$.dependsOn": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "regex",
+                              "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                            }
+                          ]
+                        },
+                        "$.id": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "regex",
+                              "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
                             }
                           ]
                         },
@@ -5424,7 +5286,7 @@
                       }
                     },
                     {
-                      "index": 1,
+                      "index": 5,
                       "rules": {
                         "$.archetype": {
                           "combine": "AND",
@@ -5443,38 +5305,12 @@
                             }
                           ]
                         },
-                        "$.dependsOn": {
-                          "combine": "AND",
-                          "matchers": [
-                            {
-                              "match": "regex",
-                              "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
-                            }
-                          ]
-                        },
-                        "$.description": {
-                          "combine": "AND",
-                          "matchers": [
-                            {
-                              "match": "type"
-                            }
-                          ]
-                        },
                         "$.id": {
                           "combine": "AND",
                           "matchers": [
                             {
                               "match": "regex",
                               "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
-                            }
-                          ]
-                        },
-                        "$.implementingAt": {
-                          "combine": "AND",
-                          "matchers": [
-                            {
-                              "match": "regex",
-                              "regex": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}(:\\d{2}(\\.\\d{1,9})?)?(Z|[+-]\\d{2}:?\\d{2})$"
                             }
                           ]
                         },
@@ -5512,6 +5348,15 @@
                             }
                           ]
                         },
+                        "$.repositoryId": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "regex",
+                              "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                            }
+                          ]
+                        },
                         "$.slug": {
                           "combine": "AND",
                           "matchers": [
@@ -5521,6 +5366,235 @@
                           ]
                         },
                         "$.status": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.title": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.updatedAt": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "regex",
+                              "regex": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}(:\\d{2}(\\.\\d{1,9})?)?(Z|[+-]\\d{2}:?\\d{2})$"
+                            }
+                          ]
+                        }
+                      }
+                    },
+                    {
+                      "index": 6,
+                      "rules": {
+                        "$.archetype": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.createdAt": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "regex",
+                              "regex": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}(:\\d{2}(\\.\\d{1,9})?)?(Z|[+-]\\d{2}:?\\d{2})$"
+                            }
+                          ]
+                        },
+                        "$.dependsOn": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "regex",
+                              "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                            }
+                          ]
+                        },
+                        "$.id": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "regex",
+                              "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                            }
+                          ]
+                        },
+                        "$.number": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "number"
+                            }
+                          ]
+                        },
+                        "$.parent": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "regex",
+                              "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                            }
+                          ]
+                        },
+                        "$.projectId": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "regex",
+                              "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                            }
+                          ]
+                        },
+                        "$.qualifiedId": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.repositoryId": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "regex",
+                              "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                            }
+                          ]
+                        },
+                        "$.slug": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.status": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.title": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.updatedAt": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "regex",
+                              "regex": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}(:\\d{2}(\\.\\d{1,9})?)?(Z|[+-]\\d{2}:?\\d{2})$"
+                            }
+                          ]
+                        }
+                      }
+                    },
+                    {
+                      "index": 7,
+                      "rules": {
+                        "$.archetype": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.blocked": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.createdAt": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "regex",
+                              "regex": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}(:\\d{2}(\\.\\d{1,9})?)?(Z|[+-]\\d{2}:?\\d{2})$"
+                            }
+                          ]
+                        },
+                        "$.id": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "regex",
+                              "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                            }
+                          ]
+                        },
+                        "$.impetus": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.number": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "number"
+                            }
+                          ]
+                        },
+                        "$.projectId": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "regex",
+                              "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                            }
+                          ]
+                        },
+                        "$.qualifiedId": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.slug": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.status": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.ticketType": {
                           "combine": "AND",
                           "matchers": [
                             {
@@ -5573,7 +5647,7 @@
         "references": {
           "qits-call": {
             "app": "qits-projects-service",
-            "operationId": "listWorkWorkspaces"
+            "operationId": "listProjectWorkWorkspaces"
           },
           "qits-trigger": {
             "app": "qits-projects-frontend",
@@ -5582,22 +5656,25 @@
           }
         }
       },
-      "description": "show-work-desk: listWorkWorkspaces",
+      "description": "show-work-desk: listProjectWorkWorkspaces",
       "pending": false,
       "providerStates": [
         {
-          "name": "a reported ticket",
+          "name": "a project whose work has workspaces",
           "params": {
-            "projectId": "00000000-0000-4000-8000-000000000001",
-            "qualifiedId": "contract-00000001-1",
-            "ticketId": "00000000-0000-4000-8000-000000000002"
+            "epicId": "00000000-0000-4000-8000-000000000001",
+            "epicQualifiedId": "contract-00000001-2",
+            "idleTicketId": "00000000-0000-4000-8000-000000000002",
+            "projectId": "00000000-0000-4000-8000-000000000003",
+            "ticketId": "00000000-0000-4000-8000-000000000004",
+            "ticketQualifiedId": "contract-00000001-1"
           }
         }
       ],
       "request": {
         "generators": {
           "path": {
-            "expression": "/projects/api/work/${qualifiedId}/workspaces",
+            "expression": "/projects/api/projects/${projectId}/work/workspaces",
             "type": "ProviderState"
           }
         },
@@ -5612,12 +5689,47 @@
           }
         },
         "method": "GET",
-        "path": "/projects/api/work/contract-00000001-1/workspaces"
+        "path": "/projects/api/projects/00000000-0000-4000-8000-000000000003/work/workspaces"
       },
       "response": {
         "body": {
           "content": {
-            "workspaces": []
+            "workspaces": [
+              {
+                "workId": "00000000-0000-4000-8000-000000000004",
+                "workspaces": [
+                  {
+                    "agentId": "agent-41",
+                    "branch": "ticket/contract-00000001-1",
+                    "repositoryId": "repo-1",
+                    "status": "ACTIVE",
+                    "workspaceId": null,
+                    "workspaceRowId": 41
+                  },
+                  {
+                    "agentId": "agent-41",
+                    "branch": "ticket/contract-00000001-1",
+                    "repositoryId": "repo-1",
+                    "status": "ACTIVE",
+                    "workspaceId": null,
+                    "workspaceRowId": 41
+                  }
+                ]
+              },
+              {
+                "workId": "00000000-0000-4000-8000-000000000001",
+                "workspaces": [
+                  {
+                    "agentId": "agent-42",
+                    "branch": "epic/contract-00000001-2",
+                    "repositoryId": "repo-1",
+                    "status": "ACTIVE",
+                    "workspaceId": null,
+                    "workspaceRowId": 42
+                  }
+                ]
+              }
+            ]
           },
           "contentType": "application/json",
           "encoded": false
@@ -5628,6 +5740,161 @@
           ]
         },
         "matchingRules": {
+          "body": {
+            "$.workspaces": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "arrayContains",
+                  "variants": [
+                    {
+                      "index": 0,
+                      "rules": {
+                        "$.workId": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "regex",
+                              "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                            }
+                          ]
+                        },
+                        "$.workspaces": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type",
+                              "max": 2,
+                              "min": 2
+                            }
+                          ]
+                        },
+                        "$.workspaces[*].agentId": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.workspaces[*].branch": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.workspaces[*].repositoryId": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.workspaces[*].status": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            },
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.workspaces[*].workspaceRowId": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "number"
+                            },
+                            {
+                              "match": "number"
+                            }
+                          ]
+                        }
+                      }
+                    },
+                    {
+                      "index": 1,
+                      "rules": {
+                        "$.workId": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "regex",
+                              "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                            }
+                          ]
+                        },
+                        "$.workspaces": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type",
+                              "max": 1,
+                              "min": 1
+                            }
+                          ]
+                        },
+                        "$.workspaces[*].agentId": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.workspaces[*].branch": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.workspaces[*].repositoryId": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.workspaces[*].status": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.workspaces[*].workspaceRowId": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "number"
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          },
           "header": {
             "Content-Type": {
               "combine": "AND",
@@ -11387,6 +11654,790 @@
         "references": {
           "qits-call": {
             "app": "qits-projects-service",
+            "operationId": "listWorkChildren"
+          },
+          "qits-trigger": {
+            "app": "qits-projects-frontend",
+            "interaction": "show-work-item",
+            "kind": "ui"
+          }
+        }
+      },
+      "description": "show-work-item: listWorkChildren",
+      "pending": false,
+      "providerStates": [
+        {
+          "name": "a feature in detail",
+          "params": {
+            "bugTicketId": "00000000-0000-4000-8000-000000000001",
+            "campaignId": "00000000-0000-4000-8000-000000000002",
+            "campaignQualifiedId": "contract-00000001-1",
+            "creditNoteTicketId": "00000000-0000-4000-8000-000000000003",
+            "csvFeatureId": "00000000-0000-4000-8000-000000000004",
+            "csvTaskId": "00000000-0000-4000-8000-000000000005",
+            "epicId": "00000000-0000-4000-8000-000000000006",
+            "featureId": "00000000-0000-4000-8000-000000000007",
+            "figureAssetId": "00000000-0000-4000-8000-000000000008",
+            "figurePageId": "00000000-0000-4000-8000-000000000009",
+            "frontendRepositoryId": "00000000-0000-4000-8000-00000000000a",
+            "improvementTicketId": "00000000-0000-4000-8000-00000000000b",
+            "maintenanceTicketId": "00000000-0000-4000-8000-00000000000c",
+            "pdfTaskId": "00000000-0000-4000-8000-00000000000d",
+            "previewTaskId": "00000000-0000-4000-8000-00000000000e",
+            "projectId": "00000000-0000-4000-8000-00000000000f",
+            "qualifiedId": "contract-00000001-6",
+            "serviceRepositoryId": "00000000-0000-4000-8000-000000000010",
+            "taskId": "00000000-0000-4000-8000-000000000011",
+            "taxesEpicId": "00000000-0000-4000-8000-000000000012"
+          }
+        }
+      ],
+      "request": {
+        "generators": {
+          "path": {
+            "expression": "/projects/api/work/${qualifiedId}/children",
+            "type": "ProviderState"
+          }
+        },
+        "matchingRules": {
+          "path": {
+            "combine": "AND",
+            "matchers": [
+              {
+                "match": "type"
+              }
+            ]
+          }
+        },
+        "method": "GET",
+        "path": "/projects/api/work/contract-00000001-6/children"
+      },
+      "response": {
+        "body": {
+          "content": {
+            "children": [
+              {
+                "archetype": "TASK",
+                "createdAt": "2026-01-01T00:00:00Z",
+                "dependsOn": null,
+                "description": "Render server-side; embed the fonts so the archive stays readable.",
+                "id": "00000000-0000-4000-8000-00000000000d",
+                "implementedAt": null,
+                "implementingAt": "2026-01-01T00:00:00Z",
+                "number": 7,
+                "parent": "00000000-0000-4000-8000-000000000007",
+                "projectId": "00000000-0000-4000-8000-00000000000f",
+                "qualifiedId": "contract-00000001-7",
+                "repositoryId": "00000000-0000-4000-8000-000000000010",
+                "slug": "render-one-invoice-as-pdf",
+                "status": "IMPLEMENTING",
+                "tags": [],
+                "title": "Render one invoice as PDF",
+                "updatedAt": "2026-01-01T00:00:00Z"
+              },
+              {
+                "archetype": "TASK",
+                "createdAt": "2026-01-01T00:00:00Z",
+                "dependsOn": "00000000-0000-4000-8000-00000000000d",
+                "description": "Show the rendered PDF in a dialog, with a download button.",
+                "id": "00000000-0000-4000-8000-00000000000e",
+                "implementedAt": null,
+                "implementingAt": null,
+                "number": 8,
+                "parent": "00000000-0000-4000-8000-000000000007",
+                "projectId": "00000000-0000-4000-8000-00000000000f",
+                "qualifiedId": "contract-00000001-8",
+                "repositoryId": "00000000-0000-4000-8000-00000000000a",
+                "slug": "preview-the-pdf-before-download",
+                "status": "READY_FOR_DEV",
+                "tags": [],
+                "title": "Preview the PDF before download",
+                "updatedAt": "2026-01-01T00:00:00Z"
+              }
+            ]
+          },
+          "contentType": "application/json",
+          "encoded": false
+        },
+        "headers": {
+          "Content-Type": [
+            "application/json"
+          ]
+        },
+        "matchingRules": {
+          "body": {
+            "$.children": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "arrayContains",
+                  "variants": [
+                    {
+                      "index": 0,
+                      "rules": {
+                        "$.archetype": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.createdAt": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "regex",
+                              "regex": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}(:\\d{2}(\\.\\d{1,9})?)?(Z|[+-]\\d{2}:?\\d{2})$"
+                            }
+                          ]
+                        },
+                        "$.description": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.id": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "regex",
+                              "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                            }
+                          ]
+                        },
+                        "$.implementingAt": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "regex",
+                              "regex": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}(:\\d{2}(\\.\\d{1,9})?)?(Z|[+-]\\d{2}:?\\d{2})$"
+                            }
+                          ]
+                        },
+                        "$.number": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "number"
+                            }
+                          ]
+                        },
+                        "$.parent": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "regex",
+                              "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                            }
+                          ]
+                        },
+                        "$.projectId": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "regex",
+                              "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                            }
+                          ]
+                        },
+                        "$.qualifiedId": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.repositoryId": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "regex",
+                              "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                            }
+                          ]
+                        },
+                        "$.slug": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.status": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.title": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.updatedAt": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "regex",
+                              "regex": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}(:\\d{2}(\\.\\d{1,9})?)?(Z|[+-]\\d{2}:?\\d{2})$"
+                            }
+                          ]
+                        }
+                      }
+                    },
+                    {
+                      "index": 1,
+                      "rules": {
+                        "$.archetype": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.createdAt": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "regex",
+                              "regex": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}(:\\d{2}(\\.\\d{1,9})?)?(Z|[+-]\\d{2}:?\\d{2})$"
+                            }
+                          ]
+                        },
+                        "$.dependsOn": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "regex",
+                              "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                            }
+                          ]
+                        },
+                        "$.description": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.id": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "regex",
+                              "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                            }
+                          ]
+                        },
+                        "$.number": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "number"
+                            }
+                          ]
+                        },
+                        "$.parent": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "regex",
+                              "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                            }
+                          ]
+                        },
+                        "$.projectId": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "regex",
+                              "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                            }
+                          ]
+                        },
+                        "$.qualifiedId": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.repositoryId": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "regex",
+                              "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                            }
+                          ]
+                        },
+                        "$.slug": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.status": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.title": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.updatedAt": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "regex",
+                              "regex": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}(:\\d{2}(\\.\\d{1,9})?)?(Z|[+-]\\d{2}:?\\d{2})$"
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          "header": {
+            "Content-Type": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "application/json.*"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      },
+      "type": "Synchronous/HTTP"
+    },
+    {
+      "comments": {
+        "references": {
+          "qits-call": {
+            "app": "qits-projects-service",
+            "operationId": "listWorkChildren"
+          },
+          "qits-trigger": {
+            "app": "qits-projects-frontend",
+            "interaction": "show-work-item",
+            "kind": "ui"
+          }
+        }
+      },
+      "description": "show-work-item: listWorkChildren",
+      "pending": false,
+      "providerStates": [
+        {
+          "name": "an epic in detail",
+          "params": {
+            "bugTicketId": "00000000-0000-4000-8000-000000000001",
+            "campaignId": "00000000-0000-4000-8000-000000000002",
+            "campaignQualifiedId": "contract-00000001-1",
+            "creditNoteTicketId": "00000000-0000-4000-8000-000000000003",
+            "csvFeatureId": "00000000-0000-4000-8000-000000000004",
+            "csvTaskId": "00000000-0000-4000-8000-000000000005",
+            "epicId": "00000000-0000-4000-8000-000000000006",
+            "featureId": "00000000-0000-4000-8000-000000000007",
+            "figureAssetId": "00000000-0000-4000-8000-000000000008",
+            "figurePageId": "00000000-0000-4000-8000-000000000009",
+            "frontendRepositoryId": "00000000-0000-4000-8000-00000000000a",
+            "improvementTicketId": "00000000-0000-4000-8000-00000000000b",
+            "maintenanceTicketId": "00000000-0000-4000-8000-00000000000c",
+            "pdfTaskId": "00000000-0000-4000-8000-00000000000d",
+            "previewTaskId": "00000000-0000-4000-8000-00000000000e",
+            "projectId": "00000000-0000-4000-8000-00000000000f",
+            "qualifiedId": "contract-00000001-2",
+            "serviceRepositoryId": "00000000-0000-4000-8000-000000000010",
+            "taskId": "00000000-0000-4000-8000-000000000011",
+            "taxesEpicId": "00000000-0000-4000-8000-000000000012"
+          }
+        }
+      ],
+      "request": {
+        "generators": {
+          "path": {
+            "expression": "/projects/api/work/${qualifiedId}/children",
+            "type": "ProviderState"
+          }
+        },
+        "matchingRules": {
+          "path": {
+            "combine": "AND",
+            "matchers": [
+              {
+                "match": "type"
+              }
+            ]
+          }
+        },
+        "method": "GET",
+        "path": "/projects/api/work/contract-00000001-2/children"
+      },
+      "response": {
+        "body": {
+          "content": {
+            "children": [
+              {
+                "archetype": "FEATURE",
+                "createdAt": "2026-01-01T00:00:00Z",
+                "dependsOn": null,
+                "description": "Stream a date range of invoices as CSV, one row per line item.",
+                "id": "00000000-0000-4000-8000-000000000004",
+                "implementedAt": "2026-01-01T00:00:00Z",
+                "implementingAt": "2026-01-01T00:00:00Z",
+                "number": 3,
+                "parent": "00000000-0000-4000-8000-000000000006",
+                "projectId": "00000000-0000-4000-8000-00000000000f",
+                "qualifiedId": "contract-00000001-3",
+                "repositoryId": null,
+                "slug": "csv-export",
+                "status": "IMPLEMENTED",
+                "tags": [],
+                "title": "CSV export",
+                "updatedAt": "2026-01-01T00:00:00Z"
+              },
+              {
+                "archetype": "FEATURE",
+                "createdAt": "2026-01-01T00:00:00Z",
+                "dependsOn": "00000000-0000-4000-8000-000000000004",
+                "description": "Render one invoice as an A4 PDF, in the same layout as the printed one.",
+                "id": "00000000-0000-4000-8000-000000000007",
+                "implementedAt": null,
+                "implementingAt": "2026-01-01T00:00:00Z",
+                "number": 6,
+                "parent": "00000000-0000-4000-8000-000000000006",
+                "projectId": "00000000-0000-4000-8000-00000000000f",
+                "qualifiedId": "contract-00000001-6",
+                "repositoryId": null,
+                "slug": "pdf-export",
+                "status": "IMPLEMENTING",
+                "tags": [],
+                "title": "PDF export",
+                "updatedAt": "2026-01-01T00:00:00Z"
+              }
+            ]
+          },
+          "contentType": "application/json",
+          "encoded": false
+        },
+        "headers": {
+          "Content-Type": [
+            "application/json"
+          ]
+        },
+        "matchingRules": {
+          "body": {
+            "$.children": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "arrayContains",
+                  "variants": [
+                    {
+                      "index": 0,
+                      "rules": {
+                        "$.archetype": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.createdAt": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "regex",
+                              "regex": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}(:\\d{2}(\\.\\d{1,9})?)?(Z|[+-]\\d{2}:?\\d{2})$"
+                            }
+                          ]
+                        },
+                        "$.description": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.id": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "regex",
+                              "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                            }
+                          ]
+                        },
+                        "$.implementedAt": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "regex",
+                              "regex": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}(:\\d{2}(\\.\\d{1,9})?)?(Z|[+-]\\d{2}:?\\d{2})$"
+                            }
+                          ]
+                        },
+                        "$.implementingAt": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "regex",
+                              "regex": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}(:\\d{2}(\\.\\d{1,9})?)?(Z|[+-]\\d{2}:?\\d{2})$"
+                            }
+                          ]
+                        },
+                        "$.number": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "number"
+                            }
+                          ]
+                        },
+                        "$.parent": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "regex",
+                              "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                            }
+                          ]
+                        },
+                        "$.projectId": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "regex",
+                              "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                            }
+                          ]
+                        },
+                        "$.qualifiedId": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.slug": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.status": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.title": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.updatedAt": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "regex",
+                              "regex": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}(:\\d{2}(\\.\\d{1,9})?)?(Z|[+-]\\d{2}:?\\d{2})$"
+                            }
+                          ]
+                        }
+                      }
+                    },
+                    {
+                      "index": 1,
+                      "rules": {
+                        "$.archetype": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.createdAt": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "regex",
+                              "regex": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}(:\\d{2}(\\.\\d{1,9})?)?(Z|[+-]\\d{2}:?\\d{2})$"
+                            }
+                          ]
+                        },
+                        "$.dependsOn": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "regex",
+                              "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                            }
+                          ]
+                        },
+                        "$.description": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.id": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "regex",
+                              "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                            }
+                          ]
+                        },
+                        "$.implementingAt": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "regex",
+                              "regex": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}(:\\d{2}(\\.\\d{1,9})?)?(Z|[+-]\\d{2}:?\\d{2})$"
+                            }
+                          ]
+                        },
+                        "$.number": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "number"
+                            }
+                          ]
+                        },
+                        "$.parent": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "regex",
+                              "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                            }
+                          ]
+                        },
+                        "$.projectId": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "regex",
+                              "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                            }
+                          ]
+                        },
+                        "$.qualifiedId": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.slug": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.status": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.title": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.updatedAt": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "regex",
+                              "regex": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}(:\\d{2}(\\.\\d{1,9})?)?(Z|[+-]\\d{2}:?\\d{2})$"
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          "header": {
+            "Content-Type": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "application/json.*"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      },
+      "type": "Synchronous/HTTP"
+    },
+    {
+      "comments": {
+        "references": {
+          "qits-call": {
+            "app": "qits-projects-service",
             "operationId": "listWorkComments"
           },
           "qits-trigger": {
@@ -13408,6 +14459,82 @@
               ]
             }
           },
+          "header": {
+            "Content-Type": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "application/json.*"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      },
+      "type": "Synchronous/HTTP"
+    },
+    {
+      "comments": {
+        "references": {
+          "qits-call": {
+            "app": "qits-projects-service",
+            "operationId": "listWorkWorkspaces"
+          },
+          "qits-trigger": {
+            "app": "qits-projects-frontend",
+            "interaction": "show-work-item",
+            "kind": "ui"
+          }
+        }
+      },
+      "description": "show-work-item: listWorkWorkspaces",
+      "pending": false,
+      "providerStates": [
+        {
+          "name": "a reported ticket",
+          "params": {
+            "projectId": "00000000-0000-4000-8000-000000000001",
+            "qualifiedId": "contract-00000001-1",
+            "ticketId": "00000000-0000-4000-8000-000000000002"
+          }
+        }
+      ],
+      "request": {
+        "generators": {
+          "path": {
+            "expression": "/projects/api/work/${qualifiedId}/workspaces",
+            "type": "ProviderState"
+          }
+        },
+        "matchingRules": {
+          "path": {
+            "combine": "AND",
+            "matchers": [
+              {
+                "match": "type"
+              }
+            ]
+          }
+        },
+        "method": "GET",
+        "path": "/projects/api/work/contract-00000001-1/workspaces"
+      },
+      "response": {
+        "body": {
+          "content": {
+            "workspaces": []
+          },
+          "contentType": "application/json",
+          "encoded": false
+        },
+        "headers": {
+          "Content-Type": [
+            "application/json"
+          ]
+        },
+        "matchingRules": {
           "header": {
             "Content-Type": {
               "combine": "AND",

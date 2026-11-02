@@ -78,7 +78,10 @@ const LIST_WORK_COMMENTS = [
 /** One comment as a write left it. */
 const WORK_COMMENT = ['comment.id', 'comment.body', 'comment.updatedAt'] as const;
 
-/** The workspace links on a card and on the detail page. */
+/**
+ * The workspace links on the detail page — its whole read of the entity it shows. The desk's cards
+ * take theirs from the project-wide read since qits-1815 (`ProjectsApi.workWorkspaces`).
+ */
 const LIST_WORK_WORKSPACES = ['workspaces'] as const;
 
 const dir = mkdtempSync(join(tmpdir(), 'qits-projects-frontend-entities-api-pact-'));
@@ -266,9 +269,9 @@ describe('qits-projects-frontend → qits-projects-service pact: EntitiesApi', (
     });
   });
 
-  it('show-work-desk: the workspaces a dispatch stood on its branch', () => {
+  it('show-work-item: the workspaces a dispatch stood on its branch', () => {
     const state = 'a reported ticket';
-    return given(state, 'listWorkWorkspaces', 'show-work-desk', LIST_WORK_WORKSPACES).executeTest(
+    return given(state, 'listWorkWorkspaces', 'show-work-item', LIST_WORK_WORKSPACES).executeTest(
       async (server) => {
         const workspaces = await apiAt(server.url, EntitiesApi).workspaces(
           ref(state, 'listWorkWorkspaces'),

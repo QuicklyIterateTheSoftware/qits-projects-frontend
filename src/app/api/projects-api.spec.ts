@@ -1,7 +1,7 @@
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
-import { goldenMaster } from '../../testing/golden-masters';
+import { goldenMaster, goldenParams } from '../../testing/golden-masters';
 import { ProjectsApi, closedBy } from './projects-api';
 import type { WorkEntityDto } from './work';
 
@@ -475,6 +475,23 @@ describe('ProjectsApi', () => {
     const rows = await children;
     expect(rows.map((row) => row.archetype)).toEqual(['FEATURE', 'FEATURE']);
     expect(rows[0].description).toContain('CSV');
+  });
+
+  /** qits-1815: every ticket's and epic's workspaces in one read, keyed by the entity's id. */
+  it('reads the project’s workspaces as a map by entity id, with no entry for a row with none', async () => {
+    const state = 'a project whose work has workspaces';
+    const params = goldenParams(state, 'listProjectWorkWorkspaces');
+    const workspaces = api.workWorkspaces('p/1');
+    http
+      .expectOne('/projects/api/projects/p%2F1/work/workspaces')
+      .flush(goldenMaster(state, 'listProjectWorkWorkspaces'));
+
+    const byId = await workspaces;
+    expect([...byId.keys()]).toEqual([params['ticketId'], params['epicId']]);
+    expect(byId.get(params['ticketId'])?.map((workspace) => workspace.workspaceRowId)).toEqual([
+      41, 40,
+    ]);
+    expect(byId.has(params['idleTicketId'])).toBe(false);
   });
 
   it('reads a repository’s sync status', async () => {

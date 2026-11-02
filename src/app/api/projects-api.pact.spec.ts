@@ -12,8 +12,8 @@ import type { DropResolution } from './work';
 
 /**
  * `ProjectsApi`'s part of qits-projects-frontend's pact with qits-projects-service (epic qits-965):
- * the `/work` surface's listing, one entity's read, the create, the delete, the lifecycle move and
- * a node's children — in the same file as the other api classes' parts
+ * the `/work` surface's listing and the project's workspaces beside it (qits-1815), one entity's
+ * read, the create, the delete, the lifecycle move and a node's children — in the same file as the other api classes' parts
  * (`pacts/qits-projects-frontend_qits-projects-service.json`, see `src/testing/pact-part.ts`).
  *
  * Each test makes one call through the real client against a pact mock server answering with
@@ -31,9 +31,14 @@ const OPERATIONS = [
   'deleteWork',
   'setWorkStatus',
   'listWorkChildren',
+  'listProjectWorkWorkspaces',
 ];
 
-/** A listing row: what `EntitiesApi.list` and the slug resolver read off the summary. */
+/**
+ * A listing row: what `EntitiesApi.list` and the slug resolver read off the summary. Since qits-1815
+ * the desk is built from these rows alone — `epicOf`, `ticketOf`, `featureOf`, `taskOf` on the
+ * summary, an epic's features and tasks found by `parent` — so what those map is bound here too.
+ */
 const LIST_PROJECT_WORK = [
   'entities[].id',
   'entities[].archetype',
@@ -47,7 +52,19 @@ const LIST_PROJECT_WORK = [
   'entities[].blocked',
   // A campaign's desk row is this row (`campaignSummaryOf`), its reserved-for-human badge too.
   'entities[].tags',
+  // A ticket's card and the newest-first sort (qits-1815: no longer from a whole read).
+  'entities[].ticketType',
+  'entities[].impetus',
+  'entities[].createdAt',
+  'entities[].updatedAt',
+  // An epic's progress: its features' and tasks' implemented markers, a task's repository.
+  'entities[].implementedAt',
+  'entities[].repositoryId',
+  'entities[].dependsOn',
 ] as const;
+
+/** Every ticket's and epic's workspaces, keyed by id (qits-1815): what the desk's links draw. */
+const LIST_PROJECT_WORK_WORKSPACES = ['workspaces[].workId', 'workspaces[].workspaces'] as const;
 
 /** Every root's fields. */
 const ROOT = [
@@ -296,11 +313,40 @@ describe('qits-projects-frontend → qits-projects-service pact: ProjectsApi', (
     });
   });
 
+  /**
+   * qits-1815: the desk reads every root's workspaces in this one read beside the listing, instead
+   * of `GET /work/{q}/workspaces` per root. A row with none has no entry.
+   */
+  it('show-work-desk: every ticket’s and epic’s workspaces, in one read', () => {
+    const state = 'a project whose work has workspaces';
+    return given(
+      state,
+      'listProjectWorkWorkspaces',
+      'show-work-desk',
+      LIST_PROJECT_WORK_WORKSPACES,
+    ).executeTest(async (server) => {
+      const workspaces = await apiAt(server.url, ProjectsApi).workWorkspaces(
+        param(state, 'listProjectWorkWorkspaces', 'projectId'),
+      );
+      const ticket = param(state, 'listProjectWorkWorkspaces', 'ticketId');
+      const epic = param(state, 'listProjectWorkWorkspaces', 'epicId');
+      expect(workspaces.get(ticket)?.length).toBeGreaterThan(0);
+      expect(workspaces.get(epic)?.length).toBeGreaterThan(0);
+      // The idle ticket has none, so it has no entry.
+      expect(workspaces.has(param(state, 'listProjectWorkWorkspaces', 'idleTicketId'))).toBe(false);
+    });
+  });
+
+  /**
+   * An epic's tree with its bodies: the detail page's whole read of the epic it shows, and the
+   * reshape panel's read of a feature or a task it restates (qits-1815). The desk itself no longer
+   * reads children — it takes them from the listing.
+   */
   it.each([
     ['an epic in detail', 'FEATURE'],
     ['a feature in detail', 'TASK'],
-  ])('show-work-desk: the children of %s', (state, archetype) =>
-    given(state, 'listWorkChildren', 'show-work-desk', LIST_WORK_CHILDREN).executeTest(
+  ])('show-work-item: the children of %s', (state, archetype) =>
+    given(state, 'listWorkChildren', 'show-work-item', LIST_WORK_CHILDREN).executeTest(
       async (server) => {
         const children = await apiAt(server.url, ProjectsApi).children(
           param(state, 'listWorkChildren', 'qualifiedId'),

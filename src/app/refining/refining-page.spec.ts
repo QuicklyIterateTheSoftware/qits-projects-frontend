@@ -263,8 +263,8 @@ describe('RefiningPage', () => {
   }
 
   /**
-   * The project's work as `/work` answers it: the listing, then each root read whole with its
-   * workspaces (and an epic's children) — and the registry, whenever it is asked for.
+   * The project's work as `/work` answers it: the listing and the project's workspaces, then the
+   * subject's root read whole (and an epic's children) — and the registry, whenever it is asked for.
    */
   async function flushWork(
     epics: readonly object[] = [EPIC, OTHER],
@@ -400,8 +400,9 @@ describe('RefiningPage', () => {
       // The epic and the refinements listing are then read in parallel: both are keyed off the
       // resolved project alone, and neither waits on the other.
       const first = http.match(() => true);
+      // The listing's workspaces ride beside it, as one read for the project (qits-1815).
       expect(first.map((request) => request.request.url).sort()).toEqual(
-        [WORK_URL, ARCHETYPES_URL, REFINEMENTS_URL].sort(),
+        [WORK_URL, `${WORK_URL}/workspaces`, ARCHETYPES_URL, REFINEMENTS_URL].sort(),
       );
       for (const request of first) {
         if (request.request.url === REFINEMENTS_URL) {
@@ -409,7 +410,7 @@ describe('RefiningPage', () => {
         } else if (request.request.url === ARCHETYPES_URL) {
           request.flush(REGISTRY);
         } else {
-          request.flush(workAnswer('p1', { epics: [EPIC] }, WORK_URL) as object);
+          request.flush(workAnswer('p1', { epics: [EPIC] }, request.request.url) as object);
         }
       }
       await settle();
@@ -513,6 +514,9 @@ describe('RefiningPage', () => {
       await flushProjectList();
       http
         .expectOne(WORK_URL)
+        .flush({ message: 'projects is down' }, { status: 503, statusText: 'Down' });
+      http
+        .expectOne(`${WORK_URL}/workspaces`)
         .flush({ message: 'projects is down' }, { status: 503, statusText: 'Down' });
       http.expectOne(ARCHETYPES_URL).flush(REGISTRY);
       http.expectOne(REFINEMENTS_URL).flush({ refinements: [] });

@@ -247,9 +247,11 @@ describe('WorkPage', () => {
     await open('/qits/work');
 
     expect(urls).toContain('/projects/api/projects/p1/work');
-    expect(urls).toContain('/projects/api/work/qits-12');
-    expect(urls).toContain('/projects/api/work/qits-41');
+    // qits-1815: the desk is the listing, the project's workspaces in one read, and a campaign's
+    // progress — never a read per epic or ticket.
+    expect(urls).toContain('/projects/api/projects/p1/work/workspaces');
     expect(urls).toContain('/projects/api/work/qits-430/progress');
+    expect(urls.filter((url) => /\/work\/qits-(12|41|7)\b/.test(url))).toEqual([]);
     expect(sections()).toEqual(['REPORTED', 'REFINED', 'DONE']);
     expect(titles()).toEqual(['One desk', 'The cancelled badge', 'Rename qits-x']);
     // The endings are the record: collapsed, as rows rather than cards.
@@ -275,7 +277,8 @@ describe('WorkPage', () => {
   it('filters to one archetype on the same page, reading only that archetype', async () => {
     await open('/qits/work?archetype=ticket');
 
-    expect(urls).toContain('/projects/api/work/qits-41');
+    expect(urls).toContain('/projects/api/projects/p1/work/workspaces');
+    expect(urls).not.toContain('/projects/api/work/qits-41');
     expect(urls).not.toContain('/projects/api/work/qits-12');
     expect(urls).not.toContain('/projects/api/work/qits-430/progress');
     expect(titles()).toEqual(['The cancelled badge']);
