@@ -1183,7 +1183,7 @@ describe('ReleaseRequestDetailPage', () => {
 
         const read = http.expectOne((entry) => entry.url === FILE_URL);
         expect(read.request.method).toBe('GET');
-        expect(read.request.withCredentials).toBe(true);
+        // Not withCredentials: carrying the session is the app's bearer interceptor's job since qits-543.
         expect(read.request.params.get('rev')).toBe(FOLD);
         expect(read.request.params.get('path')).toBe(LOCATED_FILE);
       },
