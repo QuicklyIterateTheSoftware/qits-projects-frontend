@@ -1,4 +1,5 @@
 import { ChangeDetectionStrategy, Component, computed, input } from '@angular/core';
+import { BearerHtml } from './bearer-html';
 import { renderInlineMarkdown, renderMarkdown } from './markdown';
 
 /**
@@ -25,7 +26,8 @@ import { renderInlineMarkdown, renderMarkdown } from './markdown';
 @Component({
   selector: 'app-markdown',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  template: `<div class="body" [innerHTML]="html()"></div>`,
+  imports: [BearerHtml],
+  template: `<div class="body" [appBearerHtml]="html()"></div>`,
   styles: `
     :host {
       display: block;

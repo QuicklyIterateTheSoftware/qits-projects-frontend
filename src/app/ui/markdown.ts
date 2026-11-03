@@ -7,6 +7,9 @@ const SCHEME = /^([a-zA-Z][a-zA-Z0-9+.-]*):/;
 
 const renderer = new Renderer();
 
+/** The class of the placeholder a DESIGN figure's sandboxed frame is made in, after render. */
+export const DESIGN_FRAME_CLASS = 'design-frame';
+
 /**
  * What a dossier page knows about its own figures, for the one call being rendered.
  *
@@ -61,20 +64,43 @@ function imageSource(href: string): string {
   return match ? dossierAssetContentUrl(match[1], match[2]) : href;
 }
 
+/**
+ * Whether an image source is a path on this page's own origin — a platform route, and role-guarded:
+ * a dossier figure (`WorkDossierAssetController`) or a prompt attachment
+ * (`RefinementPromptAttachmentController`). `//host` is protocol-relative, not a path.
+ */
+function ownOriginPath(src: string): boolean {
+  return src.startsWith('/') && !src.startsWith('//');
+}
+
+/**
+ * An image, or a DESIGN figure's frame.
+ *
+ * **A platform figure is written without its `src` (epic qits-543, qits-1348).** Its route wants the
+ * bearer, and neither an `<img>` nor an `<iframe>` can send a header — a `src` would only fire a
+ * request that is refused. So the URL rides in `cite`, an attribute Angular's sanitizer keeps on any
+ * element and that loads nothing, and {@link ./bearer-html#BearerHtml} fetches it with the bearer
+ * after render: an image is shown from an object URL, a design's HTML goes into a sandboxed frame's
+ * `srcdoc`. Every other image (absolute `http(s)`, inlined `data:`) keeps its `src`.
+ */
 renderer.image = (token) => {
   if (!safeImageUrl(token.href)) return escapeHtml(token.raw);
   const title = token.title ? ` title="${escapeHtml(token.title)}"` : '';
-  const src = escapeHtml(imageSource(token.href));
+  const source = imageSource(token.href);
+  const src = escapeHtml(source);
   if (framedDesign(token.href)) {
-    // Sandboxed, and never with `allow-same-origin`. The response carries `Content-Security-Policy:
-    // sandbox` too, which is what covers the URL being opened directly; this attribute covers the
-    // frame.
+    // The frame itself is made after render (`BearerHtml`): sandboxed, and never with
+    // `allow-same-origin`. The response carries `Content-Security-Policy: sandbox` too, which is
+    // what covers the URL being opened directly. A `span`, because marked wraps an image in a
+    // paragraph, and a placeholder at all because Angular's sanitizer strips an `iframe` written
+    // into `[innerHTML]`; the frame's title rides in `aria-label`.
     return (
-      `<iframe src="${src}" sandbox loading="lazy"` +
-      ` title="${escapeHtml(token.text)}"${title}></iframe>`
+      `<span class="${DESIGN_FRAME_CLASS}" cite="${src}"` +
+      ` aria-label="${escapeHtml(token.text)}"${title}></span>`
     );
   }
-  return `<img src="${src}" alt="${escapeHtml(token.text)}"${title}>`;
+  const at = ownOriginPath(source) ? `cite="${src}"` : `src="${src}"`;
+  return `<img ${at} alt="${escapeHtml(token.text)}"${title}>`;
 };
 
 const markdown = new Marked({

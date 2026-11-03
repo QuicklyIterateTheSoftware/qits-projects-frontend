@@ -11,11 +11,9 @@ import {
   untracked,
 } from '@angular/core';
 import type { PromptAttachmentDto } from '../api/prompt-attachments-api';
-import {
-  PromptAttachmentsApi,
-  promptAttachmentContentUrl,
-} from '../api/prompt-attachments-api';
+import { PromptAttachmentsApi, promptAttachmentContentUrl } from '../api/prompt-attachments-api';
 import { WorkspaceEvents } from '../api/workspace-events';
+import { BearerHtml } from '../ui/bearer-html';
 import { renderMarkdown } from '../ui/markdown';
 
 export interface EpicSelection {
@@ -132,6 +130,7 @@ export function slotAt(x: number, y: number): number | null {
 @Component({
   selector: 'app-epic-document',
   changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [BearerHtml],
   template: `
     <div
       class="document"
@@ -158,7 +157,7 @@ export function slotAt(x: number, y: number): number | null {
           [attr.data-start-line]="block.startLine"
           [attr.data-end-line]="block.endLine"
         >
-          <div class="markdown" [innerHTML]="block.html"></div>
+          <div class="markdown" [appBearerHtml]="block.html"></div>
         </div>
         @if (insertingImage()) {
           <button
@@ -624,12 +623,7 @@ export class EpicDocument {
     this.pressSelection = null;
     if (!this.menu()) this.gestureMenu = false;
   }
-  private openMenu(
-    x: number,
-    y: number,
-    gesture: boolean,
-    selection: EpicSelection | null,
-  ): void {
+  private openMenu(x: number, y: number, gesture: boolean, selection: EpicSelection | null): void {
     const margin = MENU_RADIUS + 8;
     const position = {
       x: Math.max(margin, Math.min(globalThis.innerWidth - margin, x)),

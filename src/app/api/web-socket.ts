@@ -1,4 +1,5 @@
-import { InjectionToken } from '@angular/core';
+import { InjectionToken, inject } from '@angular/core';
+import { QITS_WEB_SOCKET } from '@qits/angular';
 
 /**
  * The part of `WebSocket` this application uses, named so a spec can hand over something else.
@@ -31,8 +32,21 @@ export const WEB_SOCKET_OPEN = 1;
 /** Opens a socket at an absolute `ws://` or `wss://` URL. One function, so a fake is one function. */
 export type WebSocketFactory = (url: string) => WebSocketLike;
 
-/** How this application opens a socket. */
+/**
+ * How this application opens a socket.
+ *
+ * Through `@qits/angular`'s `QITS_WEB_SOCKET` (epic qits-543, qits-1348): signed in
+ * (`provideQitsBearerSignIn` in `app.config.ts`), that is a `BearerWebSocket`, which offers
+ * `['qits.bearer', <token>]` because a browser socket cannot send a header, and the edge moves the
+ * token into `Authorization`. It stays `CONNECTING` until the token is in hand, so every sender here
+ * already checks {@link WEB_SOCKET_OPEN} before it sends. Every URL it is given is built on this
+ * page's own origin, a platform URL, so the bearer goes nowhere else. Without the sign-in it is the
+ * browser's own `WebSocket`.
+ */
 export const WEB_SOCKET_FACTORY = new InjectionToken<WebSocketFactory>('qits.web-socket', {
   providedIn: 'root',
-  factory: () => (url: string) => new WebSocket(url) as WebSocketLike,
+  factory: () => {
+    const open = inject(QITS_WEB_SOCKET);
+    return (url: string) => open(url);
+  },
 });

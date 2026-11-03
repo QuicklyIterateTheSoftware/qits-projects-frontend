@@ -9,9 +9,9 @@ import { firstValueFrom } from 'rxjs';
  * `POST /stt/api/transcriptions` takes `{audioBase64}` and answers `{text}`. It is a third service
  * this page talks to, and qits-stt now has its own host: the edge no longer routes `/stt` on this
  * one, so the URL is built from `applications['qits-stt'].origin` off the navigation, via
- * {@link QitsAppLinks.whenApiUrl}, and the request carries the session (`withCredentials` — the
- * edge answers credentialed CORS for any origin under the platform domain) rather than firing a
- * same-origin path first.
+ * {@link QitsAppLinks.whenApiUrl}, and the request carries the bearer — `qitsBearerInterceptor`
+ * signs every call to a host under the platform domain (epic qits-543, qits-1348), and the edge
+ * answers CORS for any origin under it — rather than firing a same-origin path first.
  *
  * **Copied verbatim from qits-spa-workspaces, and it needed no adaptation at all** — which is the point
  * worth recording: nothing on this surface is workspace-scoped or project-scoped, so the same file
@@ -41,9 +41,7 @@ export class SpeechApi {
    */
   async transcribe(audioBase64: string): Promise<string> {
     const url = await this.links.whenApiUrl('qits-stt', '/stt/api/transcriptions');
-    const answer = await firstValueFrom(
-      this.http.post<{ text?: string }>(url, { audioBase64 }, { withCredentials: true }),
-    );
+    const answer = await firstValueFrom(this.http.post<{ text?: string }>(url, { audioBase64 }));
     return answer.text ?? '';
   }
 }

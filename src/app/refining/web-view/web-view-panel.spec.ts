@@ -107,6 +107,25 @@ describe('WebViewPanel', () => {
     expect(frame()?.getAttribute('src')).toBe('/projects/');
   });
 
+  /**
+   * The escape hatch (epic qits-543, qits-1348): a framed app signs in on its own, and one that
+   * cannot do it inside the frame can in a tab of its own.
+   */
+  it('offers the framed application in a new tab', async () => {
+    await open([
+      { label: 'Home', href: '/' },
+      { label: 'Projects', href: '/projects/' },
+    ]);
+    element().querySelector<HTMLSelectElement>('select')!.value = '/projects/';
+    element().querySelector<HTMLSelectElement>('select')!.dispatchEvent(new Event('change'));
+    fixture.detectChanges();
+
+    const escape = element().querySelector<HTMLAnchorElement>('a.escape');
+    expect(escape?.getAttribute('href')).toBe('/projects/');
+    expect(escape?.getAttribute('target')).toBe('_blank');
+    expect(escape?.getAttribute('rel')).toBe('noopener');
+  });
+
   it('names the one destination, and offers a selector only when there are several', async () => {
     await open([{ label: 'Home', href: '/' }]);
     expect(element().querySelector('select')).toBeNull();

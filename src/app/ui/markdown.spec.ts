@@ -308,33 +308,61 @@ describe('the remaining blocks', () => {
     const line = (epicId: string, assetId: string) =>
       `![A figure](/epics/${epicId}/dossier-assets/${assetId}/content)`;
 
-    /** The stored URL keeps the retired epic route's spelling; it is fetched from `/work`. */
-    it('draws an IMAGE asset as an image, from the work content route', () => {
+    /**
+     * The stored URL keeps the retired epic route's spelling; it is fetched from `/work` — with the
+     * bearer, by `BearerHtml`, so it rides in `cite` and the `<img>` has no `src` that would load.
+     */
+    it('draws an IMAGE asset as an image, from the work content route, for the bearer', () => {
       const html = renderMarkdown(line('e1', 'a1'), figures);
 
-      expect(html).toContain('<img src="/projects/api/work/e1/dossier-assets/a1/content"');
-      expect(html).not.toContain('<iframe');
+      expect(html).toContain('<img cite="/projects/api/work/e1/dossier-assets/a1/content"');
+      expect(html).not.toContain('src=');
+      expect(html).not.toContain('design-frame');
     });
 
-    it('frames a DESIGN asset, sandboxed and never same-origin', () => {
+    it('leaves a placeholder for a DESIGN asset’s frame, never an iframe with a src', () => {
       const html = renderMarkdown(line('e1', 'a2'), figures);
 
       expect(html).toContain(
-        '<iframe src="/projects/api/work/e1/dossier-assets/a2/content" sandbox',
+        '<span class="design-frame" cite="/projects/api/work/e1/dossier-assets/a2/content"',
       );
-      expect(html).not.toContain('allow-same-origin');
-      expect(html).toContain('title="A figure"');
+      expect(html).toContain('aria-label="A figure"');
+      expect(html).not.toContain('<iframe');
+      expect(html).not.toContain('src=');
     });
 
     it('does not frame an asset URL belonging to another epic', () => {
       const html = renderMarkdown(line('e2', 'a2'), figures);
 
       expect(html).toContain('<img');
-      expect(html).not.toContain('<iframe');
+      expect(html).not.toContain('design-frame');
     });
 
     it('frames nothing at all when no dossier context is given', () => {
       expect(renderMarkdown(line('e1', 'a2'))).toContain('<img');
+    });
+  });
+
+  describe('image sources', () => {
+    it('defers a path on this origin to the bearer, in cite', () => {
+      expect(renderMarkdown('![x](/projects/api/refinements/7/prompt-attachments/i/content)')).toBe(
+        '<p><img cite="/projects/api/refinements/7/prompt-attachments/i/content" alt="x"></p>',
+      );
+    });
+
+    it('keeps the src of an absolute or protocol-relative image, which gets no bearer', () => {
+      expect(renderMarkdown('![x](https://example.com/a.png)')).toContain(
+        '<img src="https://example.com/a.png"',
+      );
+      expect(renderMarkdown('![x](//example.com/a.png)')).toContain(
+        '<img src="//example.com/a.png"',
+      );
+    });
+
+    it('keeps the src of an inlined data image', () => {
+      expect(renderMarkdown('![x](data:image/png;base64,cG5n)')).toContain(
+        '<img src="data:image/png;base64,cG5n"',
+      );
     });
   });
 });

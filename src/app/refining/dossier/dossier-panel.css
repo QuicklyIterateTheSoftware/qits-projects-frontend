@@ -100,8 +100,17 @@
   max-width: 100%;
 }
 
-/* A framed design is a document, so it gets a document's worth of room. */
-.rendered iframe {
+/*
+ * A framed design is a document, so it gets a document's worth of room. The frame is made by
+ * BearerHtml inside the rendered markdown, which carries no encapsulation attribute — hence
+ * `::ng-deep` under `:host`.
+ */
+:host ::ng-deep .rendered .design-frame {
+  display: block;
+  margin: 0;
+}
+
+:host ::ng-deep .rendered .design-frame iframe {
   width: 100%;
   height: 28rem;
   border: 1px solid rgb(0 0 0 / 0.15);

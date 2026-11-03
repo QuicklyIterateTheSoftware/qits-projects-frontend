@@ -1,6 +1,7 @@
 import { ApplicationConfig, provideBrowserGlobalErrorListeners } from '@angular/core';
-import { provideHttpClient, withFetch } from '@angular/common/http';
+import { provideHttpClient, withFetch, withInterceptors } from '@angular/common/http';
 import { provideRouter } from '@angular/router';
+import { provideQitsBearerSignIn, qitsBearerInterceptor } from '@qits/angular';
 import {
   provideQitsBuilds,
   provideQitsNavigation,
@@ -11,6 +12,15 @@ import {
 
 import { routes } from './app.routes';
 
+// `provideQitsBearerSignIn` signs this page in with the bearer (epic qits-543, qits-1348): OIDC
+// code + PKCE against the idp's public client `qits-spa`, whose redirect is
+// `https://<any host under the platform domain>/auth/callback`. It prepends that `auth/callback`
+// route to `routes` (which guard nothing, so the route wins before the `**` fallback), and opens the
+// event streams (`EVENT_SOURCE_FACTORY`) and sockets (`WEB_SOCKET_FACTORY`) with the bearer.
+// `qitsBearerInterceptor` puts the bearer on every `HttpClient` call to this origin or a host under
+// the platform domain; nothing in this app sends the `qits-session` cookie for identity any more. The
+// app has no `ng serve` environment of its own, so the client is `qits-spa` throughout.
+//
 // `provideQitsNavigation` fills the shared layout's sidebar: one `GET /main-navigation` at startup,
 // answered by the edge from the deployments it actually serves — a nested tree of slots now, not a
 // flat list of doors. It needs an `HttpClient`.
@@ -43,7 +53,8 @@ export const appConfig: ApplicationConfig = {
   providers: [
     provideBrowserGlobalErrorListeners(),
     provideRouter(routes),
-    provideHttpClient(withFetch()),
+    provideQitsBearerSignIn({ clientId: 'qits-spa' }),
+    provideHttpClient(withFetch(), withInterceptors([qitsBearerInterceptor])),
     provideQitsNavigation(),
     provideQitsProjects(),
     provideQitsScope('repository'),

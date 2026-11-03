@@ -23,6 +23,7 @@ import { PromptAttachmentsApi, type PromptAttachmentDto } from '../../api/prompt
 import { ProjectEvents } from '../../api/project-events';
 import { Async } from '../../ui/async';
 import { Empty } from '../../ui/empty';
+import { BearerHtml } from '../../ui/bearer-html';
 import { renderMarkdown } from '../../ui/markdown';
 import { IDLE, LOADING, describeError, failed, ready, type Loadable } from '../../ui/loadable';
 import { QitsButton } from '@qits/ui-components';
@@ -79,7 +80,7 @@ const SAVE_DEBOUNCE_MS = 700;
 @Component({
   selector: 'app-dossier-panel',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [Async, Empty, QitsButton],
+  imports: [Async, Empty, QitsButton, BearerHtml],
   templateUrl: './dossier-panel.html',
   styleUrl: './dossier-panel.css',
 })

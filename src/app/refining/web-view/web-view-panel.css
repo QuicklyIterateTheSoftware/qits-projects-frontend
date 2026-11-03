@@ -49,6 +49,19 @@
   background: #f9fafb;
 }
 
+.escape {
+  padding: 0.1rem 0.4rem;
+  border: 1px solid #d1d5db;
+  border-radius: 0.25rem;
+  background: #fff;
+  color: #4b5563;
+  text-decoration: none;
+}
+
+.escape:hover {
+  background: #f9fafb;
+}
+
 .pick {
   padding: 0.15rem 0.5rem;
   border: 1px solid #d1d5db;

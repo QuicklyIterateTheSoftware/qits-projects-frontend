@@ -160,10 +160,11 @@
             </label>
           } @else {
             <!--
-              `[innerHTML]` with no bypass: renderMarkdown keeps raw HTML inert, and the one element
-              it emits that is not ordinary markup is the sandboxed frame it decides itself.
+              `[innerHTML]` (through BearerHtml) with no bypass: renderMarkdown keeps raw HTML inert,
+              and BearerHtml fetches the figures with the bearer and makes the one element that is not
+              ordinary markup, the sandboxed frame of a DESIGN figure, itself.
             -->
-            <div #rendered class="rendered" [innerHTML]="html()"></div>
+            <div #rendered class="rendered" [appBearerHtml]="html()"></div>
           }
         }
       </article>

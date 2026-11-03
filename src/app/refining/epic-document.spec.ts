@@ -34,7 +34,8 @@ describe('epicBlocks', () => {
     expect(insertImageAt('![Sketch 1](qits-attachment:Sketch%201)', 2, 7, image)).toBe(
       `![Sketch 1](${url})\n![Sketch 1](${url})\n`,
     );
-    expect(epicBlocks(imageMarkdown(7, image), [], 7)[0].html).toContain(`src="${url}"`);
+    // Not loaded yet: the content route wants the bearer, so the URL waits in `cite` for BearerHtml.
+    expect(epicBlocks(imageMarkdown(7, image), [], 7)[0].html).toContain(`cite="${url}"`);
     expect(epicBlocks(imageMarkdown(7, image), [image], 7)[0].html).toContain(
       'src="data:image/png;base64,cG5n"',
     );

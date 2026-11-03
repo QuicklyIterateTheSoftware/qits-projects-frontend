@@ -47,6 +47,22 @@
         ⌾
       </button>
 
+      @if (frameUrl(); as href) {
+        <!--
+          The escape hatch: a framed app signs in on its own (each has its own bearer sign-in), and
+          if it cannot do that inside a frame, it can in a tab of its own.
+        -->
+        <a
+          class="escape"
+          [href]="href"
+          target="_blank"
+          rel="noopener"
+          title="Open this application in a new tab"
+          aria-label="Open this application in a new tab"
+          >↗</a
+        >
+      }
+
       @if (sameOrigin()) {
         <button
           type="button"

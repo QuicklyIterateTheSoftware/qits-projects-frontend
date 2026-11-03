@@ -52,14 +52,14 @@ describe('SpeechApi', () => {
     expect(await answerPromise).toBe('add a health check');
   });
 
-  it('posts the clip to qits-stt’s own origin, with the session', async () => {
+  it('posts the clip to qits-stt’s own origin, with no cookie', async () => {
     answer({ 'qits-stt': { origin: STT_ORIGIN } });
     const answerPromise = api.transcribe('UklGRg==');
     await settle();
     const request = http.expectOne(`${STT_ORIGIN}/stt/api/transcriptions`);
     expect(request.request.method).toBe('POST');
     expect(request.request.body).toEqual({ audioBase64: 'UklGRg==' });
-    expect(request.request.withCredentials).toBe(true);
+    expect(request.request.withCredentials).toBe(false);
     request.flush({ text: 'add a health check' });
     expect(await answerPromise).toBe('add a health check');
   });
