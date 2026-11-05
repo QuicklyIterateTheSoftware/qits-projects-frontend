@@ -6425,20 +6425,15 @@
                   ],
                   "IMPLEMENTED": [
                     {
+                      "gates": [
+                        "QUALITY_CHECKS"
+                      ],
                       "kind": "FORWARD",
                       "to": "VERIFYING"
                     },
                     {
-                      "kind": "FORWARD",
-                      "to": "VERIFYING"
-                    },
-                    {
-                      "kind": "FORWARD",
-                      "to": "VERIFYING"
-                    },
-                    {
-                      "kind": "FORWARD",
-                      "to": "VERIFYING"
+                      "kind": "BACK",
+                      "to": "IMPLEMENTING"
                     }
                   ],
                   "IMPLEMENTING": [
@@ -7924,42 +7919,69 @@
                           "combine": "AND",
                           "matchers": [
                             {
-                              "match": "type",
-                              "min": 4
-                            }
-                          ]
-                        },
-                        "$.transitions.IMPLEMENTED[*].kind": {
-                          "combine": "AND",
-                          "matchers": [
-                            {
-                              "match": "type"
-                            },
-                            {
-                              "match": "type"
-                            },
-                            {
-                              "match": "type"
-                            },
-                            {
-                              "match": "type"
-                            }
-                          ]
-                        },
-                        "$.transitions.IMPLEMENTED[*].to": {
-                          "combine": "AND",
-                          "matchers": [
-                            {
-                              "match": "type"
-                            },
-                            {
-                              "match": "type"
-                            },
-                            {
-                              "match": "type"
-                            },
-                            {
-                              "match": "type"
+                              "match": "arrayContains",
+                              "variants": [
+                                {
+                                  "index": 0,
+                                  "rules": {
+                                    "$.gates": {
+                                      "combine": "AND",
+                                      "matchers": [
+                                        {
+                                          "match": "type",
+                                          "max": 1,
+                                          "min": 1
+                                        }
+                                      ]
+                                    },
+                                    "$.gates[*]": {
+                                      "combine": "AND",
+                                      "matchers": [
+                                        {
+                                          "match": "type"
+                                        }
+                                      ]
+                                    },
+                                    "$.kind": {
+                                      "combine": "AND",
+                                      "matchers": [
+                                        {
+                                          "match": "type"
+                                        }
+                                      ]
+                                    },
+                                    "$.to": {
+                                      "combine": "AND",
+                                      "matchers": [
+                                        {
+                                          "match": "type"
+                                        }
+                                      ]
+                                    }
+                                  }
+                                },
+                                {
+                                  "index": 1,
+                                  "rules": {
+                                    "$.kind": {
+                                      "combine": "AND",
+                                      "matchers": [
+                                        {
+                                          "match": "type"
+                                        }
+                                      ]
+                                    },
+                                    "$.to": {
+                                      "combine": "AND",
+                                      "matchers": [
+                                        {
+                                          "match": "type"
+                                        }
+                                      ]
+                                    }
+                                  }
+                                }
+                              ]
                             }
                           ]
                         },
