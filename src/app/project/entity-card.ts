@@ -1,6 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, input } from '@angular/core';
 import { RouterLink } from '@angular/router';
-import { QitsBadge, QitsCard } from '@qits/ui-components';
+import { QitsBadge, QitsCard, QitsCommitMessage } from '@qits/ui-components';
 import { NONE, relativeSince } from '../ui/format';
 import {
   blockedBadges,
@@ -33,7 +33,7 @@ import { archetypeLabel, entityRoute } from './entity-nodes';
 @Component({
   selector: 'app-entity-card',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [QitsBadge, QitsCard, RouterLink],
+  imports: [QitsBadge, QitsCard, QitsCommitMessage, RouterLink],
   template: `
     <qits-card>
       <div class="head">
@@ -79,11 +79,15 @@ import { archetypeLabel, entityRoute } from './entity-nodes';
       </p>
 
       @if (ticket()?.impetus; as impetus) {
-        <p class="impetus">{{ impetus }}</p>
+        <p class="impetus">
+          <qits-commit-message [message]="impetus" [project]="projectSlug()" />
+        </p>
       }
 
       @if (entity().excerpt; as lead) {
-        <p class="excerpt">{{ lead }}</p>
+        <p class="excerpt">
+          <qits-commit-message [message]="lead" [project]="projectSlug()" />
+        </p>
       }
     </qits-card>
   `,

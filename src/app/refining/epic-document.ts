@@ -10,6 +10,7 @@ import {
   signal,
   untracked,
 } from '@angular/core';
+import { QitsWorkRefs } from '@qits/ui-components';
 import type { PromptAttachmentDto } from '../api/prompt-attachments-api';
 import { PromptAttachmentsApi, promptAttachmentContentUrl } from '../api/prompt-attachments-api';
 import { WorkspaceEvents } from '../api/workspace-events';
@@ -130,7 +131,7 @@ export function slotAt(x: number, y: number): number | null {
 @Component({
   selector: 'app-epic-document',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [BearerHtml],
+  imports: [BearerHtml, QitsWorkRefs],
   template: `
     <div
       class="document"
@@ -157,7 +158,12 @@ export function slotAt(x: number, y: number): number | null {
           [attr.data-start-line]="block.startLine"
           [attr.data-end-line]="block.endLine"
         >
-          <div class="markdown" [appBearerHtml]="block.html"></div>
+          <div
+            class="markdown"
+            [appBearerHtml]="block.html"
+            [qitsWorkRefs]="project()"
+            [qitsWorkRefsHtml]="block.html"
+          ></div>
         </div>
         @if (insertingImage()) {
           <button
@@ -463,6 +469,13 @@ export class EpicDocument {
 
   readonly text = input.required<string>();
   readonly workspaceRowId = input(0);
+  /**
+   * The slug of the project the epic belongs to: its work ids are drawn as references with their
+   * briefs, per block (qits-1898). The document is a read-only render — a pin or an image is chosen
+   * by a press on a whole block, never by editing its text — and a reference only splits the text
+   * it sits in, so the `.block` a press lands in, and the excerpt it picks, are the same either way.
+   */
+  readonly project = input<string | undefined>(undefined);
   readonly picked = output<EpicSelection>();
   readonly imageInserted = output<EpicImageInsertion>();
   readonly editImage = output<string>();

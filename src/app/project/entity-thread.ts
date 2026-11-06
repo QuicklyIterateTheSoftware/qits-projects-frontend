@@ -114,7 +114,7 @@ interface DrawnComment {
                     </qits-button>
                   </div>
                 } @else {
-                  <app-markdown class="body" [text]="entry.comment.body" />
+                  <app-markdown class="body" [text]="entry.comment.body" [project]="project()" />
                   <div class="actions">
                     @if (entry.comment.editable === true) {
                       <qits-button
@@ -259,6 +259,12 @@ export class EntityThread {
 
   /** Which archetype {@link entityId} names, for the wording only: "epic", "campaign", … */
   readonly archetype = input.required<string>();
+
+  /**
+   * The slug of the project the entity belongs to: a work id of that project in a comment is drawn
+   * as a reference with its brief (qits-1898). None leaves every comment exactly as rendered.
+   */
+  readonly project = input<string | undefined>(undefined);
 
   protected readonly word = computed(() => archetypeLabel(this.archetype()));
 

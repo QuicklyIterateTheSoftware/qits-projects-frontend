@@ -47,13 +47,16 @@
             }
           </p>
           @if (impetus(); as said) {
-            <p class="impetus">{{ said }}</p>
+            <p class="impetus">
+              <qits-commit-message [message]="said" [project]="projectSlug()" />
+            </p>
           }
           @if (description(); as description) {
             <app-epic-document
               class="description"
               [text]="description"
               [workspaceRowId]="ws.id"
+              [project]="projectSlug()"
               (picked)="pickEpic($event)"
               (imageInserted)="insertEpicImage($event)"
               (editImage)="editSketch($event)"

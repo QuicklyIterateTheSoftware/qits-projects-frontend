@@ -1,4 +1,6 @@
+import { ApplicationRef } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
+import { provideQitsWorkBriefs, type QitsWorkBriefSource } from '@qits/ui-components';
 import type { PromptAttachmentDto } from '../api/prompt-attachments-api';
 import { EpicDocument, epicBlocks, imageMarkdown, insertImageAt, slotAt } from './epic-document';
 
@@ -87,5 +89,81 @@ describe('the radial selection control', () => {
     expect(element.querySelector('.insert')).toBeNull();
     first.click();
     expect(picks).toHaveLength(1);
+  });
+});
+
+/**
+ * qits-1898: given the project, each block draws its work ids as `qits-work-ref`s with their briefs.
+ * The document stays the read-only render it was: a press on a reference still lands in its block,
+ * and the passage it pins is the block's source, not its drawn text.
+ */
+describe('work ids in the epic document', () => {
+  let asked: string[][];
+
+  beforeEach(() => {
+    asked = [];
+    const source: QitsWorkBriefSource = async (_project, ids) => {
+      asked.push([...ids]);
+      return ids
+        .filter((id) => id === 'qits-14')
+        .map((qualifiedId) => ({
+          id: 'k1',
+          qualifiedId,
+          archetype: 'TASK',
+          status: 'REFINED',
+          title: 'Route the desk',
+          updatedAt: '2026-11-06T11:29:56.962030Z',
+        }));
+    };
+    TestBed.configureTestingModule({ providers: [provideQitsWorkBriefs(source)] });
+  });
+
+  async function draw(project: string | undefined) {
+    const fixture = TestBed.createComponent(EpicDocument);
+    fixture.componentRef.setInput('text', 'First, after qits-14.\n\nSecond names qits-404.');
+    if (project !== undefined) fixture.componentRef.setInput('project', project);
+    await fixture.whenStable();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await TestBed.inject(ApplicationRef).whenStable();
+    fixture.detectChanges();
+    return fixture;
+  }
+
+  it('links a known id per block, and pins the block a reference sits in', async () => {
+    const fixture = await draw('qits');
+    const element = fixture.nativeElement as HTMLElement;
+    const picks: unknown[] = [];
+    fixture.componentInstance.picked.subscribe((pick) => picks.push(pick));
+
+    const blocks = element.querySelectorAll<HTMLElement>('.block');
+    expect(blocks).toHaveLength(2);
+    expect(
+      Array.from(blocks[0].querySelectorAll('.qits-work-ref')).map((t) => t.textContent),
+    ).toEqual(['qits-14']);
+    expect(blocks[1].querySelector('.qits-work-ref')).toBeNull();
+    expect(blocks[1].textContent).toContain('Second names qits-404.');
+    expect(asked).toEqual([['qits-14', 'qits-404']]);
+
+    blocks[0]
+      .querySelector('.qits-work-ref')!
+      .dispatchEvent(new MouseEvent('contextmenu', { clientX: 250, clientY: 250, bubbles: true }));
+    await fixture.whenStable();
+    element
+      .querySelector<HTMLButtonElement>('[aria-label="Attach this epic passage to chat"]')!
+      .click();
+    await fixture.whenStable();
+
+    expect(picks).toEqual([{ startLine: 1, endLine: 1, excerpt: 'First, after qits-14.' }]);
+  });
+
+  it('leaves every block as rendered without a project', async () => {
+    const fixture = await draw(undefined);
+    const element = fixture.nativeElement as HTMLElement;
+
+    expect(element.querySelector('qits-work-ref')).toBeNull();
+    expect(element.querySelector('.block .markdown')?.innerHTML).toBe(
+      '<p>First, after qits-14.</p>',
+    );
+    expect(asked).toEqual([]);
   });
 });

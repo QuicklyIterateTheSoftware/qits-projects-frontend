@@ -1,6 +1,8 @@
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
+import { ApplicationRef } from '@angular/core';
 import { TestBed, type ComponentFixture } from '@angular/core/testing';
+import { provideQitsWorkBriefs, type QitsWorkBriefSource } from '@qits/ui-components';
 import type { CommentDto } from '../api/dto';
 import { EntityThread } from './entity-thread';
 
@@ -181,5 +183,82 @@ describe('EntityThread', () => {
     expect(
       element().querySelector<HTMLTextAreaElement>('.compose')?.getAttribute('placeholder'),
     ).toBe('Say something about this epic.');
+  });
+});
+
+/**
+ * qits-1898: a comment's work ids of the entity's project are drawn as `qits-work-ref`s with their
+ * briefs; an id qits-projects does not know stays text, and a thread given no project is left alone.
+ */
+describe('EntityThread work ids', () => {
+  let http: HttpTestingController;
+  let asked: string[][];
+
+  function draw(project: string | undefined): ComponentFixture<EntityThread> {
+    asked = [];
+    const source: QitsWorkBriefSource = async (slug, ids) => {
+      expect(slug).toBe('qits');
+      asked.push([...ids]);
+      return ids
+        .filter((id) => id === 'qits-1897')
+        .map((qualifiedId) => ({
+          id: `uuid-${qualifiedId}`,
+          qualifiedId,
+          archetype: 'TICKET',
+          status: 'READY_FOR_DEV',
+          title: 'Render commit messages through qits-commit-message',
+          updatedAt: '2026-11-06T11:29:56.962030Z',
+        }));
+    };
+    TestBed.configureTestingModule({
+      providers: [provideHttpClient(), provideHttpClientTesting(), provideQitsWorkBriefs(source)],
+    });
+    http = TestBed.inject(HttpTestingController);
+    const fixture = TestBed.createComponent(EntityThread);
+    fixture.componentRef.setInput('entityId', 'qits-41');
+    fixture.componentRef.setInput('archetype', 'TICKET');
+    if (project !== undefined) fixture.componentRef.setInput('project', project);
+    fixture.detectChanges();
+    return fixture;
+  }
+
+  afterEach(() => http.verify());
+
+  async function answer(fixture: ComponentFixture<EntityThread>, body: string): Promise<void> {
+    http
+      .expectOne('/projects/api/work/qits-41/comments')
+      .flush({ entries: [{ comment: comment({ body }) }] });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await fixture.whenStable();
+    fixture.detectChanges();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await TestBed.inject(ApplicationRef).whenStable();
+    fixture.detectChanges();
+  }
+
+  const BODY = 'Same root cause as qits-1897; qits-9999 is unrelated.';
+
+  it("draws a known id of the project in a comment's body as a qits-work-ref", async () => {
+    const fixture = draw('qits');
+    await answer(fixture, BODY);
+    const body = (fixture.nativeElement as HTMLElement).querySelector('.comment .body')!;
+
+    const triggers = [...body.querySelectorAll('.qits-work-ref')].map((t) => t.textContent);
+    expect(triggers).toEqual(['qits-1897']);
+    expect(asked).toEqual([['qits-1897', 'qits-9999']]);
+    // The unknown id is the text it was.
+    const copy = body.cloneNode(true) as HTMLElement;
+    copy.querySelectorAll('.qits-work-ref-panel').forEach((panel) => panel.remove());
+    expect(copy.textContent).toContain('qits-9999 is unrelated.');
+  });
+
+  it('leaves the comment as rendered without a project', async () => {
+    const fixture = draw(undefined);
+    await answer(fixture, BODY);
+    const body = (fixture.nativeElement as HTMLElement).querySelector('.comment .body')!;
+
+    expect(body.querySelector('qits-work-ref')).toBeNull();
+    expect(body.querySelector('p')?.innerHTML).toBe(BODY);
+    expect(asked).toEqual([]);
   });
 });

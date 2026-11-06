@@ -11,7 +11,7 @@ import {
 } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, Router, RouterLink, convertToParamMap } from '@angular/router';
-import { QitsAppLinks, QitsBadge, QitsButton } from '@qits/ui-components';
+import { QitsAppLinks, QitsBadge, QitsButton, QitsCommitMessage } from '@qits/ui-components';
 import { ArchetypesApi, type ArchetypeRegistry } from '../api/archetypes-api';
 import { DossierApi, epicDossier, ticketDossier, type DossierOwner } from '../api/dossier-api';
 import { workRef, type DropResolution, type WorkEntityDto } from '../api/work';
@@ -200,6 +200,7 @@ interface TreeRow {
     MarkdownView,
     QitsBadge,
     QitsButton,
+    QitsCommitMessage,
     RouterLink,
     WorkspaceLinks,
   ],
@@ -256,7 +257,9 @@ interface TreeRow {
       </div>
 
       @if (ticket()?.impetus; as impetus) {
-        <p class="impetus">{{ impetus }}</p>
+        <p class="impetus">
+          <qits-commit-message [message]="impetus" [project]="projectSlug()" />
+        </p>
       }
 
       <dl class="facts">
@@ -657,7 +660,7 @@ interface TreeRow {
       <section class="body" [attr.data-archetype]="n.archetype">
         <h2>{{ ticket() ? 'The work' : 'Description' }}</h2>
         @if (n.description; as text) {
-          <app-markdown class="description" [text]="text" />
+          <app-markdown class="description" [text]="text" [project]="projectSlug()" />
         } @else {
           <p class="absent">
             {{
@@ -676,7 +679,9 @@ interface TreeRow {
             } @else {
               <ol class="criteria-list">
                 @for (item of criteria(); track $index) {
-                  <li class="criterion"><app-markdown [text]="item" [inline]="true" /></li>
+                  <li class="criterion">
+                    <app-markdown [text]="item" [inline]="true" [project]="projectSlug()" />
+                  </li>
                 }
               </ol>
             }
@@ -768,7 +773,11 @@ interface TreeRow {
           }
         }
 
-        <app-entity-thread [entityId]="ref(n)" [archetype]="n.archetype" />
+        <app-entity-thread
+          [entityId]="ref(n)"
+          [archetype]="n.archetype"
+          [project]="projectSlug()"
+        />
       </section>
 
       <details class="history">

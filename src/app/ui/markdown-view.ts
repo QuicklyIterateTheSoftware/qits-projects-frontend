@@ -1,4 +1,5 @@
 import { ChangeDetectionStrategy, Component, computed, input } from '@angular/core';
+import { QitsWorkRefs } from '@qits/ui-components';
 import { BearerHtml } from './bearer-html';
 import { renderInlineMarkdown, renderMarkdown } from './markdown';
 
@@ -22,12 +23,24 @@ import { renderInlineMarkdown, renderMarkdown } from './markdown';
  * has a heading and a description that shouted over it would be worse than the raw text. Code blocks
  * scroll on their own axis instead of widening their container — a card whose width is set by
  * somebody's shell command is a broken card.
+ *
+ * <p><b>Work ids are drawn as references when {@link project} is given</b> (qits-1898): every
+ * `qits-1337` of that project in the rendered text becomes a `<qits-work-ref>` with its brief
+ * popover — code spans included, link text left alone — through `@qits/ui-components`'
+ * `QitsWorkRefs`, which links after `[innerHTML]` has replaced the subtree and re-links whenever the
+ * HTML changes. It only splits text nodes, so the figures {@link BearerHtml} fills (`img[cite]`, a
+ * design frame) are the same elements either way. Without a project the HTML is exactly as rendered.
  */
 @Component({
   selector: 'app-markdown',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [BearerHtml],
-  template: `<div class="body" [appBearerHtml]="html()"></div>`,
+  imports: [BearerHtml, QitsWorkRefs],
+  template: `<div
+    class="body"
+    [appBearerHtml]="html()"
+    [qitsWorkRefs]="project()"
+    [qitsWorkRefsHtml]="html()"
+  ></div>`,
   styles: `
     :host {
       display: block;
@@ -126,6 +139,8 @@ export class MarkdownView {
   readonly text = input.required<string>();
   /** One line rendered inline, with no paragraph or block around it — see `renderInlineMarkdown`. */
   readonly inline = input(false);
+  /** The slug of the project whose work ids the text spells; none leaves them as text. */
+  readonly project = input<string | undefined>(undefined);
 
   protected readonly html = computed(() =>
     this.inline() ? renderInlineMarkdown(this.text()) : renderMarkdown(this.text()),

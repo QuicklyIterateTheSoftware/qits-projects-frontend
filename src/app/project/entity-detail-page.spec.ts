@@ -304,6 +304,7 @@ describe('EntityDetailPage', () => {
   let taskDonePatch: Partial<TaskDto>;
   let superseded: boolean;
   let failures: Record<string, { status: number; body: object }>;
+  let commentBody: string;
 
   beforeEach(async () => {
     sent = [];
@@ -314,6 +315,7 @@ describe('EntityDetailPage', () => {
     taskDonePatch = {};
     superseded = false;
     failures = {};
+    commentBody = 'Reproduced on **dev**.';
     dispatchStates = {
       t1: stateOf(),
       e1: stateOf({ entityId: 'e1', archetype: 'EPIC', status: 'REFINED', nextPhase: 'implement' }),
@@ -449,12 +451,29 @@ describe('EntityDetailPage', () => {
               id: 'c1',
               entityId: 't1',
               author: 'kim',
-              body: 'Reproduced on **dev**.',
+              body: commentBody,
               createdAt: AT,
               updatedAt: AT,
             },
           },
         ],
+      };
+    }
+    if (url.startsWith('/projects/api/projects/qits/work/briefs?')) {
+      // The briefs door (qits-1897): it knows qits-12 and qits-14, and nothing else.
+      const known = { 'qits-12': EPIC, 'qits-14': TASK_DONE } as const;
+      const ids = decodeURIComponent(url.split('id=')[1] ?? '').split(',');
+      return {
+        briefs: ids
+          .filter((id): id is keyof typeof known => id in known)
+          .map((id) => ({
+            id: known[id].id,
+            qualifiedId: id,
+            archetype: id === 'qits-12' ? 'EPIC' : 'TASK',
+            status: 'REFINED',
+            title: known[id].title,
+            updatedAt: AT,
+          })),
       };
     }
     if (url === '/projects/api/work/transition') return {};
@@ -651,6 +670,61 @@ describe('EntityDetailPage', () => {
       expect(element().querySelector('.back a')?.getAttribute('href')).toBe(
         '/qits/work?archetype=ticket',
       );
+    });
+  });
+
+  /**
+   * qits-1898: the work's own text — impetus, description, acceptance criteria and the thread's
+   * comments — draws every work id of the project as a `qits-work-ref` with its brief, read through
+   * the briefs door; an id the door does not know stays the text it was.
+   */
+  describe('work ids in the text', () => {
+    /** The trigger of each reference drawn under `selector` — the panel is left out. */
+    function refs(selector: string): string[] {
+      return Array.from(element().querySelectorAll(`${selector} .qits-work-ref`)).map(
+        (trigger) => trigger.textContent ?? '',
+      );
+    }
+    const briefReads = () => sent.filter((request) => request.url.includes('/work/briefs?'));
+
+    it('links the impetus, the description and the comments of a ticket', async () => {
+      ticketPatch = {
+        impetus: 'Regressed by qits-14 in the qits-12 epic.',
+        description: 'Revert **qits-14**; `qits-12` stays. Unknown: qits-777.',
+      };
+      commentBody = 'Seen again after qits-14 shipped, unlike qits-778.';
+      await open('/qits/work/qits-41');
+
+      expect(refs('.impetus')).toEqual(['qits-14', 'qits-12']);
+      expect(refs('.description')).toEqual(['qits-14', 'qits-12']);
+      expect(element().querySelector('.description strong qits-work-ref')).toBeTruthy();
+      expect(element().querySelector('.description code qits-work-ref')).toBeTruthy();
+      expect(refs('.comment .body')).toEqual(['qits-14']);
+      // Unknown ids are their text, with no trigger drawn around them.
+      expect(element().querySelector('.description')?.textContent).toContain('Unknown: qits-777.');
+      expect(element().querySelector('.comment .body')?.textContent).toContain('unlike qits-778.');
+      // One project's briefs, under its slug, for every id on the page.
+      expect(briefReads().length).toBeGreaterThan(0);
+      const asked = briefReads()
+        .flatMap((request) => decodeURIComponent(request.url.split('id=')[1]).split(','))
+        .sort();
+      expect(asked).toEqual(['qits-12', 'qits-14', 'qits-777', 'qits-778']);
+    });
+
+    it('links an acceptance criterion', async () => {
+      registry = REGISTRY_887;
+      epicPatch = { acceptanceCriteria: ['Closes qits-14 on **merge**.'] };
+      await open('/qits/work/qits-12');
+
+      expect(refs('.criterion')).toEqual(['qits-14']);
+      expect(element().querySelector('.criterion strong')?.textContent).toBe('merge');
+    });
+
+    it('asks nothing when the text names no work id', async () => {
+      await open('/qits/work/qits-41');
+
+      expect(element().querySelector('qits-work-ref')).toBeNull();
+      expect(briefReads()).toEqual([]);
     });
   });
 

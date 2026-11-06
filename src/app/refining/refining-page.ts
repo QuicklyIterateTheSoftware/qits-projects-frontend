@@ -10,7 +10,7 @@ import {
 } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, Router, RouterLink, convertToParamMap } from '@angular/router';
-import { QitsBadge, QitsButton } from '@qits/ui-components';
+import { QitsBadge, QitsButton, QitsCommitMessage } from '@qits/ui-components';
 import { ArchetypesApi, type ArchetypeRegistry } from '../api/archetypes-api';
 import { DesignsApi } from '../api/designs-api';
 import { epicDossier, ticketDossier, type DossierOwner } from '../api/dossier-api';
@@ -205,6 +205,7 @@ interface Subject {
     PanelPlaceholder,
     QitsBadge,
     QitsButton,
+    QitsCommitMessage,
     RouterLink,
     SketchPanel,
     StartingPanel,
