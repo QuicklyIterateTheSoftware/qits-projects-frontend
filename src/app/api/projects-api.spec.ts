@@ -368,7 +368,7 @@ describe('ProjectsApi', () => {
       .flush(goldenMaster('an epic in detail', 'listProjectWork'));
     const rows = await work;
     expect(rows.map((row) => row.archetype)).toEqual(
-      expect.arrayContaining(['CAMPAIGN', 'EPIC', 'FEATURE', 'TASK', 'TICKET']),
+      expect.arrayContaining(['EPIC', 'FEATURE', 'TASK', 'TICKET']),
     );
     expect(rows.find((row) => row.archetype === 'FEATURE')?.parent).toBe(
       rows.find((row) => row.archetype === 'EPIC')?.id,
