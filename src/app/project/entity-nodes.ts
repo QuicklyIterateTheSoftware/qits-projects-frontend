@@ -1,11 +1,4 @@
-import type {
-  CampaignMemberEntityDto,
-  EntityStatus,
-  FeatureDto,
-  TaskDto,
-  WorkOutcome,
-} from '../api/dto';
-import type { CampaignEntity, WorkItem } from './campaign-model';
+import type { EntityStatus, FeatureDto, NeedDto, TaskDto, WorkOutcome } from '../api/dto';
 import type { Entity, EpicEntity, TicketEntity } from './entities-model';
 
 /**
@@ -46,8 +39,11 @@ export interface EntityNode {
   readonly implementedAt: string | null;
   /** A task's repository. Null on every other archetype. */
   readonly repositoryId: string | null;
-  /** The sibling this one waits on, or null. */
-  readonly dependsOn: string | null;
+  /** Other work items this node needs (qits-1900), each with the status it must reach and whether
+   * it has. Replaces the old single `dependsOn` id a feature or a task alone carried. */
+  readonly needs: readonly NeedDto[];
+  /** How many of {@link needs} are not yet met. */
+  readonly unmetNeeds: number;
   readonly createdAt: string;
   readonly updatedAt: string;
   /** Why a `DROPPED` node was dropped (qits-248); null or absent otherwise, and on an older service. */
@@ -66,8 +62,6 @@ export interface EntityNode {
   readonly epic: EpicEntity | null;
   readonly feature: FeatureDto | null;
   readonly task: TaskDto | null;
-  /** The campaign when this node is one; null on every other archetype. */
-  readonly campaign: CampaignEntity | null;
 }
 
 /**
@@ -75,19 +69,10 @@ export interface EntityNode {
  *
  * <p>A ticket has no children; an epic's features and tasks follow it in the tree's own order, which
  * is the order the service lists them in and the order a children list draws them.
- *
- * <p><b>A campaign is a root with no children</b>, and its arm comes before the epic fallthrough on
- * purpose: everything that is not a ticket used to be read as an epic, and a campaign read that way
- * is an epic whose `features` are undefined. Its members are not its children — they are epics and
- * tickets in their own right, with their own nodes.
  */
-export function flattenEntities(entities: readonly WorkItem[]): readonly EntityNode[] {
+export function flattenEntities(entities: readonly Entity[]): readonly EntityNode[] {
   const nodes: EntityNode[] = [];
   for (const entity of entities) {
-    if (entity.archetype === 'CAMPAIGN') {
-      nodes.push(campaignNode(entity));
-      continue;
-    }
     if (entity.archetype === 'TICKET') {
       nodes.push(rootNode(entity, null));
       continue;
@@ -107,7 +92,8 @@ export function flattenEntities(entities: readonly WorkItem[]): readonly EntityN
         parentId: feature.epicId,
         implementedAt: feature.implementedOn,
         repositoryId: null,
-        dependsOn: feature.dependsOnFeatureId,
+        needs: feature.needs,
+        unmetNeeds: feature.unmetNeeds,
         createdAt: feature.createdAt,
         updatedAt: feature.updatedAt,
         outcome: feature.outcome ?? null,
@@ -117,7 +103,6 @@ export function flattenEntities(entities: readonly WorkItem[]): readonly EntityN
         epic: entity,
         feature,
         task: null,
-        campaign: null,
       });
       for (const task of tasks) {
         nodes.push({
@@ -133,7 +118,8 @@ export function flattenEntities(entities: readonly WorkItem[]): readonly EntityN
           parentId: task.featureId,
           implementedAt: task.implementedAt,
           repositoryId: task.repositoryId,
-          dependsOn: task.dependsOnTaskId,
+          needs: task.needs,
+          unmetNeeds: task.unmetNeeds,
           createdAt: task.createdAt,
           updatedAt: task.updatedAt,
           outcome: task.outcome ?? null,
@@ -143,7 +129,6 @@ export function flattenEntities(entities: readonly WorkItem[]): readonly EntityN
           epic: entity,
           feature,
           task,
-          campaign: null,
         });
       }
     }
@@ -165,7 +150,8 @@ function rootNode(entity: Entity, epic: EpicEntity | null): EntityNode {
     parentId: null,
     implementedAt: null,
     repositoryId: null,
-    dependsOn: null,
+    needs: entity.needs ?? [],
+    unmetNeeds: entity.unmetNeeds ?? 0,
     createdAt: entity.createdAt,
     updatedAt: entity.updatedAt,
     outcome: entity.outcome ?? null,
@@ -176,35 +162,6 @@ function rootNode(entity: Entity, epic: EpicEntity | null): EntityNode {
     epic,
     feature: null,
     task: null,
-    campaign: null,
-  };
-}
-
-function campaignNode(campaign: CampaignEntity): EntityNode {
-  return {
-    id: campaign.id,
-    archetype: 'CAMPAIGN',
-    projectId: campaign.projectId,
-    number: campaign.number,
-    qualifiedId: campaign.qualifiedId,
-    title: campaign.title,
-    slug: campaign.slug,
-    description: campaign.description,
-    status: campaign.status,
-    parentId: null,
-    implementedAt: null,
-    repositoryId: null,
-    dependsOn: null,
-    createdAt: campaign.createdAt,
-    updatedAt: campaign.updatedAt,
-    outcome: campaign.outcome ?? null,
-    supersededBy: campaign.supersededBy ?? null,
-    tags: campaign.tags ?? [],
-    entity: null,
-    epic: null,
-    feature: null,
-    task: null,
-    campaign,
   };
 }
 
@@ -313,39 +270,11 @@ export function archetypeLabel(archetype: string): string {
  * description cannot hold it — and answers the impetus rather than rewriting it, and stops short of
  * implementing, which is the refine phase's own boundary.
  *
- * <p>A campaign's room (epic qits-770) refines the campaign **and its REPORTED members** — nothing
- * server-side tells the session which those are, so the prompt names each, with its entity id for
- * the room's tools. Pass the members as the campaign's members read answers them; the non-REPORTED
- * ones are left out here.
- *
  * <p>Derived, never stored: rename the entity and the next rewrite is told the new name. The entity's
  * id is in it because the room's tools (`list_designs`, `get_design`, `put_design`) take `entityId`.
  */
-export function refinePrompt(
-  node: EntityNode,
-  members: readonly CampaignMemberEntityDto[] = [],
-): string {
+export function refinePrompt(node: EntityNode): string {
   const name = node.qualifiedId ? `${node.qualifiedId}: ${node.title}` : node.title;
-  if (node.archetype === 'CAMPAIGN') {
-    const reported = members.filter((member) => member.status === 'REPORTED');
-    return [
-      `# Refine campaign ${name}`,
-      `Refine this campaign (entity id ${node.id}) together with its REPORTED members: their ` +
-        'descriptions (an epic’s feature/task tree and dossier too), so the campaign can be ' +
-        'readied and started. Do not implement.',
-      ...(reported.length > 0
-        ? [
-            'Its members still REPORTED:',
-            ...reported.map((member) => {
-              const said = member.qualifiedId
-                ? `${member.qualifiedId}: ${member.title}`
-                : member.title;
-              return `- ${said} (${archetypeLabel(member.archetype)}, entity id ${member.id})`;
-            }),
-          ]
-        : ['None of its members is REPORTED.']),
-    ].join('\n');
-  }
   if (node.archetype === 'TICKET') {
     return [
       `# Refine ticket ${name}`,
