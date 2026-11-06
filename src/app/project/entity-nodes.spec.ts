@@ -1,10 +1,8 @@
 import type { EpicDto, FeatureDto, TaskDto, TicketDto } from '../api/dto';
-import { campaignEntity } from './campaign-model';
 import { epicEntity, ticketEntity } from './entities-model';
 import {
   archetypeFromParam,
   archetypeFilterParam,
-  archetypeLabel,
   childrenOf,
   entityAddress,
   entityRoute,
@@ -43,7 +41,8 @@ const FEATURE: FeatureDto = {
   description: null,
   number: 13,
   qualifiedId: 'qits-13',
-  dependsOnFeatureId: null,
+  needs: [],
+  unmetNeeds: 0,
   implementedOn: AT,
   createdAt: AT,
   updatedAt: AT,
@@ -59,7 +58,8 @@ const TASK: TaskDto = {
   description: null,
   number: 14,
   qualifiedId: 'qits-14',
-  dependsOnTaskId: null,
+  needs: [],
+  unmetNeeds: 0,
   implementedAt: null,
   createdAt: AT,
   updatedAt: AT,
@@ -183,42 +183,6 @@ describe('entity nodes', () => {
     });
   });
 
-  /**
-   * qits-419: a campaign is a root with no children, read by its own arm — never as an epic whose
-   * `features` are undefined, which is what the ticket-or-else-epic fallthrough would make of it.
-   */
-  describe('a campaign', () => {
-    const campaign = campaignEntity({
-      id: 'c1',
-      number: 430,
-      qualifiedId: 'qits-430',
-      projectId: 'p1',
-      title: 'Rename qits-x',
-      status: 'REFINED',
-      started: false,
-      active: false,
-      members: 3,
-    });
-
-    it('flattens to one root node carrying the campaign, and resolves by its number', () => {
-      const nodes = flattenEntities([epicEntity(EPIC), campaign]);
-      const node = nodeByNumber(nodes, 430);
-      expect(node?.archetype).toBe('CAMPAIGN');
-      expect(node?.campaign?.id).toBe('c1');
-      expect(node?.entity).toBeNull();
-      expect(node?.epic).toBeNull();
-      expect(node?.parentId).toBeNull();
-      expect(childrenOf(nodes, 'c1')).toEqual([]);
-      expect(entityRoute('qits', node!)).toEqual(['/', 'qits', 'work', 'qits-430']);
-    });
-
-    it('is labelled and filtered like every other archetype', () => {
-      expect(archetypeLabel('CAMPAIGN')).toBe('campaign');
-      expect(archetypeFilterParam('CAMPAIGN')).toBe('campaign');
-      expect(archetypeFromParam('campaign')).toBe('CAMPAIGN');
-    });
-  });
-
   /** qits-395: the SPA writes the refining prompt, and a ticket's room must refine the ticket. */
   describe('refinePrompt', () => {
     it('tells a ticket’s room to refine the ticket into its description and dossier', () => {
@@ -234,44 +198,6 @@ describe('entity nodes', () => {
       const prompt = refinePrompt(NODES[0]);
       expect(prompt.split('\n')[0]).toBe('# Refine epic qits-12: One desk');
       expect(prompt).toContain('feature/task tree');
-    });
-
-    /** Epic qits-770: a campaign's room refines it with its REPORTED members, and must be told which. */
-    it('tells a campaign’s room to refine it with its REPORTED members, naming each', () => {
-      const campaign = flattenEntities([
-        campaignEntity({
-          id: 'c1',
-          number: 430,
-          qualifiedId: 'qits-430',
-          projectId: 'p1',
-          title: 'Rename qits-x',
-          status: 'REPORTED',
-          started: false,
-          active: false,
-          members: 3,
-        }),
-      ])[0];
-      const member = (id: string, qualifiedId: string, archetype: string, status: string) => ({
-        id,
-        archetype,
-        qualifiedId,
-        title: `Member ${qualifiedId}`,
-        status: status as 'REPORTED',
-        blocked: false,
-      });
-
-      const prompt = refinePrompt(campaign, [
-        member('e1', 'qits-12', 'EPIC', 'REPORTED'),
-        member('t1', 'qits-41', 'TICKET', 'REFINED'),
-        member('t2', 'qits-42', 'TICKET', 'REPORTED'),
-      ]);
-
-      expect(prompt.split('\n')[0]).toBe('# Refine campaign qits-430: Rename qits-x');
-      expect(prompt).toContain('entity id c1');
-      expect(prompt).toContain('- qits-12: Member qits-12 (epic, entity id e1)');
-      expect(prompt).toContain('- qits-42: Member qits-42 (ticket, entity id t2)');
-      expect(prompt).not.toContain('qits-41');
-      expect(refinePrompt(campaign)).toContain('None of its members is REPORTED.');
     });
   });
 });

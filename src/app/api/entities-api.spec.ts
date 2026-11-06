@@ -8,7 +8,7 @@ import {
   type EpicFixture,
   type WorkFixture,
 } from '../../testing/work-fixtures';
-import { EntitiesApi, PROGRESS_IN_FLIGHT } from './entities-api';
+import { EntitiesApi } from './entities-api';
 import type { CommentDto, EpicDto, FeatureDto, TaskDto, TicketDto } from './dto';
 
 const AT = '2026-09-07T09:00:00Z';
@@ -57,7 +57,8 @@ const feature = (over: Partial<FeatureDto> = {}): FeatureDto => ({
   description: null,
   number: 13,
   qualifiedId: 'qits-13',
-  dependsOnFeatureId: null,
+  needs: [],
+  unmetNeeds: 0,
   implementedOn: null,
   createdAt: AT,
   updatedAt: AT,
@@ -74,7 +75,8 @@ const task = (over: Partial<TaskDto> = {}): TaskDto => ({
   description: null,
   number: 14,
   qualifiedId: 'qits-14',
-  dependsOnTaskId: null,
+  needs: [],
+  unmetNeeds: 0,
   implementedAt: null,
   createdAt: AT,
   updatedAt: AT,
@@ -104,27 +106,14 @@ const settle = async () => {
  *
  * **One listing, the archetype a filter on it.** `GET /projects/{project}/work` answers the whole
  * tree, and the desk is built from it alone (qits-1815): an epic's features and tasks are its rows
- * by `parent`, every root's workspaces are one more read for the whole project, and a campaign's
- * summary is its progress — at most six at a time. Nothing else is read per root; a body is read
- * whole, for the one entity a page is about.
+ * by `parent`, and every root's workspaces are one more read for the whole project. Nothing else is
+ * read per root; a body is read whole, for the one entity a page is about.
  *
  * **Everything about an existing row is addressed by its qualified id** at `/work/{q}`. Getting it
  * wrong produces a URL the service answers 404 for, which reads on screen as a row that vanished.
  *
  * **The envelope is unwrapped here, once**, so no page above this file sees one.
  */
-const CAMPAIGN = {
-  id: 'c1',
-  number: 430,
-  qualifiedId: 'qits-430',
-  projectId: 'p1',
-  title: 'Rename qits-x',
-  status: 'REFINED',
-  started: false,
-  active: false,
-  members: 3,
-};
-
 describe('EntitiesApi', () => {
   let api: EntitiesApi;
   let http: HttpTestingController;
@@ -272,10 +261,10 @@ describe('EntitiesApi', () => {
 
     /**
      * The count that broke the desk on project `qits` (qits-1815): 743 roots answered about 1,900
-     * requests at once and headless Chromium refused them. Now a listing of any size is the listing,
-     * one workspaces read, and one progress read per campaign — and nothing per epic or ticket.
+     * requests at once and headless Chromium refused them. Now a listing of any size is the listing
+     * and one workspaces read — nothing per epic or ticket.
      */
-    it('reads a 200-root project in the listing, one workspaces read and a progress per campaign', async () => {
+    it('reads a 200-root project in the listing and one workspaces read', async () => {
       const epics: EpicFixture[] = Array.from({ length: 60 }, (_, at) => ({
         epic: epic({
           id: `e${at}`,
@@ -303,7 +292,7 @@ describe('EntitiesApi', () => {
           ],
         })),
       }));
-      const tickets = Array.from({ length: 138 }, (_, at) =>
+      const tickets = Array.from({ length: 140 }, (_, at) =>
         ticket({
           id: `t${at}`,
           number: 2000 + at,
@@ -314,19 +303,13 @@ describe('EntitiesApi', () => {
               : [],
         }),
       );
-      const campaigns = [CAMPAIGN, { ...CAMPAIGN, id: 'c2', number: 431, qualifiedId: 'qits-431' }];
       const answer = api.list('p1');
-      const urls = await serve({ epics, tickets, campaigns });
+      const urls = await serve({ epics, tickets });
 
       const rows = await answer;
       expect(rows).toHaveLength(200);
       expect([...urls].sort()).toEqual(
-        [
-          '/projects/api/projects/p1/work',
-          '/projects/api/projects/p1/work/workspaces',
-          '/projects/api/work/qits-430/progress',
-          '/projects/api/work/qits-431/progress',
-        ].sort(),
+        ['/projects/api/projects/p1/work', '/projects/api/projects/p1/work/workspaces'].sort(),
       );
       // Every workspace lands on its own row, and a row with none has none.
       const byId = new Map(rows.map((row) => [row.id, row]));
@@ -340,18 +323,11 @@ describe('EntitiesApi', () => {
         'e3-f0-k',
         'e3-f1-k',
       ]);
-      expect(rows.filter((row) => row.archetype === 'CAMPAIGN').map((row) => row.id)).toEqual([
-        'c1',
-        'c2',
-      ]);
     });
 
-    /**
-     * The workspaces read goes out beside the listing, not after it — and with no filter, the
-     * campaigns' progress reads follow the listing as one round.
-     */
-    it('asks for the workspaces beside the listing, and the campaigns’ progress after it', async () => {
-      const fixture = { epics: [epic()], tickets: [ticket()], campaigns: [CAMPAIGN] };
+    /** The workspaces read goes out beside the listing, not after it. */
+    it('asks for the workspaces beside the listing, in the same round', async () => {
+      const fixture = { epics: [epic()], tickets: [ticket()] };
       const answer = api.list('p1');
       const first = http.match(() => true);
       expect(first.map((request) => request.request.url)).toEqual([
@@ -361,11 +337,9 @@ describe('EntitiesApi', () => {
       for (const request of first) {
         request.flush(workAnswer('p1', fixture, request.request.url) as object);
       }
-      const rest = await serve(fixture);
-      expect(rest).toEqual(['/projects/api/work/qits-430/progress']);
 
       const rows = await answer;
-      expect(rows.map((row) => row.archetype)).toEqual(['EPIC', 'TICKET', 'CAMPAIGN']);
+      expect(rows.map((row) => row.archetype)).toEqual(['EPIC', 'TICKET']);
     });
 
     /** A workspace link is the least of what a card draws: its read failing costs only the links. */
@@ -382,64 +356,11 @@ describe('EntitiesApi', () => {
       expect(rows[0].workspaces).toEqual([]);
     });
 
-    it('summarises a campaign from its progress, reading nothing else about it', async () => {
-      const answer = api.list('p1', 'CAMPAIGN');
-      const urls = await serve({ tickets: [ticket()], campaigns: [CAMPAIGN] });
-
-      const rows = await answer;
-      expect(rows).toEqual([
-        expect.objectContaining({
-          archetype: 'CAMPAIGN',
-          id: 'c1',
-          number: 430,
-          qualifiedId: 'qits-430',
-          status: 'REFINED',
-          members: 3,
-          started: false,
-        }),
-      ]);
-      // A campaign has no workspaces of its own, so the campaigns desk asks for none.
-      expect(urls).toEqual([
-        '/projects/api/projects/p1/work',
-        '/projects/api/work/qits-430/progress',
-      ]);
-    });
-
-    /** The one per-root read left is bounded: never more than six progress reads pending. */
-    it('keeps at most six campaign progress reads in flight', async () => {
-      const campaigns = Array.from({ length: 15 }, (_, at) => ({
-        ...CAMPAIGN,
-        id: `c${at}`,
-        number: 600 + at,
-        qualifiedId: `qits-${600 + at}`,
-      }));
-      const fixture = { campaigns };
-      const answer = api.list('p1', 'CAMPAIGN');
-      http
-        .expectOne('/projects/api/projects/p1/work')
-        .flush(workAnswer('p1', fixture, '/projects/api/projects/p1/work') as object);
-      let most = 0;
-      let answered = 0;
-      while (answered < campaigns.length) {
-        await settle();
-        const pending = http.match(() => true);
-        expect(pending.length).toBeGreaterThan(0);
-        most = Math.max(most, pending.length);
-        for (const request of pending) {
-          request.flush(workAnswer('p1', fixture, request.request.url) as object);
-          answered += 1;
-        }
-      }
-      expect(most).toBe(PROGRESS_IN_FLIGHT);
-      expect((await answer).map((row) => row.id)).toEqual(campaigns.map((c) => c.id));
-    });
-
     it('leaves the epics’ features and tasks to the epic, never listing them as roots', async () => {
       const answer = api.epicsAndTickets('p1');
       const urls = await serve({
         epics: [{ epic: epic(), features: [{ feature: feature(), tasks: [task()] }] }],
         tickets: [ticket()],
-        campaigns: [CAMPAIGN],
       });
 
       expect((await answer).map((row) => row.archetype)).toEqual(['EPIC', 'TICKET']);
@@ -490,19 +411,6 @@ describe('EntitiesApi', () => {
           '/projects/api/work/qits-12/workspaces',
           '/projects/api/work/qits-13/children',
         ].sort(),
-      );
-    });
-
-    it('reads a campaign whole: its body from the entity, its counts from its progress', async () => {
-      const answer = api.campaign('qits-430');
-      const urls = await serve({ campaigns: [{ ...CAMPAIGN, started: true, active: true }] });
-
-      const campaign = await answer;
-      expect(campaign).toEqual(
-        expect.objectContaining({ id: 'c1', archetype: 'CAMPAIGN', members: 3, active: true }),
-      );
-      expect([...urls].sort()).toEqual(
-        ['/projects/api/work/qits-430', '/projects/api/work/qits-430/progress'].sort(),
       );
     });
 
@@ -810,27 +718,6 @@ describe('EntitiesApi', () => {
       expect(request.request.body).toEqual({ mode: 'PHASE' });
       const envelope = await dispatched;
       expect('dispatch' in envelope && envelope.dispatch.mode).toBe('PHASE');
-    });
-
-    /** On a campaign the press is its start (qits-417), and the answer is its progress instead. */
-    it('answers a campaign’s start as its progress, discriminated by key', async () => {
-      const progress = {
-        campaign: {
-          id: 'c1',
-          qualifiedId: 'qits-430',
-          title: 'Rename',
-          status: 'REFINED',
-          start: null,
-        },
-        evaluator: { connected: true, lastSweepCompletedAt: null, stalled: false },
-        members: [],
-      };
-      const dispatched = api.dispatch('qits-430', 'FLOW');
-      http.expectOne('/projects/api/work/qits-430/dispatch').flush({ progress });
-
-      const envelope = await dispatched;
-      expect('progress' in envelope).toBe(true);
-      expect('dispatch' in envelope).toBe(false);
     });
 
     it('never calls the retired per-archetype dispatch doors', async () => {

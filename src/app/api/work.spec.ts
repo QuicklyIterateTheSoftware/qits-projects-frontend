@@ -1,11 +1,5 @@
-import {
-  workOfCampaign,
-  workOfEpic,
-  workOfFeature,
-  workOfTask,
-  workOfTicket,
-} from '../../testing/work-fixtures';
-import { campaignSummaryOf, epicOf, featureOf, taskOf, ticketOf, type WorkEntityDto } from './work';
+import { workOfEpic, workOfFeature, workOfTask, workOfTicket } from '../../testing/work-fixtures';
+import { epicOf, featureOf, taskOf, ticketOf, type WorkEntityDto } from './work';
 
 /**
  * qits-634: every `/work` answer carries `tags` — enum names, `[]` when none — and the mappings onto
@@ -32,10 +26,6 @@ describe('the /work mappings carry tags (qits-634)', () => {
     expect(taskOf(workOfTask({ tags: RESERVED })).tags).toEqual(RESERVED);
   });
 
-  it('carries a campaign’s tags onto its desk row', () => {
-    expect(campaignSummaryOf(workOfCampaign({ tags: RESERVED }), null).tags).toEqual(RESERVED);
-  });
-
   it('keeps an empty set empty', () => {
     expect(ticketOf(workOfTicket({ tags: [] })).tags).toEqual([]);
   });
@@ -45,6 +35,5 @@ describe('the /work mappings carry tags (qits-634)', () => {
     expect(ticketOf(untagged(workOfTicket({}))).tags).toEqual([]);
     expect(featureOf(untagged(workOfFeature({}))).tags).toEqual([]);
     expect(taskOf(untagged(workOfTask({}))).tags).toEqual([]);
-    expect(campaignSummaryOf(untagged(workOfCampaign({})), null).tags).toEqual([]);
   });
 });
