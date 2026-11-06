@@ -10,16 +10,9 @@ import { Router, provideRouter } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
 import { provideQitsNavigationTree, type QitsNavigation } from '@qits/ui-components';
 import { routes } from '../app.routes';
-import type {
-  CampaignSummaryDto,
-  EntityDispatchStateDto,
-  EpicDto,
-  FeatureDto,
-  TaskDto,
-  TicketDto,
-} from '../api/dto';
+import type { EntityDispatchStateDto, EpicDto, FeatureDto, TaskDto, TicketDto } from '../api/dto';
 import { EVENT_SOURCE_FACTORY } from '../api/event-source';
-import { workAnswer, workOfCampaign, workOfEpic, workOfTicket } from '../../testing/work-fixtures';
+import { workAnswer, workOfEpic, workOfTicket } from '../../testing/work-fixtures';
 
 const AT = '2026-09-07T09:00:00Z';
 
@@ -57,35 +50,17 @@ const TRANSITIONS = {
   DROPPED: [{ to: 'REPORTED', kind: 'REOPEN' }],
 };
 
-/**
- * A campaign's served moves since qits-650: its status is derived from its members, so a person only
- * drops it (from every status but DONE and DROPPED) or reopens it (DROPPED → REPORTED).
- */
-const CAMPAIGN_TRANSITIONS = {
-  REPORTED: [{ to: 'DROPPED', kind: 'DROP' }],
-  REFINED: [{ to: 'DROPPED', kind: 'DROP' }],
-  IMPLEMENTED: [{ to: 'DROPPED', kind: 'DROP' }],
-  VERIFIED: [{ to: 'DROPPED', kind: 'DROP' }],
-  DONE: [],
-  DROPPED: [{ to: 'REPORTED', kind: 'REOPEN' }],
-};
-
 function spec(archetype: string, lifecycle: readonly string[], permitted: readonly string[]) {
   return {
     archetype,
     depth: archetype === 'TASK' ? 2 : archetype === 'FEATURE' ? 1 : 0,
-    // A campaign may sit at the top of a project too — this fixture only left it out because no test
-    // here used to read `mayBeRoot`. qits-763 made it load-bearing: the component gates the agent
-    // surface (Dispatch, Run the next phase, Refine) on it as well as on having a lifecycle, so that a
-    // feature or a task growing a status does not grow that surface along with it.
     mayBeRoot: archetype !== 'FEATURE' && archetype !== 'TASK',
     required: ['TITLE'],
     requiredOnTransition: ['TITLE'],
     permitted,
     legalStatuses: [...lifecycle].sort(),
     lifecycle,
-    transitions:
-      lifecycle.length === 0 ? {} : archetype === 'CAMPAIGN' ? CAMPAIGN_TRANSITIONS : TRANSITIONS,
+    transitions: lifecycle.length === 0 ? {} : TRANSITIONS,
   };
 }
 
@@ -101,7 +76,7 @@ const REGISTRY = {
     'CREATED_BY',
     'REPOSITORY_ID',
     'IMPLEMENTED_AT',
-    'DEPENDS_ON',
+    'NEEDS',
   ],
   serverOwned: ['SLUG', 'CREATED_BY'],
   archetypes: [
@@ -116,13 +91,8 @@ const REGISTRY = {
       'ASSIGNEE',
       'CREATED_BY',
     ]),
-    spec('CAMPAIGN', WORDS, ['TITLE', 'SLUG', 'DESCRIPTION', 'STATUS']),
-    spec('FEATURE', [], ['TITLE', 'SLUG', 'DESCRIPTION', 'IMPLEMENTED_AT', 'DEPENDS_ON']),
-    spec(
-      'TASK',
-      [],
-      ['TITLE', 'SLUG', 'DESCRIPTION', 'REPOSITORY_ID', 'IMPLEMENTED_AT', 'DEPENDS_ON'],
-    ),
+    spec('FEATURE', [], ['TITLE', 'SLUG', 'DESCRIPTION', 'IMPLEMENTED_AT', 'NEEDS']),
+    spec('TASK', [], ['TITLE', 'SLUG', 'DESCRIPTION', 'REPOSITORY_ID', 'IMPLEMENTED_AT', 'NEEDS']),
   ],
 };
 
@@ -221,7 +191,8 @@ const FEATURE: FeatureDto = {
   description: 'One route.',
   number: 13,
   qualifiedId: 'qits-13',
-  dependsOnFeatureId: null,
+  needs: [],
+  unmetNeeds: 0,
   implementedOn: null,
   createdAt: AT,
   updatedAt: AT,
@@ -237,7 +208,8 @@ const TASK_DONE: TaskDto = {
   description: null,
   number: 14,
   qualifiedId: 'qits-14',
-  dependsOnTaskId: null,
+  needs: [],
+  unmetNeeds: 0,
   implementedAt: AT,
   createdAt: AT,
   updatedAt: AT,
@@ -251,7 +223,18 @@ const TASK_OPEN: TaskDto = {
   number: 15,
   qualifiedId: 'qits-15',
   implementedAt: null,
-  dependsOnTaskId: 'k1',
+  needs: [
+    {
+      id: 'k1',
+      qualifiedId: 'qits-14',
+      title: 'Route the desk',
+      archetype: 'TASK',
+      status: 'VERIFIED',
+      currentStatus: 'IMPLEMENTED',
+      met: false,
+    },
+  ],
+  unmetNeeds: 1,
 };
 
 const TICKET: TicketDto = {
@@ -272,68 +255,6 @@ const TICKET: TicketDto = {
   workspaces: [],
 };
 
-/** A campaign on the desk: its listing row, and its full read with two members. */
-const CAMPAIGN_ROW: CampaignSummaryDto = {
-  id: 'c1',
-  number: 430,
-  qualifiedId: 'qits-430',
-  projectId: 'p1',
-  title: 'Rename qits-x',
-  status: 'REFINED',
-  started: false,
-  active: false,
-  members: 2,
-};
-
-function campaignMember(id: string, qualified: string, position: number, groups: object[] = []) {
-  return {
-    membershipId: `m-${id}`,
-    position,
-    entity: {
-      id,
-      archetype: 'TICKET',
-      qualifiedId: qualified,
-      title: `Member ${qualified}`,
-      status: 'REPORTED',
-      blocked: false,
-    },
-    claimedAt: null,
-    joinedRunning: false,
-    dispatchedAt: null,
-    dispatch: { workspaceId: null, branch: null, agentLaunch: null },
-    dispatchRefusal: null,
-    dispatchRefusedAt: null,
-    dispatchError: null,
-    groups,
-  };
-}
-
-const CAMPAIGN = {
-  ...CAMPAIGN_ROW,
-  slug: 'rename-qits-x',
-  description: 'Rename it **in order**.',
-  start: null,
-  members: [
-    campaignMember('t1', 'qits-41', 0),
-    campaignMember('e1', 'qits-12', 1, [
-      {
-        id: 'g1',
-        criteria: [
-          {
-            id: 'k1',
-            kind: 'ENTITY_STATUS',
-            predicate: { entityId: 't1', status: 'VERIFIED' },
-            seeded: true,
-            satisfiedAt: null,
-            evidence: null,
-            approval: null,
-          },
-        ],
-      },
-    ]),
-  ],
-};
-
 /** The entity each qualified id in a `/work` path names. */
 const ID_OF: Readonly<Record<string, string>> = {
   'qits-12': 'e1',
@@ -341,7 +262,6 @@ const ID_OF: Readonly<Record<string, string>> = {
   'qits-14': 'k1',
   'qits-15': 'k2',
   'qits-41': 't1',
-  'qits-430': 'c1',
 };
 
 function stateOf(over: Partial<EntityDispatchStateDto> = {}): EntityDispatchStateDto {
@@ -382,7 +302,6 @@ describe('EntityDetailPage', () => {
   let epicPatch: Partial<EpicDto>;
   let featurePatch: Partial<FeatureDto>;
   let taskDonePatch: Partial<TaskDto>;
-  let campaignRowPatch: Partial<typeof CAMPAIGN_ROW>;
   let superseded: boolean;
   let failures: Record<string, { status: number; body: object }>;
 
@@ -393,13 +312,11 @@ describe('EntityDetailPage', () => {
     epicPatch = {};
     featurePatch = {};
     taskDonePatch = {};
-    campaignRowPatch = {};
     superseded = false;
     failures = {};
     dispatchStates = {
       t1: stateOf(),
       e1: stateOf({ entityId: 'e1', archetype: 'EPIC', status: 'REFINED', nextPhase: 'implement' }),
-      c1: stateOf({ entityId: 'c1', archetype: 'CAMPAIGN', status: 'REFINED', nextPhase: 'start' }),
     };
     rooms = {};
     TestBed.configureTestingModule({
@@ -433,35 +350,12 @@ describe('EntityDetailPage', () => {
         entries: [{ project: { id: 'p1', name: 'Qits', slug: 'qits', description: null } }],
       };
     }
-    const progress = {
-      progress: {
-        campaign: {
-          id: 'c1',
-          qualifiedId: 'qits-430',
-          title: 'Rename qits-x',
-          status: 'REFINED',
-          start: null,
-        },
-        evaluator: { connected: true, lastSweepCompletedAt: null, stalled: false },
-        members: [],
-      },
-    };
-    if (url === '/projects/api/work/qits-430' && method === 'GET') {
-      return {
-        ...workOfCampaign({ ...CAMPAIGN_ROW, ...campaignRowPatch }),
-        slug: CAMPAIGN.slug,
-        description: CAMPAIGN.description,
-      };
-    }
-    if (url === '/projects/api/work/qits-430/members') return { members: CAMPAIGN.members };
-    if (url === '/projects/api/work/qits-430/progress') return progress;
     const status = /^\/projects\/api\/work\/([^/]+)\/status$/.exec(url);
     if (status && method === 'POST') {
       const target = (request.request.body as { target: string }).target;
       const id = ID_OF[status[1]];
       if (id === 't1')
         return { ...workOfTicket({ ...TICKET, status: target }), statusBefore: TICKET.status };
-      if (id === 'c1') return { ...workOfCampaign({ ...CAMPAIGN_ROW, status: target }) };
       if (target === 'SUPERSEDED') {
         superseded = true;
         return {
@@ -487,7 +381,6 @@ describe('EntityDetailPage', () => {
           ...(superseded ? [SUCCESSOR] : []),
         ],
         tickets: [{ ...TICKET, ...ticketPatch }],
-        campaigns: [{ ...CAMPAIGN_ROW, ...campaignRowPatch }],
       },
       url,
       method,
@@ -502,21 +395,6 @@ describe('EntityDetailPage', () => {
     }
     const dispatch = /^\/projects\/api\/work\/([^/]+)\/dispatch$/.exec(url);
     if (dispatch && method === 'GET') return { state: dispatchStates[ID_OF[dispatch[1]]] };
-    if (dispatch && method === 'POST' && ID_OF[dispatch[1]] === 'c1') {
-      return {
-        progress: {
-          campaign: {
-            id: 'c1',
-            qualifiedId: 'qits-430',
-            title: 'Rename qits-x',
-            status: 'REFINED',
-            start: null,
-          },
-          evaluator: { connected: true, lastSweepCompletedAt: null, stalled: false },
-          members: [],
-        },
-      };
-    }
     if (dispatch && method === 'POST') {
       const mode = (request.request.body as { mode: string }).mode;
       return {
@@ -587,17 +465,15 @@ describe('EntityDetailPage', () => {
       const id = ID_OF[patched[1]];
       if (tags !== undefined && id === 't1') ticketPatch = { ...ticketPatch, tags };
       if (tags !== undefined && id === 'e1') epicPatch = { ...epicPatch, tags };
-      if (tags !== undefined && id === 'c1') campaignRowPatch = { ...campaignRowPatch, tags };
       return {};
     }
     const blocked = /^\/projects\/api\/work\/([^/]+)\/blocked$/.exec(url);
     if (blocked && method === 'POST') {
       const body = request.request.body as { blocked: boolean };
       const id = ID_OF[blocked[1]];
-      const archetype = id === 'e1' ? 'EPIC' : id === 'c1' ? 'CAMPAIGN' : 'TICKET';
+      const archetype = id === 'e1' ? 'EPIC' : 'TICKET';
       if (id === 'e1') epicPatch = { blocked: body.blocked };
       if (id === 't1') ticketPatch = { blocked: body.blocked };
-      if (id === 'c1') campaignRowPatch = { blocked: body.blocked };
       return {
         block: { entityId: id, archetype, status: 'REFINED', blocked: body.blocked },
       };
@@ -747,12 +623,15 @@ describe('EntityDetailPage', () => {
       ).toEqual(['open', 'verified', 'open']);
     });
 
-    it('draws a task’s page: its repository, its dependency and its own history only', async () => {
+    it('draws a task’s page: its repository, what it needs and its own history only', async () => {
       await open('/qits/work/qits-15');
 
       expect(element().querySelector('.repository')?.textContent).toBe('qits-projects-frontend');
-      expect(element().querySelector('.depends-on a')?.getAttribute('href')).toBe(
+      expect(element().querySelector('.needs-list a')?.getAttribute('href')).toBe(
         '/qits/work/qits-14',
+      );
+      expect(element().querySelector('.needs-list li')?.textContent).toContain(
+        'qits-14 at VERIFIED, now IMPLEMENTED',
       );
       expect(element().querySelector('.parent a')?.textContent).toContain('qits-13');
       // The audit subtree is the epic's; a task's page picks out its own rows (none for k2).
@@ -798,7 +677,6 @@ describe('EntityDetailPage', () => {
       );
       expect(gets()).not.toContain('/projects/api/work/qits-41');
       expect(gets()).not.toContain('/projects/api/work/qits-41/workspaces');
-      expect(gets()).not.toContain('/projects/api/work/qits-430');
       // The listing has no description: what is drawn is the whole read's.
       expect(element().querySelector('.description strong')?.textContent).toBe('two');
     });
@@ -1022,8 +900,8 @@ describe('EntityDetailPage', () => {
   });
 
   /**
-   * Block and Unblock are offered on every lifecycle archetype now — an epic and a campaign as well
-   * as a ticket — through the one entity door, `POST /entities/{id}/blocked`.
+   * Block and Unblock are offered on every lifecycle archetype now — an epic as well as a ticket —
+   * through the one entity door, `POST /entities/{id}/blocked`.
    */
   describe('blocking', () => {
     it('offers Block on an epic with a next phase, the same as on a ticket', async () => {
@@ -1074,24 +952,6 @@ describe('EntityDetailPage', () => {
       // The reload after the write is what draws the badge — the write itself answers only the flag.
       expect(element().querySelector('.badges .blocked')).toBeTruthy();
       expect(buttonNamed('Unblock')).toBeTruthy();
-    });
-
-    it('shows the blocked badge for a blocked campaign, offers Unblock and sends no reason to unblock', async () => {
-      campaignRowPatch = { blocked: true };
-      await open('/qits/work/qits-430');
-
-      expect(element().querySelector('.badges .blocked')).toBeTruthy();
-      buttonNamed('Unblock').click();
-      harness.detectChanges();
-      sent = [];
-      button('.send-block').click();
-      await serve();
-
-      expect(writes()[0]).toEqual({
-        method: 'POST',
-        url: '/projects/api/work/qits-430/blocked',
-        body: { blocked: false, reason: '' },
-      });
     });
 
     /**
@@ -1205,7 +1065,7 @@ describe('EntityDetailPage', () => {
       expect(writes()[0].body).toEqual({ tags: ['SOMETHING_NEW'] });
     });
 
-    it('reserves an epic and a campaign the same way', async () => {
+    it('reserves an epic and a ticket the same way', async () => {
       await open('/qits/work/qits-12');
       sent = [];
       buttonNamed('Reserve for human').click();
@@ -1216,13 +1076,13 @@ describe('EntityDetailPage', () => {
         body: { tags: [RESERVED] },
       });
 
-      await open('/qits/work/qits-430');
+      await open('/qits/work/qits-41');
       sent = [];
       buttonNamed('Reserve for human').click();
       await serve();
       expect(writes()[0]).toEqual({
         method: 'PATCH',
-        url: '/projects/api/work/qits-430',
+        url: '/projects/api/work/qits-41',
         body: { tags: [RESERVED] },
       });
       expect(element().querySelector('.badges .tag')?.textContent?.trim()).toBe(
@@ -1395,7 +1255,7 @@ describe('EntityDetailPage', () => {
       expect(options.map((option) => option.value)).toEqual(['BUG', 'IMPROVEMENT', 'MAINTENANCE']);
     });
 
-    it('keeps a task’s place among its siblings when it is edited', async () => {
+    it('keeps a task’s place among its siblings when it is edited, and never sends dependsOn', async () => {
       await open('/qits/work/qits-15');
 
       buttonNamed('Edit').click();
@@ -1403,9 +1263,10 @@ describe('EntityDetailPage', () => {
       button('.save').click();
       await serve();
 
-      const body = writes()[0].body as Record<string, { membership: unknown; dependsOn: string }>;
+      const body = writes()[0].body as Record<string, { membership: unknown; dependsOn?: string }>;
       expect(body['k2'].membership).toEqual({ parent: 'f1', position: 1 });
-      expect(body['k2'].dependsOn).toBe('k1');
+      // qits-1900: needs replaces the old dependsOn, which the service now 400s on a write.
+      expect(body['k2'].dependsOn).toBeUndefined();
     });
   });
   /**
@@ -1788,271 +1649,6 @@ describe('EntityDetailPage', () => {
       expect(element().querySelector('.failed')?.textContent?.trim()).toBe(
         'epic e1 cannot move to READY_FOR_DEV: ACCEPTANCE_CRITERIA: it has none',
       );
-    });
-  });
-
-  /**
-   * qits-419: a campaign resolves at its number like every other node, draws its own body, moves
-   * through its own door, and its one press — Start — is asked twice because it authorises every
-   * ungated dispatch in the campaign.
-   */
-  describe('a campaign', () => {
-    it('resolves at :project/work/:number and draws the CAMPAIGN body', async () => {
-      await open('/qits/work/qits-430');
-
-      expect(element().querySelector('h1')?.textContent).toContain('Rename qits-x');
-      expect(element().querySelector('.archetype')?.textContent).toContain('campaign');
-      const body = element().querySelector('.body[data-archetype="CAMPAIGN"]');
-      expect(body?.querySelector('app-campaign-members')).toBeTruthy();
-      expect(body?.querySelector('.description strong')?.textContent).toBe('in order');
-      expect(
-        Array.from(body!.querySelectorAll('.member .qualified')).map((node) => node.textContent),
-      ).toEqual(['qits-41', 'qits-12']);
-      expect(body?.querySelector('.seeded')?.textContent).toBe('seeded');
-      expect(sent.map((request) => request.url)).toContain('/projects/api/work/qits-430');
-      // qits-420: the running view reads the progress, beside the members.
-      expect(body?.querySelector('app-campaign-progress')).toBeTruthy();
-      expect(sent.map((request) => request.url)).toContain('/projects/api/work/qits-430/progress');
-    });
-
-    it('re-reads the progress after its own start press', async () => {
-      await open('/qits/work/qits-430');
-      const before = sent.filter((request) => request.url.endsWith('/qits-430/progress')).length;
-
-      buttonNamed('Start campaign').click();
-      await serve();
-      buttonNamed('Confirm start campaign?').click();
-      await serve();
-
-      expect(
-        sent.filter((request) => request.url.endsWith('/qits-430/progress')).length,
-      ).toBeGreaterThan(before);
-    });
-
-    it('offers Start, and not Run the next phase, Refine, Edit or Reshape, once refined', async () => {
-      await open('/qits/work/qits-430');
-
-      expect(buttonNamed('Start campaign').disabled).toBe(false);
-      // Outside the comments thread: a campaign's own thread (qits-551) carries an "Edit" button
-      // per comment, which is a different thing from editing the campaign's own fields — the fact
-      // this test pins.
-      const labels = Array.from(element().querySelectorAll('button'))
-        .filter((node) => !node.closest('.comments'))
-        .map((node) => node.textContent?.trim());
-      for (const absent of [
-        'Run the next phase',
-        'Refine',
-        'Open refinement',
-        'Edit',
-        'Reshape',
-        'Dispatch',
-      ]) {
-        expect(labels).not.toContain(absent);
-      }
-      // A campaign has a room since epic qits-770, so one is looked for — and there is none.
-      expect(sent.some((request) => request.url.endsWith('/qits-430/refinement'))).toBe(true);
-    });
-
-    /** Epic qits-770: a REPORTED campaign is refined in a room of its own, with its members. */
-    it('offers Refine on a REPORTED campaign, and opens its room through the entity door', async () => {
-      campaignRowPatch = { status: 'REPORTED' };
-      await open('/qits/work/qits-430');
-      const navigate = vi.spyOn(TestBed.inject(Router), 'navigate').mockResolvedValue(true);
-
-      expect(button('.refine').disabled).toBe(false);
-      expect(button('.refine').textContent?.trim()).toBe('Refine');
-      button('.refine').click();
-      await serve();
-
-      expect(writes()).toEqual([
-        { method: 'POST', url: '/projects/api/work/qits-430/refinement', body: null },
-      ]);
-      expect(navigate).toHaveBeenCalledWith(['/', 'qits', 'work', 'qits-430', 'refinement']);
-    });
-
-    it('offers a campaign’s standing room as Open refinement, whatever its status', async () => {
-      rooms['c1'] = { id: 4, entityId: 'c1' };
-      await open('/qits/work/qits-430');
-
-      expect(button('.refine').disabled).toBe(false);
-      expect(button('.refine').textContent?.trim()).toBe('Open refinement');
-    });
-
-    it('starts only on the confirm press, which names what it authorises', async () => {
-      await open('/qits/work/qits-430');
-
-      buttonNamed('Start campaign').click();
-      await serve();
-      expect(writes()).toEqual([]);
-      expect(element().querySelector('.start-caption')?.textContent).toBe(
-        'Start — this authorises every dispatch in this campaign that no approval gates',
-      );
-
-      buttonNamed('Confirm start campaign?').click();
-      await serve();
-      expect(writes()).toEqual([
-        { method: 'POST', url: '/projects/api/work/qits-430/dispatch', body: { mode: 'FLOW' } },
-      ]);
-      expect(element().querySelector('.start-caption')).toBeNull();
-      expect(element().querySelector('.dispatched')).toBeNull();
-    });
-
-    it('reads Re-check members once a start is live', async () => {
-      dispatchStates['c1'] = stateOf({
-        entityId: 'c1',
-        archetype: 'CAMPAIGN',
-        status: 'REFINED',
-        nextPhase: 'recheck',
-      });
-      await open('/qits/work/qits-430');
-
-      expect(buttonNamed('Re-check members')).toBeTruthy();
-    });
-
-    it('is not startable where the state says so', async () => {
-      dispatchStates['c1'] = stateOf({
-        entityId: 'c1',
-        archetype: 'CAMPAIGN',
-        status: 'REPORTED',
-        nextPhase: 'start',
-        dispatchable: false,
-      });
-      await open('/qits/work/qits-430');
-
-      expect(buttonNamed('Start campaign').disabled).toBe(true);
-    });
-
-    /** qits-887: READY_FOR_DEV is a start's status too, as the dispatch state answers it. */
-    it('offers Start on a READY_FOR_DEV campaign the state calls startable', async () => {
-      campaignRowPatch = { status: 'READY_FOR_DEV' };
-      dispatchStates['c1'] = stateOf({
-        entityId: 'c1',
-        archetype: 'CAMPAIGN',
-        status: 'READY_FOR_DEV',
-        nextPhase: 'start',
-      });
-      await open('/qits/work/qits-430');
-
-      expect(buttonNamed('Start campaign').disabled).toBe(false);
-      expect(element().querySelector('.flow-note')?.textContent).toContain(
-        'A press starts the campaign.',
-      );
-    });
-
-    /** qits-650: a campaign starts at every derived status but DONE and DROPPED. */
-    it('offers Start on an IMPLEMENTED campaign the state calls startable', async () => {
-      campaignRowPatch = { status: 'IMPLEMENTED' };
-      dispatchStates['c1'] = stateOf({
-        entityId: 'c1',
-        archetype: 'CAMPAIGN',
-        status: 'IMPLEMENTED',
-        nextPhase: 'start',
-      });
-      await open('/qits/work/qits-430');
-
-      expect(buttonNamed('Start campaign').disabled).toBe(false);
-      expect(element().querySelector('.flow-note')?.textContent).toContain(
-        'A press starts the campaign.',
-      );
-    });
-
-    it('says a campaign runs until it is done or dropped where a DROPPED one cannot start', async () => {
-      campaignRowPatch = { status: 'DROPPED' };
-      dispatchStates['c1'] = stateOf({
-        entityId: 'c1',
-        archetype: 'CAMPAIGN',
-        status: 'DROPPED',
-        nextPhase: null,
-        dispatchable: false,
-      });
-      await open('/qits/work/qits-430');
-
-      expect(buttonNamed('Start campaign').disabled).toBe(true);
-      expect(element().querySelector('.flow-note')?.textContent).toBe(
-        'Nothing to start at dropped — a campaign runs until it is done or dropped.',
-      );
-    });
-
-    it('names no starting statuses where a live campaign still cannot start', async () => {
-      dispatchStates['c1'] = stateOf({
-        entityId: 'c1',
-        archetype: 'CAMPAIGN',
-        status: 'REPORTED',
-        nextPhase: 'start',
-        dispatchable: false,
-      });
-      await open('/qits/work/qits-430');
-
-      const note = element().querySelector('.flow-note')?.textContent ?? '';
-      expect(note).toBe('Nothing to start at reported.');
-      expect(note).not.toContain('refined or ready for dev');
-    });
-
-    it('says to unblock a blocked campaign before starting it', async () => {
-      dispatchStates['c1'] = stateOf({
-        entityId: 'c1',
-        archetype: 'CAMPAIGN',
-        status: 'REFINED',
-        nextPhase: 'start',
-        blocked: true,
-        dispatchable: false,
-      });
-      await open('/qits/work/qits-430');
-
-      expect(element().querySelector('.flow-note')?.textContent).toBe(
-        'Blocked — unblock it before starting.',
-      );
-    });
-
-    it('shows a non-admin’s 403 the way the dispatch press does', async () => {
-      failures['POST /projects/api/work/qits-430/dispatch'] = {
-        status: 403,
-        body: { message: 'only an admin starts a campaign' },
-      };
-      await open('/qits/work/qits-430');
-
-      buttonNamed('Start campaign').click();
-      await serve();
-      buttonNamed('Confirm start campaign?').click();
-      await serve();
-
-      expect(element().querySelector('.failed')?.textContent).toContain(
-        '403 only an admin starts a campaign',
-      );
-    });
-
-    /**
-     * qits-650: the moves are the registry's, and a campaign's are Drop and Reopen alone — no
-     * forward or back, and the page says the status is derived from the members.
-     */
-    it('draws only the served Drop on a live campaign, and says its status follows its members', async () => {
-      await open('/qits/work/qits-430');
-
-      const moves = Array.from(element().querySelectorAll('.moves .move')).map((node) =>
-        node.textContent?.trim(),
-      );
-      expect(moves).toEqual(['Drop']);
-      expect(element().querySelector('.move.forward')).toBeNull();
-      expect(element().querySelector('.move.back')).toBeNull();
-      expect(element().querySelector('.derived-note')?.textContent?.trim()).toBe(
-        'Its status follows its members — by hand it is only dropped or reopened.',
-      );
-    });
-
-    it('reopens a DROPPED campaign through the campaign door, never the multi-entity transition', async () => {
-      campaignRowPatch = { status: 'DROPPED' };
-      await open('/qits/work/qits-430');
-
-      button('.move.reopen').click();
-      await serve();
-
-      expect(writes()).toEqual([
-        {
-          method: 'POST',
-          url: '/projects/api/work/qits-430/status',
-          body: { target: 'REPORTED' },
-        },
-      ]);
     });
   });
 });

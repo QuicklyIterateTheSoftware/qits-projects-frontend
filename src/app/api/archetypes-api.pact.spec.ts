@@ -39,7 +39,7 @@ interface Matcher {
   readonly match: string;
   min?: number;
   max?: number;
-  readonly variants?: readonly { readonly index: number; readonly rules: Rules }[];
+  variants?: { readonly index: number; readonly rules: Rules }[];
 }
 /** One body path's rule, e.g. `$.transitions.IMPLEMENTED`. */
 interface Rule {
@@ -72,13 +72,12 @@ interface GeneratedPact {
 /**
  * `addGoldenInteraction` pins every `transitions.<STATUS>` array whose moves share one shape today
  * (no move there carries `gates`) to the length qits-projects happened to record: `type`, min = max
- * = that length. qits-projects is about to add a CLOSE move to several statuses of CAMPAIGN, EPIC
- * and FEATURE (qits-1757), and neither the desks, the reshape form nor the detail page rely on an
- * exact move count, so this drops the max and keeps the recorded count as a floor. A status whose
- * moves already differ in shape (REFINED everywhere; REPORTED for EPIC and TICKET, where one move
- * alone carries `gates`) is matched with `arrayContains` already, which pins no length, so it is
- * left as `addGoldenInteraction` built it. CAMPAIGN's transitions are reshaped further, see
- * `openEndedCampaign`.
+ * = that length. qits-projects is about to add a CLOSE move to several statuses of EPIC and FEATURE
+ * (qits-1757), and neither the desks, the reshape form nor the detail page rely on an exact move
+ * count, so this drops the max and keeps the recorded count as a floor. A status whose moves already
+ * differ in shape (REFINED everywhere; REPORTED for EPIC and TICKET, where one move alone carries
+ * `gates`) is matched with `arrayContains` already, which pins no length, so it is left as
+ * `addGoldenInteraction` built it.
  *
  * Runs on the pact this spec just generated, between the mock server answering (with qits-projects'
  * real recording, unchanged) and `assertPactPart` comparing or committing the result: it only
@@ -91,8 +90,9 @@ function openEndedTransitions(generated: string): void {
       continue;
     }
     const archetypesRule = interaction.response.matchingRules.body['$.archetypes'];
-    const variants = archetypesRule?.matchers.find((m) => m.match === 'arrayContains')?.variants;
-    if (!variants) {
+    const matcher = archetypesRule?.matchers.find((m) => m.match === 'arrayContains');
+    const variants = matcher?.variants;
+    if (!matcher || !variants) {
       throw new Error(
         'listWorkArchetypes no longer matches archetypes by shape: update openEndedTransitions',
       );
@@ -100,48 +100,23 @@ function openEndedTransitions(generated: string): void {
     for (const variant of variants) {
       for (const [path, rule] of Object.entries(variant.rules)) {
         if (!/^\$\.transitions\.[A-Z_]+$/.test(path)) continue;
-        const matcher = rule.matchers.find((m) => m.match === 'type');
-        if (!matcher || matcher.min == null || matcher.max == null) continue;
-        delete matcher.max;
+        const m = rule.matchers.find((mm) => mm.match === 'type');
+        if (!m || m.min == null || m.max == null) continue;
+        delete m.max;
       }
-      const archetype = interaction.response.body.content.archetypes[variant.index];
-      if (archetype?.archetype === 'CAMPAIGN') openEndedCampaign(archetype, variant.rules);
     }
+    // Never pin a CAMPAIGN entry (qits-1907): this consumer is narrowed to the archetypes it
+    // actually renders, so qits-1908 can drop the row from the registry's answer at will.
+    matcher.variants = variants.filter((variant) => {
+      const archetype = interaction.response.body.content.archetypes[variant.index];
+      return RENDERED_ARCHETYPES.has(archetype?.archetype ?? '');
+    });
   }
   writeFileSync(generated, JSON.stringify(written, null, 2));
 }
 
-/**
- * qits-650 derives a campaign's status from its members and leaves it two manual moves: DROP from
- * every status that is neither DONE nor DROPPED, REOPEN from DROPPED, and nothing from DONE. The
- * FORWARD, BACK and CLOSE moves (and their `gates`) recorded today go, so every recorded
- * `transitions.<STATUS>` of CAMPAIGN is reshaped to `type`, min 0, no max, each move's `to` and
- * `kind` matched by type, and none required to carry `gates`. The desks, the reshape form and the
- * detail page only offer the moves they find, so no count or kind is relied on.
- *
- * A provider verifies every element past the recorded length against element 0 alone, and
- * `arrayContains` would still demand a move with `gates`, so each status's recorded moves are
- * collapsed to one gate-less representative (`to`, `kind`): a move whose `gates` the provider adds
- * (today's) is an unexpected key, which a response may carry, while one without (after qits-650)
- * matches it outright. A status recorded empty (DONE) is left with no rule at all, so it is still
- * matched as exactly `[]`, which it is before and after qits-650.
- */
-function openEndedCampaign(archetype: RecordedArchetype, rules: Rules): void {
-  for (const [status, moves] of Object.entries(archetype.transitions ?? {})) {
-    if (moves.length === 0) continue;
-    const path = `$.transitions.${status}`;
-    for (const key of Object.keys(rules)) {
-      if (key === path || key.startsWith(`${path}[`) || key.startsWith(`${path}.`)) {
-        delete rules[key];
-      }
-    }
-    const representative = moves.find((move) => !move.gates) ?? moves[0];
-    moves.splice(0, moves.length, { to: representative.to, kind: representative.kind });
-    rules[path] = { combine: 'AND', matchers: [{ match: 'type', min: 0 }] };
-    rules[`${path}[*].to`] = { combine: 'AND', matchers: [{ match: 'type' }] };
-    rules[`${path}[*].kind`] = { combine: 'AND', matchers: [{ match: 'type' }] };
-  }
-}
+/** The archetypes this frontend renders at all — see the `narrow .consumes` pact rule. */
+const RENDERED_ARCHETYPES = new Set(['EPIC', 'TICKET', 'FEATURE', 'TASK']);
 
 const dir = mkdtempSync(join(tmpdir(), 'qits-projects-frontend-archetypes-api-pact-'));
 const pact = new PactV4({ consumer: CONSUMER, provider: PROVIDER, dir, logLevel: 'warn' });

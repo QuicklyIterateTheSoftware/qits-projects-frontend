@@ -6,6 +6,7 @@ import type {
   EntityStatus,
   EpicDto,
   FeatureDto,
+  NeedDto,
   TaskDto,
   TicketDto,
   TicketType,
@@ -138,6 +139,13 @@ interface EntityFields {
    * {@link EpicEntity.supersededByEpicId}, the name the epic-only field had.
    */
   readonly supersededBy?: string | null;
+  /**
+   * Other work items this entity needs (qits-1900), read-only here — see {@link NeedDto}. Optional
+   * so a row built by hand need not restate it; absent reads as none, the same as the wire's.
+   */
+  readonly needs?: readonly NeedDto[];
+  /** How many of {@link needs} are not yet met. Optional, the same reason; absent reads as 0. */
+  readonly unmetNeeds?: number;
 }
 
 /**
@@ -209,6 +217,8 @@ export function epicEntity(epic: EpicDto, features: readonly FeatureNode[] = [])
     supersededBy: epic.supersededByEpicId,
     assignee: epic.assignee ?? null,
     acceptanceCriteria: epic.acceptanceCriteria ?? [],
+    needs: epic.needs ?? [],
+    unmetNeeds: epic.unmetNeeds ?? 0,
     features,
   };
 }
@@ -241,6 +251,8 @@ export function ticketEntity(ticket: TicketDto): TicketEntity {
     acceptanceCriteria: ticket.acceptanceCriteria ?? [],
     outcome: ticket.outcome ?? null,
     supersededBy: ticket.supersededBy ?? null,
+    needs: ticket.needs ?? [],
+    unmetNeeds: ticket.unmetNeeds ?? 0,
   };
 }
 

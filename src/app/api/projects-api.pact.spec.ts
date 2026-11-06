@@ -1,5 +1,5 @@
 import { PactV4 } from '@pact-foundation/pact';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { addGoldenInteraction, type GoldenMasters } from '@qits/angular/testing';
@@ -18,8 +18,8 @@ import type { DropResolution } from './work';
  *
  * Each test makes one call through the real client against a pact mock server answering with
  * qits-projects' golden master, binding only the fields the client maps (`epicOf`, `ticketOf`,
- * `featureOf`, `taskOf`, `campaignSummaryOf` in `work.ts`). A write sends exactly the body the
- * recording sent, so the test passes the recording's values in — the client builds the body.
+ * `featureOf`, `taskOf` in `work.ts`). A write sends exactly the body the recording sent, so the
+ * test passes the recording's values in — the client builds the body.
  */
 const CONSUMER = 'qits-projects-frontend';
 const PROVIDER = 'qits-projects-service';
@@ -62,7 +62,24 @@ const LIST_PROJECT_WORK = [
   // An epic's progress: its features' and tasks' implemented markers, a task's repository.
   'entities[].implementedAt',
   'entities[].repositoryId',
-  'entities[].dependsOn',
+] as const;
+
+/**
+ * Other work items a row needs (qits-1900), open-ended — qits-1908 removes the CAMPAIGN row and
+ * the dependsOn edges from the shared `workInDetail` seed, shortening these arrays; see the
+ * `pact-length-pinning-blocks-provider` memory. Read in its own state, `a ticket that needs
+ * another`, which seeds one — the `… in detail` states above carry none.
+ */
+const LIST_PROJECT_WORK_NEEDS = [
+  ...LIST_PROJECT_WORK,
+  'entities[].needs[].id',
+  'entities[].needs[].qualifiedId',
+  'entities[].needs[].title',
+  'entities[].needs[].archetype',
+  'entities[].needs[].status',
+  'entities[].needs[].currentStatus',
+  'entities[].needs[].met',
+  'entities[].unmetNeeds',
 ] as const;
 
 /** Every ticket's and epic's workspaces, keyed by id (qits-1815): what the desk's links draw. */
@@ -98,9 +115,6 @@ const GET_TICKET = [
   'acceptanceCriteria',
 ] as const;
 
-/** A campaign, whole: `CampaignsApi.get`. */
-const GET_CAMPAIGN = ROOT;
-
 /** A child, whole: `featureOf` and `taskOf`. */
 const LIST_WORK_CHILDREN = [
   'children[].id',
@@ -113,7 +127,6 @@ const LIST_WORK_CHILDREN = [
   'children[].description',
   'children[].status',
   'children[].parent',
-  'children[].dependsOn',
   'children[].repositoryId',
   'children[].implementedAt',
   'children[].implementingAt',
@@ -167,6 +180,100 @@ const dropOf = (state: string, body: Readonly<Record<string, string>>): GoldenMa
       : masters.body<T>(s, operationId),
 });
 
+/** One pact matcher spec, e.g. `{ match: 'type', min: 1, max: 1 }`. */
+interface Matcher {
+  readonly match: string;
+  min?: number;
+  max?: number;
+  variants?: { readonly index: number; readonly rules: Rules }[];
+}
+/** One body path's rule, e.g. `$.needs`. */
+interface Rule {
+  readonly combine: 'AND' | 'OR';
+  readonly matchers: Matcher[];
+}
+type Rules = Record<string, Rule>;
+interface RecordedRow {
+  readonly archetype?: string;
+}
+interface GeneratedPact {
+  readonly interactions: readonly {
+    readonly comments?: {
+      readonly references?: { readonly ['qits-call']?: { readonly operationId?: string } };
+    };
+    readonly response: {
+      readonly body: { readonly content: Record<string, RecordedRow[]> };
+      readonly matchingRules?: { readonly body?: Rules };
+    };
+  }[];
+}
+
+/**
+ * **`needs` is never length-pinned** (qits-1900): `addGoldenInteraction` pins an array to the
+ * length it happened to record whenever every element shares one shape — true of `a ticket that
+ * needs another`'s one-element `needs` arrays — and qits-1908 removes campaigns' and dependsOn's
+ * rows from the shared seed, which can empty a `needs` array a recording still shows with one.
+ * `min 0, no max` tolerates both; see the `pact-length-pinning-blocks-provider` memory.
+ *
+ * <p>Walks every rule map this pact generates — the top level, and recursively into every
+ * `arrayContains` variant's own rules (`$.entities[*]`'s, say) — since `needs` is never stated at
+ * the top level itself, only nested under one row.
+ */
+function openEndedNeeds(written: GeneratedPact): void {
+  const visit = (rules: Rules | undefined): void => {
+    if (!rules) return;
+    for (const [path, rule] of Object.entries(rules)) {
+      if (path === '$.needs') {
+        const matcher = rule.matchers.find((m) => m.match === 'type');
+        if (matcher && matcher.min != null && matcher.max != null) {
+          matcher.min = 0;
+          delete matcher.max;
+        }
+      }
+      for (const matcher of rule.matchers) {
+        for (const variant of matcher.variants ?? []) visit(variant.rules);
+      }
+    }
+  };
+  for (const interaction of written.interactions) visit(interaction.response.matchingRules?.body);
+}
+
+/**
+ * **Never requires a CAMPAIGN-shaped row** (qits-1907/qits-1908): `listProjectWork`'s `entities[]`
+ * and `listWorkChildren`'s `children[]` are matched with `arrayContains` (heterogeneous row
+ * shapes), which demands *every* listed variant appear at least once — and in `an epic in
+ * detail`, the CAMPAIGN row is today the only element with its particular shape (no `excerpt`, no
+ * `impetus`, no `parent`), so it alone satisfies that variant. Dropping the CAMPAIGN row (qits-1908)
+ * would then leave that variant unmet. This consumer never reads a CAMPAIGN row at all (qits-1907
+ * retired the campaign desk), so the variant is dropped rather than kept: see the `narrow .consumes`
+ * pact rule.
+ */
+function narrowCampaignRows(written: GeneratedPact): void {
+  const arrays: Record<string, string> = {
+    listProjectWork: 'entities',
+    listWorkChildren: 'children',
+  };
+  for (const interaction of written.interactions) {
+    const opId = interaction.comments?.references?.['qits-call']?.operationId;
+    const key = opId ? arrays[opId] : undefined;
+    if (!key) continue;
+    const rows = interaction.response.body.content[key] ?? [];
+    const rule = interaction.response.matchingRules?.body?.[`$.${key}`];
+    const matcher = rule?.matchers.find((m) => m.match === 'arrayContains');
+    if (!matcher?.variants) continue;
+    matcher.variants = matcher.variants.filter(
+      (variant) => rows[variant.index]?.archetype !== 'CAMPAIGN',
+    );
+  }
+}
+
+function postProcess(generated: string): void {
+  const written = JSON.parse(readFileSync(generated, 'utf8')) as GeneratedPact;
+  openEndedNeeds(written);
+  narrowCampaignRows(written);
+  writeFileSync(generated, JSON.stringify(written, null, 2));
+}
+
 const dir = mkdtempSync(join(tmpdir(), 'qits-projects-frontend-projects-api-pact-'));
 const pact = new PactV4({ consumer: CONSUMER, provider: PROVIDER, dir, logLevel: 'warn' });
 
@@ -196,12 +303,9 @@ const sent = (state: string, operationId: string): any =>
 describe('qits-projects-frontend → qits-projects-service pact: ProjectsApi', () => {
   afterAll(() => {
     try {
-      assertPactPart(
-        join(dir, `${CONSUMER}-${PROVIDER}.json`),
-        COMMITTED,
-        OPERATIONS,
-        'QITS_GOLDEN_UPDATE',
-      );
+      const generated = join(dir, `${CONSUMER}-${PROVIDER}.json`);
+      postProcess(generated);
+      assertPactPart(generated, COMMITTED, OPERATIONS, 'QITS_GOLDEN_UPDATE');
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -236,7 +340,6 @@ describe('qits-projects-frontend → qits-projects-service pact: ProjectsApi', (
   it.each([
     ['an epic in detail', GET_EPIC, 'EPIC'],
     ['a bug ticket in detail', GET_TICKET, 'TICKET'],
-    ['a campaign in detail', GET_CAMPAIGN, 'CAMPAIGN'],
   ])('show-work-item: %s, read whole', (state, consumes, archetype) =>
     given(state, 'getWork', 'show-work-item', consumes).executeTest(async (server) => {
       const item = await apiAt(server.url, ProjectsApi).workItem(
@@ -246,6 +349,25 @@ describe('qits-projects-frontend → qits-projects-service pact: ProjectsApi', (
       expect(item.description).toBeTruthy();
     }),
   );
+
+  /**
+   * qits-1900: `needs[]` and `unmetNeeds`, open-ended — this consumer never pins their length, so
+   * qits-1908 (which removes the CAMPAIGN row and the dependsOn edges from the shared seed) cannot
+   * be blocked by this pact. See the `pact-length-pinning-blocks-provider` memory.
+   */
+  it('show-work-desk: a row’s needs, open-ended', () => {
+    const state = 'a ticket that needs another';
+    return given(state, 'listProjectWork', 'show-work-desk', LIST_PROJECT_WORK_NEEDS).executeTest(
+      async (server) => {
+        const rows = await apiAt(server.url, ProjectsApi).work(
+          param(state, 'listProjectWork', 'projectId'),
+        );
+        const needy = rows.find((row) => (row.needs?.length ?? 0) > 0);
+        expect(needy?.needs?.[0].met).toBe(false);
+        expect(needy?.unmetNeeds).toBeGreaterThan(0);
+      },
+    );
+  });
 
   it('open-ticket: files a ticket through POST /work', () => {
     const state = 'a project with no work';

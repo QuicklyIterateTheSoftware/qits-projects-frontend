@@ -12,7 +12,7 @@ import { RouterTestingHarness } from '@angular/router/testing';
 import { routes } from '../app.routes';
 import type { EpicDto, TicketDto } from '../api/dto';
 import { EVENT_SOURCE_FACTORY } from '../api/event-source';
-import { workAnswer, workOfCampaign, type WorkFixture } from '../../testing/work-fixtures';
+import { workAnswer, type WorkFixture } from '../../testing/work-fixtures';
 
 const AT = '2026-09-07T09:00:00Z';
 const WORDS = ['REPORTED', 'REFINED', 'IMPLEMENTED', 'VERIFIED', 'DONE', 'DROPPED'];
@@ -33,15 +33,6 @@ const REGISTRY = {
     {
       archetype: 'TICKET',
       depth: 0,
-      mayBeRoot: true,
-      required: [],
-      requiredOnTransition: [],
-      permitted: [],
-      legalStatuses: WORDS,
-    },
-    {
-      archetype: 'CAMPAIGN',
-      depth: -1,
       mayBeRoot: true,
       required: [],
       requiredOnTransition: [],
@@ -105,18 +96,6 @@ const TICKET: TicketDto = {
   workspaces: [],
 };
 
-const CAMPAIGN = {
-  id: 'c1',
-  number: 430,
-  qualifiedId: 'qits-430',
-  projectId: 'p1',
-  title: 'Rename qits-x',
-  status: 'REFINED',
-  started: false,
-  active: false,
-  members: 2,
-};
-
 const CLOSED: TicketDto = {
   ...TICKET,
   id: 't2',
@@ -127,7 +106,7 @@ const CLOSED: TicketDto = {
   status: 'DONE',
 };
 
-const FIXTURE: WorkFixture = { epics: [EPIC], tickets: [TICKET, CLOSED], campaigns: [CAMPAIGN] };
+const FIXTURE: WorkFixture = { epics: [EPIC], tickets: [TICKET, CLOSED] };
 
 /**
  * **The one desk** (qits-397, ticket 521a0bda): every archetype on one page, with the archetype as a
@@ -177,32 +156,12 @@ describe('WorkPage', () => {
         entries: [{ project: { id: 'p1', name: 'Qits', slug: 'qits', description: null } }],
       };
     }
-    if (url === '/projects/api/work' && request.request.method === 'POST') {
-      return { ...workOfCampaign(CAMPAIGN), status: 'REPORTED' };
-    }
     if (url === '/projects/api/work/archetypes') return REGISTRY;
     const work = workAnswer('p1', FIXTURE, url, request.request.method);
     if (work) return work;
-    // Whatever the campaign's own page reads once the create has gone there.
-    if (url === '/projects/api/work/qits-430/members') return { members: [] };
-    if (url === '/projects/api/work/qits-430/dispatch') {
-      return {
-        state: {
-          entityId: 'c1',
-          archetype: 'CAMPAIGN',
-          status: 'REFINED',
-          nextPhase: 'start',
-          blocked: false,
-          dispatchable: true,
-          mode: null,
-        },
-      };
-    }
-    // A campaign has a refinement room since epic qits-770, so its page looks for one: none yet.
-    if (url === '/projects/api/work/qits-430/refinement') return { refinement: null };
     if (url === '/projects/api/projects/p1/repositories') return { entries: [], wrapper: null };
     if (/\/audit$/.test(url)) return { entries: [] };
-    // The campaign's own thread (qits-551): the detail page renders it for every archetype.
+    // Any entity's own thread (qits-551): the detail page renders it for every archetype.
     if (/\/comments$/.test(url)) return { entries: [] };
     throw new Error(`unanswered ${url}`);
   }
@@ -247,13 +206,12 @@ describe('WorkPage', () => {
     await open('/qits/work');
 
     expect(urls).toContain('/projects/api/projects/p1/work');
-    // qits-1815: the desk is the listing, the project's workspaces in one read, and a campaign's
-    // progress — never a read per epic or ticket.
+    // qits-1815: the desk is the listing and the project's workspaces in one read — never a read
+    // per epic or ticket.
     expect(urls).toContain('/projects/api/projects/p1/work/workspaces');
-    expect(urls).toContain('/projects/api/work/qits-430/progress');
     expect(urls.filter((url) => /\/work\/qits-(12|41|7)\b/.test(url))).toEqual([]);
     expect(sections()).toEqual(['REPORTED', 'REFINED', 'DONE']);
-    expect(titles()).toEqual(['One desk', 'The cancelled badge', 'Rename qits-x']);
+    expect(titles()).toEqual(['One desk', 'The cancelled badge']);
     // The endings are the record: collapsed, as rows rather than cards.
     expect(
       element().querySelector('details[data-status="DONE"] app-entity-summary-row'),
@@ -269,7 +227,6 @@ describe('WorkPage', () => {
     expect(links.map((link) => link.getAttribute('href'))).toEqual([
       '/qits/work/qits-12',
       '/qits/work/qits-41',
-      '/qits/work/qits-430',
       '/qits/work/qits-7',
     ]);
   });
@@ -280,63 +237,15 @@ describe('WorkPage', () => {
     expect(urls).toContain('/projects/api/projects/p1/work/workspaces');
     expect(urls).not.toContain('/projects/api/work/qits-41');
     expect(urls).not.toContain('/projects/api/work/qits-12');
-    expect(urls).not.toContain('/projects/api/work/qits-430/progress');
     expect(titles()).toEqual(['The cancelled badge']);
     expect(element().querySelector('app-new-ticket-form')).not.toBeNull();
-    expect(element().querySelector('app-new-campaign-form')).toBeNull();
-  });
-
-  /** qits-419: a campaign is a root of work on the one desk, and `?archetype=campaign` reads only it. */
-  it('lists campaigns on the desk, and filters to them reading only campaigns', async () => {
-    await open('/qits/work?archetype=campaign');
-
-    expect(urls).toContain('/projects/api/work/qits-430/progress');
-    expect(urls).not.toContain('/projects/api/work/qits-12');
-    expect(urls).not.toContain('/projects/api/work/qits-41');
-    expect(titles()).toEqual(['Rename qits-x']);
-    const card = element().querySelector('app-entity-card')!;
-    expect(card.querySelector('.archetype')?.textContent).toContain('campaign');
-    expect(card.querySelector('.progress')?.textContent).toBe('2 members · not started');
-    // No reshape for a campaign: the multi-entity transition refuses one.
-    expect(element().textContent).not.toContain('Reshape');
-    expect(element().querySelector('app-new-campaign-form')).not.toBeNull();
-    expect(element().querySelector('app-new-ticket-form')).toBeNull();
-  });
-
-  it('opens a new campaign from the desk and goes to its page', async () => {
-    await open('/qits/work');
-
-    const toggle = Array.from(element().querySelectorAll('button')).find(
-      (node) => node.textContent?.trim() === 'New campaign',
-    )!;
-    toggle.click();
-    harness.detectChanges();
-    const title = element().querySelector<HTMLInputElement>('.campaign-title')!;
-    title.value = 'Rename qits-x';
-    title.dispatchEvent(new Event('input'));
-    harness.detectChanges();
-    element().querySelector<HTMLButtonElement>('.create-campaign button')!.click();
-    await serve();
-
-    expect(posts).toEqual([
-      {
-        url: '/projects/api/work',
-        body: { archetype: 'CAMPAIGN', project: 'p1', title: 'Rename qits-x' },
-      },
-    ]);
-    expect(TestBed.inject(Location).path()).toBe('/qits/work/qits-430');
   });
 
   it('offers the filter’s options from the registry’s root archetypes, even once features and tasks carry a status too (qits-763)', async () => {
     await open('/qits/work');
 
     const options = Array.from(element().querySelectorAll<HTMLAnchorElement>('.filter .option'));
-    expect(options.map((option) => option.textContent?.trim())).toEqual([
-      'All',
-      'epics',
-      'tickets',
-      'campaigns',
-    ]);
+    expect(options.map((option) => option.textContent?.trim())).toEqual(['All', 'epics', 'tickets']);
     expect(options[0].getAttribute('aria-current')).toBe('page');
     expect(options[2].getAttribute('href')).toBe('/qits/work?archetype=ticket');
   });

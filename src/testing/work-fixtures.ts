@@ -1,11 +1,4 @@
-import type {
-  CampaignProgressDto,
-  CampaignSummaryDto,
-  EpicDto,
-  FeatureDto,
-  TaskDto,
-  TicketDto,
-} from '../app/api/dto';
+import type { EpicDto, FeatureDto, TaskDto, TicketDto } from '../app/api/dto';
 import { workRef, type WorkEntityDto } from '../app/api/work';
 
 /**
@@ -40,7 +33,8 @@ const BASE: WorkEntityDto = {
   repositoryId: null,
   implementedAt: null,
   implementingAt: null,
-  dependsOn: null,
+  needs: [],
+  unmetNeeds: 0,
   parent: null,
   position: null,
   createdAt: '',
@@ -63,6 +57,8 @@ export function workOfEpic(epic: Partial<EpicDto>): WorkEntityDto {
     supersededBy: epic.supersededByEpicId ?? null,
     ...(epic.outcome !== undefined ? { outcome: epic.outcome } : {}),
     acceptanceCriteria: epic.acceptanceCriteria ?? null,
+    needs: epic.needs ?? [],
+    unmetNeeds: epic.unmetNeeds ?? 0,
   };
 }
 
@@ -84,6 +80,8 @@ export function workOfTicket(ticket: Partial<TicketDto>): WorkEntityDto {
     supersededBy: ticket.supersededBy ?? null,
     ...(ticket.outcome !== undefined ? { outcome: ticket.outcome } : {}),
     acceptanceCriteria: ticket.acceptanceCriteria ?? null,
+    needs: ticket.needs ?? [],
+    unmetNeeds: ticket.unmetNeeds ?? 0,
   };
 }
 
@@ -96,7 +94,8 @@ export function workOfFeature(feature: Partial<FeatureDto>, position = 0): WorkE
     status: feature.status ?? null,
     parent: feature.epicId ?? null,
     position,
-    dependsOn: feature.dependsOnFeatureId ?? null,
+    needs: feature.needs ?? [],
+    unmetNeeds: feature.unmetNeeds ?? 0,
     implementedAt: feature.implementedOn ?? null,
     implementingAt: feature.implementingOn ?? null,
   };
@@ -112,70 +111,10 @@ export function workOfTask(task: Partial<TaskDto>, position = 0): WorkEntityDto 
     parent: task.featureId ?? null,
     position,
     repositoryId: task.repositoryId ?? null,
-    dependsOn: task.dependsOnTaskId ?? null,
+    needs: task.needs ?? [],
+    unmetNeeds: task.unmetNeeds ?? 0,
     implementedAt: task.implementedAt ?? null,
     implementingAt: task.implementingAt ?? null,
-  };
-}
-
-/** A campaign's row in the listing. */
-export function workOfCampaign(campaign: Partial<CampaignSummaryDto>): WorkEntityDto {
-  return {
-    ...BASE,
-    ...common(campaign as Partial<EpicDto>),
-    archetype: 'CAMPAIGN',
-    status: campaign.status ?? null,
-    blocked: campaign.blocked ?? false,
-    blockSource: campaign.blockSource,
-    blockReason: campaign.blockReason,
-    blockedBy: campaign.blockedBy,
-  };
-}
-
-/** The progress a campaign summary's `started`/`active`/`members` are read off. */
-export function progressOfSummary(campaign: Partial<CampaignSummaryDto>): CampaignProgressDto {
-  const started = campaign.started ?? false;
-  return {
-    campaign: {
-      id: campaign.id ?? '',
-      qualifiedId: campaign.qualifiedId ?? null,
-      title: campaign.title ?? '',
-      status: campaign.status ?? 'REPORTED',
-      blocked: campaign.blocked ?? false,
-      blockSource: campaign.blockSource,
-      blockReason: campaign.blockReason,
-      blockedBy: campaign.blockedBy,
-      start: started
-        ? {
-            firstStartedAt: null,
-            startedAt: null,
-            startedBy: null,
-            active: campaign.active ?? false,
-          }
-        : null,
-    },
-    evaluator: { connected: true, lastSweepCompletedAt: null, stalled: false },
-    members: Array.from({ length: campaign.members ?? 0 }, (_, position) => ({
-      membershipId: `${campaign.id}-m${position}`,
-      position,
-      entity: {
-        id: `${campaign.id}-e${position}`,
-        archetype: 'TICKET',
-        qualifiedId: null,
-        title: '',
-        status: 'REPORTED',
-        blocked: false,
-      },
-      state: 'WAITING',
-      waitsFor: [],
-      joinedRunning: false,
-      groups: [],
-      dispatchedAt: null,
-      dispatch: { workspaceId: null, branch: null, agentLaunch: null },
-      dispatchRefusal: null,
-      dispatchRefusedAt: null,
-      dispatchError: null,
-    })),
   };
 }
 
@@ -192,14 +131,13 @@ export interface EpicFixture {
 export interface WorkFixture {
   readonly epics?: readonly (EpicFixture | Partial<EpicDto>)[];
   readonly tickets?: readonly Partial<TicketDto>[];
-  readonly campaigns?: readonly Partial<CampaignSummaryDto>[];
 }
 
 /**
  * The answer to a `/work` read of the fixture project, or undefined for a URL that is not one —
  * the listing (`GET /projects/{projectId}/work`), every root's workspaces
- * (`GET /projects/{projectId}/work/workspaces`, qits-1815), one entity, its workspaces, its children,
- * and a campaign's progress. A spec's own router asks this first and answers the rest itself.
+ * (`GET /projects/{projectId}/work/workspaces`, qits-1815), one entity, its workspaces and its
+ * children. A spec's own router asks this first and answers the rest itself.
  */
 export function workAnswer(
   projectId: string,
@@ -212,7 +150,6 @@ export function workAnswer(
     'epic' in entry ? (entry as EpicFixture) : { epic: entry as Partial<EpicDto> },
   );
   const tickets = fixture.tickets ?? [];
-  const campaigns = fixture.campaigns ?? [];
   if (url === `/projects/api/projects/${projectId}/work`) {
     const rows: WorkEntityDto[] = [];
     for (const { epic, features } of epics) {
@@ -226,7 +163,6 @@ export function workAnswer(
     }
     rows.push(
       ...tickets.map((ticket) => ({ ...workOfTicket(ticket), excerpt: ticket.excerpt ?? null })),
-      ...campaigns.map(workOfCampaign),
     );
     // The listing is a summary: no description, no acceptance criteria.
     return {
@@ -250,20 +186,18 @@ export function workAnswer(
         })),
     };
   }
-  const match = /^\/projects\/api\/work\/([^/]+)(?:\/(workspaces|children|progress))?$/.exec(url);
+  const match = /^\/projects\/api\/work\/([^/]+)(?:\/(workspaces|children))?$/.exec(url);
   if (!match) return undefined;
   const ref = decodeURIComponent(match[1]);
   const is = (row: { id?: string; qualifiedId?: string | null }) =>
     workRef({ id: row.id ?? '', qualifiedId: row.qualifiedId }) === ref || row.id === ref;
   const epic = epics.find((entry) => is(entry.epic));
   const ticket = tickets.find(is);
-  const campaign = campaigns.find(is);
   const feature = epics.flatMap((entry) => entry.features ?? []).find((f) => is(f.feature));
   switch (match[2]) {
     case undefined:
       if (epic) return workOfEpic(epic.epic);
       if (ticket) return workOfTicket(ticket);
-      if (campaign) return workOfCampaign(campaign);
       return undefined;
     case 'workspaces':
       if (epic) return { workspaces: epic.epic.workspaces ?? [] };
@@ -277,8 +211,6 @@ export function workAnswer(
       }
       if (feature) return { children: (feature.tasks ?? []).map((t, at) => workOfTask(t, at)) };
       return undefined;
-    case 'progress':
-      return campaign ? { progress: progressOfSummary(campaign) } : undefined;
   }
   return undefined;
 }

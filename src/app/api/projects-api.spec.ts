@@ -524,7 +524,6 @@ function row(id: string, supersededBy: string | null): WorkEntityDto {
     supersededBy,
     repositoryId: null,
     implementedAt: null,
-    dependsOn: null,
     parent: null,
     position: null,
     createdAt: '2026-10-11T00:00:00Z',

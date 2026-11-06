@@ -269,9 +269,8 @@ describe('RefiningPage', () => {
   async function flushWork(
     epics: readonly object[] = [EPIC, OTHER],
     tickets: readonly object[] = [TICKET],
-    campaigns: readonly object[] = [],
   ): Promise<void> {
-    const fixture = { epics, tickets, campaigns } as WorkFixture;
+    const fixture = { epics, tickets } as WorkFixture;
     const isWork = (candidate: HttpRequest<unknown>) =>
       candidate.method === 'GET' && workAnswer('p1', fixture, candidate.url) !== undefined;
     for (let round = 0; round < 4; round++) {
@@ -1206,63 +1205,6 @@ describe('RefiningPage', () => {
       expect(element().querySelector('app-status-strip')).not.toBeNull();
       expect(text()).toContain('Front desk');
       expect(text()).toContain('unavailable');
-    });
-  });
-
-  /**
-   * Epic qits-770: a campaign has a room of its own, refining it with its REPORTED members — and
-   * since nothing server-side composes a room's prompt, the room's brief names them.
-   */
-  describe('a campaign’s room', () => {
-    const CAMPAIGN = {
-      id: 'c1',
-      number: 430,
-      qualifiedId: 'qits-430',
-      projectId: 'p1',
-      title: 'Rename qits-x',
-      status: 'REPORTED',
-      started: false,
-      active: false,
-      members: 2,
-    };
-    const member = (id: string, qualifiedId: string, status: string, position: number) => ({
-      membershipId: `m-${id}`,
-      position,
-      entity: { id, archetype: 'EPIC', qualifiedId, title: `Member ${qualifiedId}`, status },
-      claimedAt: null,
-      joinedRunning: false,
-      dispatchedAt: null,
-      dispatch: { workspaceId: null, branch: null, agentLaunch: null },
-      dispatchRefusal: null,
-      dispatchRefusedAt: null,
-      dispatchError: null,
-      groups: [],
-    });
-
-    it('resolves the campaign, and names its REPORTED members in the room’s brief', async () => {
-      await harness.navigateByUrl('/p1/work/qits-430/refinement');
-      await flushProjectList();
-      await flushWork([EPIC], [], [CAMPAIGN]);
-      http.expectOne('/projects/api/work/qits-430/members').flush({
-        members: [member('e1', 'qits-5', 'REPORTED', 0), member('e8', 'qits-9', 'REFINED', 1)],
-      });
-      await settle();
-      const room = workspace({
-        id: 4,
-        entityId: 'c1',
-        branch: null,
-        parent: null,
-        runtimeStatus: 'RUNNING',
-        deskStatus: 'RUNNING',
-        deskBase: '/projects/container/p1/',
-      });
-      await flushRefinements([room], 'c1');
-
-      expect(text()).toContain('Rename qits-x');
-      const brief = page()['promptContext']();
-      expect(brief).toContain('# Refine campaign qits-430: Rename qits-x');
-      expect(brief).toContain('- qits-5: Member qits-5 (epic, entity id e1)');
-      expect(brief).not.toContain('qits-9');
     });
   });
 

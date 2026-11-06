@@ -167,7 +167,8 @@ function featureDto(over: Partial<FeatureDto> = {}): FeatureDto {
     description: null,
     number: 13,
     qualifiedId: 'qits-13',
-    dependsOnFeatureId: null,
+    needs: [],
+    unmetNeeds: 0,
     implementedOn: null,
     createdAt: AT,
     updatedAt: AT,
@@ -186,7 +187,8 @@ function taskDto(over: Partial<TaskDto> = {}): TaskDto {
     description: null,
     number: 14,
     qualifiedId: 'qits-14',
-    dependsOnTaskId: null,
+    needs: [],
+    unmetNeeds: 0,
     implementedAt: null,
     createdAt: AT,
     updatedAt: AT,
@@ -582,7 +584,7 @@ describe('entity-transition-model', () => {
     const entities: readonly Entity[] = [
       epicEntity(epicDto(), [
         {
-          feature: featureDto({ implementedOn: AT, dependsOnFeatureId: 'f0' }),
+          feature: featureDto({ implementedOn: AT }),
           tasks: [taskDto()],
         },
       ]),
@@ -607,8 +609,15 @@ describe('entity-transition-model', () => {
       const [, feature, task] = subjectsOf(REGISTRY, entities);
 
       expect(feature.values['IMPLEMENTED_AT']).toBe(AT);
-      expect(feature.values['DEPENDS_ON']).toBe('f0');
       expect(task.values['IMPLEMENTED_AT']).toBeUndefined();
+    });
+
+    /** Writes to it answer 400 now (qits-1900): the subject never carries one to restate. */
+    it('never carries a value for DEPENDS_ON, which the service no longer accepts a write to', () => {
+      const [, feature, task] = subjectsOf(REGISTRY, entities);
+
+      expect(feature.values['DEPENDS_ON']).toBeUndefined();
+      expect(task.values['DEPENDS_ON']).toBeUndefined();
     });
 
     it('carries a ticket’s whole shape, and an epic’s', () => {

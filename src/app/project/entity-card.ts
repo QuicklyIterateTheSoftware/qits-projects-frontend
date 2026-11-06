@@ -8,8 +8,8 @@ import {
   statusBadge,
   tagBadges,
   ticketTypeBadge,
+  type Entity,
 } from './entities-model';
-import { campaignLine, type WorkItem } from './campaign-model';
 import { archetypeLabel, entityRoute } from './entity-nodes';
 
 /**
@@ -23,10 +23,9 @@ import { archetypeLabel, entityRoute } from './entity-nodes';
  * dispatching and refining presses live on the page, where the dispatch state can be read first.
  *
  * <p>The body is archetype-shaped and small: a ticket's impetus (the reporter's words) and its
- * description's excerpt (qits-1821), or an epic's excerpt, plus how much of its tree has landed; a
- * campaign's member count and whether it is running (its listing carries no age). The excerpt is a
- * plain-text lead the listing carries for exactly that drawing — the whole, markdown description is
- * the page's, like the feature/task tree, the thread and the dossier.
+ * description's excerpt (qits-1821), or an epic's excerpt, plus how much of its tree has landed. The
+ * excerpt is a plain-text lead the listing carries for exactly that drawing — the whole, markdown
+ * description is the page's, like the feature/task tree, the thread and the dossier.
  *
  * <p>A null `qualifiedId` draws no identifier (the service could not resolve the project row), and
  * the link then spells the bare number, which the page reads just as well.
@@ -148,7 +147,7 @@ import { archetypeLabel, entityRoute } from './entity-nodes';
   `,
 })
 export class EntityCard {
-  readonly entity = input.required<WorkItem>();
+  readonly entity = input.required<Entity>();
 
   /** The project's slug, which every address is spelled with. The desk always has it. */
   readonly projectSlug = input<string>('');
@@ -171,15 +170,9 @@ export class EntityCard {
 
   protected readonly route = computed(() => entityRoute(this.projectSlug(), this.entity()));
 
-  /**
-   * "3 of 5 implemented" for an epic with a tree, "3 members · running" for a campaign; nothing for a
-   * ticket or an empty epic.
-   */
+  /** "3 of 5 implemented" for an epic with a tree; nothing for a ticket or an empty epic. */
   protected readonly progress = computed(() => {
     const entity = this.entity();
-    if (entity.archetype === 'CAMPAIGN') {
-      return campaignLine(entity);
-    }
     if (entity.archetype !== 'EPIC') {
       return null;
     }
@@ -187,7 +180,7 @@ export class EntityCard {
     return total > 0 ? `${implemented} of ${total} implemented` : null;
   });
 
-  /** How long ago it was opened, or null where the read carries no timestamp (a campaign). */
+  /** How long ago it was opened. */
   protected readonly age = computed(() => {
     const at = this.entity().createdAt;
     return at ? relativeSince(at) : null;

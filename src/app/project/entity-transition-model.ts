@@ -444,9 +444,8 @@ function namedProperty(fragment: string, properties: readonly string[]): string 
  * that stopped at the archetypes the desks draw would make that case unreachable.
  *
  * <p><b>This is where the wire's two spellings of one idea are reconciled.</b> A feature is finished
- * by `implementedOn` and a task by `implementedAt`, and the registry calls both `IMPLEMENTED_AT`;
- * likewise `dependsOnFeatureId` and `dependsOnTaskId` are both `DEPENDS_ON`. Doing that here, once,
- * is what lets every rule above read one property name.
+ * by `implementedOn` and a task by `implementedAt`, and the registry calls both `IMPLEMENTED_AT`.
+ * Doing that here, once, is what lets every rule above read one property name.
  *
  * <p><b>Blank and null are dropped rather than stored as empty strings</b>, so `values` says what a
  * row carries and nothing else. {@link lostProperties} is a set difference over exactly that.
@@ -487,7 +486,7 @@ export function subjectsOf(
  * **One row of any archetype, as the wire answers it, as a subject** — the reshape panel's whole
  * read of a row it is about to restate (qits-1815, {@link ../api/entities-api#EntitiesApi.wholeRow}).
  * The same mapping {@link subjectsOf} makes, one row at a time; null for an archetype this client
- * cannot read (a campaign — the transition refuses one).
+ * does not reshape.
  */
 export function subjectOfRow(
   registry: ArchetypeRegistry,
@@ -543,7 +542,6 @@ function featureSubject(registry: ArchetypeRegistry, feature: FeatureDto): Trans
       DESCRIPTION: feature.description,
       STATUS: statusValue(registry, 'FEATURE', feature.status),
       IMPLEMENTED_AT: feature.implementedOn,
-      DEPENDS_ON: feature.dependsOnFeatureId,
     }),
   };
 }
@@ -564,7 +562,6 @@ function taskSubject(registry: ArchetypeRegistry, task: TaskDto): TransitionSubj
       STATUS: statusValue(registry, 'TASK', task.status),
       REPOSITORY_ID: task.repositoryId,
       IMPLEMENTED_AT: task.implementedAt,
-      DEPENDS_ON: task.dependsOnTaskId,
     }),
   };
 }

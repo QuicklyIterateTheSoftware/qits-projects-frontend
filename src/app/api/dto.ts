@@ -306,6 +306,25 @@ export type WorkTag = 'RESERVED_FOR_HUMAN';
 export const RESERVED_FOR_HUMAN: WorkTag = 'RESERVED_FOR_HUMAN';
 
 /**
+ * **One other work item this entity needs** (qits-1900) — replaces the old single `dependsOn` id,
+ * on every archetype rather than a feature's or a task's sibling alone.
+ *
+ * <p>`status` is the status the needed item must reach for the need to be met; `currentStatus` is
+ * where it stands right now. `met` is the service's own answer rather than a comparison this client
+ * makes — it is not always `currentStatus === status` (a need can be met by passing the status, not
+ * only by landing on it exactly).
+ */
+export interface NeedDto {
+  readonly id: string;
+  readonly qualifiedId: string | null;
+  readonly title: string;
+  readonly archetype: string;
+  readonly status: EntityStatus;
+  readonly currentStatus: EntityStatus | null;
+  readonly met: boolean;
+}
+
+/**
  * An epic: the backbone of a change to the platform.
  *
  * <p>The client's record, no longer a wire shape of its own: `epicOf` in `work.ts` assembles it from
@@ -386,6 +405,10 @@ export interface EpicDto {
    * {@link ../project/entities-model#criterionProblems} for the item rules.
    */
   readonly acceptanceCriteria?: readonly string[] | null;
+  /** Other work items this epic needs (qits-1900). See {@link NeedDto}. Absent reads as none. */
+  readonly needs?: readonly NeedDto[];
+  /** How many of {@link needs} are not yet met. Absent reads as 0. */
+  readonly unmetNeeds?: number;
   /**
    * Who is on it — {@link TicketDto.assignee}, rule for rule: free text, null when nobody has said.
    * Optional because an epic carries it only from qits-887 on, where the service writes the
@@ -399,7 +422,7 @@ export interface EpicDto {
 }
 
 /**
- * A feature under an epic. `dependsOnFeatureId` names a sibling that has to land first.
+ * A feature under an epic.
  *
  * <p><b>Completion is `implementedOn` here and `implementedAt` on a task.</b> That is what the wire
  * says, so it is what this file says. Renaming one on the way in would leave every reader of this
@@ -431,7 +454,10 @@ export interface FeatureDto {
   readonly number: number;
   /** `<projectKey>-<number>`, or null. See {@link EpicDto.qualifiedId}, including why null draws nothing. */
   readonly qualifiedId: string | null;
-  readonly dependsOnFeatureId: string | null;
+  /** Other work items this feature needs (qits-1900). See {@link NeedDto}. */
+  readonly needs: readonly NeedDto[];
+  /** How many of {@link needs} are not yet met. */
+  readonly unmetNeeds: number;
   /**
    * The lifecycle word, or null on a server that has not grown one for FEATURE yet (qits-763).
    * Optional for the same reason, so an older response simply omits it. See the class note.
@@ -479,7 +505,10 @@ export interface TaskDto {
   readonly number: number;
   /** `<projectKey>-<number>`, or null. See {@link EpicDto.qualifiedId}. */
   readonly qualifiedId: string | null;
-  readonly dependsOnTaskId: string | null;
+  /** Other work items this task needs (qits-1900). See {@link NeedDto}. */
+  readonly needs: readonly NeedDto[];
+  /** How many of {@link needs} are not yet met. */
+  readonly unmetNeeds: number;
   /** The lifecycle word, or null — {@link FeatureDto.status}, rule for rule. */
   readonly status?: EntityStatus | null;
   /** ISO-8601 instant, or null while the task is open. The feature's twin is `implementedOn`. */
@@ -657,6 +686,10 @@ export interface TicketDto {
   readonly createdBy: string | null;
   /** {@link EpicDto.acceptanceCriteria}, rule for rule. */
   readonly acceptanceCriteria?: readonly string[] | null;
+  /** {@link EpicDto.needs}, rule for rule. */
+  readonly needs?: readonly NeedDto[];
+  /** {@link EpicDto.unmetNeeds}, rule for rule. */
+  readonly unmetNeeds?: number;
   /**
    * Why the ticket exists, in the reporter's own words — one sentence, almost always: "{some error}
    * occurs {in some context}", or "{an existing part} should be {something to introduce or
@@ -827,14 +860,13 @@ export interface EntityDispatchResponse {
 }
 
 /**
- * **What the dispatching press answers, for every archetype** — discriminated by key, not by a tag.
+ * **What the dispatching press answers** — `{dispatch}`: where the agent went.
  *
- * <p>On an epic or a ticket it is `{dispatch}`: where the agent went. On a campaign the press is the
- * campaign's *start* (qits-417), and it answers `{progress}` — the same wrapper
- * `GET /work/{q}/progress` answers — because a start dispatches nothing itself; it authorises
- * the members to run. `'progress' in answer` is the narrowing.
+ * <p>A type alias rather than `EntityDispatchResponse` used directly, kept for the callers that
+ * narrow on it: it used to be a union with the campaign start's `{progress}` answer, retired with
+ * the campaign desk (qits-1907).
  */
-export type EntityDispatchAnswer = EntityDispatchResponse | CampaignProgressResponse;
+export type EntityDispatchAnswer = EntityDispatchResponse;
 
 /**
  * What a press *would* do, read before anybody presses — `GET /work/{q}/dispatch`.
@@ -1817,304 +1849,3 @@ export interface ReleaseArtifactsResponse {
   readonly detail: string | null;
 }
 
-// ---- campaigns (qits-413 … qits-418) ------------------------------------------------------------
-
-/**
- * **A campaign as a desk row** — assembled by the client (`campaignSummaryOf` in `work.ts`) from the
- * campaign's row in `GET /projects/{project}/work` and its `GET /work/{q}/progress`: the retired
- * `GET /projects/{id}/campaigns` summary, field for field.
- *
- * <p>A campaign is a root of work on the one desk, like an epic or a ticket, but it gathers other
- * entities rather than holding a tree of its own. A desk card draws what is here and the detail page
- * reads {@link CampaignDto} for the rest.
- */
-export interface CampaignSummaryDto {
-  readonly id: string;
-  readonly number: number;
-  readonly qualifiedId: string | null;
-  readonly projectId: string;
-  readonly title: string;
-  readonly status: EntityStatus;
-  /** Whether the phase behind the current status cannot proceed — {@link TicketDto.blocked}, rule for rule. */
-  readonly blocked?: boolean;
-  /** {@link TicketDto.blockSource}, rule for rule — present only when {@link blocked} is true. */
-  readonly blockSource?: BlockSource;
-  /** {@link TicketDto.blockReason}, rule for rule. */
-  readonly blockReason?: string | null;
-  /** {@link TicketDto.blockedBy}, rule for rule. */
-  readonly blockedBy?: string | null;
-  /** {@link TicketDto.tags}, rule for rule. */
-  readonly tags?: readonly string[];
-  /** Whether it has ever been started. */
-  readonly started: boolean;
-  /** Whether its start is live now — leaving REFINED and READY_FOR_DEV both pauses it. */
-  readonly active: boolean;
-  /** How many members it gathers. */
-  readonly members: number;
-  /** Why it was dropped (qits-248); see {@link WorkOutcome}. Absent on an older service. */
-  readonly outcome?: WorkOutcome | null;
-  /**
-   * The item that closed this one — a duplicate's original, the item that resolved it, its
-   * successor (qits-248: on every archetype, where it was an epic's alone). Absent on an older
-   * service, which reads the same as null.
-   */
-  readonly supersededBy?: string | null;
-}
-
-/** A campaign's start; null on a campaign never started. */
-export interface CampaignStartDto {
-  readonly firstStartedAt: string | null;
-  readonly startedAt: string | null;
-  readonly startedBy: string | null;
-  readonly active: boolean;
-}
-
-/** The entity one membership gathers, as a member row draws it. */
-export interface CampaignMemberEntityDto {
-  readonly id: string;
-  readonly archetype: string;
-  readonly qualifiedId: string | null;
-  readonly title: string;
-  readonly status: EntityStatus | null;
-  readonly blocked: boolean;
-  /** {@link TicketDto.blockSource}, rule for rule — present only when {@link blocked} is true. */
-  readonly blockSource?: BlockSource;
-  /** {@link TicketDto.blockReason}, rule for rule. */
-  readonly blockReason?: string | null;
-  /** {@link TicketDto.blockedBy}, rule for rule. */
-  readonly blockedBy?: string | null;
-  /** {@link TicketDto.tags}, rule for rule. */
-  readonly tags?: readonly string[];
-}
-
-/** Where the campaign's dispatch of a member landed; every field null until it has. */
-export interface CampaignDispatchDto {
-  readonly workspaceId: string | null;
-  readonly branch: string | null;
-  readonly agentLaunch: string | null;
-}
-
-/** The four catalogue kinds a criterion can be. */
-export type CriterionKind = 'ENTITY_STATUS' | 'DEPLOYMENT_ACTIVE' | 'SCM_RELEASE' | 'APPROVAL';
-
-/** Another member reaches `status`. */
-export interface EntityStatusPredicate {
-  readonly entityId: string;
-  readonly status: EntityStatus;
-}
-
-/** `applicationName` goes live — in `environmentName` and at least `minimumVersion`, when set. */
-export interface DeploymentActivePredicate {
-  readonly applicationName: string;
-  readonly environmentName: string | null;
-  readonly minimumVersion: string | null;
-}
-
-/** `repositoryName` releases — in `projectId` and at least `minimumVersion`, when set. */
-export interface ScmReleasePredicate {
-  readonly repositoryName: string;
-  readonly projectId: string | null;
-  readonly minimumVersion: string | null;
-}
-
-/** A person's yes. It matches no event, so it carries nothing. */
-export type ApprovalPredicate = Readonly<Record<string, never>>;
-
-/**
- * **One criterion as the condition door states it** — the four predicate shapes, discriminated on
- * `kind`. The service writes every key of a shape, optional ones as `null`, and refuses a key the
- * shape does not have; the SPA's forms produce exactly these.
- */
-export type CriterionSpec =
-  | { readonly kind: 'ENTITY_STATUS'; readonly predicate: EntityStatusPredicate }
-  | { readonly kind: 'DEPLOYMENT_ACTIVE'; readonly predicate: DeploymentActivePredicate }
-  | { readonly kind: 'SCM_RELEASE'; readonly predicate: ScmReleasePredicate }
-  | { readonly kind: 'APPROVAL'; readonly predicate: ApprovalPredicate };
-
-/** What latched a criterion: an event, or `STATE_AT_START` with no event id. */
-export interface CriterionEvidenceDto {
-  readonly eventId: string | null;
-  readonly signature: string;
-  readonly summary: string;
-}
-
-/** Who approved an APPROVAL criterion, and what they said. */
-export interface CriterionApprovalDto {
-  readonly approvedBy: string | null;
-  readonly note: string | null;
-}
-
-/** One AND'd criterion: its kind, its predicate, whether it is the seeded one, and its latch. */
-export type CriterionDto = CriterionSpec & {
-  readonly id: string;
-  readonly seeded: boolean;
-  readonly satisfiedAt: string | null;
-  readonly evidence: CriterionEvidenceDto | null;
-  readonly approval: CriterionApprovalDto | null;
-};
-
-/** One OR'd group of a condition. */
-export interface CriterionGroupDto {
-  readonly id: string;
-  readonly criteria: readonly CriterionDto[];
-}
-
-/** One membership: the entity it gathers, its run record and its condition. `position` is 0-based. */
-export interface CampaignMemberDto {
-  readonly membershipId: string;
-  readonly position: number;
-  readonly entity: CampaignMemberEntityDto;
-  /** Set once the campaign has claimed the member — dispatched it, or joined it running. */
-  readonly claimedAt: string | null;
-  readonly joinedRunning: boolean;
-  readonly dispatchedAt: string | null;
-  readonly dispatch: CampaignDispatchDto;
-  readonly dispatchRefusal: string | null;
-  readonly dispatchRefusedAt: string | null;
-  readonly dispatchError: string | null;
-  readonly groups: readonly CriterionGroupDto[];
-  /**
-   * Whether this member sets the campaign's derived status (qits-650): it is not dropped, and its
-   * status, mapped onto the campaign walk, is the campaign's own. Optional — a service older than
-   * qits-650 does not send it, and absent reads as "say nothing". Hand-added; the pacts do not
-   * consume it yet.
-   */
-  readonly holdsStatus?: boolean;
-}
-
-/** A campaign with its start and its members, ordered by position. */
-export interface CampaignDto {
-  readonly id: string;
-  readonly number: number;
-  readonly qualifiedId: string | null;
-  readonly projectId: string;
-  readonly slug: string;
-  readonly title: string;
-  readonly description: string | null;
-  readonly status: EntityStatus;
-  /** Whether the phase behind the current status cannot proceed — {@link TicketDto.blocked}, rule for rule. */
-  readonly blocked?: boolean;
-  /** {@link TicketDto.blockSource}, rule for rule — present only when {@link blocked} is true. */
-  readonly blockSource?: BlockSource;
-  /** {@link TicketDto.blockReason}, rule for rule. */
-  readonly blockReason?: string | null;
-  /** {@link TicketDto.blockedBy}, rule for rule. */
-  readonly blockedBy?: string | null;
-  readonly start: CampaignStartDto | null;
-  readonly members: readonly CampaignMemberDto[];
-}
-
-export interface CampaignMemberResponse {
-  readonly member: CampaignMemberDto;
-}
-
-/** One criterion of a `PUT …/condition` body: `id` restates an existing one and keeps its latch. */
-export type ConditionCriterion = CriterionSpec & { readonly id?: string };
-
-/** One OR'd group of a `PUT …/condition` body. The service refuses an empty one. */
-export interface ConditionGroup {
-  readonly criteria: readonly ConditionCriterion[];
-}
-
-/**
- * The eight words a member's progress is, derived by the service in this order, the first match
- * winning: DROPPED, DONE, DISPATCH_FAILED, JOINED_RUNNING, RUNNING, REFUSED, READY, WAITING.
- */
-export type CampaignMemberState =
-  | 'DROPPED'
-  | 'DONE'
-  | 'DISPATCH_FAILED'
-  | 'JOINED_RUNNING'
-  | 'RUNNING'
-  | 'REFUSED'
-  | 'READY'
-  | 'WAITING';
-
-/** The campaign a progress read is of. */
-export interface CampaignProgressCampaignDto {
-  readonly id: string;
-  readonly qualifiedId: string | null;
-  readonly title: string;
-  readonly status: EntityStatus;
-  /** Whether the phase behind the current status cannot proceed — {@link TicketDto.blocked}, rule for rule. */
-  readonly blocked?: boolean;
-  /** {@link TicketDto.blockSource}, rule for rule — present only when {@link blocked} is true. */
-  readonly blockSource?: BlockSource;
-  /** {@link TicketDto.blockReason}, rule for rule. */
-  readonly blockReason?: string | null;
-  /** {@link TicketDto.blockedBy}, rule for rule. */
-  readonly blockedBy?: string | null;
-  readonly start: CampaignStartDto | null;
-  /**
-   * The qualified ids of the members that set the campaign's derived status (qits-650) — the
-   * non-dropped members whose status, mapped onto the campaign walk, equals the campaign's. Empty for
-   * a DONE or DROPPED campaign and for one with no members. Optional: a service older than qits-650
-   * does not send it, and absent reads as "say nothing". Hand-added; the pacts do not consume it yet.
-   */
-  readonly heldBy?: readonly string[];
-}
-
-/**
- * The criteria evaluator's health: `connected` is the event stream's live connection,
- * `lastSweepCompletedAt` and `stalled` the catch-up sweep's census.
- */
-export interface CampaignEvaluatorDto {
-  readonly connected: boolean;
-  readonly lastSweepCompletedAt: string | null;
-  readonly stalled: boolean;
-}
-
-/**
- * One criterion judged. The progress read carries **no predicate** — `wouldBeSatisfiedBy` is the
- * service's own sentence for it — and `satisfiable: false` (ENTITY_STATUS alone) comes with `reason`.
- */
-export interface CampaignCriterionProgressDto {
-  readonly id: string;
-  readonly kind: CriterionKind;
-  readonly seeded: boolean;
-  readonly satisfied: boolean;
-  readonly wouldBeSatisfiedBy: string;
-  readonly satisfiable: boolean;
-  readonly reason: string | null;
-  readonly evidence: CriterionEvidenceDto | null;
-  readonly approval: CriterionApprovalDto | null;
-  readonly satisfiedAt: string | null;
-}
-
-/** One OR'd group, and whether every one of its criteria is latched. */
-export interface CampaignGroupProgressDto {
-  readonly id: string;
-  readonly satisfied: boolean;
-  readonly criteria: readonly CampaignCriterionProgressDto[];
-}
-
-/** One member's progress: its state, what it waits for (entity ids), its condition judged. */
-export interface CampaignMemberProgressDto {
-  readonly membershipId: string;
-  readonly position: number;
-  readonly entity: CampaignMemberEntityDto;
-  readonly state: CampaignMemberState;
-  readonly waitsFor: readonly string[];
-  readonly joinedRunning: boolean;
-  readonly groups: readonly CampaignGroupProgressDto[];
-  readonly dispatchedAt: string | null;
-  readonly dispatch: CampaignDispatchDto;
-  readonly dispatchRefusal: string | null;
-  readonly dispatchRefusedAt: string | null;
-  readonly dispatchError: string | null;
-}
-
-/** How a campaign is doing — derived on every read; nothing of it is stored. */
-export interface CampaignProgressDto {
-  readonly campaign: CampaignProgressCampaignDto;
-  readonly evaluator: CampaignEvaluatorDto;
-  readonly members: readonly CampaignMemberProgressDto[];
-}
-
-/**
- * `GET /work/{q}/progress`'s answer — and what the start press
- * (`POST /work/{q}/dispatch` on a campaign) answers too.
- */
-export interface CampaignProgressResponse {
-  readonly progress: CampaignProgressDto;
-}
