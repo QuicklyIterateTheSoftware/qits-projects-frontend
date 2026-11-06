@@ -18,7 +18,7 @@
           "qits-via": {
             "artifact": "@qits/ui-components",
             "repository": "qits-ui-components-jslib",
-            "version": "2026.1103.133955"
+            "version": "2026.1106.153549"
           }
         }
       },
@@ -131,7 +131,7 @@
           "qits-via": {
             "artifact": "@qits/ui-components",
             "repository": "qits-ui-components-jslib",
-            "version": "2026.1103.133955"
+            "version": "2026.1106.153549"
           }
         }
       },
@@ -284,6 +284,164 @@
                 {
                   "match": "regex",
                   "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                }
+              ]
+            }
+          },
+          "header": {
+            "Content-Type": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "application/json.*"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      },
+      "type": "Synchronous/HTTP"
+    },
+    {
+      "comments": {
+        "references": {
+          "qits-call": {
+            "app": "qits-projects-service",
+            "operationId": "listProjectWorkBriefs"
+          },
+          "qits-trigger": {
+            "app": "qits-projects-frontend",
+            "interaction": "show-work-brief",
+            "kind": "ui"
+          },
+          "qits-via": {
+            "artifact": "@qits/ui-components",
+            "repository": "qits-ui-components-jslib",
+            "version": "2026.1106.153549"
+          }
+        }
+      },
+      "description": "show-work-brief: listProjectWorkBriefs",
+      "pending": false,
+      "providerStates": [
+        {
+          "name": "a project with work to brief",
+          "params": {
+            "epicQualifiedId": "contract-00000001-1",
+            "projectId": "00000000-0000-4000-8000-000000000001",
+            "ticketQualifiedId": "contract-00000001-2",
+            "unknownQualifiedId": "contract-00000001-999"
+          }
+        }
+      ],
+      "request": {
+        "generators": {
+          "path": {
+            "expression": "/projects/api/projects/${projectId}/work/briefs",
+            "type": "ProviderState"
+          }
+        },
+        "matchingRules": {
+          "path": {
+            "combine": "AND",
+            "matchers": [
+              {
+                "match": "type"
+              }
+            ]
+          }
+        },
+        "method": "GET",
+        "path": "/projects/api/projects/00000000-0000-4000-8000-000000000001/work/briefs",
+        "query": {
+          "id": [
+            "contract-00000001-2,contract-00000001-1,contract-00000001-999"
+          ]
+        }
+      },
+      "response": {
+        "body": {
+          "content": {
+            "briefs": [
+              {
+                "qualifiedId": "contract-00000001-2",
+                "status": "REPORTED",
+                "title": "Show a referenced item's status beside its link",
+                "updatedAt": "2026-01-01T00:00:00Z"
+              },
+              {
+                "qualifiedId": "contract-00000001-2",
+                "status": "REPORTED",
+                "title": "Show a referenced item's status beside its link",
+                "updatedAt": "2026-01-01T00:00:00Z"
+              }
+            ]
+          },
+          "contentType": "application/json",
+          "encoded": false
+        },
+        "headers": {
+          "Content-Type": [
+            "application/json"
+          ]
+        },
+        "matchingRules": {
+          "body": {
+            "$.briefs": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "max": 2,
+                  "min": 2
+                }
+              ]
+            },
+            "$.briefs[*].qualifiedId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                },
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.briefs[*].status": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                },
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.briefs[*].title": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                },
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.briefs[*].updatedAt": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}(:\\d{2}(\\.\\d{1,9})?)?(Z|[+-]\\d{2}:?\\d{2})$"
+                },
+                {
+                  "match": "regex",
+                  "regex": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}(:\\d{2}(\\.\\d{1,9})?)?(Z|[+-]\\d{2}:?\\d{2})$"
                 }
               ]
             }

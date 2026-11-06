@@ -15,6 +15,7 @@ import {
   provideQitsRepositoryList,
   provideQitsScope,
   provideQitsStandardReportKinds,
+  provideQitsWorkBriefs,
   type QitsEntityChangesPayload,
   type QitsMermaid,
   type QitsNavigation,
@@ -24,6 +25,8 @@ import {
   type QitsRunReportsDto,
   type QitsTestFailure,
   type QitsTestResultsPayload,
+  type QitsWorkBrief,
+  type QitsWorkBriefSource,
 } from '@qits/ui-components';
 import { routes } from '../app.routes';
 import type {
@@ -586,6 +589,48 @@ describe('ReleaseRequestDetailPage', () => {
       expect(commits[0]).toContain('Release request r1');
       expect(commits[1]).toContain('Fix the thing');
       expect(commits[1]).toContain('Someone Else');
+    });
+
+    /**
+     * A commit subject naming one of this project's own work items draws it as a `qits-work-ref`,
+     * not plain text — the same renderer the Changes tab's submodule panel uses, fed the project
+     * this page is scoped to.
+     */
+    it("renders a work id the commit subject names as a qits-work-ref", async () => {
+      const brief: QitsWorkBrief = {
+        id: 'uuid-qits-1897',
+        qualifiedId: 'qits-1897',
+        archetype: 'TICKET',
+        status: 'READY_FOR_DEV',
+        title: 'Render commit messages through qits-commit-message',
+        updatedAt: '2026-11-06T11:29:56.962030Z',
+      };
+      const source: QitsWorkBriefSource = async (project, ids) => {
+        expect(project).toBe('qits');
+        return ids.includes('qits-1897') ? [brief] : [];
+      };
+      withRepositories(provideQitsWorkBriefs(source));
+      await open();
+      await answer(request({ state: 'PENDING' }), {
+        commits: [
+          {
+            hash: '20c377ee71fabe6f32429d1506989efecec7798b',
+            shortHash: '20c377e',
+            author: 'Someone',
+            email: 'someone@example.test',
+            date: '2026-09-01T13:30:00Z',
+            message: 'feat(qits-1897): work refs in commit messages',
+            files: [],
+          },
+        ],
+      });
+      await settle();
+      harness.fixture.detectChanges();
+
+      // The popover panel lives inside `qits-work-ref` too, for `aria-describedby` — so the
+      // assertion is on the trigger element alone, not the host's whole `textContent`.
+      const trigger = page().querySelector('li.commit .message .qits-work-ref');
+      expect(trigger?.textContent).toBe('qits-1897');
     });
 
     /**
