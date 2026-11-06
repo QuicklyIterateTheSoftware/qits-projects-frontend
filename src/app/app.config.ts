@@ -9,6 +9,7 @@ import {
   provideQitsScope,
   provideQitsStandardReportKinds,
 } from '@qits/ui-components';
+import { provideQitsMermaid } from '@qits/ui-components/mermaid';
 
 import { routes } from './app.routes';
 
@@ -49,6 +50,11 @@ import { routes } from './app.routes';
 // on either kind would fall back to "no view for this report kind here". It also installs
 // `provideQitsStandardFailureInsights()` (qits-755), so opening a located failure in the
 // `test-results` section draws its test code, read from qits-githost.
+//
+// `provideQitsMermaid` is what draws the `entity-changes` report's diagrams (qits-1910): the main
+// entry point never loads mermaid, so an app that renders none ships none, and without this every
+// diagram would stay its definition as text. It lives behind `@qits/ui-components/mermaid` so that
+// only an app importing it bundles mermaid's chunks.
 export const appConfig: ApplicationConfig = {
   providers: [
     provideBrowserGlobalErrorListeners(),
@@ -60,5 +66,6 @@ export const appConfig: ApplicationConfig = {
     provideQitsScope('repository'),
     provideQitsBuilds(),
     provideQitsStandardReportKinds(),
+    provideQitsMermaid(),
   ],
 };
