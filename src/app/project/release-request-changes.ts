@@ -14,6 +14,7 @@ import {
   QITS_SCOPE,
   QitsAppLinks,
   QitsChangeTree,
+  QitsCommitMessage,
   QitsDiffViewer,
   type QitsChangeEntry,
   type QitsScope,
@@ -97,7 +98,7 @@ interface Hoisted {
 @Component({
   selector: 'app-release-request-changes',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [Async, Empty, QitsChangeTree, QitsDiffViewer],
+  imports: [Async, Empty, QitsChangeTree, QitsCommitMessage, QitsDiffViewer],
   template: `
     <app-async
       [state]="changes()"
@@ -178,7 +179,9 @@ interface Hoisted {
                         @for (commit of expansion.commits; track commit.hash) {
                           <li class="commit">
                             <span class="ref" [title]="commit.hash">{{ commit.shortHash }}</span>
-                            <span class="message">{{ commit.message }}</span>
+                            <span class="message"
+                              ><qits-commit-message [message]="commit.message" [project]="project()"
+                            /></span>
                             <span class="author">{{ commit.author }}</span>
                             <span class="when" [title]="instant(commit.date)">{{
                               ago(commit.date)
@@ -346,6 +349,15 @@ export class ReleaseRequestChanges {
   private readonly params = toSignal(this.route.paramMap, {
     initialValue: convertToParamMap({}),
   });
+
+  /**
+   * The project this page is scoped to, falling back to the route segment the same way
+   * {@link siblingScope} always has — the slug a gitlink's own commit messages and this
+   * repository's are both read against.
+   */
+  protected readonly project = computed(
+    () => this.scope().project ?? this.params().get('project') ?? undefined,
+  );
 
   /**
    * The open file. A query param, not a segment: a path holds slashes. A file hoisted out of a
@@ -689,7 +701,7 @@ export class ReleaseRequestChanges {
     if (segments.length !== 3 || segments[0] !== 'components') {
       return null;
     }
-    const project = this.scope().project ?? this.params().get('project');
+    const project = this.project();
     if (!project) {
       return null;
     }

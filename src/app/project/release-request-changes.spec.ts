@@ -9,7 +9,10 @@ import {
   provideQitsProjectList,
   provideQitsRepositoryList,
   provideQitsScope,
+  provideQitsWorkBriefs,
   type QitsNavigation,
+  type QitsWorkBrief,
+  type QitsWorkBriefSource,
 } from '@qits/ui-components';
 import { routes } from '../app.routes';
 import type {
@@ -207,7 +210,7 @@ describe('the release request Changes tab', () => {
     vi.useRealTimers();
   });
 
-  function configure(wrapperId?: string): void {
+  function configure(wrapperId?: string, ...providers: unknown[]): void {
     TestBed.configureTestingModule({
       providers: [
         provideRouter(routes),
@@ -218,6 +221,7 @@ describe('the release request Changes tab', () => {
         provideQitsNavigationTree(PLATFORM),
         provideQitsProjectList([{ id: 'p1', slug: 'qits', name: 'QITS' }]),
         provideQitsRepositoryList([{ id: REPO, name: 'qits-ci', category: 'services' }], wrapperId),
+        ...(providers as never[]),
       ],
     });
     http = TestBed.inject(HttpTestingController);
@@ -573,6 +577,56 @@ describe('the release request Changes tab', () => {
       expect(pin.href).toBe(
         `https://githost.dev.example.test/qits/qits-projects/qits-projects-service/commit/${PIN_WAS}`,
       );
+    });
+
+    /**
+     * The sibling's own commits are drawn through the same `qits-commit-message` renderer the
+     * change set's expansion panel is — a work id of this page's own project in a hoisted commit's
+     * subject becomes a `qits-work-ref`, not plain text.
+     */
+    it('draws a work id in a hoisted commit’s subject as a qits-work-ref', async () => {
+      const brief: QitsWorkBrief = {
+        id: 'uuid-qits-1897',
+        qualifiedId: 'qits-1897',
+        archetype: 'TICKET',
+        status: 'READY_FOR_DEV',
+        title: 'Render commit messages through qits-commit-message',
+        updatedAt: '2026-11-06T11:29:56.962030Z',
+      };
+      const source: QitsWorkBriefSource = async (project, ids) => {
+        expect(project).toBe('qits');
+        return ids.includes('qits-1897') ? [brief] : [];
+      };
+      configure(undefined, provideQitsWorkBriefs(source));
+      await open('/qits/services/qits-ci/release-requests/r1?tab=changes');
+      await answerThePage(request());
+      await flushChanges(wrapperSet());
+
+      row(GITLINK)?.click();
+      await settle();
+      harness.fixture.detectChanges();
+      await flushExpansion(
+        expansion({
+          commits: [
+            {
+              hash: '9999999999999999999999999999999999999999',
+              shortHash: '9999999',
+              author: 'someone',
+              email: 'someone@example.test',
+              date: '2026-09-01T12:00:00Z',
+              message: 'feat(qits-1897): work refs in commit messages',
+              files: ['src/Main.java'],
+            },
+          ],
+        }),
+      );
+      await settle();
+      harness.fixture.detectChanges();
+
+      // The popover panel lives inside `qits-work-ref` too, for `aria-describedby` — so the
+      // assertion is on the trigger element alone, not the host's whole `textContent`.
+      const trigger = page().querySelector('li.commit .message .qits-work-ref');
+      expect(trigger?.textContent).toBe('qits-1897');
     });
 
     /**

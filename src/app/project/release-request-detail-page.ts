@@ -17,6 +17,7 @@ import {
   QITS_SCOPE,
   QitsAppLinks,
   QitsBadge,
+  QitsCommitMessage,
   QitsRunReports,
 } from '@qits/ui-components';
 import type { QitsScope } from '@qits/ui-components';
@@ -160,6 +161,7 @@ interface QaReloadState {
     NgTemplateOutlet,
     NotFound,
     QitsBadge,
+    QitsCommitMessage,
     QitsRunReports,
     ReleaseConflict,
     ReleasePipelinePanel,
@@ -370,7 +372,9 @@ interface QaReloadState {
                   @for (commit of fold.commits; track commit.hash) {
                     <li class="commit">
                       <span class="ref" [title]="commit.hash">{{ commit.shortHash }}</span>
-                      <span class="message">{{ commit.message }}</span>
+                      <span class="message"
+                        ><qits-commit-message [message]="commit.message" [project]="addressed().project"
+                      /></span>
                       <span class="author">{{ commit.author }}</span>
                       <span class="when" [title]="instant(commit.date)">{{
                         ago(commit.date)
