@@ -265,25 +265,23 @@
           "name": "a bug ticket in detail",
           "params": {
             "bugTicketId": "00000000-0000-4000-8000-000000000001",
-            "campaignId": "00000000-0000-4000-8000-000000000002",
-            "campaignQualifiedId": "contract-00000001-1",
-            "creditNoteTicketId": "00000000-0000-4000-8000-000000000003",
-            "csvFeatureId": "00000000-0000-4000-8000-000000000004",
-            "csvTaskId": "00000000-0000-4000-8000-000000000005",
-            "epicId": "00000000-0000-4000-8000-000000000006",
-            "featureId": "00000000-0000-4000-8000-000000000007",
-            "figureAssetId": "00000000-0000-4000-8000-000000000008",
-            "figurePageId": "00000000-0000-4000-8000-000000000009",
-            "frontendRepositoryId": "00000000-0000-4000-8000-00000000000a",
-            "improvementTicketId": "00000000-0000-4000-8000-00000000000b",
-            "maintenanceTicketId": "00000000-0000-4000-8000-00000000000c",
-            "pdfTaskId": "00000000-0000-4000-8000-00000000000d",
-            "previewTaskId": "00000000-0000-4000-8000-00000000000e",
-            "projectId": "00000000-0000-4000-8000-00000000000f",
-            "qualifiedId": "contract-00000001-10",
-            "serviceRepositoryId": "00000000-0000-4000-8000-000000000010",
-            "taskId": "00000000-0000-4000-8000-000000000011",
-            "taxesEpicId": "00000000-0000-4000-8000-000000000012"
+            "creditNoteTicketId": "00000000-0000-4000-8000-000000000002",
+            "csvFeatureId": "00000000-0000-4000-8000-000000000003",
+            "csvTaskId": "00000000-0000-4000-8000-000000000004",
+            "epicId": "00000000-0000-4000-8000-000000000005",
+            "featureId": "00000000-0000-4000-8000-000000000006",
+            "figureAssetId": "00000000-0000-4000-8000-000000000007",
+            "figurePageId": "00000000-0000-4000-8000-000000000008",
+            "frontendRepositoryId": "00000000-0000-4000-8000-000000000009",
+            "improvementTicketId": "00000000-0000-4000-8000-00000000000a",
+            "maintenanceTicketId": "00000000-0000-4000-8000-00000000000b",
+            "pdfTaskId": "00000000-0000-4000-8000-00000000000c",
+            "previewTaskId": "00000000-0000-4000-8000-00000000000d",
+            "projectId": "00000000-0000-4000-8000-00000000000e",
+            "qualifiedId": "contract-00000001-9",
+            "serviceRepositoryId": "00000000-0000-4000-8000-00000000000f",
+            "taskId": "00000000-0000-4000-8000-000000000010",
+            "taxesEpicId": "00000000-0000-4000-8000-000000000011"
           }
         }
       ],
@@ -318,13 +316,13 @@
           }
         },
         "method": "POST",
-        "path": "/projects/api/work/contract-00000001-10/dossier"
+        "path": "/projects/api/work/contract-00000001-9/dossier"
       },
       "response": {
         "body": {
           "content": {
             "body": "Revert billing-service to the previous version; no data moves.",
-            "id": "00000000-0000-4000-8000-000000000013",
+            "id": "00000000-0000-4000-8000-000000000012",
             "position": 2,
             "slug": "rollback-plan",
             "title": "Rollback plan",
@@ -479,25 +477,23 @@
           "name": "a bug ticket in detail",
           "params": {
             "bugTicketId": "00000000-0000-4000-8000-000000000001",
-            "campaignId": "00000000-0000-4000-8000-000000000002",
-            "campaignQualifiedId": "contract-00000001-1",
-            "creditNoteTicketId": "00000000-0000-4000-8000-000000000003",
-            "csvFeatureId": "00000000-0000-4000-8000-000000000004",
-            "csvTaskId": "00000000-0000-4000-8000-000000000005",
-            "epicId": "00000000-0000-4000-8000-000000000006",
-            "featureId": "00000000-0000-4000-8000-000000000007",
-            "figureAssetId": "00000000-0000-4000-8000-000000000008",
-            "figurePageId": "00000000-0000-4000-8000-000000000009",
-            "frontendRepositoryId": "00000000-0000-4000-8000-00000000000a",
-            "improvementTicketId": "00000000-0000-4000-8000-00000000000b",
-            "maintenanceTicketId": "00000000-0000-4000-8000-00000000000c",
-            "pdfTaskId": "00000000-0000-4000-8000-00000000000d",
-            "previewTaskId": "00000000-0000-4000-8000-00000000000e",
-            "projectId": "00000000-0000-4000-8000-00000000000f",
-            "qualifiedId": "contract-00000001-10",
-            "serviceRepositoryId": "00000000-0000-4000-8000-000000000010",
-            "taskId": "00000000-0000-4000-8000-000000000011",
-            "taxesEpicId": "00000000-0000-4000-8000-000000000012"
+            "creditNoteTicketId": "00000000-0000-4000-8000-000000000002",
+            "csvFeatureId": "00000000-0000-4000-8000-000000000003",
+            "csvTaskId": "00000000-0000-4000-8000-000000000004",
+            "epicId": "00000000-0000-4000-8000-000000000005",
+            "featureId": "00000000-0000-4000-8000-000000000006",
+            "figureAssetId": "00000000-0000-4000-8000-000000000007",
+            "figurePageId": "00000000-0000-4000-8000-000000000008",
+            "frontendRepositoryId": "00000000-0000-4000-8000-000000000009",
+            "improvementTicketId": "00000000-0000-4000-8000-00000000000a",
+            "maintenanceTicketId": "00000000-0000-4000-8000-00000000000b",
+            "pdfTaskId": "00000000-0000-4000-8000-00000000000c",
+            "previewTaskId": "00000000-0000-4000-8000-00000000000d",
+            "projectId": "00000000-0000-4000-8000-00000000000e",
+            "qualifiedId": "contract-00000001-9",
+            "serviceRepositoryId": "00000000-0000-4000-8000-00000000000f",
+            "taskId": "00000000-0000-4000-8000-000000000010",
+            "taxesEpicId": "00000000-0000-4000-8000-000000000011"
           }
         }
       ],
@@ -519,7 +515,7 @@
           }
         },
         "method": "DELETE",
-        "path": "/projects/api/work/contract-00000001-10/dossier/affected-invoices"
+        "path": "/projects/api/work/contract-00000001-9/dossier/affected-invoices"
       },
       "response": {
         "status": 200
@@ -989,25 +985,23 @@
           "name": "an improvement ticket in detail",
           "params": {
             "bugTicketId": "00000000-0000-4000-8000-000000000001",
-            "campaignId": "00000000-0000-4000-8000-000000000002",
-            "campaignQualifiedId": "contract-00000001-1",
-            "creditNoteTicketId": "00000000-0000-4000-8000-000000000003",
-            "csvFeatureId": "00000000-0000-4000-8000-000000000004",
-            "csvTaskId": "00000000-0000-4000-8000-000000000005",
-            "epicId": "00000000-0000-4000-8000-000000000006",
-            "featureId": "00000000-0000-4000-8000-000000000007",
-            "figureAssetId": "00000000-0000-4000-8000-000000000008",
-            "figurePageId": "00000000-0000-4000-8000-000000000009",
-            "frontendRepositoryId": "00000000-0000-4000-8000-00000000000a",
-            "improvementTicketId": "00000000-0000-4000-8000-00000000000b",
-            "maintenanceTicketId": "00000000-0000-4000-8000-00000000000c",
-            "pdfTaskId": "00000000-0000-4000-8000-00000000000d",
-            "previewTaskId": "00000000-0000-4000-8000-00000000000e",
-            "projectId": "00000000-0000-4000-8000-00000000000f",
-            "qualifiedId": "contract-00000001-11",
-            "serviceRepositoryId": "00000000-0000-4000-8000-000000000010",
-            "taskId": "00000000-0000-4000-8000-000000000011",
-            "taxesEpicId": "00000000-0000-4000-8000-000000000012"
+            "creditNoteTicketId": "00000000-0000-4000-8000-000000000002",
+            "csvFeatureId": "00000000-0000-4000-8000-000000000003",
+            "csvTaskId": "00000000-0000-4000-8000-000000000004",
+            "epicId": "00000000-0000-4000-8000-000000000005",
+            "featureId": "00000000-0000-4000-8000-000000000006",
+            "figureAssetId": "00000000-0000-4000-8000-000000000007",
+            "figurePageId": "00000000-0000-4000-8000-000000000008",
+            "frontendRepositoryId": "00000000-0000-4000-8000-000000000009",
+            "improvementTicketId": "00000000-0000-4000-8000-00000000000a",
+            "maintenanceTicketId": "00000000-0000-4000-8000-00000000000b",
+            "pdfTaskId": "00000000-0000-4000-8000-00000000000c",
+            "previewTaskId": "00000000-0000-4000-8000-00000000000d",
+            "projectId": "00000000-0000-4000-8000-00000000000e",
+            "qualifiedId": "contract-00000001-10",
+            "serviceRepositoryId": "00000000-0000-4000-8000-00000000000f",
+            "taskId": "00000000-0000-4000-8000-000000000010",
+            "taxesEpicId": "00000000-0000-4000-8000-000000000011"
           }
         }
       ],
@@ -1043,7 +1037,7 @@
           }
         },
         "method": "POST",
-        "path": "/projects/api/work/contract-00000001-11/status"
+        "path": "/projects/api/work/contract-00000001-10/status"
       },
       "response": {
         "body": {
@@ -1427,25 +1421,23 @@
           "name": "a bug ticket in detail",
           "params": {
             "bugTicketId": "00000000-0000-4000-8000-000000000001",
-            "campaignId": "00000000-0000-4000-8000-000000000002",
-            "campaignQualifiedId": "contract-00000001-1",
-            "creditNoteTicketId": "00000000-0000-4000-8000-000000000003",
-            "csvFeatureId": "00000000-0000-4000-8000-000000000004",
-            "csvTaskId": "00000000-0000-4000-8000-000000000005",
-            "epicId": "00000000-0000-4000-8000-000000000006",
-            "featureId": "00000000-0000-4000-8000-000000000007",
-            "figureAssetId": "00000000-0000-4000-8000-000000000008",
-            "figurePageId": "00000000-0000-4000-8000-000000000009",
-            "frontendRepositoryId": "00000000-0000-4000-8000-00000000000a",
-            "improvementTicketId": "00000000-0000-4000-8000-00000000000b",
-            "maintenanceTicketId": "00000000-0000-4000-8000-00000000000c",
-            "pdfTaskId": "00000000-0000-4000-8000-00000000000d",
-            "previewTaskId": "00000000-0000-4000-8000-00000000000e",
-            "projectId": "00000000-0000-4000-8000-00000000000f",
-            "qualifiedId": "contract-00000001-10",
-            "serviceRepositoryId": "00000000-0000-4000-8000-000000000010",
-            "taskId": "00000000-0000-4000-8000-000000000011",
-            "taxesEpicId": "00000000-0000-4000-8000-000000000012"
+            "creditNoteTicketId": "00000000-0000-4000-8000-000000000002",
+            "csvFeatureId": "00000000-0000-4000-8000-000000000003",
+            "csvTaskId": "00000000-0000-4000-8000-000000000004",
+            "epicId": "00000000-0000-4000-8000-000000000005",
+            "featureId": "00000000-0000-4000-8000-000000000006",
+            "figureAssetId": "00000000-0000-4000-8000-000000000007",
+            "figurePageId": "00000000-0000-4000-8000-000000000008",
+            "frontendRepositoryId": "00000000-0000-4000-8000-000000000009",
+            "improvementTicketId": "00000000-0000-4000-8000-00000000000a",
+            "maintenanceTicketId": "00000000-0000-4000-8000-00000000000b",
+            "pdfTaskId": "00000000-0000-4000-8000-00000000000c",
+            "previewTaskId": "00000000-0000-4000-8000-00000000000d",
+            "projectId": "00000000-0000-4000-8000-00000000000e",
+            "qualifiedId": "contract-00000001-9",
+            "serviceRepositoryId": "00000000-0000-4000-8000-00000000000f",
+            "taskId": "00000000-0000-4000-8000-000000000010",
+            "taxesEpicId": "00000000-0000-4000-8000-000000000011"
           }
         }
       ],
@@ -1479,13 +1471,13 @@
           }
         },
         "method": "POST",
-        "path": "/projects/api/work/contract-00000001-10/dossier/affected-invoices/move"
+        "path": "/projects/api/work/contract-00000001-9/dossier/affected-invoices/move"
       },
       "response": {
         "body": {
           "content": {
             "body": "| Invoice | Total | Expected |\n|---|---|---|\n| 2026-0412 | 1.01 | 1.00 |\n| 2026-0418 | 20.04 | 20.03 |\n| 2026-0533 | 7.11 | 7.10 |\n",
-            "id": "00000000-0000-4000-8000-000000000013",
+            "id": "00000000-0000-4000-8000-000000000012",
             "position": 0,
             "slug": "affected-invoices",
             "title": "Affected invoices",
@@ -3602,25 +3594,23 @@
           "name": "an epic in detail",
           "params": {
             "bugTicketId": "00000000-0000-4000-8000-000000000001",
-            "campaignId": "00000000-0000-4000-8000-000000000002",
-            "campaignQualifiedId": "contract-00000001-1",
-            "creditNoteTicketId": "00000000-0000-4000-8000-000000000003",
-            "csvFeatureId": "00000000-0000-4000-8000-000000000004",
-            "csvTaskId": "00000000-0000-4000-8000-000000000005",
-            "epicId": "00000000-0000-4000-8000-000000000006",
-            "featureId": "00000000-0000-4000-8000-000000000007",
-            "figureAssetId": "00000000-0000-4000-8000-000000000008",
-            "figurePageId": "00000000-0000-4000-8000-000000000009",
-            "frontendRepositoryId": "00000000-0000-4000-8000-00000000000a",
-            "improvementTicketId": "00000000-0000-4000-8000-00000000000b",
-            "maintenanceTicketId": "00000000-0000-4000-8000-00000000000c",
-            "pdfTaskId": "00000000-0000-4000-8000-00000000000d",
-            "previewTaskId": "00000000-0000-4000-8000-00000000000e",
-            "projectId": "00000000-0000-4000-8000-00000000000f",
-            "qualifiedId": "contract-00000001-2",
-            "serviceRepositoryId": "00000000-0000-4000-8000-000000000010",
-            "taskId": "00000000-0000-4000-8000-000000000011",
-            "taxesEpicId": "00000000-0000-4000-8000-000000000012"
+            "creditNoteTicketId": "00000000-0000-4000-8000-000000000002",
+            "csvFeatureId": "00000000-0000-4000-8000-000000000003",
+            "csvTaskId": "00000000-0000-4000-8000-000000000004",
+            "epicId": "00000000-0000-4000-8000-000000000005",
+            "featureId": "00000000-0000-4000-8000-000000000006",
+            "figureAssetId": "00000000-0000-4000-8000-000000000007",
+            "figurePageId": "00000000-0000-4000-8000-000000000008",
+            "frontendRepositoryId": "00000000-0000-4000-8000-000000000009",
+            "improvementTicketId": "00000000-0000-4000-8000-00000000000a",
+            "maintenanceTicketId": "00000000-0000-4000-8000-00000000000b",
+            "pdfTaskId": "00000000-0000-4000-8000-00000000000c",
+            "previewTaskId": "00000000-0000-4000-8000-00000000000d",
+            "projectId": "00000000-0000-4000-8000-00000000000e",
+            "qualifiedId": "contract-00000001-1",
+            "serviceRepositoryId": "00000000-0000-4000-8000-00000000000f",
+            "taskId": "00000000-0000-4000-8000-000000000010",
+            "taxesEpicId": "00000000-0000-4000-8000-000000000011"
           }
         }
       ],
@@ -3642,44 +3632,24 @@
           }
         },
         "method": "GET",
-        "path": "/projects/api/projects/00000000-0000-4000-8000-00000000000f/work"
+        "path": "/projects/api/projects/00000000-0000-4000-8000-00000000000e/work"
       },
       "response": {
         "body": {
           "content": {
             "entities": [
               {
-                "archetype": "CAMPAIGN",
-                "blocked": false,
-                "createdAt": "2026-01-01T00:00:00Z",
-                "excerpt": null,
-                "id": "00000000-0000-4000-8000-000000000002",
-                "impetus": null,
-                "implementedAt": null,
-                "number": 1,
-                "parent": null,
-                "projectId": "00000000-0000-4000-8000-00000000000f",
-                "qualifiedId": "contract-00000001-1",
-                "repositoryId": null,
-                "slug": "invoicing-for-the-q4-close",
-                "status": "REFINED",
-                "tags": [],
-                "ticketType": null,
-                "title": "Invoicing for the Q4 close",
-                "updatedAt": "2026-01-01T00:00:00Z"
-              },
-              {
                 "archetype": "EPIC",
                 "blocked": false,
                 "createdAt": "2026-01-01T00:00:00Z",
                 "excerpt": "Accounting copies every invoice into their tool by hand, about 400 a quarter.",
-                "id": "00000000-0000-4000-8000-000000000006",
+                "id": "00000000-0000-4000-8000-000000000005",
                 "impetus": null,
                 "implementedAt": null,
-                "number": 2,
+                "number": 1,
                 "parent": null,
-                "projectId": "00000000-0000-4000-8000-00000000000f",
-                "qualifiedId": "contract-00000001-2",
+                "projectId": "00000000-0000-4000-8000-00000000000e",
+                "qualifiedId": "contract-00000001-1",
                 "repositoryId": null,
                 "slug": "export-invoices-for-the-accountants",
                 "status": "IMPLEMENTING",
@@ -3692,13 +3662,13 @@
                 "archetype": "FEATURE",
                 "createdAt": "2026-01-01T00:00:00Z",
                 "excerpt": null,
-                "id": "00000000-0000-4000-8000-000000000004",
+                "id": "00000000-0000-4000-8000-000000000003",
                 "impetus": null,
                 "implementedAt": "2026-01-01T00:00:00Z",
-                "number": 3,
-                "parent": "00000000-0000-4000-8000-000000000006",
-                "projectId": "00000000-0000-4000-8000-00000000000f",
-                "qualifiedId": "contract-00000001-3",
+                "number": 2,
+                "parent": "00000000-0000-4000-8000-000000000005",
+                "projectId": "00000000-0000-4000-8000-00000000000e",
+                "qualifiedId": "contract-00000001-2",
                 "repositoryId": null,
                 "slug": "csv-export",
                 "status": "IMPLEMENTED",
@@ -3711,14 +3681,14 @@
                 "archetype": "TASK",
                 "createdAt": "2026-01-01T00:00:00Z",
                 "excerpt": null,
-                "id": "00000000-0000-4000-8000-000000000005",
+                "id": "00000000-0000-4000-8000-000000000004",
                 "impetus": null,
                 "implementedAt": "2026-01-01T00:00:00Z",
-                "number": 4,
-                "parent": "00000000-0000-4000-8000-000000000004",
-                "projectId": "00000000-0000-4000-8000-00000000000f",
-                "qualifiedId": "contract-00000001-4",
-                "repositoryId": "00000000-0000-4000-8000-000000000010",
+                "number": 3,
+                "parent": "00000000-0000-4000-8000-000000000003",
+                "projectId": "00000000-0000-4000-8000-00000000000e",
+                "qualifiedId": "contract-00000001-3",
+                "repositoryId": "00000000-0000-4000-8000-00000000000f",
                 "slug": "stream-invoices-as-csv",
                 "status": "IMPLEMENTED",
                 "tags": [],
@@ -3730,13 +3700,13 @@
                 "archetype": "FEATURE",
                 "createdAt": "2026-01-01T00:00:00Z",
                 "excerpt": null,
-                "id": "00000000-0000-4000-8000-000000000007",
+                "id": "00000000-0000-4000-8000-000000000006",
                 "impetus": null,
                 "implementedAt": null,
-                "number": 6,
-                "parent": "00000000-0000-4000-8000-000000000006",
-                "projectId": "00000000-0000-4000-8000-00000000000f",
-                "qualifiedId": "contract-00000001-6",
+                "number": 5,
+                "parent": "00000000-0000-4000-8000-000000000005",
+                "projectId": "00000000-0000-4000-8000-00000000000e",
+                "qualifiedId": "contract-00000001-5",
                 "repositoryId": null,
                 "slug": "pdf-export",
                 "status": "IMPLEMENTING",
@@ -3749,14 +3719,14 @@
                 "archetype": "TASK",
                 "createdAt": "2026-01-01T00:00:00Z",
                 "excerpt": null,
-                "id": "00000000-0000-4000-8000-00000000000d",
+                "id": "00000000-0000-4000-8000-00000000000c",
                 "impetus": null,
                 "implementedAt": null,
-                "number": 7,
-                "parent": "00000000-0000-4000-8000-000000000007",
-                "projectId": "00000000-0000-4000-8000-00000000000f",
-                "qualifiedId": "contract-00000001-7",
-                "repositoryId": "00000000-0000-4000-8000-000000000010",
+                "number": 6,
+                "parent": "00000000-0000-4000-8000-000000000006",
+                "projectId": "00000000-0000-4000-8000-00000000000e",
+                "qualifiedId": "contract-00000001-6",
+                "repositoryId": "00000000-0000-4000-8000-00000000000f",
                 "slug": "render-one-invoice-as-pdf",
                 "status": "IMPLEMENTING",
                 "tags": [],
@@ -3772,10 +3742,10 @@
                 "id": "00000000-0000-4000-8000-000000000001",
                 "impetus": "An accountant found three invoices whose total is one cent above the sum of their lines.",
                 "implementedAt": null,
-                "number": 10,
+                "number": 9,
                 "parent": null,
-                "projectId": "00000000-0000-4000-8000-00000000000f",
-                "qualifiedId": "contract-00000001-10",
+                "projectId": "00000000-0000-4000-8000-00000000000e",
+                "qualifiedId": "contract-00000001-9",
                 "repositoryId": null,
                 "slug": "invoice-totals-are-off-by-one-cent",
                 "status": "IMPLEMENTING",
@@ -3789,13 +3759,13 @@
                 "blocked": false,
                 "createdAt": "2026-01-01T00:00:00Z",
                 "excerpt": null,
-                "id": "00000000-0000-4000-8000-00000000000c",
+                "id": "00000000-0000-4000-8000-00000000000b",
                 "impetus": "The release request for billing-service has waited on its gates for 6 hours.",
                 "implementedAt": null,
-                "number": 12,
+                "number": 11,
                 "parent": null,
-                "projectId": "00000000-0000-4000-8000-00000000000f",
-                "qualifiedId": "contract-00000001-12",
+                "projectId": "00000000-0000-4000-8000-00000000000e",
+                "qualifiedId": "contract-00000001-11",
                 "repositoryId": null,
                 "slug": "release-request-for-billing-service-is-stuck",
                 "status": "REPORTED",
@@ -3823,7 +3793,7 @@
                   "match": "arrayContains",
                   "variants": [
                     {
-                      "index": 1,
+                      "index": 0,
                       "rules": {
                         "$.archetype": {
                           "combine": "AND",
@@ -3872,6 +3842,113 @@
                           "matchers": [
                             {
                               "match": "number"
+                            }
+                          ]
+                        },
+                        "$.projectId": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "regex",
+                              "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                            }
+                          ]
+                        },
+                        "$.qualifiedId": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.slug": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.status": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.title": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.updatedAt": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "regex",
+                              "regex": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}(:\\d{2}(\\.\\d{1,9})?)?(Z|[+-]\\d{2}:?\\d{2})$"
+                            }
+                          ]
+                        }
+                      }
+                    },
+                    {
+                      "index": 1,
+                      "rules": {
+                        "$.archetype": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "type"
+                            }
+                          ]
+                        },
+                        "$.createdAt": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "regex",
+                              "regex": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}(:\\d{2}(\\.\\d{1,9})?)?(Z|[+-]\\d{2}:?\\d{2})$"
+                            }
+                          ]
+                        },
+                        "$.id": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "regex",
+                              "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                            }
+                          ]
+                        },
+                        "$.implementedAt": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "regex",
+                              "regex": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}(:\\d{2}(\\.\\d{1,9})?)?(Z|[+-]\\d{2}:?\\d{2})$"
+                            }
+                          ]
+                        },
+                        "$.number": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "number"
+                            }
+                          ]
+                        },
+                        "$.parent": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "regex",
+                              "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
                             }
                           ]
                         },
@@ -3999,6 +4076,15 @@
                             }
                           ]
                         },
+                        "$.repositoryId": {
+                          "combine": "AND",
+                          "matchers": [
+                            {
+                              "match": "regex",
+                              "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                            }
+                          ]
+                        },
                         "$.slug": {
                           "combine": "AND",
                           "matchers": [
@@ -4063,15 +4149,6 @@
                             }
                           ]
                         },
-                        "$.implementedAt": {
-                          "combine": "AND",
-                          "matchers": [
-                            {
-                              "match": "regex",
-                              "regex": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}(:\\d{2}(\\.\\d{1,9})?)?(Z|[+-]\\d{2}:?\\d{2})$"
-                            }
-                          ]
-                        },
                         "$.number": {
                           "combine": "AND",
                           "matchers": [
@@ -4103,15 +4180,6 @@
                           "matchers": [
                             {
                               "match": "type"
-                            }
-                          ]
-                        },
-                        "$.repositoryId": {
-                          "combine": "AND",
-                          "matchers": [
-                            {
-                              "match": "regex",
-                              "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
                             }
                           ]
                         },
@@ -4213,104 +4281,6 @@
                             }
                           ]
                         },
-                        "$.slug": {
-                          "combine": "AND",
-                          "matchers": [
-                            {
-                              "match": "type"
-                            }
-                          ]
-                        },
-                        "$.status": {
-                          "combine": "AND",
-                          "matchers": [
-                            {
-                              "match": "type"
-                            }
-                          ]
-                        },
-                        "$.title": {
-                          "combine": "AND",
-                          "matchers": [
-                            {
-                              "match": "type"
-                            }
-                          ]
-                        },
-                        "$.updatedAt": {
-                          "combine": "AND",
-                          "matchers": [
-                            {
-                              "match": "regex",
-                              "regex": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}(:\\d{2}(\\.\\d{1,9})?)?(Z|[+-]\\d{2}:?\\d{2})$"
-                            }
-                          ]
-                        }
-                      }
-                    },
-                    {
-                      "index": 5,
-                      "rules": {
-                        "$.archetype": {
-                          "combine": "AND",
-                          "matchers": [
-                            {
-                              "match": "type"
-                            }
-                          ]
-                        },
-                        "$.createdAt": {
-                          "combine": "AND",
-                          "matchers": [
-                            {
-                              "match": "regex",
-                              "regex": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}(:\\d{2}(\\.\\d{1,9})?)?(Z|[+-]\\d{2}:?\\d{2})$"
-                            }
-                          ]
-                        },
-                        "$.id": {
-                          "combine": "AND",
-                          "matchers": [
-                            {
-                              "match": "regex",
-                              "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
-                            }
-                          ]
-                        },
-                        "$.number": {
-                          "combine": "AND",
-                          "matchers": [
-                            {
-                              "match": "number"
-                            }
-                          ]
-                        },
-                        "$.parent": {
-                          "combine": "AND",
-                          "matchers": [
-                            {
-                              "match": "regex",
-                              "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
-                            }
-                          ]
-                        },
-                        "$.projectId": {
-                          "combine": "AND",
-                          "matchers": [
-                            {
-                              "match": "regex",
-                              "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
-                            }
-                          ]
-                        },
-                        "$.qualifiedId": {
-                          "combine": "AND",
-                          "matchers": [
-                            {
-                              "match": "type"
-                            }
-                          ]
-                        },
                         "$.repositoryId": {
                           "combine": "AND",
                           "matchers": [
@@ -4356,7 +4326,7 @@
                       }
                     },
                     {
-                      "index": 6,
+                      "index": 5,
                       "rules": {
                         "$.archetype": {
                           "combine": "AND",
@@ -4477,7 +4447,7 @@
                       }
                     },
                     {
-                      "index": 7,
+                      "index": 6,
                       "rules": {
                         "$.archetype": {
                           "combine": "AND",
@@ -5245,7 +5215,6 @@
                   "TITLE",
                   "TITLE",
                   "TITLE",
-                  "TITLE",
                   "TITLE"
                 ],
                 "required": [
@@ -5390,7 +5359,6 @@
                   "TITLE",
                   "TITLE",
                   "TITLE",
-                  "TITLE",
                   "TITLE"
                 ],
                 "required": [
@@ -5510,81 +5478,6 @@
                 }
               },
               {
-                "archetype": "CAMPAIGN",
-                "depth": -1,
-                "legalStatuses": [
-                  "DONE",
-                  "DONE",
-                  "DONE",
-                  "DONE",
-                  "DONE",
-                  "DONE",
-                  "DONE"
-                ],
-                "lifecycle": [
-                  "REPORTED",
-                  "REPORTED",
-                  "REPORTED",
-                  "REPORTED",
-                  "REPORTED",
-                  "REPORTED",
-                  "REPORTED"
-                ],
-                "mayBeRoot": true,
-                "permitted": [
-                  "TITLE",
-                  "TITLE",
-                  "TITLE",
-                  "TITLE"
-                ],
-                "required": [
-                  "TITLE"
-                ],
-                "requiredOnTransition": [
-                  "TITLE",
-                  "TITLE"
-                ],
-                "transitions": {
-                  "DONE": [],
-                  "DROPPED": [
-                    {
-                      "kind": "REOPEN",
-                      "to": "REPORTED"
-                    }
-                  ],
-                  "IMPLEMENTED": [
-                    {
-                      "kind": "DROP",
-                      "to": "DROPPED"
-                    }
-                  ],
-                  "READY_FOR_DEV": [
-                    {
-                      "kind": "DROP",
-                      "to": "DROPPED"
-                    }
-                  ],
-                  "REFINED": [
-                    {
-                      "kind": "DROP",
-                      "to": "DROPPED"
-                    }
-                  ],
-                  "REPORTED": [
-                    {
-                      "kind": "DROP",
-                      "to": "DROPPED"
-                    }
-                  ],
-                  "VERIFIED": [
-                    {
-                      "kind": "DROP",
-                      "to": "DROPPED"
-                    }
-                  ]
-                }
-              },
-              {
                 "archetype": "ISSUE",
                 "depth": 0,
                 "legalStatuses": [
@@ -5632,7 +5525,6 @@
               }
             ],
             "properties": [
-              "TITLE",
               "TITLE",
               "TITLE",
               "TITLE",
@@ -7086,17 +6978,14 @@
                           "matchers": [
                             {
                               "match": "type",
-                              "max": 7,
-                              "min": 7
+                              "max": 6,
+                              "min": 6
                             }
                           ]
                         },
                         "$.permitted[*]": {
                           "combine": "AND",
                           "matchers": [
-                            {
-                              "match": "type"
-                            },
                             {
                               "match": "type"
                             },
@@ -7756,17 +7645,14 @@
                           "matchers": [
                             {
                               "match": "type",
-                              "max": 8,
-                              "min": 8
+                              "max": 7,
+                              "min": 7
                             }
                           ]
                         },
                         "$.permitted[*]": {
                           "combine": "AND",
                           "matchers": [
-                            {
-                              "match": "type"
-                            },
                             {
                               "match": "type"
                             },
@@ -8163,17 +8049,14 @@
               "matchers": [
                 {
                   "match": "type",
-                  "max": 15,
-                  "min": 15
+                  "max": 14,
+                  "min": 14
                 }
               ]
             },
             "$.properties[*]": {
               "combine": "AND",
               "matchers": [
-                {
-                  "match": "type"
-                },
                 {
                   "match": "type"
                 },
@@ -8277,25 +8160,23 @@
           "name": "a bug ticket in detail",
           "params": {
             "bugTicketId": "00000000-0000-4000-8000-000000000001",
-            "campaignId": "00000000-0000-4000-8000-000000000002",
-            "campaignQualifiedId": "contract-00000001-1",
-            "creditNoteTicketId": "00000000-0000-4000-8000-000000000003",
-            "csvFeatureId": "00000000-0000-4000-8000-000000000004",
-            "csvTaskId": "00000000-0000-4000-8000-000000000005",
-            "epicId": "00000000-0000-4000-8000-000000000006",
-            "featureId": "00000000-0000-4000-8000-000000000007",
-            "figureAssetId": "00000000-0000-4000-8000-000000000008",
-            "figurePageId": "00000000-0000-4000-8000-000000000009",
-            "frontendRepositoryId": "00000000-0000-4000-8000-00000000000a",
-            "improvementTicketId": "00000000-0000-4000-8000-00000000000b",
-            "maintenanceTicketId": "00000000-0000-4000-8000-00000000000c",
-            "pdfTaskId": "00000000-0000-4000-8000-00000000000d",
-            "previewTaskId": "00000000-0000-4000-8000-00000000000e",
-            "projectId": "00000000-0000-4000-8000-00000000000f",
-            "qualifiedId": "contract-00000001-10",
-            "serviceRepositoryId": "00000000-0000-4000-8000-000000000010",
-            "taskId": "00000000-0000-4000-8000-000000000011",
-            "taxesEpicId": "00000000-0000-4000-8000-000000000012"
+            "creditNoteTicketId": "00000000-0000-4000-8000-000000000002",
+            "csvFeatureId": "00000000-0000-4000-8000-000000000003",
+            "csvTaskId": "00000000-0000-4000-8000-000000000004",
+            "epicId": "00000000-0000-4000-8000-000000000005",
+            "featureId": "00000000-0000-4000-8000-000000000006",
+            "figureAssetId": "00000000-0000-4000-8000-000000000007",
+            "figurePageId": "00000000-0000-4000-8000-000000000008",
+            "frontendRepositoryId": "00000000-0000-4000-8000-000000000009",
+            "improvementTicketId": "00000000-0000-4000-8000-00000000000a",
+            "maintenanceTicketId": "00000000-0000-4000-8000-00000000000b",
+            "pdfTaskId": "00000000-0000-4000-8000-00000000000c",
+            "previewTaskId": "00000000-0000-4000-8000-00000000000d",
+            "projectId": "00000000-0000-4000-8000-00000000000e",
+            "qualifiedId": "contract-00000001-9",
+            "serviceRepositoryId": "00000000-0000-4000-8000-00000000000f",
+            "taskId": "00000000-0000-4000-8000-000000000010",
+            "taxesEpicId": "00000000-0000-4000-8000-000000000011"
           }
         }
       ],
@@ -8317,7 +8198,7 @@
           }
         },
         "method": "GET",
-        "path": "/projects/api/work/contract-00000001-10"
+        "path": "/projects/api/work/contract-00000001-9"
       },
       "response": {
         "body": {
@@ -8333,9 +8214,9 @@
             "description": "## Cause\nEach line is rounded before the sum, so rounding errors add up.\n\n## Fix\nSum the exact amounts and round **once**, half up:\n```java\ntotal = lines.stream().map(Line::amount).reduce(ZERO, BigDecimal::add)\n    .setScale(2, RoundingMode.HALF_UP);\n```\n",
             "id": "00000000-0000-4000-8000-000000000001",
             "impetus": "An accountant found three invoices whose total is one cent above the sum of their lines.",
-            "number": 10,
-            "projectId": "00000000-0000-4000-8000-00000000000f",
-            "qualifiedId": "contract-00000001-10",
+            "number": 9,
+            "projectId": "00000000-0000-4000-8000-00000000000e",
+            "qualifiedId": "contract-00000001-9",
             "slug": "invoice-totals-are-off-by-one-cent",
             "status": "IMPLEMENTING",
             "tags": [],
@@ -8541,25 +8422,23 @@
           "name": "an epic in detail",
           "params": {
             "bugTicketId": "00000000-0000-4000-8000-000000000001",
-            "campaignId": "00000000-0000-4000-8000-000000000002",
-            "campaignQualifiedId": "contract-00000001-1",
-            "creditNoteTicketId": "00000000-0000-4000-8000-000000000003",
-            "csvFeatureId": "00000000-0000-4000-8000-000000000004",
-            "csvTaskId": "00000000-0000-4000-8000-000000000005",
-            "epicId": "00000000-0000-4000-8000-000000000006",
-            "featureId": "00000000-0000-4000-8000-000000000007",
-            "figureAssetId": "00000000-0000-4000-8000-000000000008",
-            "figurePageId": "00000000-0000-4000-8000-000000000009",
-            "frontendRepositoryId": "00000000-0000-4000-8000-00000000000a",
-            "improvementTicketId": "00000000-0000-4000-8000-00000000000b",
-            "maintenanceTicketId": "00000000-0000-4000-8000-00000000000c",
-            "pdfTaskId": "00000000-0000-4000-8000-00000000000d",
-            "previewTaskId": "00000000-0000-4000-8000-00000000000e",
-            "projectId": "00000000-0000-4000-8000-00000000000f",
-            "qualifiedId": "contract-00000001-2",
-            "serviceRepositoryId": "00000000-0000-4000-8000-000000000010",
-            "taskId": "00000000-0000-4000-8000-000000000011",
-            "taxesEpicId": "00000000-0000-4000-8000-000000000012"
+            "creditNoteTicketId": "00000000-0000-4000-8000-000000000002",
+            "csvFeatureId": "00000000-0000-4000-8000-000000000003",
+            "csvTaskId": "00000000-0000-4000-8000-000000000004",
+            "epicId": "00000000-0000-4000-8000-000000000005",
+            "featureId": "00000000-0000-4000-8000-000000000006",
+            "figureAssetId": "00000000-0000-4000-8000-000000000007",
+            "figurePageId": "00000000-0000-4000-8000-000000000008",
+            "frontendRepositoryId": "00000000-0000-4000-8000-000000000009",
+            "improvementTicketId": "00000000-0000-4000-8000-00000000000a",
+            "maintenanceTicketId": "00000000-0000-4000-8000-00000000000b",
+            "pdfTaskId": "00000000-0000-4000-8000-00000000000c",
+            "previewTaskId": "00000000-0000-4000-8000-00000000000d",
+            "projectId": "00000000-0000-4000-8000-00000000000e",
+            "qualifiedId": "contract-00000001-1",
+            "serviceRepositoryId": "00000000-0000-4000-8000-00000000000f",
+            "taskId": "00000000-0000-4000-8000-000000000010",
+            "taxesEpicId": "00000000-0000-4000-8000-000000000011"
           }
         }
       ],
@@ -8581,7 +8460,7 @@
           }
         },
         "method": "GET",
-        "path": "/projects/api/work/contract-00000001-2"
+        "path": "/projects/api/work/contract-00000001-1"
       },
       "response": {
         "body": {
@@ -8594,10 +8473,10 @@
             "blocked": false,
             "createdAt": "2026-01-01T00:00:00Z",
             "description": "## Why\nAccounting copies every invoice into their tool by hand, about 400 a quarter.\n\n## What\n- a **CSV export** of a date range, in the column order the tool imports\n- a **PDF export** of one invoice, for the audit folder\n\n## Example\n```\nGET /billing/api/invoices/export?from=2026-10-01&to=2026-12-31&format=csv\n```\n",
-            "id": "00000000-0000-4000-8000-000000000006",
-            "number": 2,
-            "projectId": "00000000-0000-4000-8000-00000000000f",
-            "qualifiedId": "contract-00000001-2",
+            "id": "00000000-0000-4000-8000-000000000005",
+            "number": 1,
+            "projectId": "00000000-0000-4000-8000-00000000000e",
+            "qualifiedId": "contract-00000001-1",
             "slug": "export-invoices-for-the-accountants",
             "status": "IMPLEMENTING",
             "supersededBy": null,
@@ -9129,25 +9008,23 @@
           "name": "a feature in detail",
           "params": {
             "bugTicketId": "00000000-0000-4000-8000-000000000001",
-            "campaignId": "00000000-0000-4000-8000-000000000002",
-            "campaignQualifiedId": "contract-00000001-1",
-            "creditNoteTicketId": "00000000-0000-4000-8000-000000000003",
-            "csvFeatureId": "00000000-0000-4000-8000-000000000004",
-            "csvTaskId": "00000000-0000-4000-8000-000000000005",
-            "epicId": "00000000-0000-4000-8000-000000000006",
-            "featureId": "00000000-0000-4000-8000-000000000007",
-            "figureAssetId": "00000000-0000-4000-8000-000000000008",
-            "figurePageId": "00000000-0000-4000-8000-000000000009",
-            "frontendRepositoryId": "00000000-0000-4000-8000-00000000000a",
-            "improvementTicketId": "00000000-0000-4000-8000-00000000000b",
-            "maintenanceTicketId": "00000000-0000-4000-8000-00000000000c",
-            "pdfTaskId": "00000000-0000-4000-8000-00000000000d",
-            "previewTaskId": "00000000-0000-4000-8000-00000000000e",
-            "projectId": "00000000-0000-4000-8000-00000000000f",
-            "qualifiedId": "contract-00000001-6",
-            "serviceRepositoryId": "00000000-0000-4000-8000-000000000010",
-            "taskId": "00000000-0000-4000-8000-000000000011",
-            "taxesEpicId": "00000000-0000-4000-8000-000000000012"
+            "creditNoteTicketId": "00000000-0000-4000-8000-000000000002",
+            "csvFeatureId": "00000000-0000-4000-8000-000000000003",
+            "csvTaskId": "00000000-0000-4000-8000-000000000004",
+            "epicId": "00000000-0000-4000-8000-000000000005",
+            "featureId": "00000000-0000-4000-8000-000000000006",
+            "figureAssetId": "00000000-0000-4000-8000-000000000007",
+            "figurePageId": "00000000-0000-4000-8000-000000000008",
+            "frontendRepositoryId": "00000000-0000-4000-8000-000000000009",
+            "improvementTicketId": "00000000-0000-4000-8000-00000000000a",
+            "maintenanceTicketId": "00000000-0000-4000-8000-00000000000b",
+            "pdfTaskId": "00000000-0000-4000-8000-00000000000c",
+            "previewTaskId": "00000000-0000-4000-8000-00000000000d",
+            "projectId": "00000000-0000-4000-8000-00000000000e",
+            "qualifiedId": "contract-00000001-5",
+            "serviceRepositoryId": "00000000-0000-4000-8000-00000000000f",
+            "taskId": "00000000-0000-4000-8000-000000000010",
+            "taxesEpicId": "00000000-0000-4000-8000-000000000011"
           }
         }
       ],
@@ -9169,7 +9046,7 @@
           }
         },
         "method": "GET",
-        "path": "/projects/api/work/contract-00000001-6/children"
+        "path": "/projects/api/work/contract-00000001-5/children"
       },
       "response": {
         "body": {
@@ -9179,14 +9056,14 @@
                 "archetype": "TASK",
                 "createdAt": "2026-01-01T00:00:00Z",
                 "description": "Render server-side; embed the fonts so the archive stays readable.",
-                "id": "00000000-0000-4000-8000-00000000000d",
+                "id": "00000000-0000-4000-8000-00000000000c",
                 "implementedAt": null,
                 "implementingAt": "2026-01-01T00:00:00Z",
-                "number": 7,
-                "parent": "00000000-0000-4000-8000-000000000007",
-                "projectId": "00000000-0000-4000-8000-00000000000f",
-                "qualifiedId": "contract-00000001-7",
-                "repositoryId": "00000000-0000-4000-8000-000000000010",
+                "number": 6,
+                "parent": "00000000-0000-4000-8000-000000000006",
+                "projectId": "00000000-0000-4000-8000-00000000000e",
+                "qualifiedId": "contract-00000001-6",
+                "repositoryId": "00000000-0000-4000-8000-00000000000f",
                 "slug": "render-one-invoice-as-pdf",
                 "status": "IMPLEMENTING",
                 "tags": [],
@@ -9197,14 +9074,14 @@
                 "archetype": "TASK",
                 "createdAt": "2026-01-01T00:00:00Z",
                 "description": "Show the rendered PDF in a dialog, with a download button.",
-                "id": "00000000-0000-4000-8000-00000000000e",
+                "id": "00000000-0000-4000-8000-00000000000d",
                 "implementedAt": null,
                 "implementingAt": null,
-                "number": 8,
-                "parent": "00000000-0000-4000-8000-000000000007",
-                "projectId": "00000000-0000-4000-8000-00000000000f",
-                "qualifiedId": "contract-00000001-8",
-                "repositoryId": "00000000-0000-4000-8000-00000000000a",
+                "number": 7,
+                "parent": "00000000-0000-4000-8000-000000000006",
+                "projectId": "00000000-0000-4000-8000-00000000000e",
+                "qualifiedId": "contract-00000001-7",
+                "repositoryId": "00000000-0000-4000-8000-000000000009",
                 "slug": "preview-the-pdf-before-download",
                 "status": "READY_FOR_DEV",
                 "tags": [],
@@ -9510,25 +9387,23 @@
           "name": "an epic in detail",
           "params": {
             "bugTicketId": "00000000-0000-4000-8000-000000000001",
-            "campaignId": "00000000-0000-4000-8000-000000000002",
-            "campaignQualifiedId": "contract-00000001-1",
-            "creditNoteTicketId": "00000000-0000-4000-8000-000000000003",
-            "csvFeatureId": "00000000-0000-4000-8000-000000000004",
-            "csvTaskId": "00000000-0000-4000-8000-000000000005",
-            "epicId": "00000000-0000-4000-8000-000000000006",
-            "featureId": "00000000-0000-4000-8000-000000000007",
-            "figureAssetId": "00000000-0000-4000-8000-000000000008",
-            "figurePageId": "00000000-0000-4000-8000-000000000009",
-            "frontendRepositoryId": "00000000-0000-4000-8000-00000000000a",
-            "improvementTicketId": "00000000-0000-4000-8000-00000000000b",
-            "maintenanceTicketId": "00000000-0000-4000-8000-00000000000c",
-            "pdfTaskId": "00000000-0000-4000-8000-00000000000d",
-            "previewTaskId": "00000000-0000-4000-8000-00000000000e",
-            "projectId": "00000000-0000-4000-8000-00000000000f",
-            "qualifiedId": "contract-00000001-2",
-            "serviceRepositoryId": "00000000-0000-4000-8000-000000000010",
-            "taskId": "00000000-0000-4000-8000-000000000011",
-            "taxesEpicId": "00000000-0000-4000-8000-000000000012"
+            "creditNoteTicketId": "00000000-0000-4000-8000-000000000002",
+            "csvFeatureId": "00000000-0000-4000-8000-000000000003",
+            "csvTaskId": "00000000-0000-4000-8000-000000000004",
+            "epicId": "00000000-0000-4000-8000-000000000005",
+            "featureId": "00000000-0000-4000-8000-000000000006",
+            "figureAssetId": "00000000-0000-4000-8000-000000000007",
+            "figurePageId": "00000000-0000-4000-8000-000000000008",
+            "frontendRepositoryId": "00000000-0000-4000-8000-000000000009",
+            "improvementTicketId": "00000000-0000-4000-8000-00000000000a",
+            "maintenanceTicketId": "00000000-0000-4000-8000-00000000000b",
+            "pdfTaskId": "00000000-0000-4000-8000-00000000000c",
+            "previewTaskId": "00000000-0000-4000-8000-00000000000d",
+            "projectId": "00000000-0000-4000-8000-00000000000e",
+            "qualifiedId": "contract-00000001-1",
+            "serviceRepositoryId": "00000000-0000-4000-8000-00000000000f",
+            "taskId": "00000000-0000-4000-8000-000000000010",
+            "taxesEpicId": "00000000-0000-4000-8000-000000000011"
           }
         }
       ],
@@ -9550,7 +9425,7 @@
           }
         },
         "method": "GET",
-        "path": "/projects/api/work/contract-00000001-2/children"
+        "path": "/projects/api/work/contract-00000001-1/children"
       },
       "response": {
         "body": {
@@ -9560,13 +9435,13 @@
                 "archetype": "FEATURE",
                 "createdAt": "2026-01-01T00:00:00Z",
                 "description": "Stream a date range of invoices as CSV, one row per line item.",
-                "id": "00000000-0000-4000-8000-000000000004",
+                "id": "00000000-0000-4000-8000-000000000003",
                 "implementedAt": "2026-01-01T00:00:00Z",
                 "implementingAt": "2026-01-01T00:00:00Z",
-                "number": 3,
-                "parent": "00000000-0000-4000-8000-000000000006",
-                "projectId": "00000000-0000-4000-8000-00000000000f",
-                "qualifiedId": "contract-00000001-3",
+                "number": 2,
+                "parent": "00000000-0000-4000-8000-000000000005",
+                "projectId": "00000000-0000-4000-8000-00000000000e",
+                "qualifiedId": "contract-00000001-2",
                 "repositoryId": null,
                 "slug": "csv-export",
                 "status": "IMPLEMENTED",
@@ -9578,13 +9453,13 @@
                 "archetype": "FEATURE",
                 "createdAt": "2026-01-01T00:00:00Z",
                 "description": "Render one invoice as an A4 PDF, in the same layout as the printed one.",
-                "id": "00000000-0000-4000-8000-000000000007",
+                "id": "00000000-0000-4000-8000-000000000006",
                 "implementedAt": null,
                 "implementingAt": "2026-01-01T00:00:00Z",
-                "number": 6,
-                "parent": "00000000-0000-4000-8000-000000000006",
-                "projectId": "00000000-0000-4000-8000-00000000000f",
-                "qualifiedId": "contract-00000001-6",
+                "number": 5,
+                "parent": "00000000-0000-4000-8000-000000000005",
+                "projectId": "00000000-0000-4000-8000-00000000000e",
+                "qualifiedId": "contract-00000001-5",
                 "repositoryId": null,
                 "slug": "pdf-export",
                 "status": "IMPLEMENTING",
@@ -10033,25 +9908,23 @@
           "name": "a bug ticket in detail",
           "params": {
             "bugTicketId": "00000000-0000-4000-8000-000000000001",
-            "campaignId": "00000000-0000-4000-8000-000000000002",
-            "campaignQualifiedId": "contract-00000001-1",
-            "creditNoteTicketId": "00000000-0000-4000-8000-000000000003",
-            "csvFeatureId": "00000000-0000-4000-8000-000000000004",
-            "csvTaskId": "00000000-0000-4000-8000-000000000005",
-            "epicId": "00000000-0000-4000-8000-000000000006",
-            "featureId": "00000000-0000-4000-8000-000000000007",
-            "figureAssetId": "00000000-0000-4000-8000-000000000008",
-            "figurePageId": "00000000-0000-4000-8000-000000000009",
-            "frontendRepositoryId": "00000000-0000-4000-8000-00000000000a",
-            "improvementTicketId": "00000000-0000-4000-8000-00000000000b",
-            "maintenanceTicketId": "00000000-0000-4000-8000-00000000000c",
-            "pdfTaskId": "00000000-0000-4000-8000-00000000000d",
-            "previewTaskId": "00000000-0000-4000-8000-00000000000e",
-            "projectId": "00000000-0000-4000-8000-00000000000f",
-            "qualifiedId": "contract-00000001-10",
-            "serviceRepositoryId": "00000000-0000-4000-8000-000000000010",
-            "taskId": "00000000-0000-4000-8000-000000000011",
-            "taxesEpicId": "00000000-0000-4000-8000-000000000012"
+            "creditNoteTicketId": "00000000-0000-4000-8000-000000000002",
+            "csvFeatureId": "00000000-0000-4000-8000-000000000003",
+            "csvTaskId": "00000000-0000-4000-8000-000000000004",
+            "epicId": "00000000-0000-4000-8000-000000000005",
+            "featureId": "00000000-0000-4000-8000-000000000006",
+            "figureAssetId": "00000000-0000-4000-8000-000000000007",
+            "figurePageId": "00000000-0000-4000-8000-000000000008",
+            "frontendRepositoryId": "00000000-0000-4000-8000-000000000009",
+            "improvementTicketId": "00000000-0000-4000-8000-00000000000a",
+            "maintenanceTicketId": "00000000-0000-4000-8000-00000000000b",
+            "pdfTaskId": "00000000-0000-4000-8000-00000000000c",
+            "previewTaskId": "00000000-0000-4000-8000-00000000000d",
+            "projectId": "00000000-0000-4000-8000-00000000000e",
+            "qualifiedId": "contract-00000001-9",
+            "serviceRepositoryId": "00000000-0000-4000-8000-00000000000f",
+            "taskId": "00000000-0000-4000-8000-000000000010",
+            "taxesEpicId": "00000000-0000-4000-8000-000000000011"
           }
         }
       ],
@@ -10073,7 +9946,7 @@
           }
         },
         "method": "GET",
-        "path": "/projects/api/work/contract-00000001-10/dossier"
+        "path": "/projects/api/work/contract-00000001-9/dossier"
       },
       "response": {
         "body": {
@@ -10081,7 +9954,7 @@
             "pages": [
               {
                 "body": "1. Create an invoice with three lines of 0.335 EUR each.\n2. Read its total: **1.02 EUR**. The lines add up to 1.005, which rounds once to 1.01.\n",
-                "id": "00000000-0000-4000-8000-000000000013",
+                "id": "00000000-0000-4000-8000-000000000012",
                 "position": 0,
                 "slug": "reproduction",
                 "title": "Reproduction",
@@ -10089,7 +9962,7 @@
               },
               {
                 "body": "1. Create an invoice with three lines of 0.335 EUR each.\n2. Read its total: **1.02 EUR**. The lines add up to 1.005, which rounds once to 1.01.\n",
-                "id": "00000000-0000-4000-8000-000000000013",
+                "id": "00000000-0000-4000-8000-000000000012",
                 "position": 0,
                 "slug": "reproduction",
                 "title": "Reproduction",
@@ -10223,25 +10096,23 @@
           "name": "an epic in detail",
           "params": {
             "bugTicketId": "00000000-0000-4000-8000-000000000001",
-            "campaignId": "00000000-0000-4000-8000-000000000002",
-            "campaignQualifiedId": "contract-00000001-1",
-            "creditNoteTicketId": "00000000-0000-4000-8000-000000000003",
-            "csvFeatureId": "00000000-0000-4000-8000-000000000004",
-            "csvTaskId": "00000000-0000-4000-8000-000000000005",
-            "epicId": "00000000-0000-4000-8000-000000000006",
-            "featureId": "00000000-0000-4000-8000-000000000007",
-            "figureAssetId": "00000000-0000-4000-8000-000000000008",
-            "figurePageId": "00000000-0000-4000-8000-000000000009",
-            "frontendRepositoryId": "00000000-0000-4000-8000-00000000000a",
-            "improvementTicketId": "00000000-0000-4000-8000-00000000000b",
-            "maintenanceTicketId": "00000000-0000-4000-8000-00000000000c",
-            "pdfTaskId": "00000000-0000-4000-8000-00000000000d",
-            "previewTaskId": "00000000-0000-4000-8000-00000000000e",
-            "projectId": "00000000-0000-4000-8000-00000000000f",
-            "qualifiedId": "contract-00000001-2",
-            "serviceRepositoryId": "00000000-0000-4000-8000-000000000010",
-            "taskId": "00000000-0000-4000-8000-000000000011",
-            "taxesEpicId": "00000000-0000-4000-8000-000000000012"
+            "creditNoteTicketId": "00000000-0000-4000-8000-000000000002",
+            "csvFeatureId": "00000000-0000-4000-8000-000000000003",
+            "csvTaskId": "00000000-0000-4000-8000-000000000004",
+            "epicId": "00000000-0000-4000-8000-000000000005",
+            "featureId": "00000000-0000-4000-8000-000000000006",
+            "figureAssetId": "00000000-0000-4000-8000-000000000007",
+            "figurePageId": "00000000-0000-4000-8000-000000000008",
+            "frontendRepositoryId": "00000000-0000-4000-8000-000000000009",
+            "improvementTicketId": "00000000-0000-4000-8000-00000000000a",
+            "maintenanceTicketId": "00000000-0000-4000-8000-00000000000b",
+            "pdfTaskId": "00000000-0000-4000-8000-00000000000c",
+            "previewTaskId": "00000000-0000-4000-8000-00000000000d",
+            "projectId": "00000000-0000-4000-8000-00000000000e",
+            "qualifiedId": "contract-00000001-1",
+            "serviceRepositoryId": "00000000-0000-4000-8000-00000000000f",
+            "taskId": "00000000-0000-4000-8000-000000000010",
+            "taxesEpicId": "00000000-0000-4000-8000-000000000011"
           }
         }
       ],
@@ -10263,7 +10134,7 @@
           }
         },
         "method": "GET",
-        "path": "/projects/api/work/contract-00000001-2/dossier"
+        "path": "/projects/api/work/contract-00000001-1/dossier"
       },
       "response": {
         "body": {
@@ -10271,7 +10142,7 @@
             "pages": [
               {
                 "body": "## In scope\n- invoices and credit notes\n- one date range per export\n\n## Out of scope\n- exports of payments; the bank statement covers them\n",
-                "id": "00000000-0000-4000-8000-000000000013",
+                "id": "00000000-0000-4000-8000-000000000012",
                 "position": 0,
                 "slug": "scope",
                 "title": "Scope",
@@ -10279,7 +10150,7 @@
               },
               {
                 "body": "## In scope\n- invoices and credit notes\n- one date range per export\n\n## Out of scope\n- exports of payments; the bank statement covers them\n",
-                "id": "00000000-0000-4000-8000-000000000013",
+                "id": "00000000-0000-4000-8000-000000000012",
                 "position": 0,
                 "slug": "scope",
                 "title": "Scope",
@@ -10287,7 +10158,7 @@
               },
               {
                 "body": "## In scope\n- invoices and credit notes\n- one date range per export\n\n## Out of scope\n- exports of payments; the bank statement covers them\n",
-                "id": "00000000-0000-4000-8000-000000000013",
+                "id": "00000000-0000-4000-8000-000000000012",
                 "position": 0,
                 "slug": "scope",
                 "title": "Scope",
@@ -10736,25 +10607,23 @@
           "name": "a bug ticket in detail",
           "params": {
             "bugTicketId": "00000000-0000-4000-8000-000000000001",
-            "campaignId": "00000000-0000-4000-8000-000000000002",
-            "campaignQualifiedId": "contract-00000001-1",
-            "creditNoteTicketId": "00000000-0000-4000-8000-000000000003",
-            "csvFeatureId": "00000000-0000-4000-8000-000000000004",
-            "csvTaskId": "00000000-0000-4000-8000-000000000005",
-            "epicId": "00000000-0000-4000-8000-000000000006",
-            "featureId": "00000000-0000-4000-8000-000000000007",
-            "figureAssetId": "00000000-0000-4000-8000-000000000008",
-            "figurePageId": "00000000-0000-4000-8000-000000000009",
-            "frontendRepositoryId": "00000000-0000-4000-8000-00000000000a",
-            "improvementTicketId": "00000000-0000-4000-8000-00000000000b",
-            "maintenanceTicketId": "00000000-0000-4000-8000-00000000000c",
-            "pdfTaskId": "00000000-0000-4000-8000-00000000000d",
-            "previewTaskId": "00000000-0000-4000-8000-00000000000e",
-            "projectId": "00000000-0000-4000-8000-00000000000f",
-            "qualifiedId": "contract-00000001-10",
-            "serviceRepositoryId": "00000000-0000-4000-8000-000000000010",
-            "taskId": "00000000-0000-4000-8000-000000000011",
-            "taxesEpicId": "00000000-0000-4000-8000-000000000012"
+            "creditNoteTicketId": "00000000-0000-4000-8000-000000000002",
+            "csvFeatureId": "00000000-0000-4000-8000-000000000003",
+            "csvTaskId": "00000000-0000-4000-8000-000000000004",
+            "epicId": "00000000-0000-4000-8000-000000000005",
+            "featureId": "00000000-0000-4000-8000-000000000006",
+            "figureAssetId": "00000000-0000-4000-8000-000000000007",
+            "figurePageId": "00000000-0000-4000-8000-000000000008",
+            "frontendRepositoryId": "00000000-0000-4000-8000-000000000009",
+            "improvementTicketId": "00000000-0000-4000-8000-00000000000a",
+            "maintenanceTicketId": "00000000-0000-4000-8000-00000000000b",
+            "pdfTaskId": "00000000-0000-4000-8000-00000000000c",
+            "previewTaskId": "00000000-0000-4000-8000-00000000000d",
+            "projectId": "00000000-0000-4000-8000-00000000000e",
+            "qualifiedId": "contract-00000001-9",
+            "serviceRepositoryId": "00000000-0000-4000-8000-00000000000f",
+            "taskId": "00000000-0000-4000-8000-000000000010",
+            "taxesEpicId": "00000000-0000-4000-8000-000000000011"
           }
         }
       ],
@@ -10789,13 +10658,13 @@
           }
         },
         "method": "PUT",
-        "path": "/projects/api/work/contract-00000001-10/dossier/reproduction"
+        "path": "/projects/api/work/contract-00000001-9/dossier/reproduction"
       },
       "response": {
         "body": {
           "content": {
             "body": "1. Create an invoice with three lines of 0.335 EUR each.\n2. Read its total: 1.02 EUR.",
-            "id": "00000000-0000-4000-8000-000000000013",
+            "id": "00000000-0000-4000-8000-000000000012",
             "position": 0,
             "slug": "reproduction",
             "title": "Reproduction",
