@@ -12,8 +12,6 @@ import { toSignal } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, Router, RouterLink, convertToParamMap } from '@angular/router';
 import { QitsBadge, QitsButton } from '@qits/ui-components';
 import { ArchetypesApi, type ArchetypeRegistry } from '../api/archetypes-api';
-import { CampaignsApi } from '../api/campaigns-api';
-import type { CampaignMemberEntityDto } from '../api/dto';
 import { DesignsApi } from '../api/designs-api';
 import { epicDossier, ticketDossier, type DossierOwner } from '../api/dossier-api';
 import { workRef, type DropResolution } from '../api/work';
@@ -117,17 +115,12 @@ interface Subject {
   readonly node: EntityNode;
   /** The project's nodes, so a peer room in the activity bar can be addressed by its number. */
   readonly nodes: readonly EntityNode[];
-  /**
-   * A campaign's members that are still REPORTED — what its room refines alongside it (epic
-   * qits-770), and what its prompt names. Empty for an epic or a ticket.
-   */
-  readonly members: readonly CampaignMemberEntityDto[];
   /** The served registry — what the moves are drawn from, and the walk the first word is read off. */
   readonly registry: ArchetypeRegistry;
 }
 
 /**
- * The room you sit in while an agent refines an epic, a ticket or a campaign.
+ * The room you sit in while an agent refines an epic or a ticket.
  *
  * ## What it is
  *
@@ -228,7 +221,6 @@ export class RefiningPage {
   private readonly refinementsApi = inject(RefinementsApi);
   private readonly entitiesApi = inject(EntitiesApi);
   private readonly archetypes = inject(ArchetypesApi);
-  private readonly campaigns = inject(CampaignsApi);
   private readonly daemon = inject(WorkspaceDaemonApi);
   private readonly events = inject(WorkspaceEvents);
   private readonly memory = inject(AgentActivityMemory);
@@ -527,7 +519,7 @@ export class RefiningPage {
    */
   protected readonly promptContext = computed(() => {
     const subject = this.resolved();
-    return subject ? refinePrompt(subject.node, subject.members) : `# Refine: ${this.title()}`;
+    return subject ? refinePrompt(subject.node) : `# Refine: ${this.title()}`;
   });
   protected readonly description = computed(() => this.resolved()?.node.description ?? '');
 
@@ -742,28 +734,9 @@ export class RefiningPage {
       qualifiedId: node.qualifiedId,
       title: node.title,
       status: node.status,
-      blocked: node.entity?.blocked ?? node.campaign?.blocked,
+      blocked: node.entity?.blocked,
     });
-    return ready({ node, nodes, registry, members: await this.reportedMembers(node) });
-  }
-
-  /**
-   * A campaign's REPORTED members, for its room's prompt (epic qits-770): its room's scope is the
-   * campaign and those members, and nothing server-side composes a room's prompt. A failed read
-   * costs the list and not the room — the prompt then names the campaign alone.
-   */
-  private async reportedMembers(node: EntityNode): Promise<readonly CampaignMemberEntityDto[]> {
-    if (node.archetype !== 'CAMPAIGN') {
-      return [];
-    }
-    try {
-      const members = await this.campaigns.members(workRef(node));
-      return members
-        .map((member) => member.entity)
-        .filter((entity) => entity.status === 'REPORTED');
-    } catch {
-      return [];
-    }
+    return ready({ node, nodes, registry });
   }
 
   /**
