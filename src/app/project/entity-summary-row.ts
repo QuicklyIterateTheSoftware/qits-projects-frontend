@@ -2,8 +2,7 @@ import { ChangeDetectionStrategy, Component, computed, input } from '@angular/co
 import { RouterLink } from '@angular/router';
 import { QitsBadge } from '@qits/ui-components';
 import { relativeSince } from '../ui/format';
-import type { WorkItem } from './campaign-model';
-import { closedByLabel, outcomeBadge, statusBadge, tagBadges } from './entities-model';
+import { closedByLabel, outcomeBadge, statusBadge, tagBadges, type Entity } from './entities-model';
 import { archetypeLabel, entityAddress, entityRoute } from './entity-nodes';
 
 /**
@@ -75,13 +74,13 @@ import { archetypeLabel, entityAddress, entityRoute } from './entity-nodes';
   `,
 })
 export class EntitySummaryRow {
-  readonly entity = input.required<WorkItem>();
+  readonly entity = input.required<Entity>();
 
   /** The project's slug, which every address is spelled with. */
   readonly projectSlug = input<string>('');
 
   /** The item that closed this one, when the desk holds it; null draws nothing. */
-  readonly successor = input<WorkItem | null>(null);
+  readonly successor = input<Entity | null>(null);
 
   protected readonly badge = computed(() => statusBadge(this.entity().status));
   protected readonly outcome = computed(() => outcomeBadge(this.entity()));
@@ -93,7 +92,7 @@ export class EntitySummaryRow {
   protected readonly archetype = computed(() => archetypeLabel(this.entity().archetype));
   protected readonly address = computed(() => entityAddress(this.entity()));
   protected readonly route = computed(() => entityRoute(this.projectSlug(), this.entity()));
-  /** Null where the read carries no timestamp (a campaign's listing). */
+  /** Null where the read carries no timestamp. */
   protected readonly age = computed(() => {
     const at = this.entity().createdAt;
     return at ? relativeSince(at) : null;
