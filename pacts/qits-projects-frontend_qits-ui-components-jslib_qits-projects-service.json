@@ -18,7 +18,7 @@
           "qits-via": {
             "artifact": "@qits/ui-components",
             "repository": "qits-ui-components-jslib",
-            "version": "2026.1106.153549"
+            "version": "2026.1106.180325"
           }
         }
       },
@@ -131,7 +131,7 @@
           "qits-via": {
             "artifact": "@qits/ui-components",
             "repository": "qits-ui-components-jslib",
-            "version": "2026.1106.153549"
+            "version": "2026.1106.180325"
           }
         }
       },
@@ -319,7 +319,7 @@
           "qits-via": {
             "artifact": "@qits/ui-components",
             "repository": "qits-ui-components-jslib",
-            "version": "2026.1106.153549"
+            "version": "2026.1106.180325"
           }
         }
       },
@@ -341,6 +341,12 @@
           "path": {
             "expression": "/projects/api/projects/${projectId}/work/briefs",
             "type": "ProviderState"
+          },
+          "query": {
+            "id": {
+              "expression": "${ticketQualifiedId},${epicQualifiedId},${unknownQualifiedId}",
+              "type": "ProviderState"
+            }
           }
         },
         "matchingRules": {
@@ -351,6 +357,16 @@
                 "match": "type"
               }
             ]
+          },
+          "query": {
+            "id": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
           }
         },
         "method": "GET",
