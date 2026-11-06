@@ -21,6 +21,7 @@ import {
   type DispatchMode,
   type EntityDispatchDto,
   type EntityDispatchStateDto,
+  type NeedDto,
   type TicketType,
 } from '../api/dto';
 import { EntitiesApi } from '../api/entities-api';
@@ -41,9 +42,6 @@ import {
   type Loadable,
 } from '../ui/loadable';
 import { MarkdownView } from '../ui/markdown-view';
-import { CampaignMembers, type CampaignCandidate } from './campaign-members';
-import { campaignLive } from './campaign-model';
-import { CampaignProgress } from './campaign-progress';
 import { DropForm } from './drop-form';
 import {
   ACCEPTANCE_CRITERIA,
@@ -148,11 +146,10 @@ interface TreeRow {
  *       and goes there. It is enabled where the dispatch state's next phase is `refine` — refinement
  *       *is* that phase — and an existing room is always offered as "Open refinement", whatever the
  *       status, because the service answers an existing room whatever the state.</li>
- *   <li>The three are absent for an archetype with no lifecycle at all — campaign's shorter set is
- *       the only one left (qits-763 gave a feature and a task the eight-word walk too) — **and** for
- *       a feature or a task regardless: {@link lifecycle} also requires `mayBeRoot`, because neither
- *       gets the phase machinery the three actions are drawn from, which is also where the service
- *       would refuse them.</li>
+ *   <li>The three are absent for an archetype with no lifecycle at all, and **also** for a feature or
+ *       a task regardless (qits-763 gave both the eight-word walk too): {@link lifecycle} also
+ *       requires `mayBeRoot`, because neither gets the phase machinery the three actions are drawn
+ *       from, which is also where the service would refuse them.</li>
  * </ul>
  *
  * <p><b>Which status moves are offered is the served registry's `transitions`</b>, labelled by kind
@@ -180,15 +177,9 @@ interface TreeRow {
  * so beside its button ("needs acceptance criteria", "needs a person"); the gate itself is the
  * service's, and its 409 is shown as worded.
  *
- * <p><b>A campaign</b> (qits-419, qits-420) is a root with a lifecycle and a body of its own: how
- * it is running ({@link CampaignProgress}), and its members, their order and their conditions
- * ({@link CampaignMembers}). **Its status is derived from its members** (qits-650): the service
- * serves a campaign only Drop and Reopen, drawn off the registry like every other move, and they go
- * through the same lifecycle door (`POST /work/{q}/status` — the multi-entity door refuses a
- * campaign). Start is offered while it is neither DONE nor DROPPED, as the dispatch state says; its one
- * dispatching press is <b>Start campaign</b> (or <b>Re-check members</b> once started), asked twice
- * because it authorises every ungated dispatch in the campaign; and *Run the next phase*, *Refine*,
- * *Edit* and *Reshape* are not offered, because the service would refuse every one of them.
+ * <p><b>Needs</b> (qits-1900) is a read-only list: the other work items this node needs, each with
+ * the status it must reach and where it currently stands — "qits-1897 at VERIFIED, now REFINED".
+ * Nothing here writes it; it replaces the old single "Depends on" link.
  *
  * <p><b>The number is resolved by reading the project</b>: there is no read by number, so the page
  * reads the collection the desk reads and looks the number up (`entity-nodes.ts`). A feature's page
@@ -202,8 +193,6 @@ interface TreeRow {
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     Async,
-    CampaignMembers,
-    CampaignProgress,
     DossierPanel,
     DropForm,
     EntityThread,
@@ -310,10 +299,20 @@ interface TreeRow {
           <dt>Repository</dt>
           <dd class="repository">{{ repositoryName(n.repositoryId) }}</dd>
         }
-        @if (dependsOn(); as first) {
-          <dt>Depends on</dt>
-          <dd class="depends-on">
-            <a [routerLink]="routeOf(first)">{{ label(first) }}</a>
+        @if (needs().length > 0) {
+          <dt>Needs</dt>
+          <dd class="needs">
+            <ul class="needs-list">
+              @for (need of needs(); track need.id) {
+                <li [class.met]="need.met">
+                  <a [routerLink]="needRoute(need)">{{ need.qualifiedId ?? need.title }}</a>
+                  at {{ need.status }}, now {{ need.currentStatus ?? need.status }}
+                  @if (need.met) {
+                    <span class="met-mark">(met)</span>
+                  }
+                </li>
+              }
+            </ul>
           </dd>
         }
         @if (n.createdAt) {
@@ -326,47 +325,7 @@ interface TreeRow {
         }
       </dl>
 
-      @if (lifecycle() && n.archetype === 'CAMPAIGN') {
-        <section class="flow start" aria-label="Start">
-          <div class="actions">
-            <qits-button
-              class="dispatch start-campaign"
-              variant="primary"
-              [disabled]="!dispatchable() || action() !== null"
-              [busy]="action() === 'dispatch:FLOW'"
-              (pressed)="start()"
-            >
-              {{
-                confirming() === 'start'
-                  ? 'Confirm ' + startLabel().toLowerCase() + '?'
-                  : startLabel()
-              }}
-            </qits-button>
-            @if (confirming() === 'start') {
-              <qits-button variant="ghost" size="sm" (pressed)="confirming.set(null)">
-                Cancel
-              </qits-button>
-            }
-            @if (refinable()) {
-              <!-- Only while it can be pressed: a campaign's room is opened while it is REPORTED
-                   (epic qits-770), and past that the press would be a dead button beside Start. -->
-              <qits-button
-                class="refine"
-                variant="secondary"
-                [disabled]="action() !== null"
-                [busy]="action() === 'refine'"
-                (pressed)="refine()"
-              >
-                {{ room() ? 'Open refinement' : 'Refine' }}
-              </qits-button>
-            }
-            <span class="note flow-note">{{ flowNote() }}</span>
-          </div>
-          @if (confirming() === 'start') {
-            <p class="start-caption" role="status">{{ startCaption }}</p>
-          }
-        </section>
-      } @else if (lifecycle()) {
+      @if (lifecycle()) {
         <section class="flow" aria-label="Agent">
           <div class="actions">
             <qits-button
@@ -410,15 +369,9 @@ interface TreeRow {
       }
 
       <div class="actions moves">
-        @if (n.archetype !== 'CAMPAIGN') {
-          <qits-button
-            variant="secondary"
-            [disabled]="action() !== null"
-            (pressed)="startEditing()"
-          >
-            Edit
-          </qits-button>
-        }
+        <qits-button variant="secondary" [disabled]="action() !== null" (pressed)="startEditing()">
+          Edit
+        </qits-button>
         @for (step of moves(); track step.target) {
           <qits-button
             [class]="'move ' + step.kind.toLowerCase()"
@@ -432,11 +385,6 @@ interface TreeRow {
           @if (step.gates.length > 0) {
             <span class="note gate-hint">{{ step.label }} {{ hints(step) }}</span>
           }
-        }
-        @if (n.archetype === 'CAMPAIGN' && !final()) {
-          <span class="note derived-note">
-            Its status follows its members — by hand it is only dropped or reopened.
-          </span>
         }
         @if (final()) {
           <span class="note final-note">{{ finalNote() }}</span>
@@ -477,16 +425,14 @@ interface TreeRow {
         >
           {{ reserved() ? 'Unreserve for human' : 'Reserve for human' }}
         </qits-button>
-        @if (n.archetype !== 'CAMPAIGN') {
-          <qits-button
-            class="reshape"
-            variant="ghost"
-            [disabled]="action() !== null"
-            (pressed)="reshaping.set(true)"
-          >
-            Reshape
-          </qits-button>
-        }
+        <qits-button
+          class="reshape"
+          variant="ghost"
+          [disabled]="action() !== null"
+          (pressed)="reshaping.set(true)"
+        >
+          Reshape
+        </qits-button>
         @if (ticket()) {
           <qits-button
             class="delete"
@@ -710,20 +656,7 @@ interface TreeRow {
 
       <section class="body" [attr.data-archetype]="n.archetype">
         <h2>{{ ticket() ? 'The work' : 'Description' }}</h2>
-        @if (n.archetype === 'CAMPAIGN') {
-          <app-campaign-members
-            [campaignId]="ref(n)"
-            [projectSlug]="projectSlug()"
-            [entities]="campaignCandidates()"
-            [repositories]="repositoryList()"
-            [revision]="revision()"
-          />
-          <app-campaign-progress
-            [campaignId]="ref(n)"
-            [projectSlug]="projectSlug()"
-            [revision]="revision()"
-          />
-        } @else if (n.description; as text) {
+        @if (n.description; as text) {
           <app-markdown class="description" [text]="text" />
         } @else {
           <p class="absent">
@@ -969,6 +902,18 @@ interface TreeRow {
     .closed-as {
       margin-left: 0.4rem;
     }
+    .needs-list {
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }
+    .needs-list li.met {
+      color: #6b7280;
+    }
+    .met-mark {
+      margin-left: 0.3rem;
+      font-size: 0.8rem;
+    }
     .form {
       margin: 0 0 1rem;
       padding: 0.9rem 1rem;
@@ -1151,15 +1096,8 @@ export class EntityDetailPage {
   /** Which write is in flight: `dispatch:<mode>`, `refine`, `move:<target>`, `save`, … */
   protected readonly action = signal<string | null>(null);
   protected readonly actionFailure = signal<string | null>(null);
-  /** Which destructive (or authorising) press is waiting for its second press. */
-  protected readonly confirming = signal<'supersede' | 'delete' | 'start' | null>(null);
-
-  /** What the start press authorises, said on its confirm step (qits-419). */
-  protected readonly startCaption =
-    'Start — this authorises every dispatch in this campaign that no approval gates';
-
-  /** Bumped after this page's own presses, so a campaign's own reads re-read. */
-  protected readonly revision = signal(0);
+  /** Which destructive press is waiting for its second press. */
+  protected readonly confirming = signal<'supersede' | 'delete' | null>(null);
 
   protected readonly editing = signal(false);
   protected readonly draftTitle = signal('');
@@ -1209,17 +1147,14 @@ export class EntityDetailPage {
   protected readonly ticket = computed(() => ticketOf(this.node()));
 
   /**
-   * Whether this node is blocked — read off whichever root holds the flag, an epic or a ticket
-   * through {@link EntityNode.entity}, a campaign through {@link EntityNode.campaign}. False for a
-   * feature or a task, which carry neither. The *effective* block since qits-895 — an explicit flag
-   * or the agent waiting, either one.
+   * Whether this node is blocked — read off the root holding the flag, through
+   * {@link EntityNode.entity}. False for a feature or a task, which carries none. The *effective*
+   * block since qits-895 — an explicit flag or the agent waiting, either one.
    */
-  protected readonly blockedEntity = computed(
-    () => this.node()?.entity?.blocked ?? this.node()?.campaign?.blocked ?? false,
-  );
+  protected readonly blockedEntity = computed(() => this.node()?.entity?.blocked ?? false);
 
-  /** Whichever root carries the block fields — an epic's or a ticket's entity, or a campaign's. */
-  private readonly blockedRoot = computed(() => this.node()?.entity ?? this.node()?.campaign ?? null);
+  /** Whichever root carries the block fields — an epic's or a ticket's entity. */
+  private readonly blockedRoot = computed(() => this.node()?.entity ?? null);
 
   /** The badge(s) beside the title — none, one or both of blocked and waiting for you (qits-895). */
   protected readonly blockBadges = computed(() => {
@@ -1298,8 +1233,8 @@ export class EntityDetailPage {
    * lifecycle an epic or a ticket has, but none of the phase machinery that runs behind it — the
    * service keeps `PhaseAdvance`, dispatch and refinement refused for both archetypes. `mayBeRoot` is
    * what the registry already uses to say "sits at the top of a project with its own phase", and it is
-   * true for exactly the three archetypes this section was ever drawn for — epic, ticket, campaign —
-   * so AND-ing it in is what keeps a feature's or a task's page from growing a Dispatch section merely
+   * true for exactly the two archetypes this section was ever drawn for — epic and ticket — so
+   * AND-ing it in is what keeps a feature's or a task's page from growing a Dispatch section merely
    * because its status picker now has words in it.
    */
   protected readonly lifecycle = computed(() => {
@@ -1394,21 +1329,8 @@ export class EntityDetailPage {
    * Refine is offered where refining is the phase that runs — the dispatch state's `nextPhase` — or
    * wherever a room already stands, since the service always answers an existing one.
    */
-  protected readonly refinable = computed(() => {
-    if (this.room() !== null) {
-      return true;
-    }
-    // A campaign's start is its flow, so its dispatch state names no refine phase: its room is
-    // offered while it is REPORTED, which is the one status the service opens a room in (qits-770).
-    const node = this.node();
-    return node?.archetype === 'CAMPAIGN'
-      ? node.status === 'REPORTED'
-      : this.state()?.nextPhase === 'refine';
-  });
-
-  /** The start press's word: *Start campaign*, or *Re-check members* once a start is live. */
-  protected readonly startLabel = computed(() =>
-    this.state()?.nextPhase === 'recheck' ? 'Re-check members' : 'Start campaign',
+  protected readonly refinable = computed(
+    () => this.room() !== null || this.state()?.nextPhase === 'refine',
   );
 
   /**
@@ -1428,22 +1350,6 @@ export class EntityDetailPage {
     const state = this.state();
     if (!state) {
       return '';
-    }
-    if (this.node()?.archetype === 'CAMPAIGN') {
-      if (state.dispatchable) {
-        return state.nextPhase === 'recheck'
-          ? 'Running — a press re-checks every waiting member now.'
-          : 'A press starts the campaign.';
-      }
-      if (state.blocked && isExplicitBlock(state)) {
-        return 'Blocked — unblock it before starting.';
-      }
-      if (state.status && !campaignLive(state.status)) {
-        return `Nothing to start at ${statusLabel(state.status)} — a campaign runs until it is done or dropped.`;
-      }
-      return state.status
-        ? `Nothing to start at ${statusLabel(state.status)}.`
-        : 'Nothing to start.';
     }
     if (state.preApprovedBy) {
       return `Pre-approved by ${state.preApprovedBy}: the platform schedules it once refined.`;
@@ -1503,12 +1409,10 @@ export class EntityDetailPage {
     return node.status !== walk[0] && this.moves().some((step) => step.kind === 'DROP');
   });
 
-  /** Block is offered where a phase runs behind the status — the dispatch state's `nextPhase`. */
   /**
-   * Block is offered on every lifecycle archetype — an epic, a ticket or a campaign, read off
-   * whichever root the node holds — and only where a phase runs behind the status, the dispatch
-   * state's `nextPhase`. A feature or a task holds neither {@link EntityNode.entity} nor
-   * {@link EntityNode.campaign}, so it never qualifies.
+   * Block is offered on every lifecycle archetype — an epic or a ticket, read off
+   * {@link EntityNode.entity} — and only where a phase runs behind the status, the dispatch state's
+   * `nextPhase`. A feature or a task holds no entity, so it never qualifies.
    *
    * <p>This is the gate on the button existing at all, both words. Which word it says is
    * {@link blockedEntity}'s alone: Unblock shows whenever this is true and the node's effective
@@ -1518,11 +1422,7 @@ export class EntityDetailPage {
    */
   protected readonly blockable = computed(() => {
     const node = this.node();
-    return (
-      node !== null &&
-      (node.entity !== null || node.campaign !== null) &&
-      (this.state()?.nextPhase ?? null) !== null
-    );
+    return node !== null && node.entity !== null && (this.state()?.nextPhase ?? null) !== null;
   });
 
   protected readonly blockSendable = computed(
@@ -1555,10 +1455,8 @@ export class EntityDetailPage {
   /** "Duplicate of", "Resolved by", "Superseded by" — read off this node's outcome. */
   protected readonly successorLabel = computed(() => closedByLabel(this.node()?.outcome));
 
-  protected readonly dependsOn = computed(() => {
-    const ground = this.loaded();
-    return ground ? nodeById(ground.nodes, this.node()?.dependsOn ?? null) : null;
-  });
+  /** The other work items this node needs (qits-1900), read-only — see the class note. */
+  protected readonly needs = computed<readonly NeedDto[]>(() => this.node()?.needs ?? []);
 
   protected readonly children = computed<readonly EntityNode[]>(() => {
     const ground = this.loaded();
@@ -1623,22 +1521,6 @@ export class EntityDetailPage {
 
   protected readonly hasDossier = computed(() => this.dossierPages().length > 0);
 
-  /** The project's epics and tickets, as a campaign's add-member picker offers them. */
-  protected readonly campaignCandidates = computed<readonly CampaignCandidate[]>(() =>
-    (this.loaded()?.nodes ?? [])
-      .filter((node) => node.archetype === 'EPIC' || node.archetype === 'TICKET')
-      .map((node) => ({
-        id: node.id,
-        archetype: node.archetype,
-        qualifiedId: node.qualifiedId,
-        title: node.title,
-      })),
-  );
-
-  /** The project's repositories by name, for a campaign's *repository releases* criterion. */
-  protected readonly repositoryList = computed<readonly string[]>(() =>
-    [...(this.loaded()?.repositories.values() ?? [])].sort(),
-  );
   protected readonly dossierPageSlug = computed(() => this.query().get('page'));
 
   /**
@@ -1659,8 +1541,7 @@ export class EntityDetailPage {
   /** Back to the desk filtered to this node's root archetype — where the reader came from. */
   protected readonly deskQuery = computed(() => {
     const node = this.node();
-    const root =
-      node?.entity?.archetype ?? (node?.epic ? 'EPIC' : node?.campaign ? 'CAMPAIGN' : null);
+    const root = node?.entity?.archetype ?? (node?.epic ? 'EPIC' : null);
     return root ? { [ARCHETYPE_PARAM]: archetypeFilterParam(root) } : {};
   });
 
@@ -1715,8 +1596,8 @@ export class EntityDetailPage {
    *
    * <p><b>The node the page shows is read whole; the rest of the project is the listing's summary</b>
    * (qits-1815, {@link EntitiesApi.listWithWhole}). The number resolves in the listing, and then the
-   * root whose tree holds it is read again — an epic with its features' and tasks' bodies, a ticket,
-   * a campaign — before anything is drawn, so the description, the acceptance criteria and the
+   * root whose tree holds it is read again — an epic with its features' and tasks' bodies, or a
+   * ticket — before anything is drawn, so the description, the acceptance criteria and the
    * workspaces on screen are the whole read's. That is also what the edit starts from: the save is a
    * PUT-shaped restatement ({@link save}), and a draft seeded from a summary row would clear the
    * description it never saw. Every write re-runs this, so the next draft starts whole too.
@@ -1783,7 +1664,6 @@ export class EntityDetailPage {
       this.room.set(null);
       return;
     }
-    // A campaign has a room too since epic qits-770 — the campaign and its REPORTED members.
     const [state, room] = await Promise.all([
       this.api.dispatchState(this.ref(node)).catch(() => null),
       this.refinements.findFor(this.ref(node)).catch(() => null),
@@ -1796,8 +1676,7 @@ export class EntityDetailPage {
 
   async readAudit(quiet = false): Promise<void> {
     const node = this.node();
-    // A campaign's writes are audited under its own id, the way an epic's tree is under the epic's.
-    const root = node?.entity ?? node?.epic ?? node?.campaign ?? null;
+    const root = node?.entity ?? node?.epic ?? null;
     const key = root ? workRef(root) : null;
     if (!key) {
       this.audit.set(ready([]));
@@ -1853,32 +1732,7 @@ export class EntityDetailPage {
     }
     await this.run(`dispatch:${mode}`, async () => {
       const answer = await this.api.dispatch(this.ref(node), mode);
-      this.dispatched.set('dispatch' in answer ? answer.dispatch : null);
-      await this.load(true);
-    });
-  }
-
-  /**
-   * **Start a campaign** — asked twice, because it is a decision: the first press shows what it
-   * authorises (every dispatch in the campaign no approval gates), the second sends it. It is the
-   * dispatching press (`FLOW`) on the campaign, which answers `{progress}`; the campaign's own reads
-   * re-read. Once a start is live the same press re-checks the waiting members. A 403 (a non-admin
-   * session) shows the service's sentence the way the dispatch press does.
-   */
-  protected async start(): Promise<void> {
-    const node = this.node();
-    if (!node || this.action() || !this.dispatchable()) {
-      return;
-    }
-    if (this.confirming() !== 'start') {
-      this.confirming.set('start');
-      this.actionFailure.set(null);
-      return;
-    }
-    this.confirming.set(null);
-    await this.run('dispatch:FLOW', async () => {
-      await this.api.dispatch(this.ref(node), 'FLOW');
-      this.revision.update((count) => count + 1);
+      this.dispatched.set(answer.dispatch);
       await this.load(true);
     });
   }
@@ -1938,13 +1792,9 @@ export class EntityDetailPage {
     landed: () => void = () => undefined,
   ): Promise<void> {
     await this.run(`move:${step.target}`, async () => {
-      // One lifecycle door for every archetype (`POST /work/{q}/status`); a campaign's move also
-      // re-reads its members and progress.
+      // One lifecycle door for every archetype — `POST /work/{q}/status`.
       await this.api.transition(this.ref(node), step.target, resolution);
       landed();
-      if (node.archetype === 'CAMPAIGN') {
-        this.revision.update((count) => count + 1);
-      }
       await this.load(true);
     });
   }
@@ -2164,6 +2014,14 @@ export class EntityDetailPage {
 
   protected routeOf(node: Pick<EntityNode, 'qualifiedId' | 'number'>): readonly string[] {
     return entityRoute(this.projectSlug(), node);
+  }
+
+  /**
+   * A need's page: unlike {@link routeOf}, a need carries no per-project number — only its qualified
+   * id (or, lacking one, its id) — so this spells the address directly off {@link workRoute}.
+   */
+  protected needRoute(need: Pick<NeedDto, 'id' | 'qualifiedId'>): readonly string[] {
+    return [...workRoute(this.projectSlug()), need.qualifiedId ?? need.id];
   }
 
   /** How a row this node closed was closed — `duplicate`, `resolved elsewhere`, … — or nothing. */
