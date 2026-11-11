@@ -178,6 +178,7 @@ const dropOf = (state: string, body: Readonly<Record<string, string>>): GoldenMa
     s === state && operationId === 'setWorkStatus'
       ? ({ ...masters.body(RECORDED_MOVE, 'setWorkStatus'), status: body['target'] } as T)
       : masters.body<T>(s, operationId),
+  text: (s, operationId) => masters.text(s, operationId),
 });
 
 /** One pact matcher spec, e.g. `{ match: 'type', min: 1, max: 1 }`. */
