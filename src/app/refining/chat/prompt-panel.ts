@@ -11,7 +11,7 @@ import {
   untracked,
 } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
-import { QitsButton } from '@qits/ui-components';
+import { QITS_PRIVATE_APP_HINT, QitsButton } from '@qits/ui-components';
 import { notSignedIn, type NotSignedIn } from '../../api/agent-sign-in';
 import { CommandsApi, type CommandDto } from '../../api/commands-api';
 import { PromptDraftApi } from '../../api/prompt-draft-api';
@@ -80,6 +80,30 @@ type SaveState = 'clean' | 'pending' | 'saving' | 'dirty';
  *
  * **The prompt box is the draft.** It is what autosaves, what flushes, and what launches. The
  * transcript participates in none of that, which is also why a reload does not bring it back.
+ *
+ * ## Dictation's own availability
+ *
+ * Offering Record needs the browser's own capability check ({@link unsupported}, which still comes
+ * first and unconditionally) *and* an answer about qits-stt itself — since it moved behind the
+ * network-access tunnel (qits-2061), being in the browser is no longer enough.
+ * {@link SpeechApi.availability} is that answer, as one of four states:
+ *
+ * - `'pending'` — the navigation has not said where qits-stt is yet, or it has and the one
+ *   credentialed probe against it is still out. Record is drawn but disabled: there is nothing
+ *   wrong to report, only nothing known yet.
+ * - `'absent'` — the navigation answered and named no such application at all. Record is hidden
+ *   outright, same as {@link unsupported}'s reading: there is no door to point at, so the panel
+ *   says to type the transcript instead and leaves it there.
+ * - `'unreachable'` — qits-stt is declared, and private, and the probe did not come back with a
+ *   2xx. Record stays disabled, and {@link QITS_PRIVATE_APP_HINT} explains why underneath it — the
+ *   common case is a browser that has not run `qits network-access up`.
+ * - `'reachable'` — the probe answered, or qits-stt was never private. Everything below is this
+ *   file's behaviour from before qits-2061.
+ *
+ * The probe is one GET at one moment, not a lease: a clip can still fail to transcribe after a
+ * `'reachable'` reading, and when it does the panel says nothing new about it — `recorder.ts`'s
+ * existing "that clip was not transcribed" sentence already covers it, and duplicating the thought
+ * in two places would be the one way to make them disagree later.
  *
  * ## The draft is the one optimistic thing on the page
  *
@@ -183,6 +207,25 @@ export class PromptPanel {
   protected readonly level = this.recorder.level;
   protected readonly transcribing = this.recorder.transcribing;
   protected readonly micProblem = this.recorder.problem;
+
+  /**
+   * qits-stt's own availability — see "Dictation's own availability" above. Asked only once
+   * {@link unsupported} is false: a browser that cannot record at all has no use for an answer
+   * about the service on the other end of it.
+   */
+  protected readonly dictation = computed(() => this.speech.availability());
+
+  /** The navigation named no such application at all. Record is hidden, not merely disabled. */
+  protected readonly dictationAbsent = computed(() => this.dictation() === 'absent');
+
+  /** Declared private, and the one credentialed probe against it did not come back with a 2xx. */
+  protected readonly dictationUnreachable = computed(() => this.dictation() === 'unreachable');
+
+  /** The only state the Record button may actually be pressed in. */
+  protected readonly dictationReady = computed(() => this.dictation() === 'reachable');
+
+  /** The shared sentence for an unreachable private application. One string, never retyped. */
+  protected readonly privateAppHint = QITS_PRIVATE_APP_HINT;
 
   private timer: ReturnType<typeof setTimeout> | null = null;
 

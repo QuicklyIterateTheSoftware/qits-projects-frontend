@@ -1,15 +1,21 @@
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
-import { ChangeDetectionStrategy, Component, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, signal, type WritableSignal } from '@angular/core';
 import { TestBed, type ComponentFixture } from '@angular/core/testing';
 import { Router, provideRouter } from '@angular/router';
+import {
+  QITS_NAVIGATION,
+  QITS_PRIVATE_APP_HINT,
+  toNavTree,
+  type QitsNavTree,
+} from '@qits/ui-components';
 import { EVENT_SOURCE_FACTORY, type EventSourceLike } from '../../api/event-source';
 import { RefinementAgent } from '../../api/refinement-agent';
 import type { RefinementDto } from '../../api/refinements-api';
 import { WorkspaceEvents } from '../../api/workspace-events';
 import { PickedContext } from './picked-context';
 import { DRAFT_DEBOUNCE_MS, PromptPanel } from './prompt-panel';
-import { SPEECH_RUNTIME, type SpeechRuntime } from './speech-runtime';
+import { SPEECH_RUNTIME, type AudioCapture, type SpeechRuntime } from './speech-runtime';
 
 class FakeStream implements EventSourceLike {
   onopen: ((event: Event) => void) | null = null;
@@ -25,6 +31,25 @@ class FakeStream implements EventSourceLike {
 const NO_MICROPHONE: SpeechRuntime = {
   supported: () => false,
   capture: () => Promise.reject(new Error('no microphone in jsdom')),
+};
+
+/** One clip, always the same bytes — enough to prove a press still drives the recorder end to end. */
+class StubCapture implements AudioCapture {
+  level(): number {
+    return 0;
+  }
+  async cut(): Promise<string | null> {
+    return null;
+  }
+  async stop(): Promise<string | null> {
+    return 'UklGRg==';
+  }
+}
+
+/** A browser that can record, for the dictation-availability states below `unsupported()`. */
+const CAN_RECORD: SpeechRuntime = {
+  supported: () => true,
+  capture: () => Promise.resolve(new StubCapture()),
 };
 
 @Component({
@@ -519,4 +544,146 @@ describe('PromptPanel', () => {
     button.click();
     fixture.detectChanges();
   }
+});
+
+const STT_ORIGIN = 'https://stt.private.example';
+const HEALTH_URL = `${STT_ORIGIN}/stt/q/health/ready`;
+const TRANSCRIPTIONS_URL = `${STT_ORIGIN}/stt/api/transcriptions`;
+
+/**
+ * Dictation's own gate (qits-2061): a browser that can record is no longer enough on its own — the
+ * Record button also waits on `SpeechApi.availability`, which this suite drives through
+ * `QITS_NAVIGATION` directly, the same seam `speech-api.spec.ts` uses to control it.
+ */
+describe('PromptPanel dictation availability', () => {
+  let fixture: ComponentFixture<PanelHost>;
+  let http: HttpTestingController;
+  let tree: WritableSignal<QitsNavTree | undefined>;
+
+  function configure(): void {
+    tree = signal<QitsNavTree | undefined>(undefined);
+    TestBed.configureTestingModule({
+      providers: [
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        provideRouter([]),
+        { provide: EVENT_SOURCE_FACTORY, useValue: () => new FakeStream() },
+        { provide: SPEECH_RUNTIME, useValue: CAN_RECORD },
+        { provide: QITS_NAVIGATION, useValue: { tree, failed: signal(false) } },
+      ],
+    });
+    TestBed.inject(RefinementAgent).observe([
+      { id: 7, entityId: 'e-7', branch: 'refining/the-epic' } as RefinementDto,
+    ]);
+    fixture = TestBed.createComponent(PanelHost);
+    http = TestBed.inject(HttpTestingController);
+  }
+
+  /** Answer the navigation and flush the effect that waits on it — `speech-api.spec.ts`'s pattern. */
+  function answerNav(applications: Record<string, { origin: string; exposure?: 'private' }>): void {
+    tree.set(toNavTree({ slots: {}, applications }));
+    TestBed.tick();
+  }
+
+  async function settle(): Promise<void> {
+    for (let turn = 0; turn < 8; turn++) {
+      await Promise.resolve();
+    }
+    fixture.detectChanges();
+  }
+
+  async function opened(): Promise<void> {
+    fixture.detectChanges();
+    http.expectOne(DRAFT_URL).flush({ message: 'none' }, { status: 404, statusText: 'Not Found' });
+    await settle();
+  }
+
+  function recordButton(): HTMLButtonElement | null {
+    return (
+      Array.from(
+        fixture.nativeElement.querySelectorAll('button') as NodeListOf<HTMLButtonElement>,
+      ).find((candidate) => candidate.textContent?.trim().startsWith('Record')) ?? null
+    );
+  }
+
+  function stopButton(): HTMLButtonElement | null {
+    return (
+      Array.from(
+        fixture.nativeElement.querySelectorAll('button') as NodeListOf<HTMLButtonElement>,
+      ).find((candidate) => candidate.textContent?.trim().startsWith('Stop')) ?? null
+    );
+  }
+
+  it('hides Record where qits-stt is absent from the navigation, and keeps typing working', async () => {
+    configure();
+    answerNav({});
+    await opened();
+
+    expect(recordButton()).toBeNull();
+    expect(fixture.nativeElement.textContent).toContain('Dictation is not available here');
+
+    const box = fixture.nativeElement.querySelector('textarea.transcript') as HTMLTextAreaElement;
+    box.value = 'typed, not spoken';
+    box.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+    expect(fixture.nativeElement.textContent).toContain('Refine into prompt');
+  });
+
+  it('shows Record disabled while the navigation has not answered', async () => {
+    configure();
+    // `tree` stays undefined: this is the "navigation still loading" half of pending.
+    await opened();
+
+    const button = recordButton();
+    expect(button).not.toBeNull();
+    expect(button!.disabled).toBe(true);
+    expect(fixture.nativeElement.textContent).not.toContain(QITS_PRIVATE_APP_HINT);
+  });
+
+  it('shows Record disabled with the private-app hint once the probe answers no', async () => {
+    configure();
+    answerNav({ 'qits-stt': { origin: STT_ORIGIN, exposure: 'private' } });
+    await opened();
+
+    http.expectOne(HEALTH_URL).flush(null, { status: 503, statusText: 'Service Unavailable' });
+    await settle();
+
+    const button = recordButton();
+    expect(button).not.toBeNull();
+    expect(button!.disabled).toBe(true);
+    expect(fixture.nativeElement.textContent).toContain(QITS_PRIVATE_APP_HINT);
+    // Not the mic's own "did not answer" alert — a different problem, a different sentence.
+    expect(fixture.nativeElement.querySelector('p.problem')).toBeNull();
+  });
+
+  it('enables Record once the probe answers yes, and a press still records and transcribes', async () => {
+    configure();
+    answerNav({ 'qits-stt': { origin: STT_ORIGIN, exposure: 'private' } });
+    await opened();
+
+    http.expectOne(HEALTH_URL).flush('ok', { status: 200, statusText: 'OK' });
+    await settle();
+
+    const record = recordButton();
+    expect(record).not.toBeNull();
+    expect(record!.disabled).toBe(false);
+    expect(fixture.nativeElement.textContent).not.toContain(QITS_PRIVATE_APP_HINT);
+
+    record!.click();
+    fixture.detectChanges();
+    await settle();
+    expect(stopButton()).not.toBeNull();
+
+    stopButton()!.click();
+    fixture.detectChanges();
+    await settle();
+
+    const transcription = http.expectOne(TRANSCRIPTIONS_URL);
+    expect(transcription.request.body).toEqual({ audioBase64: 'UklGRg==' });
+    transcription.flush({ text: 'dictated out loud' });
+    await settle();
+
+    const box = fixture.nativeElement.querySelector('textarea.transcript') as HTMLTextAreaElement;
+    expect(box.value).toBe('dictated out loud');
+  });
 });

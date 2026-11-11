@@ -79,4 +79,61 @@ describe('SpeechApi', () => {
     http.expectOne('/stt/api/transcriptions').flush({ text: 'ok' });
     expect(await answerPromise).toBe('ok');
   });
+
+  /**
+   * {@link SpeechApi.availability}, the gate `prompt-panel.ts` reads before it offers Record at all
+   * — qits-2061, once qits-stt moved behind the network-access tunnel.
+   */
+  describe('availability', () => {
+    it('is pending before the navigation has answered', () => {
+      expect(api.availability()).toBe('pending');
+    });
+
+    it('is absent once the navigation answers naming no such application', () => {
+      answer({});
+      expect(api.availability()).toBe('absent');
+    });
+
+    it('is reachable with no request at all for a public qits-stt', async () => {
+      answer({ 'qits-stt': { origin: STT_ORIGIN } });
+      await settle();
+      expect(api.availability()).toBe('reachable');
+      http.expectNone(() => true);
+    });
+
+    it('stays pending while a private qits-stt’s probe is out, then unreachable on a bad answer', async () => {
+      tree.set(
+        toNavTree({
+          slots: {},
+          applications: { 'qits-stt': { origin: STT_ORIGIN, exposure: 'private' } },
+        }),
+      );
+      TestBed.tick();
+      expect(api.availability()).toBe('pending');
+
+      http
+        .expectOne(`${STT_ORIGIN}/stt/q/health/ready`)
+        .flush(null, { status: 503, statusText: 'Service Unavailable' });
+      await settle();
+
+      expect(api.availability()).toBe('unreachable');
+    });
+
+    it('is reachable once a private qits-stt’s probe answers with a 2xx', async () => {
+      tree.set(
+        toNavTree({
+          slots: {},
+          applications: { 'qits-stt': { origin: STT_ORIGIN, exposure: 'private' } },
+        }),
+      );
+      TestBed.tick();
+
+      http
+        .expectOne(`${STT_ORIGIN}/stt/q/health/ready`)
+        .flush('ok', { status: 200, statusText: 'OK' });
+      await settle();
+
+      expect(api.availability()).toBe('reachable');
+    });
+  });
 });
