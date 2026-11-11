@@ -10,17 +10,32 @@
   textarea and works perfectly well on typed words, so a browser that cannot record loses the Record
   button and nothing else — hiding the transcript with it would take away a working feature for an
   unrelated reason.
+
+  Behind "the browser can record" sits a second check, qits-stt's own availability (since qits-2061
+  it answers only through the network-access tunnel): absent — the navigation never named the
+  service at all — reads the same as "cannot record" and hides Record outright; pending — nothing
+  known yet, either about the navigation or about the one credentialed probe it started — and
+  unreachable — the probe came back no — both leave Record in place but disabled, the second with
+  QITS_PRIVATE_APP_HINT's sentence underneath; reachable is everything this file did before.
 -->
 <section class="dictation" aria-label="Dictation">
   <div class="speech">
     @if (unsupported()) {
       <span class="note">This browser cannot record audio — type the transcript instead.</span>
+    } @else if (dictationAbsent()) {
+      <span class="note">Dictation is not available here — type the transcript instead.</span>
     } @else if (recording()) {
       <qits-button variant="secondary" size="sm" (pressed)="stopRecording()">Stop</qits-button>
       <app-level-meter [level]="level()" />
       <span class="note">Speak — each pause is transcribed and added below.</span>
     } @else {
-      <qits-button variant="ghost" size="sm" [busy]="starting()" (pressed)="record()">
+      <qits-button
+        variant="ghost"
+        size="sm"
+        [disabled]="!dictationReady()"
+        [busy]="starting()"
+        (pressed)="record()"
+      >
         Record
       </qits-button>
       <span class="note">Dictate, then promote the transcript into the prompt.</span>
@@ -32,6 +47,10 @@
       </span>
     }
   </div>
+
+  @if (dictationUnreachable()) {
+    <p class="note">{{ privateAppHint }}</p>
+  }
 
   @if (micProblem(); as problem) {
     <p class="problem" role="alert">⚠ {{ problem }}</p>
