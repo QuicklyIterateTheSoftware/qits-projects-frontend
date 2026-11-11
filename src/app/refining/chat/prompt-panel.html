@@ -48,7 +48,7 @@
     }
   </div>
 
-  @if (dictationUnreachable()) {
+  @if (!unsupported() && dictationUnreachable()) {
     <p class="note">{{ privateAppHint }}</p>
   }
 
