@@ -1378,8 +1378,38 @@ export interface ReleaseRequestDto {
    * feature of its own.
    */
   readonly priority?: string;
+  /**
+   * **Whether this request's deploy waits for a person** (qits-2268): switched through `PUT
+   * …/deploy-hold` before the request releases, it makes the deployment request qits-deployments
+   * opens for the release wait until somebody approves it there. Absent on an answer from a service
+   * build older than the field, which reads as "nothing to offer" rather than as `false`: a toggle
+   * drawn against a service that has no door for it would only ever answer 404.
+   */
+  readonly deployHold?: boolean;
+  /**
+   * Who last switched {@link deployHold}, and when — **on or off**, so a hold switched off still
+   * says who did. Both null on a request nobody has switched.
+   */
+  readonly deployHoldBy?: string | null;
+  readonly deployHoldAt?: string | null;
+  /**
+   * The quality gates as the service reports them, keyed by a lowercase `kind`. Only read here for
+   * the `deployment-not-rolled-back` gate's detail, which is the one place a held deploy names the
+   * deployment request a person has to approve; absent on older builds.
+   */
+  readonly qualityGates?: readonly ReleaseQualityGateDto[] | null;
   readonly createdAt: string;
   readonly updatedAt: string;
+}
+
+/**
+ * One quality gate of a release request, as far as this SPA reads it: which gate, where it stands,
+ * and the service's sentence about it.
+ */
+export interface ReleaseQualityGateDto {
+  readonly kind: string;
+  readonly state: string;
+  readonly detail?: string | null;
 }
 
 /**
@@ -1848,4 +1878,3 @@ export interface ReleaseArtifactsResponse {
   readonly artifacts: readonly ReleaseArtifactDto[];
   readonly detail: string | null;
 }
-

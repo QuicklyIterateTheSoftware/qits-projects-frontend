@@ -459,6 +459,32 @@ export class ReleaseRequestsApi {
   }
 
   /**
+   * Hold this request's deploy for a person's approval, or release the hold (qits-2268) — `PUT
+   * …/deploy-hold` with `{ hold }`.
+   *
+   * <p>The value is read when the request releases, so the service takes it only while the request
+   * is `PENDING`, `READY`, `REJECTED` or `CONFLICTED`; any other state answers **409** with a sentence
+   * saying the hold must be set before the request releases, which the control draws where it was
+   * pressed. Any person or agent may switch it. Asking for the value the request already has changes
+   * nothing, and nothing is re-folded either way.
+   *
+   * <p>The whole request comes back with `deployHoldBy` and `deployHoldAt` naming who switched it,
+   * for {@link approve}'s own reason: it replaces the row rather than being followed by a re-read.
+   */
+  async setDeployHold(
+    repoId: string,
+    requestId: string,
+    hold: boolean,
+  ): Promise<ReleaseRequestDto> {
+    const response = await firstValueFrom(
+      this.http.put<ReleaseRequestResponse>(`${this.requestBase(repoId, requestId)}/deploy-hold`, {
+        hold,
+      }),
+    );
+    return response.request;
+  }
+
+  /**
    * Call an ask off. The reason is recorded on the request as its `detail`; blank leaves the
    * service to name the caller instead, which is why it is optional rather than sent empty.
    *

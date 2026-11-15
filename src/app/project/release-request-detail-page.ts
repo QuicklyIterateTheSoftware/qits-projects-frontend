@@ -36,6 +36,7 @@ import { Empty } from '../ui/empty';
 import { NONE, formatInstant, formatRelativeTime, shortSha } from '../ui/format';
 import { LOADING, failed, ready, type Loadable } from '../ui/loadable';
 import { ReleaseConflict } from './release-conflict';
+import { ReleaseDeployHold } from './release-deploy-hold';
 import { ReleaseRequestChanges } from './release-request-changes';
 import { ReleasePipelinePanel } from './release-pipeline-panel';
 import { releaseArtifactLinks, type ReleaseArtifactLink } from './release-artifact-links';
@@ -164,6 +165,7 @@ interface QaReloadState {
     QitsCommitMessage,
     QitsRunReports,
     ReleaseConflict,
+    ReleaseDeployHold,
     ReleasePipelinePanel,
     ReleaseRequestChanges,
     ReleaseSources,
@@ -373,7 +375,9 @@ interface QaReloadState {
                     <li class="commit">
                       <span class="ref" [title]="commit.hash">{{ commit.shortHash }}</span>
                       <span class="message"
-                        ><qits-commit-message [message]="commit.message" [project]="addressed().project"
+                        ><qits-commit-message
+                          [message]="commit.message"
+                          [project]="addressed().project"
                       /></span>
                       <span class="author">{{ commit.author }}</span>
                       <span class="when" [title]="instant(commit.date)">{{
@@ -431,6 +435,16 @@ interface QaReloadState {
           would be as many places to change the approval affordance.
         -->
         <ng-template #gatesSection>
+          <!--
+            Whether the deploy waits for a person (qits-2268) is a gate of its own kind, so it is
+            drawn with the gates wherever they are: switched before the release, and said out loud
+            with a link to the deployment request while a released deploy is held.
+          -->
+          <app-release-deploy-hold
+            [request]="request"
+            [project]="addressed().project"
+            (changed)="decided($event)"
+          />
           <app-async
             [state]="gates()"
             loadingLabel="Loading the gates"
@@ -1070,6 +1084,9 @@ export class ReleaseRequestDetailPage {
    * commits and the same verdicts and are not asked for again. What *may* move is the state — an
    * approval of a fold whose build is already green releases on the click — and the poll the state
    * change re-arms is what follows that outwards.
+   *
+   * <p>A deploy-hold switch (qits-2268) answers the same way and is taken the same way: it moves
+   * neither the fold nor the state, only the three hold fields on the row.
    */
   protected decided(request: ReleaseRequestDto): void {
     this.request.set(ready(request));

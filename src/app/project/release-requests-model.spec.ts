@@ -4,10 +4,12 @@ import {
   approvalOutstanding,
   awaitingApproval,
   canPrioritiseSource,
+  canSetDeployHold,
   canSetPriority,
   canWithdraw,
   hasOpenRequests,
   hasReleased,
+  heldDeploy,
   isChangeable,
   isFinished,
   isOpen,
@@ -590,6 +592,50 @@ describe('release-requests-model', () => {
      */
     it('does not ask what the state is called', () => {
       expect(releaseConflict(request({ state: 'RECONCILING', conflict }))).toBe(conflict);
+    });
+  });
+
+  describe('canSetDeployHold', () => {
+    it('takes the four states the door does, and FAILED is not one', () => {
+      const settable = ['PENDING', 'READY', 'REJECTED', 'CONFLICTED'];
+      for (const state of [
+        ...settable,
+        'FAILED',
+        'RELEASED',
+        'FINALIZED',
+        'WITHDRAWN',
+        'OBSOLETE',
+      ]) {
+        expect(canSetDeployHold(request({ state }))).toBe(settable.includes(state));
+      }
+    });
+  });
+
+  describe('heldDeploy', () => {
+    const held =
+      'Deploy of 2026.904.1 held for approval: qits deployments requests approve --request dr-7';
+    const gate = (detail: string, state = 'PENDING') => ({
+      kind: 'deployment-not-rolled-back',
+      state,
+      detail,
+    });
+
+    it('reads the deployment request id off the held gate of a released request', () => {
+      expect(heldDeploy(request({ state: 'RELEASED', qualityGates: [gate(held)] }))).toEqual({
+        detail: held,
+        deploymentRequestId: 'dr-7',
+      });
+    });
+
+    it('answers null for a gate that is not held, or not pending, or a request not released', () => {
+      expect(
+        heldDeploy(request({ state: 'RELEASED', qualityGates: [gate('Waiting for 2026.904.1')] })),
+      ).toBeNull();
+      expect(
+        heldDeploy(request({ state: 'RELEASED', qualityGates: [gate(held, 'PASSED')] })),
+      ).toBeNull();
+      expect(heldDeploy(request({ state: 'FINALIZED', qualityGates: [gate(held)] }))).toBeNull();
+      expect(heldDeploy(request({ state: 'RELEASED' }))).toBeNull();
     });
   });
 });

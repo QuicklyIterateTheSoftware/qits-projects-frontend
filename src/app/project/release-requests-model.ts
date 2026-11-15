@@ -534,3 +534,53 @@ export function releaseConflict(request: ReleaseRequestDto): MergeConflictDto | 
   const conflict = request.conflict;
   return conflict && conflict.conflicts?.length ? conflict : null;
 }
+
+/**
+ * The states the service takes a deploy-hold switch in (qits-2268): `PENDING`, `READY`, `REJECTED`
+ * and `CONFLICTED`. Narrower than {@link isChangeable} on purpose — `FAILED` is changeable for the
+ * other verbs, but the hold is read at the moment the request releases, and the door names exactly
+ * these four.
+ */
+const DEPLOY_HOLD_SETTABLE: ReadonlySet<string> = new Set([
+  'PENDING',
+  'READY',
+  'REJECTED',
+  'CONFLICTED',
+]);
+
+/** Whether the service would take a deploy-hold switch on this request. */
+export function canSetDeployHold(request: ReleaseRequestDto): boolean {
+  return DEPLOY_HOLD_SETTABLE.has(request.state);
+}
+
+/** The quality gate that waits for the deployment, and the one a held deploy is reported on. */
+export const DEPLOYMENT_GATE = 'deployment-not-rolled-back';
+
+/** What a held deploy says about itself: its sentence, and the deployment request to approve. */
+export interface HeldDeploy {
+  readonly detail: string;
+  /** The qits-deployments request the sentence names, or null where it names none. */
+  readonly deploymentRequestId: string | null;
+}
+
+/**
+ * The held deploy of a released request, or null (qits-2268).
+ *
+ * <p>Read off the `deployment-not-rolled-back` gate's own sentence — `Deploy of <version> held for
+ * approval: qits deployments requests approve --request <id>` — because that is the one place the
+ * service says both that the deploy is held *now* and which deployment request holds it. The
+ * request's `deployHold` alone says only that a hold was asked for; once the deployment is approved
+ * the gate moves on and this answers null although the flag is still true.
+ */
+export function heldDeploy(request: ReleaseRequestDto): HeldDeploy | null {
+  if (request.state !== 'RELEASED') {
+    return null;
+  }
+  const gate = request.qualityGates?.find((candidate) => candidate.kind === DEPLOYMENT_GATE);
+  const detail = gate?.detail;
+  if (!gate || gate.state !== 'PENDING' || !detail || !/held for approval/i.test(detail)) {
+    return null;
+  }
+  const id = /--request\s+(\S+)\s*$/.exec(detail)?.[1] ?? null;
+  return { detail, deploymentRequestId: id };
+}

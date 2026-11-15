@@ -596,7 +596,7 @@ describe('ReleaseRequestDetailPage', () => {
      * not plain text — the same renderer the Changes tab's submodule panel uses, fed the project
      * this page is scoped to.
      */
-    it("renders a work id the commit subject names as a qits-work-ref", async () => {
+    it('renders a work id the commit subject names as a qits-work-ref', async () => {
       const brief: QitsWorkBrief = {
         id: 'uuid-qits-1897',
         qualifiedId: 'qits-1897',
@@ -1368,6 +1368,71 @@ describe('ReleaseRequestDetailPage', () => {
       await answer(request({ state: 'WITHDRAWN', sources: BRANCHES }));
 
       expect(pickers().every((picker) => picker.disabled)).toBe(true);
+    });
+  });
+
+  /**
+   * The deploy hold (qits-2268): switched before the request releases and taken in place of the row,
+   * and — once released and held — said out loud with a link to the deployment request to approve.
+   */
+  describe('the deploy hold', () => {
+    function holdBox(): HTMLInputElement | null {
+      return page().querySelector<HTMLInputElement>('app-release-deploy-hold input[type=checkbox]');
+    }
+
+    it('puts the switch and takes the answer in place of a re-read', async () => {
+      withRepositories();
+      await open();
+      await answer(request({ deployHold: false, deployHoldBy: null, deployHoldAt: null }));
+
+      holdBox()?.click();
+      await settle();
+      const put = http.expectOne(`${REQUEST}/deploy-hold`);
+      expect(put.request.method).toBe('PUT');
+      expect(put.request.body).toEqual({ hold: true });
+      put.flush({
+        request: request({
+          deployHold: true,
+          deployHoldBy: 'dana.weber',
+          deployHoldAt: '2026-09-01T13:40:00Z',
+        }),
+      });
+      await settle();
+      harness.fixture.detectChanges();
+
+      expect(holdBox()?.checked).toBe(true);
+      expect(page().querySelector('app-release-deploy-hold .who')?.textContent).toContain(
+        'switched on by dana.weber',
+      );
+      // Nothing about the fold moved, so nothing behind it is asked for again.
+      http.expectNone(COMMITS);
+    });
+
+    it('says a released deploy is held and links the deployment request to approve', async () => {
+      withRepositories();
+      await open();
+      await answer(
+        released({
+          deployHold: true,
+          deployHoldBy: 'dana.weber',
+          deployHoldAt: '2026-09-01T13:40:00Z',
+          qualityGates: [
+            {
+              kind: 'deployment-not-rolled-back',
+              state: 'PENDING',
+              detail:
+                'Deploy of 2026.904.161524 held for approval: ' +
+                'qits deployments requests approve --request dr-42',
+            },
+          ],
+        }),
+      );
+
+      expect(page().textContent).toContain('Deploy held for approval');
+      expect(hrefs()).toContain(
+        'https://deployments.dev.example.test/qits/deployment-requests/dr-42',
+      );
+      expect(holdBox()?.disabled).toBe(true);
     });
   });
 
