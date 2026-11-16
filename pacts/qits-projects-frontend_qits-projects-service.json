@@ -5372,10 +5372,10 @@
                     },
                     {
                       "gates": [
-                        "CHILDREN_CLOSED"
+                        "CHILDREN_VERIFIED"
                       ],
-                      "kind": "CLOSE",
-                      "to": "DONE"
+                      "kind": "SKIP",
+                      "to": "VERIFIED"
                     }
                   ],
                   "IMPLEMENTING": [
@@ -5454,15 +5454,15 @@
                   ],
                   "VERIFYING": [
                     {
+                      "gates": [
+                        "CHILDREN_VERIFIED"
+                      ],
                       "kind": "FORWARD",
                       "to": "VERIFIED"
                     },
                     {
-                      "gates": [
-                        "CHILDREN_CLOSED"
-                      ],
-                      "kind": "CLOSE",
-                      "to": "DONE"
+                      "kind": "BACK",
+                      "to": "IMPLEMENTED"
                     }
                   ]
                 }
@@ -5680,10 +5680,10 @@
                     },
                     {
                       "gates": [
-                        "CHILDREN_CLOSED"
+                        "CHILDREN_VERIFIED"
                       ],
-                      "kind": "CLOSE",
-                      "to": "DONE"
+                      "kind": "SKIP",
+                      "to": "VERIFIED"
                     }
                   ],
                   "IMPLEMENTING": [
@@ -5754,15 +5754,15 @@
                   ],
                   "VERIFYING": [
                     {
+                      "gates": [
+                        "CHILDREN_VERIFIED"
+                      ],
                       "kind": "FORWARD",
                       "to": "VERIFIED"
                     },
                     {
-                      "gates": [
-                        "CHILDREN_CLOSED"
-                      ],
-                      "kind": "CLOSE",
-                      "to": "DONE"
+                      "kind": "BACK",
+                      "to": "IMPLEMENTED"
                     }
                   ]
                 }
@@ -6651,6 +6651,24 @@
                                 {
                                   "index": 0,
                                   "rules": {
+                                    "$.gates": {
+                                      "combine": "AND",
+                                      "matchers": [
+                                        {
+                                          "match": "type",
+                                          "max": 1,
+                                          "min": 1
+                                        }
+                                      ]
+                                    },
+                                    "$.gates[*]": {
+                                      "combine": "AND",
+                                      "matchers": [
+                                        {
+                                          "match": "type"
+                                        }
+                                      ]
+                                    },
                                     "$.kind": {
                                       "combine": "AND",
                                       "matchers": [
@@ -6672,24 +6690,6 @@
                                 {
                                   "index": 1,
                                   "rules": {
-                                    "$.gates": {
-                                      "combine": "AND",
-                                      "matchers": [
-                                        {
-                                          "match": "type",
-                                          "max": 1,
-                                          "min": 1
-                                        }
-                                      ]
-                                    },
-                                    "$.gates[*]": {
-                                      "combine": "AND",
-                                      "matchers": [
-                                        {
-                                          "match": "type"
-                                        }
-                                      ]
-                                    },
                                     "$.kind": {
                                       "combine": "AND",
                                       "matchers": [
@@ -8045,6 +8045,24 @@
                                 {
                                   "index": 0,
                                   "rules": {
+                                    "$.gates": {
+                                      "combine": "AND",
+                                      "matchers": [
+                                        {
+                                          "match": "type",
+                                          "max": 1,
+                                          "min": 1
+                                        }
+                                      ]
+                                    },
+                                    "$.gates[*]": {
+                                      "combine": "AND",
+                                      "matchers": [
+                                        {
+                                          "match": "type"
+                                        }
+                                      ]
+                                    },
                                     "$.kind": {
                                       "combine": "AND",
                                       "matchers": [
@@ -8066,24 +8084,6 @@
                                 {
                                   "index": 1,
                                   "rules": {
-                                    "$.gates": {
-                                      "combine": "AND",
-                                      "matchers": [
-                                        {
-                                          "match": "type",
-                                          "max": 1,
-                                          "min": 1
-                                        }
-                                      ]
-                                    },
-                                    "$.gates[*]": {
-                                      "combine": "AND",
-                                      "matchers": [
-                                        {
-                                          "match": "type"
-                                        }
-                                      ]
-                                    },
                                     "$.kind": {
                                       "combine": "AND",
                                       "matchers": [
