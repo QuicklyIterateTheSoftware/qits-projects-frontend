@@ -1268,6 +1268,156 @@
         "references": {
           "qits-call": {
             "app": "qits-projects-service",
+            "operationId": "setReleaseRequestDeployHold"
+          },
+          "qits-trigger": {
+            "app": "qits-projects-frontend",
+            "interaction": "hold-deploy",
+            "kind": "ui"
+          }
+        }
+      },
+      "description": "hold-deploy: setReleaseRequestDeployHold",
+      "pending": false,
+      "providerStates": [
+        {
+          "name": "a release request awaiting approval",
+          "params": {
+            "authorization": "Bearer qits_tok_contract-person-cli",
+            "mergedSha": "bd6360a2c6b42a991c62e3418b7f6d4ac5d89f14",
+            "projectId": "00000000-0000-4000-8000-000000000001",
+            "repositoryId": "00000000-0000-4000-8000-000000000002",
+            "requestId": "00000000-0000-4000-8000-000000000003"
+          }
+        }
+      ],
+      "request": {
+        "body": {
+          "content": {
+            "hold": true
+          },
+          "contentType": "application/json",
+          "encoded": false
+        },
+        "generators": {
+          "path": {
+            "expression": "/projects/api/repositories/${repositoryId}/release-requests/${requestId}/deploy-hold",
+            "type": "ProviderState"
+          }
+        },
+        "headers": {
+          "Content-Type": [
+            "application/json"
+          ]
+        },
+        "matchingRules": {
+          "path": {
+            "combine": "AND",
+            "matchers": [
+              {
+                "match": "type"
+              }
+            ]
+          }
+        },
+        "method": "PUT",
+        "path": "/projects/api/repositories/00000000-0000-4000-8000-000000000002/release-requests/00000000-0000-4000-8000-000000000003/deploy-hold"
+      },
+      "response": {
+        "body": {
+          "content": {
+            "request": {
+              "deployHold": true,
+              "deployHoldAt": "2026-01-01T00:00:00Z",
+              "deployHoldBy": "dev",
+              "id": "00000000-0000-4000-8000-000000000003",
+              "repoId": "00000000-0000-4000-8000-000000000002",
+              "state": "PENDING"
+            }
+          },
+          "contentType": "application/json",
+          "encoded": false
+        },
+        "headers": {
+          "Content-Type": [
+            "application/json"
+          ]
+        },
+        "matchingRules": {
+          "body": {
+            "$.request.deployHold": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.request.deployHoldAt": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}(:\\d{2}(\\.\\d{1,9})?)?(Z|[+-]\\d{2}:?\\d{2})$"
+                }
+              ]
+            },
+            "$.request.deployHoldBy": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.request.id": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                }
+              ]
+            },
+            "$.request.repoId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                }
+              ]
+            },
+            "$.request.state": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          },
+          "header": {
+            "Content-Type": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "application/json.*"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      },
+      "type": "Synchronous/HTTP"
+    },
+    {
+      "comments": {
+        "references": {
+          "qits-call": {
+            "app": "qits-projects-service",
             "operationId": "inlineWorkDossierAsset"
           },
           "qits-trigger": {
@@ -2179,6 +2329,155 @@
         "references": {
           "qits-call": {
             "app": "qits-projects-service",
+            "operationId": "setReleaseRequestDeployHold"
+          },
+          "qits-trigger": {
+            "app": "qits-projects-frontend",
+            "interaction": "release-deploy-hold",
+            "kind": "ui"
+          }
+        }
+      },
+      "description": "release-deploy-hold: setReleaseRequestDeployHold",
+      "pending": false,
+      "providerStates": [
+        {
+          "name": "a release request whose deploy is held",
+          "params": {
+            "mergedSha": "bd6360a2c6b42a991c62e3418b7f6d4ac5d89f14",
+            "projectId": "00000000-0000-4000-8000-000000000001",
+            "repositoryId": "00000000-0000-4000-8000-000000000002",
+            "requestId": "00000000-0000-4000-8000-000000000003"
+          }
+        }
+      ],
+      "request": {
+        "body": {
+          "content": {
+            "hold": false
+          },
+          "contentType": "application/json",
+          "encoded": false
+        },
+        "generators": {
+          "path": {
+            "expression": "/projects/api/repositories/${repositoryId}/release-requests/${requestId}/deploy-hold",
+            "type": "ProviderState"
+          }
+        },
+        "headers": {
+          "Content-Type": [
+            "application/json"
+          ]
+        },
+        "matchingRules": {
+          "path": {
+            "combine": "AND",
+            "matchers": [
+              {
+                "match": "type"
+              }
+            ]
+          }
+        },
+        "method": "PUT",
+        "path": "/projects/api/repositories/00000000-0000-4000-8000-000000000002/release-requests/00000000-0000-4000-8000-000000000003/deploy-hold"
+      },
+      "response": {
+        "body": {
+          "content": {
+            "request": {
+              "deployHold": false,
+              "deployHoldAt": "2026-01-01T00:00:00Z",
+              "deployHoldBy": "dev",
+              "id": "00000000-0000-4000-8000-000000000003",
+              "repoId": "00000000-0000-4000-8000-000000000002",
+              "state": "PENDING"
+            }
+          },
+          "contentType": "application/json",
+          "encoded": false
+        },
+        "headers": {
+          "Content-Type": [
+            "application/json"
+          ]
+        },
+        "matchingRules": {
+          "body": {
+            "$.request.deployHold": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.request.deployHoldAt": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}(:\\d{2}(\\.\\d{1,9})?)?(Z|[+-]\\d{2}:?\\d{2})$"
+                }
+              ]
+            },
+            "$.request.deployHoldBy": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.request.id": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                }
+              ]
+            },
+            "$.request.repoId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                }
+              ]
+            },
+            "$.request.state": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          },
+          "header": {
+            "Content-Type": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "application/json.*"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      },
+      "type": "Synchronous/HTTP"
+    },
+    {
+      "comments": {
+        "references": {
+          "qits-call": {
+            "app": "qits-projects-service",
             "operationId": "patchWork"
           },
           "qits-trigger": {
@@ -2292,6 +2591,143 @@
         "path": "/projects/api/work/transition"
       },
       "response": {
+        "status": 200
+      },
+      "type": "Synchronous/HTTP"
+    },
+    {
+      "comments": {
+        "references": {
+          "qits-call": {
+            "app": "qits-projects-service",
+            "operationId": "getReleaseRequest"
+          },
+          "qits-trigger": {
+            "app": "qits-projects-frontend",
+            "interaction": "show-deploy-hold",
+            "kind": "ui"
+          }
+        }
+      },
+      "description": "show-deploy-hold: getReleaseRequest",
+      "pending": false,
+      "providerStates": [
+        {
+          "name": "a release request whose deploy is held",
+          "params": {
+            "mergedSha": "bd6360a2c6b42a991c62e3418b7f6d4ac5d89f14",
+            "projectId": "00000000-0000-4000-8000-000000000001",
+            "repositoryId": "00000000-0000-4000-8000-000000000002",
+            "requestId": "00000000-0000-4000-8000-000000000003"
+          }
+        }
+      ],
+      "request": {
+        "generators": {
+          "path": {
+            "expression": "/projects/api/repositories/${repositoryId}/release-requests/${requestId}",
+            "type": "ProviderState"
+          }
+        },
+        "matchingRules": {
+          "path": {
+            "combine": "AND",
+            "matchers": [
+              {
+                "match": "type"
+              }
+            ]
+          }
+        },
+        "method": "GET",
+        "path": "/projects/api/repositories/00000000-0000-4000-8000-000000000002/release-requests/00000000-0000-4000-8000-000000000003"
+      },
+      "response": {
+        "body": {
+          "content": {
+            "request": {
+              "deployHold": true,
+              "deployHoldAt": "2026-01-01T00:00:00Z",
+              "deployHoldBy": "dana.weber",
+              "id": "00000000-0000-4000-8000-000000000003",
+              "repoId": "00000000-0000-4000-8000-000000000002",
+              "state": "PENDING"
+            }
+          },
+          "contentType": "application/json",
+          "encoded": false
+        },
+        "headers": {
+          "Content-Type": [
+            "application/json"
+          ]
+        },
+        "matchingRules": {
+          "body": {
+            "$.request.deployHold": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.request.deployHoldAt": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}(:\\d{2}(\\.\\d{1,9})?)?(Z|[+-]\\d{2}:?\\d{2})$"
+                }
+              ]
+            },
+            "$.request.deployHoldBy": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.request.id": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                }
+              ]
+            },
+            "$.request.repoId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                }
+              ]
+            },
+            "$.request.state": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          },
+          "header": {
+            "Content-Type": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "application/json.*"
+                }
+              ]
+            }
+          }
+        },
         "status": 200
       },
       "type": "Synchronous/HTTP"
