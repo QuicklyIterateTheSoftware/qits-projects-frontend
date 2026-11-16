@@ -43,7 +43,7 @@ describe('BearerEventSource', () => {
 
     expect(fetchFn).toHaveBeenCalledTimes(1);
     const [url, init] = fetchFn.mock.calls[0];
-    expect(url).toBe('/projects/api/x/events');
+    expect(url).toBe('/projects/api/x/events?ngsw-bypass=true');
     expect((init?.headers as Record<string, string>)['authorization']).toBe('Bearer token-1');
     expect(opened).toHaveBeenCalledTimes(1);
     expect(source.readyState).toBe(1);
