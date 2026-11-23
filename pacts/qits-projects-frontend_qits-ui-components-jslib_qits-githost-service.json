@@ -48,7 +48,8 @@
             "combine": "AND",
             "matchers": [
               {
-                "match": "type"
+                "match": "regex",
+                "regex": "^/githost/api/repositories/00000000-0000-4000-8000-000000000002/file$"
               }
             ]
           }
@@ -150,7 +151,8 @@
             "combine": "AND",
             "matchers": [
               {
-                "match": "type"
+                "match": "regex",
+                "regex": "^/githost/api/repositories/00000000-0000-4000-8000-000000000002/file$"
               }
             ]
           }
@@ -253,7 +255,8 @@
             "combine": "AND",
             "matchers": [
               {
-                "match": "type"
+                "match": "regex",
+                "regex": "^/githost/api/repositories/00000000-0000-4000-8000-000000000002/file$"
               }
             ]
           }
@@ -379,7 +382,8 @@
             "combine": "AND",
             "matchers": [
               {
-                "match": "type"
+                "match": "regex",
+                "regex": "^/githost/api/repositories/00000000-0000-4000-8000-000000000001/file$"
               }
             ]
           }
@@ -482,7 +486,8 @@
             "combine": "AND",
             "matchers": [
               {
-                "match": "type"
+                "match": "regex",
+                "regex": "^/githost/api/repositories/00000000-0000-4000-8000-000000000002/raw$"
               }
             ]
           }
